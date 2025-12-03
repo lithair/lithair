@@ -1,0 +1,496 @@
+version: '3'
+
+vars:
+  PORT: '18321'
+  HOST: '127.0.0.1'
+  LEADER: "http://{{.HOST}}:{{.PORT}}"
+  TOTAL: '20000'
+  CONC: '512'
+  BYTES: '1024'
+  ACCEPT_ENCODING: ''
+  RUST_LOG: 'info'
+  OPS: '10000'
+  SINGLE_NODE: '0'
+  STORAGE_PROFILE: 'high_throughput'
+
+tasks:
+  help:
+    desc: Show documented tasks and common variables
+    cmds:
+      - |
+          cat <<'EOF'
+          Lithair Taskfile - Common tasks:
+            task build                 # Build debug binaries
+            task build:release        # Build release binaries
+            task fmt                  # Run rustfmt on the workspace
+            task fmt:check            # Check rustfmt (no changes)
+            task lint                 # Run clippy with -D warnings
+            task test                 # Run all tests
+            task ci                   # fmt:check + lint + test
+            task ci:full              # Full CI pipeline (simulates GitHub CI)
+            task scc2:serve           # Start SCC2 server (debug)
+            task scc2:serve:release   # Start SCC2 server (release)
+            task scc2:demo            # Run full SCC2 demo (server + benches)
+            task scc2:gzip            # Run gzip on/off comparison
+            task loadgen:status       # /status load test
+            task loadgen:json         # /perf/json load test
+            task loadgen:echo         # /perf/echo load test
+            task bench:json-small     # Preset: JSON 1KB
+            task bench:json-large     # Preset: JSON 64KB
+            task bench:echo-large     # Preset: ECHO 1MB
+            task bench:crud-parallel  # 3-node CRUD benchmark via script
+            task bench:crud-suite:concurrency   # Suite: concurrency scaling
+            task bench:crud-suite:durability    # Suite: durability profiles
+            task bench:crud-suite:reads         # Suite: heavy vs light reads
+            task bench:crud-suite:bulk-vs-single# Suite: bulk vs single creates
+            task docs                 # Show docs pointers
+            task bdd:setup            # Install Cucumber dependencies
+            task bdd:run              # Run all Cucumber tests
+            task bdd:performance      # Performance BDD tests
+            task bdd:security         # Security BDD tests
+            task bdd:distribution     # Distribution BDD tests
+            task bdd:integration      # Integration BDD tests
+            task bdd:all              # Run all BDD tests
+
+          Variables (override as needed):
+            PORT, HOST, TOTAL, CONC, BYTES, ACCEPT_ENCODING, RUST_LOG
+
+          Example:
+            task loadgen:json PORT=18321 CONC=1024 BYTES=65536 ACCEPT_ENCODING=gzip
+
+          📋 CI/Testing Tasks:
+          task ci           - Fast CI for development (fmt + clippy + test) ~30s
+          task ci:full      - Core CI pipeline (format + build + clippy + tests with -D warnings) ~2-3min
+          task ci:bdd       - Full CI with BDD tests (ci:full + bdd:all) ~5-6min
+          task bdd:all      - Run all BDD test suites
+          task bdd:setup    - Install Cucumber dependencies
+          task ci:smoke     - Functional validation (firewall demos, performance benchmarks) ~5-10min
+          task ci:github    - Complete GitHub pipeline (ci:full + ci:smoke) ~10-15min
+          task docs:lint    - Lint Markdown documentation files
+          task docs:lint:fix - Auto-fix Markdown documentation files
+
+          🔍 CI Task Differences:
+          • ci:full    = Code quality only (build, lint, test)
+          • ci:github  = Code quality + functional validation (mirrors GitHub Actions exactly)
+
+          💡 Use 'task ci:full' for fast development, 'task ci:github' before pushing!
+          EOF
+
+  default:
+    desc: Default entry point - shows Taskfile help
+    cmds:
+      - task: help
+  build:
+    desc: Build SCC2 server demo and load generator
+    cmds:
+      - cargo build -q -p scc2_server_demo
+      - cargo build -q -p raft_replication_demo --bin http_loadgen_demo
+
+  fmt:
+    desc: Run rustfmt on the entire workspace
+    cmds:
+      - cargo fmt
+
+  fmt:check:
+    desc: Check rustfmt formatting (no changes)
+    cmds:
+      - cargo fmt -- --check
+
+  lint:
+    desc: Run clippy lints with -D warnings
+    cmds:
+      - cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    desc: Run all tests in the workspace
+    cmds:
+      - cargo test --workspace --all-features
+
+  ci:
+    desc: CI pipeline (fmt:check + lint + test)
+    cmds:
+      - task: fmt:check
+      - task: lint
+      - task: test
+
+  ci:full:
+    desc: Full CI pipeline (simulates GitHub CI with deny warnings)
+    cmds:
+      - echo "🚀 Lithair CI Pipeline Starting..."
+      - echo "✅ Code formatting check..."
+      - cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
+      - echo "🔨 Building workspace with deny warnings..."
+      - RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --quiet && echo "   ✓ Build OK" || (echo "   ✗ Build failed" && exit 1)
+      - echo "🔍 Clippy analysis with deny warnings..."
+      - cargo clippy --workspace --all-targets --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
+      - echo "🧪 Test suite execution..."
+      - |
+        TEST_OUTPUT=$(cargo test --workspace --all-targets --quiet 2>&1)
+        if [ $? -eq 0 ]; then
+          TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "test result:" | sed 's/.*ok\. \([0-9]*\) passed.*/\1/' | paste -sd+ | bc 2>/dev/null || echo "0")
+          echo "   ✓ All tests passed ($TOTAL_TESTS tests)"
+        else
+          echo "   ✗ Tests failed"
+          exit 1
+        fi
+      - echo "🎉 CI pipeline completed successfully!"
+
+  ci:smoke:
+    desc: Smoke tests that mirror GitHub CI exactly (functional validation)
+    cmds:
+      - echo "🚀 Running smoke tests (same as GitHub CI)..."
+      - echo "🔧 Ensuring demo scripts are executable..."
+      - chmod +x examples/http_firewall_demo/run_demo.sh
+      - chmod +x examples/http_firewall_demo/run_declarative_demo.sh
+      - chmod +x examples/http_hardening_demo/run_demo.sh
+      - chmod +x tests/frontend_benchmark/run_frontend_demo.sh
+      - chmod +x examples/raft_replication_demo/bench_http_server_stateless.sh
+      - echo "💨 Smoke - Firewall demo (configurable)..."
+      - PORT=19100 bash examples/http_firewall_demo/run_demo.sh
+      - echo "💨 Smoke - Firewall demo (model-level declarative)..."
+      - PORT=19101 bash examples/http_firewall_demo/run_declarative_demo.sh
+      - echo "💨 Smoke - HTTP hardening demo..."
+      - PORT=19102 bash examples/http_hardening_demo/run_demo.sh
+      - echo "💨 Smoke - Frontend benchmark (static + API)..."
+      - PORT=19103 bash tests/frontend_benchmark/run_frontend_demo.sh
+      - echo "💨 Smoke - Stateless perf endpoints (fast)..."
+      - |
+        CONCURRENCY=64 TIMEOUT_S=10 PORT=19104 TOTAL_STATUS=2000 TOTAL_JSON_1KB=2000 \
+        TOTAL_BYTES_1KB=2000 TOTAL_ECHO_1KB=1000 RS_PERF_MAX_BYTES=262144 \
+        bash examples/raft_replication_demo/bench_http_server_stateless.sh
+      - echo "💨 Smoke - GZIP negotiation (skipped - test suite complete)"
+      - echo "🎉 All smoke tests completed successfully!"
+
+  ci:github:
+    desc: Complete CI pipeline that exactly mirrors GitHub Actions
+    cmds:
+      - echo "🚀 GitHub-equivalent CI Pipeline Starting..."
+      - task: ci:full
+      - task: ci:smoke
+      - echo "🎉 GitHub-equivalent CI completed successfully!"
+
+  build:release:
+    desc: Build release binaries for SCC2 server demo and load generator
+    cmds:
+      - cargo build --release -p scc2_server_demo
+      - cargo build --release -p raft_replication_demo --bin http_loadgen_demo
+
+  scc2:serve:
+    desc: Start SCC2 server demo (Hyper + SCC2)
+    deps: [build]
+    env:
+      RUST_LOG: "{{.RUST_LOG}}"
+    cmds:
+      - target/debug/scc2_server_demo --port {{.PORT}} --host {{.HOST}}
+
+  scc2:serve:release:
+    desc: Start SCC2 server demo (release build)
+    deps: [build:release]
+    env:
+      RUST_LOG: "{{.RUST_LOG}}"
+    cmds:
+      - target/release/scc2_server_demo --port {{.PORT}} --host {{.HOST}}
+
+  scc2:demo:
+    desc: Run full SCC2 demo (server + benchmarks)
+    cmds:
+      - bash examples/scc2_server_demo/run_demo.sh
+
+  scc2:gzip:
+    desc: Run gzip on/off comparison demo
+    cmds:
+      - bash examples/scc2_server_demo/run_gzip_compare.sh
+
+  clean:
+    desc: Clean cargo artifacts (debug & release)
+    cmds:
+      - cargo clean
+
+  loadgen:status:
+    desc: Run stateless /status load test against the server
+    deps: [build]
+    cmds:
+      - cargo run -q -p raft_replication_demo --bin http_loadgen_demo -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-status --perf-path /status --accept-encoding "{{.ACCEPT_ENCODING}}"
+
+  loadgen:status:release:
+    desc: Run stateless /status load test (release build)
+    deps: [build:release]
+    cmds:
+      - target/release/http_loadgen_demo --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-status --perf-path /status --accept-encoding "{{.ACCEPT_ENCODING}}"
+
+  loadgen:json:
+    desc: Run stateless /perf/json load test against the server
+    deps: [build]
+    cmds:
+      - cargo run -q -p raft_replication_demo --bin http_loadgen_demo -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-json --perf-path /perf/json --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+
+  loadgen:json:release:
+    desc: Run stateless /perf/json load test (release build)
+    deps: [build:release]
+    cmds:
+      - target/release/http_loadgen_demo --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-json --perf-path /perf/json --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+
+  loadgen:echo:
+    desc: Run stateless /perf/echo load test against the server
+    deps: [build]
+    cmds:
+      - cargo run -q -p raft_replication_demo --bin http_loadgen_demo -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-echo --perf-path /perf/echo --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+
+  loadgen:echo:release:
+    desc: Run stateless /perf/echo load test (release build)
+    deps: [build:release]
+    cmds:
+      - target/release/http_loadgen_demo --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-echo --perf-path /perf/echo --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+
+  bench:json-small:
+    desc: Preset benchmark - JSON 1KB, 20k total, 512 concurrency
+    cmds:
+      - task: loadgen:json
+        vars: { BYTES: '1024', TOTAL: '20000', CONC: '512' }
+
+  bench:json-large:
+    desc: Preset benchmark - JSON 64KB, 20k total, 512 concurrency
+    cmds:
+      - task: loadgen:json
+        vars: { BYTES: '65536', TOTAL: '20000', CONC: '512' }
+
+  bench:echo-large:
+    desc: Preset benchmark - ECHO 1MB, 10k total, 256 concurrency
+    cmds:
+      - task: loadgen:echo
+        vars: { BYTES: '1048576', TOTAL: '10000', CONC: '256' }
+
+  bench:crud-parallel:
+    desc: Run the distributed CRUD benchmark (3-node) via script
+    env:
+      SINGLE_NODE: "{{.SINGLE_NODE}}"
+      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
+    cmds:
+      - bash examples/raft_replication_demo/bench_1000_crud_parallel.sh {{.OPS}}
+
+  bench:crud-suite:concurrency:
+    desc: Run CRUD suite - concurrency scaling (uses CONC_LIST)
+    env:
+      BENCH_SUITE: "concurrency_scaling"
+      SINGLE_NODE: "{{.SINGLE_NODE}}"
+      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
+      CONC_LIST: "{{.CONC_LIST}}"
+    cmds:
+      - bash examples/raft_replication_demo/bench_1000_crud_parallel.sh {{.OPS}}
+
+  bench:crud-suite:durability:
+    desc: Run CRUD suite - durability profiles (high_throughput, balanced, durable_security)
+    env:
+      BENCH_SUITE: "durability_profiles"
+      SINGLE_NODE: "{{.SINGLE_NODE}}"
+    cmds:
+      - bash examples/raft_replication_demo/bench_1000_crud_parallel.sh {{.OPS}}
+
+  bench:crud-suite:reads:
+    desc: Run CRUD suite - heavy vs light reads (READ_PATH variants)
+    env:
+      BENCH_SUITE: "heavy_vs_light_reads"
+      SINGLE_NODE: "{{.SINGLE_NODE}}"
+      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
+    cmds:
+      - bash examples/raft_replication_demo/bench_1000_crud_parallel.sh {{.OPS}}
+
+  bench:crud-suite:bulk-vs-single:
+    desc: Run CRUD suite - bulk vs single create modes
+    env:
+      BENCH_SUITE: "bulk_vs_single"
+      SINGLE_NODE: "{{.SINGLE_NODE}}"
+      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
+    cmds:
+      - bash examples/raft_replication_demo/bench_1000_crud_parallel.sh {{.OPS}}
+
+  examples:rbac-session:
+    desc: Run RBAC session demo with persistent sessions
+    cmds:
+      - cargo run -p rbac_session_demo
+
+  examples:rbac-session:frontend:
+    desc: Run RBAC session demo with frontend UI
+    cmds:
+      - |
+          echo "🚀 Starting RBAC Session Demo with Frontend..."
+          echo "📂 Frontend: http://localhost:3000"
+          echo "🔐 Quick login: Click on demo user cards"
+          echo ""
+          cargo run -p rbac_session_demo
+
+  examples:rbac-session:test:
+    desc: Test RBAC session demo with automated curl tests
+    cmds:
+      - |
+          echo "🚀 Starting RBAC Session Demo..."
+          cargo build -q -p rbac_session_demo
+
+          # Start server in background
+          cargo run -q -p rbac_session_demo -- --sessions-dir ./examples/rbac_session_demo/data/test_sessions 2>/dev/null &
+          SERVER_PID=$!
+          sleep 3
+
+          echo "✅ Server started (PID: $SERVER_PID)"
+          echo ""
+
+          # Test 1: Login as bob (Employee)
+          echo "📝 Test 1: Login as bob (Employee)"
+          TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"bob","password":"password123"}' | jq -r '.session_token')
+          echo "   Token: $TOKEN"
+          echo ""
+
+          # Test 2: Create products (bob has Employee role)
+          echo "📦 Test 2: Create laptop product"
+          curl -s -X POST http://localhost:3000/api/products \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"1","name":"Laptop","price":999.99}' | jq .
+          echo ""
+
+          echo "📦 Test 3: Create mouse product"
+          curl -s -X POST http://localhost:3000/api/products \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"2","name":"Mouse","price":29.99}' | jq .
+          echo ""
+
+          # Test 4: List products
+          echo "📋 Test 4: List all products"
+          curl -s http://localhost:3000/api/products \
+            -H "Authorization: Bearer $TOKEN" | jq .
+          echo ""
+
+          # Test 5: Check event sourcing persistence
+          echo "💾 Test 5: Verify event sourcing (.raftlog files)"
+          ls -lh ./examples/rbac_session_demo/data/test_sessions/*.raft* 2>/dev/null || echo "No .raftlog files yet"
+          echo ""
+          echo "📂 Event log contents:"
+          cat ./examples/rbac_session_demo/data/test_sessions/events.raftlog 2>/dev/null | jq -s '.' || echo "No events yet"
+          echo ""
+
+          # Test 6: Logout
+          echo "👋 Test 6: Logout"
+          curl -s -X POST http://localhost:3000/auth/logout \
+            -H "Authorization: Bearer $TOKEN" | jq .
+          echo ""
+
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+          echo "✅ All tests completed!"
+
+  examples:blog:serve:
+    desc: Run the blog_server example (DeclarativeServer + RBAC login)
+    cmds:
+      - cargo run -p blog_server
+
+  examples:blog:test:
+    desc: Build and run automated tests for blog_server (login + RBAC + CRUD)
+    env:
+      HOST: "{{.HOST}}"
+      PORT: "3005"
+      RUST_LOG: "{{.RUST_LOG}}"
+    cmds:
+      - chmod +x examples/blog_server/run_blog_tests.sh
+      - bash examples/blog_server/run_blog_tests.sh
+
+  docs:
+    desc: Show key documentation pointers and example guides
+    cmds:
+      - |
+          cat <<'EOF'
+          Lithair Documentation:
+            - Overview:                 docs/README.md
+            - Getting Started:          docs/guides/getting-started.md
+            - Data-First Philosophy:    docs/guides/data-first-philosophy.md
+            - HTTP Performance Endpoints: docs/guides/http_performance_endpoints.md
+            - HTTP Hardening, Gzip & FW:  docs/guides/http_hardening_gzip_firewall.md
+            - Architecture Overview:    docs/architecture/overview.md
+            - Examples Overview:        docs/examples/overview.md
+
+          SCC2 Server Demo:
+            - README:                   examples/scc2_server_demo/README.md
+
+          Examples Quick Entry (Taskfile):
+            - task help
+            - task scc2:demo
+            - task loadgen:json LEADER=http://127.0.0.1:18321 BYTES=65536 CONC=1024
+          EOF
+
+  docs:lint:
+    desc: Lint Markdown files with markdownlint-cli (via npx)
+    cmds:
+      - npx -y markdownlint-cli@0.38.0 "docs/**/*.md" "README.md"
+
+  docs:lint:fix:
+    desc: Auto-fix Markdown files with markdownlint-cli (via npx)
+    cmds:
+      - npx -y markdownlint-cli@0.38.0 --fix "docs/**/*.md" "README.md"
+
+  # 🥒 Cucumber BDD Testing Tasks
+  bdd:setup:
+    desc: "Install Cucumber CLI and dependencies"
+    cmds:
+      - cd cucumber-tests && cargo install cucumber-cli
+      - echo "🥒 Cucumber CLI installed successfully"
+
+  bdd:run:
+    desc: "Run all Cucumber BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/**/*.feature"
+      - echo "✅ All Cucumber tests completed"
+
+  bdd:performance:
+    desc: "Run performance BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/performance.feature"
+      - echo "🚀 Performance BDD tests completed"
+
+  bdd:security:
+    desc: "Run security BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/security.feature"
+      - echo "🛡️ Security BDD tests completed"
+
+  bdd:distribution:
+    desc: "Run distribution BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/distribution.feature"
+      - echo "🔄 Distribution BDD tests completed"
+
+  bdd:integration:
+    desc: "Run integration BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/integration/**/*.feature"
+      - echo "🔗 Integration BDD tests completed"
+
+  bdd:persistence:
+    desc: "Run persistence BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/persistence/**/*.feature"
+      - echo "💾 Persistence BDD tests completed"
+
+  bdd:observability:
+    desc: "Run observability BDD tests"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/observability/**/*.feature"
+      - echo "📊 Observability BDD tests completed"
+
+  bdd:all:
+    desc: "Run all BDD tests with comprehensive report"
+    cmds:
+      - task: bdd:performance
+      - task: bdd:security
+      - task: bdd:distribution
+      - task: bdd:integration
+      - task: bdd:persistence
+      - task: bdd:observability
+      - echo "🎉 All BDD test suites passed successfully!"
+
+  bdd:ci:
+    desc: "Run BDD tests in CI mode (no interactive output)"
+    cmds:
+      - cd cucumber-tests && RUST_LOG=warn cargo run --bin cucumber -- -i "../features/**/*.feature" --format json > test-results/cucumber-results.json
+      - echo "📋 BDD CI results saved to test-results/cucumber-results.json"

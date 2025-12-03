@@ -1,0 +1,171 @@
+{
+  "folders": [
+    {
+      "name": "🏠 RaftStone Project",
+      "path": "."
+    },
+    {
+      "name": "🦀 RaftStone Core",
+      "path": "./raftstone-core"
+    },
+    {
+      "name": "🔧 RaftStone Macros", 
+      "path": "./raftstone-macros"
+    },
+    {
+      "name": "📁 Examples",
+      "path": "./examples"
+    },
+    {
+      "name": "🔄 Raft Replication Demo",
+      "path": "./examples/raft_replication_demo"
+    },
+    {
+      "name": "⚡ SCC2 Server Demo",
+      "path": "./examples/scc2_server_demo"
+    },
+    {
+      "name": "🧪 Tests",
+      "path": "./tests"
+    },
+    {
+      "name": "📊 Benchmarks",
+      "path": "./benches"
+    },
+    {
+      "name": "📚 Documentation",
+      "path": "./docs"
+    }
+  ],
+  "settings": {
+    // Workspace-specific settings that override .vscode/settings.json
+    "rust-analyzer.linkedProjects": [
+      "./Cargo.toml"
+    ],
+    "rust-analyzer.cargo.allFeatures": true,
+    "rust-analyzer.cargo.workspaceSymbol.search.scope": "workspace_and_dependencies",
+    
+    // File explorer settings
+    "explorer.compactFolders": false,
+    "files.exclude": {
+      "**/target": true,
+      "**/.raftlog": true,
+      "**/logs": true,
+      "**/benchmarks": true,
+      "**/test-results": true,
+      "**/baseline_results": true,
+      "**/.playwright-mcp": true,
+      "**/playwright_env": true,
+      "**/.serena": true,
+      "**/Cargo.lock": false,
+      "**/.gitignore": false
+    },
+    
+    // Search settings
+    "search.useIgnoreFiles": true,
+    "search.useGlobalIgnoreFiles": true,
+    
+    // Terminal settings
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    
+    // Task settings 
+    "task.problemMatchers.rust": [
+      "$rustc"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Workspace: Build All",
+        "type": "shell",
+        "command": "task",
+        "args": ["build"],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        },
+        "problemMatcher": ["$rustc"]
+      },
+      {
+        "label": "Workspace: CI Full",
+        "type": "shell", 
+        "command": "task",
+        "args": ["ci:full"],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "dedicated"
+        },
+        "problemMatcher": ["$rustc"]
+      },
+      {
+        "label": "Workspace: Test All",
+        "type": "shell",
+        "command": "task", 
+        "args": ["test"],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": {
+          "kind": "test",
+          "isDefault": true
+        },
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared"
+        },
+        "problemMatcher": ["$rustc"]
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "lldb",
+        "request": "launch",
+        "name": "Workspace: Debug Current Binary",
+        "program": "${workspaceFolder}/target/debug/${input:binaryName}",
+        "args": [],
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "RUST_LOG": "debug",
+          "RUST_BACKTRACE": "1"
+        },
+        "console": "integratedTerminal",
+        "preLaunchTask": "Workspace: Build All"
+      }
+    ],
+    "inputs": [
+      {
+        "id": "binaryName",
+        "description": "Binary name to debug",
+        "default": "scc2_server_demo",
+        "type": "promptString"
+      }
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "rust-lang.rust-analyzer",
+      "vadimcn.vscode-lldb", 
+      "task.vscode-task",
+      "tamasfe.even-better-toml",
+      "redhat.vscode-yaml",
+      "eamodio.gitlens",
+      "anthropic.claude-dev"
+    ]
+  }
+}

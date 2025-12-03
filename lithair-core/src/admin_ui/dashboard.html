@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lithair Data Admin</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #475569;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .header h1::before { content: '🗄️'; }
+        .nav-buttons { display: flex; gap: 0.5rem; }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--border); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-warning { background: var(--warning); color: black; }
+        .btn-danger { background: var(--danger); color: white; }
+        .container { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+        .breadcrumb {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+        }
+        .breadcrumb a { color: var(--accent); text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .card-title { font-size: 1.125rem; font-weight: 600; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+        }
+        .stat-value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+        .stat-label { color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem; }
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .model-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .model-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .model-name { font-weight: 600; font-size: 1.125rem; margin-bottom: 0.5rem; }
+        .model-path { color: var(--text-secondary); font-size: 0.875rem; font-family: monospace; }
+        .model-count {
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-top: 0.75rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        tr:hover { background: var(--bg-tertiary); }
+        .table-container {
+            overflow-x: auto;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .json-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-secondary);
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        .loading::before {
+            content: '';
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.75rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--success);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            display: none;
+            animation: slideIn 0.3s ease;
+            z-index: 1001;
+        }
+        .toast.error { background: var(--danger); }
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .actions-cell { white-space: nowrap; }
+        .actions-cell .btn { margin-right: 0.25rem; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-title { font-size: 1.125rem; font-weight: 600; }
+        .modal-close {
+            background: none; border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem; cursor: pointer;
+        }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        /* History Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border);
+        }
+        .timeline-item {
+            position: relative;
+            padding-bottom: 1.5rem;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -1.5rem;
+            top: 0.25rem;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: 2px solid var(--bg-secondary);
+        }
+        .timeline-item.created::before { background: var(--success); }
+        .timeline-item.updated::before { background: var(--warning); }
+        .timeline-item.deleted::before { background: var(--danger); }
+        .timeline-item.admin-edit::before { background: #8b5cf6; }
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+        }
+        .timeline-type { font-weight: 600; }
+        .timeline-time { color: var(--text-secondary); font-size: 0.75rem; }
+        .timeline-data {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 0.75rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            max-height: 200px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Edit Form */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        textarea.form-input {
+            min-height: 100px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        .badge-events { background: #8b5cf6; color: white; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Lithair Data Admin</h1>
+        <div class="nav-buttons">
+            <button class="btn btn-secondary" onclick="loadModels()">🔄 Refresh</button>
+            <button class="btn btn-warning" onclick="downloadBackup()">📦 Backup All</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <div id="breadcrumb" class="breadcrumb"></div>
+        <div id="stats" class="stats"></div>
+        <div id="content"></div>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <!-- History Modal -->
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">📜 Event History</span>
+                <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="historyContent">
+                <div class="loading">Loading history...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeHistoryModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">✏️ Edit Record</span>
+                <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="editContent">
+                <div class="loading">Loading...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitEdit()">💾 Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/_admin/data';
+        let currentView = 'models';
+        let currentModel = null;
+        let editingId = null;
+        let editingData = null;
+
+        async function api(endpoint, options = {}) {
+            const res = await fetch(API_BASE + endpoint, options);
+            return res.json();
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast' + (isError ? ' error' : '');
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        function renderStats(models) {
+            const totalItems = models.reduce((sum, m) => sum + m.count, 0);
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${models.length}</div>
+                    <div class="stat-label">Models</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${totalItems}</div>
+                    <div class="stat-label">Total Records</div>
+                </div>
+            `;
+        }
+
+        function renderBreadcrumb() {
+            const el = document.getElementById('breadcrumb');
+            if (currentModel) {
+                el.innerHTML = `<a href="#" onclick="loadModels(); return false;">Models</a> / ${currentModel}`;
+            } else {
+                el.innerHTML = 'Models';
+            }
+        }
+
+        async function loadModels() {
+            currentView = 'models';
+            currentModel = null;
+            renderBreadcrumb();
+
+            document.getElementById('content').innerHTML = '<div class="loading">Loading models...</div>';
+
+            const data = await api('/models');
+            renderStats(data.models);
+
+            if (data.models.length === 0) {
+                document.getElementById('content').innerHTML = '<div class="empty-state">No models registered</div>';
+                return;
+            }
+
+            document.getElementById('content').innerHTML = `
+                <div class="model-grid">
+                    ${data.models.map(m => `
+                        <div class="model-card" onclick="loadModelData('${m.name}')">
+                            <div class="model-name">${m.name}</div>
+                            <div class="model-path">${m.base_path}</div>
+                            <div class="model-count">${m.count} records</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function loadModelData(name) {
+            currentView = 'data';
+            currentModel = name;
+            renderBreadcrumb();
+
+            document.getElementById('content').innerHTML = '<div class="loading">Loading data...</div>';
+
+            const data = await api(`/models/${name}`);
+
+            if (!data.data || data.data.length === 0) {
+                document.getElementById('content').innerHTML = `
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">${name}</span>
+                            <button class="btn btn-success" onclick="exportModel('${name}')">📥 Export</button>
+                        </div>
+                        <div class="empty-state">No records found</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Find ID column (usually 'id' or first column)
+            const columns = Object.keys(data.data[0]);
+            const idColumn = columns.includes('id') ? 'id' : columns[0];
+
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">${name} (${data.count} records)</span>
+                        <button class="btn btn-success" onclick="exportModel('${name}')">📥 Export JSON</button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Actions</th>
+                                    ${columns.map(c => `<th>${c}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.data.map(row => {
+                                    const rowId = row[idColumn];
+                                    return `
+                                    <tr>
+                                        <td class="actions-cell">
+                                            <button class="btn btn-sm btn-secondary" onclick="viewHistory('${name}', '${rowId}')" title="View History">📜</button>
+                                            <button class="btn btn-sm btn-primary" onclick="openEdit('${name}', '${rowId}')" title="Edit">✏️</button>
+                                        </td>
+                                        ${columns.map(c => {
+                                            const val = row[c];
+                                            if (typeof val === 'object') {
+                                                return `<td class="json-cell" title="${JSON.stringify(val)}">${JSON.stringify(val)}</td>`;
+                                            }
+                                            return `<td>${val ?? ''}</td>`;
+                                        }).join('')}
+                                    </tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function viewHistory(model, id) {
+            document.getElementById('historyModal').classList.add('active');
+            document.getElementById('historyContent').innerHTML = '<div class="loading">Loading history...</div>';
+
+            const data = await api(`/models/${model}/${id}/history`);
+
+            if (!data.events || data.events.length === 0) {
+                document.getElementById('historyContent').innerHTML = `
+                    <div class="empty-state">No events found for this entity</div>
+                `;
+                return;
+            }
+
+            // Sort events by timestamp (newest first)
+            const events = data.events.sort((a, b) => b.timestamp - a.timestamp);
+
+            document.getElementById('historyContent').innerHTML = `
+                <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                    Entity: <strong>${id}</strong> | Total Events: <strong>${data.event_count}</strong>
+                </p>
+                <div class="timeline">
+                    ${events.map(e => {
+                        const type = e.event_type.split('::').pop().toLowerCase();
+                        let cssClass = '';
+                        if (type.includes('created')) cssClass = 'created';
+                        else if (type.includes('updated') || type.includes('replicated')) cssClass = 'updated';
+                        else if (type.includes('deleted')) cssClass = 'deleted';
+                        else if (type.includes('adminedit')) cssClass = 'admin-edit';
+
+                        return `
+                        <div class="timeline-item ${cssClass}">
+                            <div class="timeline-header">
+                                <span class="timeline-type">${e.event_type.split('::').pop()}</span>
+                                <span class="timeline-time">${e.timestamp_human}</span>
+                            </div>
+                            <div class="timeline-data">${JSON.stringify(e.data, null, 2)}</div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('historyModal').classList.remove('active');
+        }
+
+        async function openEdit(model, id) {
+            editingId = id;
+            document.getElementById('editModal').classList.add('active');
+            document.getElementById('editContent').innerHTML = '<div class="loading">Loading...</div>';
+
+            const data = await api(`/models/${model}`);
+            const record = data.data.find(r => {
+                const columns = Object.keys(r);
+                const idCol = columns.includes('id') ? 'id' : columns[0];
+                return String(r[idCol]) === String(id);
+            });
+
+            if (!record) {
+                document.getElementById('editContent').innerHTML = '<div class="empty-state">Record not found</div>';
+                return;
+            }
+
+            editingData = { ...record };
+            const columns = Object.keys(record);
+            const idColumn = columns.includes('id') ? 'id' : columns[0];
+
+            document.getElementById('editContent').innerHTML = `
+                <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                    Editing: <strong>${model}/${id}</strong>
+                    <br><small>Changes will be saved as a new event (event-sourced)</small>
+                </p>
+                ${columns.filter(c => c !== idColumn).map(c => {
+                    const val = record[c];
+                    const isObject = typeof val === 'object';
+                    return `
+                    <div class="form-group">
+                        <label class="form-label">${c}</label>
+                        ${isObject
+                            ? `<textarea class="form-input" data-field="${c}">${JSON.stringify(val, null, 2)}</textarea>`
+                            : `<input type="text" class="form-input" data-field="${c}" value="${val ?? ''}">`
+                        }
+                    </div>
+                    `;
+                }).join('')}
+            `;
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+            editingId = null;
+            editingData = null;
+        }
+
+        async function submitEdit() {
+            if (!editingId || !currentModel) return;
+
+            const changes = {};
+            document.querySelectorAll('#editContent [data-field]').forEach(input => {
+                const field = input.dataset.field;
+                let value = input.value;
+
+                // Try to parse as JSON if it looks like JSON
+                if (value.trim().startsWith('{') || value.trim().startsWith('[')) {
+                    try {
+                        value = JSON.parse(value);
+                    } catch (e) {
+                        // Keep as string if not valid JSON
+                    }
+                }
+
+                // Only include changed fields
+                const originalVal = JSON.stringify(editingData[field]);
+                const newVal = JSON.stringify(value);
+                if (originalVal !== newVal) {
+                    changes[field] = value;
+                }
+            });
+
+            if (Object.keys(changes).length === 0) {
+                showToast('No changes detected');
+                return;
+            }
+
+            try {
+                const result = await api(`/models/${currentModel}/${editingId}/edit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(changes)
+                });
+
+                if (result.success) {
+                    showToast('Changes saved successfully');
+                    closeEditModal();
+                    loadModelData(currentModel);
+                } else {
+                    showToast(result.error || 'Failed to save changes', true);
+                }
+            } catch (e) {
+                showToast('Error saving changes: ' + e.message, true);
+            }
+        }
+
+        async function exportModel(name) {
+            const res = await fetch(`${API_BASE}/models/${name}/export`);
+            const data = await res.json();
+            downloadJson(data, `${name}_export.json`);
+            showToast(`Exported ${name} successfully`);
+        }
+
+        async function downloadBackup() {
+            const res = await fetch(`${API_BASE}/backup`, { method: 'POST' });
+            const data = await res.json();
+            downloadJson(data, `lithair_backup_${new Date().toISOString().slice(0,10)}.json`);
+            showToast('Backup downloaded successfully');
+        }
+
+        function downloadJson(data, filename) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Close modals on escape key
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                closeHistoryModal();
+                closeEditModal();
+            }
+        });
+
+        // Initial load
+        loadModels();
+    </script>
+</body>
+</html>

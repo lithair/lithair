@@ -1,0 +1,21 @@
+[package]
+name = "scc2_server_demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hyper = { workspace = true }
+hyper-util = { version = "0.1", features = ["server", "http1", "tokio"] }
+tokio = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+scc = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { version = "1" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+flate2 = "1"
+
+[[bin]]
+name = "scc2_server_demo"
+path = "src/main.rs"

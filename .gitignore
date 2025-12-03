@@ -1,0 +1,31 @@
+target/
+Cargo.lock
+examples/ecommerce/data/
+examples/**/nodes/**/
+events.raftlog
+state.raftsnap
+events.raftidx
+meta.raftmeta
+node_modules
+site-packages
+*.log
+*.pid
+data/
+test_data/
+benchmark_*.md
+benchmark_results
+.playwright-mcp
+
+# Configuration files (keep .example files)
+config.toml
+.env
+!.env.example
+!config.example.toml
+
+# Logs and backups
+logs/
+backups/
+
+# tests results
+robot-tests/results/
+*.txt

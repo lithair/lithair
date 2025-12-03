@@ -1,0 +1,79 @@
+[package]
+name = "lithair-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core framework for Lithair - Hyper-based HTTP server"
+keywords = ["web", "framework", "event-sourcing", "distributed", "performance"]
+categories = ["web-programming::http-server", "database-implementations"]
+
+[lib]
+name = "lithair_core"
+path = "src/lib.rs"
+doctest = false
+
+# Examples are in separate workspace packages in ../examples/
+
+[dependencies]
+openraft = { version = "0.9", features = ["serde"] }
+openraft-memstore = "0.9"
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1.0"
+lazy_static = "1.5"
+serde_json = "1.0"
+simd-json = "0.14"                                        # SIMD-accelerated JSON parsing (~3GB/s)
+rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization (~10GB/s)
+toml = "0.8"
+# Optimizations ultra-performantes
+bincode = { version = "2", features = ["serde"] }        # Sérialisation binaire (3-5x plus rapide)
+chrono = { version = "0.4", features = ["serde"] }  # Timestamps pour metadata
+tempfile = "3"       # Tests des optimisations
+scc = "3"            # SCC2 HashMap ultra-performant (40M+ ops/sec)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }  # HTTP client with rustls
+uuid = { version = "1", features = ["v4", "serde"] }  # For generating unique IDs with Serde
+urlencoding = "2.1"  # URL encoding for OAuth2 parameters
+clap = { version = "4", features = ["derive"] }  # CLI argument parsing for auto-generated apps
+hyper = { version = "1.7", features = ["full"] }
+hyper-util = { version = "0.1", features = ["server", "http1", "tokio"] }
+http = "1"
+http-body-util = "0.1"
+flate2 = "1"
+sha2 = "0.10"
+sha1 = "0.10"
+rustls = { version = "0.23", features = ["ring"] }
+hex = "0.4"
+ipnet = "2"
+brotli = "8"
+bytes = "1"
+log = "0.4"
+env_logger = "0.11"
+mime_guess = "2"
+rand = "0.8"
+csv = "1.3"  # CSV parsing for external source integration
+crc32fast = "1.4"  # CRC32 checksums for data integrity validation
+# MFA/TOTP support
+totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"] }  # Battle-tested TOTP implementation
+# OpenAPI documentation support (optional)
+utoipa = { git = "https://github.com/juhaku/utoipa.git", rev = "cecda0531bf7d90800af66b186055932ee730526", optional = true }
+thiserror = "2.0.17"
+
+[dev-dependencies]
+# Only for testing - not included in final binary
+
+[features]
+default = []
+
+# OpenAPI/Swagger documentation support
+openapi = ["utoipa"]
+
+# Data Admin UI - Embedded dashboard for database browsing
+# Adds ~30KB to binary when enabled
+admin-ui = []
+
+# Future features (disabled by default)
+clustering = []      # Raft consensus for multi-node
+real-time = []       # WebSocket support

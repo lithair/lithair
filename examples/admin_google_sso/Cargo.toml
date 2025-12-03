@@ -1,0 +1,23 @@
+[package]
+name = "admin_google_sso"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lithair-core = { path = "../../lithair-core" }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+urlencoding = "2.1"
+uuid = { version = "1.0", features = ["v4"] }
+chrono = "0.4"
+clap = { version = "4.0", features = ["derive"] }
+env_logger = "0.11"
+log = "0.4"
+http = "1.0"
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+bytes = "1.5"

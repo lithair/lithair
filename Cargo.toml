@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "lithair-core",
+    "lithair-macros",
+    "examples/raft_replication_demo",
+    "examples/scc2_server_demo",
+    "examples/rbac_sso_demo",
+    "examples/rbac_session_demo",
+    "examples/minimal_server",
+    "examples/blog_server",
+    "examples/test_server",
+    "examples/ecommerce_app",
+    "examples/datatable_demo",
+    "cucumber-tests"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Lithair Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lithair/lithair"
+description = "Lithair - Solid as stone, light as air. High-performance event-sourced database and application framework."
+
+[workspace.lints.rust]
+unused_must_use = "warn"
+
+# Performance optimizations for benchmarking
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = true
+
+# Dépendances pour le stress test et optimisations
+[workspace.dependencies]
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
+tokio = { version = "1.47", features = ["full"] }
+serde_json = "1.0"
+bincode = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+criterion = { version = "0.8.0", features = ["html_reports"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+hyper = { version = "1.7", features = ["full"] }
+hyper-util = "0.1"
+http-body-util = "0.1"
+scc = "3.0"
+openraft = "0.9"
+cucumber = "0.21.1"
+futures = "0.3"

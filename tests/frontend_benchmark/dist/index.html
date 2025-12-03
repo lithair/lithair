@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lithair Frontend Benchmark</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Frontend Benchmark • Lithair</h1>
+    <p id="server-info">Connecting…</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Products</h2>
+      <div class="actions">
+        <form id="create-form">
+          <input type="text" id="name" name="name" placeholder="Product name" required />
+          <input type="number" id="price" name="price" placeholder="Price" min="0.01" step="0.01" required />
+          <button type="submit">Create</button>
+        </form>
+        <button id="refresh-btn">Refresh</button>
+      </div>
+
+      <table class="grid">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody id="products-body">
+          <tr><td colspan="3" class="muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Metrics</h2>
+      <pre id="metrics" class="metrics">{}</pre>
+    </section>
+  </main>
+
+  <footer>
+    <small>API base: <code id="api-base"></code></small>
+  </footer>
+
+  <script src="/assets/main.js" defer></script>
+</body>
+</html>

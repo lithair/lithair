@@ -1,0 +1,37 @@
+# Lithair Clippy Configuration  
+# Performance and reliability focused linting for distributed systems
+
+# Performance lints (critical for >1000 ops/sec target)
+avoid-breaking-exported-api = true
+cognitive-complexity-threshold = 30
+too-many-arguments-threshold = 10
+type-complexity-threshold = 300
+trivial-copy-size-limit = 128
+
+# Distributed systems reliability
+warn-on-all-wildcard-imports = true
+disallowed-names = ["foo", "bar", "baz", "test"]
+
+# Code quality for production systems
+doc-valid-idents = [
+    "Lithair",
+    "OpenRaft", 
+    "SCC2",
+    "Bincode",
+    "DeclarativeModel",
+    "ConsensusData",
+    "PerformanceMetrics",
+    "EventLog",
+    "RaftNode"
+]
+
+# Performance-critical settings
+large-error-threshold = 128
+enum-variant-size-threshold = 200
+vec-box-size-threshold = 4096
+# Configure the maximum recommended stack size (bytes) before triggering too-large-for-stack
+stack-size-threshold = 512000
+
+# Consensus algorithm specific
+max-trait-bounds = 3
+max-struct-bools = 3

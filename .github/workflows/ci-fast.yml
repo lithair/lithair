@@ -1,0 +1,41 @@
+name: CI Fast (Alpine Rust)
+
+on:
+  push:
+    branches: [ main, feature/** ]
+  pull_request:
+
+jobs:
+  build-test-fast:
+    runs-on: ubuntu-latest
+    container: rust:1-alpine
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          apk add --no-cache curl jq lsof python3 bash musl-dev gcc
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust1-alpine-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Task
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin >/dev/null 2>&1
+
+      - name: CI Pipeline (build + clippy + tests with deny warnings)
+        run: |
+          task ci:full
+
+      - name: Summary
+        run: |
+          echo "🚀 Fast CI completed using rust:1-alpine container"
