@@ -1,0 +1,92 @@
+# Lithair Configuration Example
+# Copy this file to config.toml and customize for your deployment
+
+# ============================================================================
+# SERVER CONFIGURATION
+# ============================================================================
+[server]
+port = 8080
+host = "127.0.0.1"
+workers = 4
+cors_enabled = false
+cors_origins = ["https://app.example.com"]
+request_timeout = 30
+max_body_size = 10485760
+
+# ============================================================================
+# SESSIONS CONFIGURATION
+# ============================================================================
+[sessions]
+enabled = true
+cleanup_interval = 300
+max_age = 3600
+cookie_enabled = true
+cookie_secure = true
+cookie_httponly = true
+cookie_samesite = "Lax"
+
+# ============================================================================
+# RBAC CONFIGURATION
+# ============================================================================
+[rbac]
+enabled = false
+default_role = "guest"
+audit_enabled = true
+rate_limit_enabled = false
+max_login_attempts = 5
+lockout_duration = 300
+
+# ============================================================================
+# REPLICATION CONFIGURATION
+# ============================================================================
+[replication]
+enabled = false
+node_id = "node-1"
+cluster_nodes = ["node-2:8081", "node-3:8082"]
+election_timeout = 150
+heartbeat_interval = 50
+snapshot_threshold = 1000
+
+# ============================================================================
+# ADMIN PANEL CONFIGURATION
+# ============================================================================
+[admin]
+enabled = true
+path = "/admin"
+auth_required = true
+metrics_enabled = true
+metrics_path = "/metrics"
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+[logging]
+level = "info"
+format = "json"
+file_enabled = false
+file_path = "./logs"
+file_rotation = "daily"
+file_max_size = 100
+
+# ============================================================================
+# STORAGE CONFIGURATION
+# ============================================================================
+[storage]
+data_dir = "./data"
+snapshot_interval = 1000
+compaction_enabled = true
+compaction_threshold = 10000
+backup_enabled = false
+backup_interval = 86400
+backup_path = "./backups"
+
+# ============================================================================
+# PERFORMANCE CONFIGURATION
+# ============================================================================
+[performance]
+cache_enabled = true
+cache_size = 1000
+cache_ttl = 300
+connection_pool_size = 10
+batch_size = 100
+compression_enabled = false

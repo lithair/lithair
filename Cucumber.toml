@@ -1,0 +1,16 @@
+[paths]
+features = "features"
+step_definitions = ["features/steps"]
+
+[dependencies]
+cucumber = "0.20"
+tokio = { version = "1.47", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json"] }
+uuid = { version = "1.18", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[[world]]
+name = "LithairWorld"
+path = "features/world.rs"

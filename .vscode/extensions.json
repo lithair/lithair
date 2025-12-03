@@ -1,0 +1,55 @@
+{
+  "recommendations": [
+    // Rust Development (Essential)
+    "rust-lang.rust-analyzer",
+    "vadimcn.vscode-lldb",
+    "serayuzgur.crates",
+    
+    // Task Runner Integration
+    "task.vscode-task",
+    
+    // Language Support
+    "tamasfe.even-better-toml",
+    "redhat.vscode-yaml",
+    "ms-vscode.vscode-json",
+    
+    // Git & Version Control
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    
+    // Code Quality & Formatting
+    "esbenp.prettier-vscode",
+    "streetsidesoftware.code-spell-checker",
+    "ms-vscode.hexeditor",
+    
+    // Markdown & Documentation
+    "yzhang.markdown-all-in-one",
+    "bierner.markdown-mermaid",
+    "davidanson.vscode-markdownlint",
+    
+    // Development Tools
+    "ms-vscode.test-adapter-converter",
+    "hbenl.vscode-test-explorer",
+    "ms-vscode-remote.remote-containers",
+    
+    // HTTP & API Testing
+    "humao.rest-client",
+    
+    // Performance & Monitoring
+    "ms-vscode.vscode-json",
+    "quicktype.quicktype",
+    
+    // Claude Code Integration
+    "anthropic.claude-dev"
+  ],
+  "unwantedRecommendations": [
+    // Conflicting Rust Extensions
+    "kalitaalexey.vscode-rust",
+    "rust-lang.rust",
+    
+    // Heavy Extensions that can slow down Rust development
+    "ms-python.python",
+    "ms-vscode.cpptools",
+    "ms-dotnettools.csharp"
+  ]
+}

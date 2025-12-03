@@ -1,0 +1,13 @@
+[package]
+name = "minimal_server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "minimal_server"
+path = "src/main.rs"
+
+[dependencies]
+lithair-core = { path = "../../lithair-core" }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"

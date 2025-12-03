@@ -1,0 +1,117 @@
+[package]
+name = "cucumber-tests"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lithair Team"]
+license = "MIT OR Apache-2.0"
+description = "Cucumber BDD testing suite for Lithair framework"
+autobenches = false
+
+[[bin]]
+name = "cucumber"
+path = "src/main.rs"
+
+[[bin]]
+name = "engine_stress_test"
+path = "benches/engine_stress_test.rs"
+
+[[bin]]
+name = "filestorage_bench"
+path = "benches/filestorage_bench.rs"
+
+[[bin]]
+name = "multi_table_stress"
+path = "benches/multi_table_stress.rs"
+
+[[test]]
+name = "cucumber_tests"
+path = "tests/cucumber_tests.rs"
+harness = false
+
+[[test]]
+name = "database_perf_test"
+path = "tests/database_perf_test.rs"
+harness = false
+
+[[test]]
+name = "stress_1m_test"
+path = "tests/stress_1m_test.rs"
+harness = false
+
+[[test]]
+name = "engine_direct_test"
+path = "tests/engine_direct_test.rs"
+harness = false
+
+[[test]]
+name = "declarative_test"
+path = "tests/declarative_test.rs"
+harness = false
+
+[[test]]
+name = "durability_test"
+path = "tests/durability_test.rs"
+harness = false
+
+[[test]]
+name = "bench_isolated"
+path = "tests/bench_isolated.rs"
+harness = false
+
+[[test]]
+name = "engine_reliability_test"
+path = "tests/engine_reliability_test.rs"
+harness = false
+
+[[test]]
+name = "integration_build_test"
+path = "tests/integration_build_test.rs"
+harness = false
+
+[[test]]
+name = "multi_file_durability_test"
+path = "tests/multi_file_durability_test.rs"
+harness = false
+
+[[test]]
+name = "snapshot_durability_test"
+path = "tests/snapshot_durability_test.rs"
+harness = false
+
+[[test]]
+name = "stress_snapshot_test"
+path = "tests/stress_snapshot_test.rs"
+harness = false
+
+[[test]]
+name = "stress_snapshot_100k_test"
+path = "tests/stress_snapshot_100k_test.rs"
+harness = false
+
+[[test]]
+name = "serialization_test"
+path = "tests/serialization_test.rs"
+harness = false
+
+[dependencies]
+cucumber = { git = "https://github.com/cucumber-rs/cucumber.git" }
+tokio = { version = "1.47", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+uuid = { version = "1.18", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+tempfile = "3.8"
+crc32fast = "1.4"
+rand = "0.8"
+
+# Lithair core framework
+lithair-core = { path = "../lithair-core" }
+
+# Pour gérer les ports aléatoires dans les tests
+portpicker = "0.1"
+
+# Serialization testing (dual-mode JSON + rkyv)
+simd-json = "0.14"                                        # SIMD-accelerated JSON parsing
+rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization

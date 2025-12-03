@@ -1,0 +1,157 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // SCC2 Server Demo Debug
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug SCC2 Server Demo",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=scc2_server_demo",
+          "--package=scc2_server_demo"
+        ],
+        "filter": {
+          "name": "scc2_server_demo",
+          "kind": "bin"
+        }
+      },
+      "args": ["--port", "18321", "--host", "127.0.0.1"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      },
+      "console": "integratedTerminal",
+      "preLaunchTask": "Lithair: Build Debug"
+    },
+    
+    // HTTP Load Generator Debug
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug HTTP Load Generator",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=http_loadgen_demo",
+          "--package=raft_replication_demo"
+        ],
+        "filter": {
+          "name": "http_loadgen_demo",
+          "kind": "bin"
+        }
+      },
+      "args": [
+        "--leader", "http://127.0.0.1:18321",
+        "--total", "1000",
+        "--concurrency", "10",
+        "--mode", "perf-json",
+        "--perf-path", "/perf/json",
+        "--perf-bytes", "1024"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      },
+      "console": "integratedTerminal",
+      "preLaunchTask": "Lithair: Build Debug"
+    },
+    
+    // Simplified Consensus Demo Debug
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Simplified Consensus Demo",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=simplified_consensus_demo",
+          "--package=raft_replication_demo"
+        ],
+        "filter": {
+          "name": "simplified_consensus_demo",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "full",
+        "SINGLE_NODE": "0",
+        "STORAGE_PROFILE": "high_throughput"
+      },
+      "console": "integratedTerminal",
+      "preLaunchTask": "Lithair: Build Debug"
+    },
+    
+    // Raftstone Core Tests Debug
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Lithair Core Tests",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--package=lithair-core"
+        ],
+        "filter": {
+          "name": "lithair-core",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      },
+      "console": "integratedTerminal"
+    },
+    
+    // Generic Test Debug (for custom test targets)
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Test (Current File)",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib"
+        ]
+      },
+      "args": ["${input:testName}"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      },
+      "console": "integratedTerminal"
+    },
+    
+    // Attach to Running Process
+    {
+      "type": "lldb",
+      "request": "attach",
+      "name": "Attach to Lithair Process",
+      "pid": "${command:pickProcess}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testName",
+      "description": "Test name to run",
+      "default": "",
+      "type": "promptString"
+    }
+  ]
+}

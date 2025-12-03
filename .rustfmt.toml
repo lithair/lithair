@@ -1,0 +1,32 @@
+# Lithair Rust Formatting Configuration
+# Optimized for performance-critical distributed systems code (stable features only)
+
+# General formatting
+edition = "2021"
+max_width = 100
+tab_spaces = 4
+use_small_heuristics = "Max"
+
+# Function and control flow formatting
+fn_call_width = 80
+
+# Import and use statement formatting  
+reorder_imports = true
+
+# Code structure formatting
+array_width = 80
+chain_width = 80
+
+# Performance-focused formatting choices
+force_explicit_abi = true
+
+# Advanced formatting
+match_block_trailing_comma = false
+
+# Spacing and alignment  
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# Code organization
+newline_style = "Unix"
+hard_tabs = false
