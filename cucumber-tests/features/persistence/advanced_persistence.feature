@@ -1,175 +1,174 @@
-# language: fr
 @advanced @wip
-Fonctionnalité: Persistance Avancée Multi-Fichiers
-  En tant que développeur d'applications critiques à haute disponibilité
-  Je veux une persistance robuste avec multi-fichiers et vérification d'intégrité
-  Afin de garantir zéro perte de données même en cas de crash
+Feature: Advanced Multi-File Persistence
+  As a high-availability critical application developer
+  I want robust persistence with multi-files and integrity verification
+  In order to guarantee zero data loss even in case of crash
 
-  Contexte:
-    Soit un moteur Lithair avec persistance multi-fichiers activée
-    Et que le mode de vérification strict soit activé
+  Background:
+    Given a Lithair engine with multi-file persistence enabled
+    And strict verification mode is activated
 
-  Scénario: Synchronisation Mémoire <-> Fichier en temps réel
-    Quand je crée 100 articles en mémoire
-    Alors chaque article doit être écrit immédiatement sur disque
-    Et la lecture du fichier doit retourner exactement 100 articles
-    Et les checksums mémoire/fichier doivent correspondre
-    Et aucune donnée ne doit être perdue en cas de crash immédiat
+  Scenario: Real-time Memory <-> File synchronization
+    When I create 100 articles in memory
+    Then each article must be written immediately to disk
+    And reading the file must return exactly 100 articles
+    And memory/file checksums must match
+    And no data must be lost in case of immediate crash
 
-  Scénario: Multi-Tables avec fichiers séparés
-    Étant donné une base avec 3 tables: "articles", "users", "comments"
-    Quand j'insère des données dans chaque table
-    Alors 3 fichiers distincts doivent être créés: "articles.raft", "users.raft", "comments.raft"
-    Et chaque fichier doit contenir uniquement les données de sa table
-    Et la taille totale des fichiers doit correspondre aux données insérées
-    Et je peux lire chaque table indépendamment
+  Scenario: Multi-tables with separate files
+    Given a database with 3 tables: "articles", "users", "comments"
+    When I insert data in each table
+    Then 3 distinct files must be created: "articles.raft", "users.raft", "comments.raft"
+    And each file must contain only its table's data
+    And total file size must match inserted data
+    And I can read each table independently
 
-  Scénario: Transactions ACID avec WAL (Write-Ahead Log)
-    Quand je démarre une transaction multi-tables
-    Et j'insère 10 articles, 5 users, 20 comments
-    Alors le WAL doit contenir toutes les opérations dans l'ordre
-    Et aucune donnée ne doit être visible avant le commit
-    Quand je commit la transaction
-    Alors toutes les données doivent apparaître atomiquement
-    Et le WAL doit être vidé après confirmation
-    Et les fichiers de données doivent être à jour
+  Scenario: ACID transactions with WAL (Write-Ahead Log)
+    When I start a multi-table transaction
+    And I insert 10 articles, 5 users, 20 comments
+    Then the WAL must contain all operations in order
+    And no data must be visible before commit
+    When I commit the transaction
+    Then all data must appear atomically
+    And the WAL must be emptied after confirmation
+    And data files must be up to date
 
-  Scénario: Rollback en cas d'échec de transaction
-    Quand je démarre une transaction
-    Et j'insère 50 articles valides
-    Et j'insère 1 article invalide qui provoque une erreur
-    Alors la transaction doit être rollback automatiquement
-    Et aucun des 51 articles ne doit être persisté
-    Et l'état mémoire doit être restauré
-    Et les fichiers ne doivent pas être modifiés
+  Scenario: Rollback on transaction failure
+    When I start a transaction
+    And I insert 50 valid articles
+    And I insert 1 invalid article that causes an error
+    Then the transaction must be rolled back automatically
+    And none of the 51 articles must be persisted
+    And memory state must be restored
+    And files must not be modified
 
-  Scénario: Vérification d'intégrité avec checksums CRC32
-    Étant donné 500 articles persistés avec checksums
-    Quand je lis chaque article depuis le disque
-    Alors le checksum CRC32 doit être vérifié pour chaque lecture
-    Et toute corruption doit être détectée immédiatement
-    Et un log d'erreur doit être généré pour les corruptions
-    Et les articles corrompus doivent être marqués comme invalides
+  Scenario: Integrity verification with CRC32 checksums
+    Given 500 articles persisted with checksums
+    When I read each article from disk
+    Then the CRC32 checksum must be verified for each read
+    And any corruption must be detected immediately
+    And an error log must be generated for corruptions
+    And corrupted articles must be marked as invalid
 
-  Scénario: Compaction et optimisation des fichiers
-    Étant donné un fichier de 10000 événements avec 3000 suppressions
-    Quand je lance la compaction manuelle
-    Alors un nouveau fichier optimisé doit être créé
-    Et il doit contenir uniquement les 7000 événements actifs
-    Et l'ancien fichier doit être archivé avec timestamp
-    Et la taille du fichier doit être réduite d'au moins 30%
-    Et toutes les données doivent rester accessibles
+  Scenario: File compaction and optimization
+    Given a file of 10000 events with 3000 deletions
+    When I launch manual compaction
+    Then a new optimized file must be created
+    And it must contain only the 7000 active events
+    And the old file must be archived with timestamp
+    And file size must be reduced by at least 30%
+    And all data must remain accessible
 
-  Scénario: Sauvegarde incrémentielle avec delta
-    Étant donné une base de données avec 1000 articles
-    Quand je modifie 50 articles
-    Et je lance une sauvegarde incrémentielle
-    Alors seuls les 50 articles modifiés doivent être sauvegardés
-    Et un fichier delta "backup-TIMESTAMP.delta" doit être créé
-    Et la restauration doit reconstruire l'état exact
-    Et le temps de backup doit être inférieur à 100ms
+  Scenario: Incremental backup with delta
+    Given a database with 1000 articles
+    When I modify 50 articles
+    And I launch an incremental backup
+    Then only the 50 modified articles must be backed up
+    And a delta file "backup-TIMESTAMP.delta" must be created
+    And restoration must reconstruct exact state
+    And backup time must be less than 100ms
 
-  Scénario: Réplication asynchrone des fichiers
-    Étant donné 3 nœuds Lithair en cluster
-    Quand j'écris 200 articles sur le leader
-    Alors les fichiers doivent être répliqués sur tous les followers
-    Et chaque nœud doit avoir des fichiers identiques
-    Et les checksums doivent correspondre entre nœuds
-    Et la latence de réplication doit être inférieure à 50ms
+  Scenario: Asynchronous file replication
+    Given 3 Lithair nodes in cluster
+    When I write 200 articles on the leader
+    Then files must be replicated on all followers
+    And each node must have identical files
+    And checksums must match between nodes
+    And replication latency must be less than 50ms
 
-  Scénario: Lecture optimisée avec cache mémoire
-    Étant donné 10000 articles persistés sur disque
-    Et un cache LRU de 1000 entrées
-    Quand je lis 100 articles fréquemment accédés
-    Alors 99% des lectures doivent venir du cache
-    Et seulement 1 article doit être lu depuis le disque
-    Et la latence moyenne doit être inférieure à 0.1ms
-    Et le taux de hit cache doit être supérieur à 95%
+  Scenario: Optimized read with memory cache
+    Given 10000 articles persisted on disk
+    And an LRU cache of 1000 entries
+    When I read 100 frequently accessed articles
+    Then 99% of reads must come from cache
+    And only 1 article must be read from disk
+    And average latency must be less than 0.1ms
+    And cache hit rate must be greater than 95%
 
-  Scénario: Gestion de plusieurs versions de format
-    Étant donné des fichiers au format v1, v2, et v3
-    Quand je charge les données avec migration automatique
-    Alors tous les formats doivent être lus correctement
-    Et les données doivent être migrées vers le format v3
-    Et les anciens fichiers doivent être conservés en backup
-    Et aucune donnée ne doit être perdue pendant la migration
+  Scenario: Managing multiple format versions
+    Given files in format v1, v2, and v3
+    When I load data with automatic migration
+    Then all formats must be read correctly
+    And data must be migrated to format v3
+    And old files must be kept as backup
+    And no data must be lost during migration
 
-  Scénario: Performances d'écriture batch
-    Quand j'écris 10000 articles en mode batch
-    Alors toutes les écritures doivent être groupées en lots de 1000
-    Et le débit doit dépasser 50000 écritures/seconde
-    Et l'utilisation mémoire doit rester stable
-    Et tous les articles doivent être persistés correctement
-    Et la vérification finale doit confirmer 10000 articles
+  Scenario: Batch write performance
+    When I write 10000 articles in batch mode
+    Then all writes must be grouped in batches of 1000
+    And throughput must exceed 50000 writes/second
+    And memory usage must remain stable
+    And all articles must be persisted correctly
+    And final verification must confirm 10000 articles
 
-  Scénario: Récupération après crash pendant l'écriture
-    Étant donné une écriture batch de 5000 articles en cours
-    Quand le serveur crash au milieu (après 2500 articles)
-    Et je redémarre le serveur
-    Alors les 2500 premiers articles doivent être présents
-    Et les 2500 suivants doivent être absents
-    Et le WAL doit être rejoué automatiquement
-    Et l'état doit être cohérent (pas de corruption)
-    Et je peux continuer à écrire normalement
+  Scenario: Recovery after crash during write
+    Given a batch write of 5000 articles in progress
+    When the server crashes in the middle (after 2500 articles)
+    And I restart the server
+    Then the first 2500 articles must be present
+    And the next 2500 must be absent
+    And the WAL must be replayed automatically
+    And state must be consistent (no corruption)
+    And I can continue writing normally
 
-  Scénario: Monitoring de l'espace disque
-    Étant donné un quota disque de 1GB
-    Quand l'utilisation atteint 90%
-    Alors une alerte WARNING doit être émise
-    Et la compaction automatique doit démarrer
-    Quand l'utilisation atteint 95%
-    Alors les écritures non-critiques doivent être bloquées
-    Et une alerte CRITICAL doit être envoyée
-    Et un nettoyage d'urgence doit être déclenché
+  Scenario: Disk space monitoring
+    Given a disk quota of 1GB
+    When usage reaches 90%
+    Then a WARNING alert must be issued
+    And automatic compaction must start
+    When usage reaches 95%
+    Then non-critical writes must be blocked
+    And a CRITICAL alert must be sent
+    And emergency cleanup must be triggered
 
-  Scénario: Chiffrement des données au repos (AES-256)
-    Étant donné le chiffrement AES-256-GCM activé
-    Quand j'écris 1000 articles sensibles
-    Alors chaque fichier doit être chiffré avec une clé unique
-    Et les données en clair ne doivent jamais toucher le disque
-    Et la lecture doit déchiffrer automatiquement
-    Et les performances ne doivent pas dégrader de plus de 10%
-    Et les fichiers doivent être illisibles sans la clé
+  Scenario: Data-at-rest encryption (AES-256)
+    Given AES-256-GCM encryption enabled
+    When I write 1000 sensitive articles
+    Then each file must be encrypted with a unique key
+    And plaintext data must never touch disk
+    And reading must decrypt automatically
+    And performance must not degrade by more than 10%
+    And files must be unreadable without the key
 
-  Scénario: Audit trail complet de persistance
-    Quand j'effectue 100 opérations variées (CRUD)
-    Alors chaque opération doit être loggée dans l'audit trail
-    Et chaque log doit contenir: timestamp, user_id, operation, data_hash
-    Et l'audit trail doit être immuable (append-only)
-    Et je peux reconstituer l'historique complet
-    Et détecter toute tentative de modification
+  Scenario: Complete persistence audit trail
+    When I perform 100 varied operations (CRUD)
+    Then each operation must be logged in the audit trail
+    And each log must contain: timestamp, user_id, operation, data_hash
+    And audit trail must be immutable (append-only)
+    And I can reconstitute complete history
+    And detect any modification attempt
 
-  Scénario: Backup à chaud sans interruption de service
-    Étant donné un serveur en production avec trafic continu
-    Quand je lance un backup complet
-    Alors le backup doit se faire sans bloquer les écritures
-    Et les lectures doivent continuer normalement
-    Et le backup doit être consistent (snapshot à un instant T)
-    Et la performance ne doit pas dégrader de plus de 5%
-    Et le fichier de backup doit être compressé (gzip)
+  Scenario: Hot backup without service interruption
+    Given a production server with continuous traffic
+    When I launch a complete backup
+    Then backup must occur without blocking writes
+    And reads must continue normally
+    And backup must be consistent (snapshot at time T)
+    And performance must not degrade by more than 5%
+    And backup file must be compressed (gzip)
 
-  Scénario: Restauration point-in-time
-    Étant donné des backups horaires depuis 7 jours
-    Quand je veux restaurer l'état d'il y a 3 jours, 14h35
-    Alors le système doit identifier le snapshot + deltas nécessaires
-    Et restaurer l'état exact à ce timestamp
-    Et toutes les données postérieures doivent être ignorées
-    Et la restauration doit prendre moins de 2 minutes
+  Scenario: Point-in-time restoration
+    Given hourly backups for 7 days
+    When I want to restore state from 3 days ago, 14:35
+    Then the system must identify necessary snapshot + deltas
+    And restore exact state at that timestamp
+    And all later data must be ignored
+    And restoration must take less than 2 minutes
 
-  Scénario: Gestion de fichiers volumineux (>10GB)
-    Étant donné une table avec 10 millions d'articles (15GB de données)
-    Quand j'effectue des opérations CRUD
-    Alors le fichier doit être fragmenté en chunks de 1GB
-    Et chaque chunk doit avoir son propre index
-    Et les lectures doivent cibler le bon chunk directement
-    Et les performances doivent rester constantes
-    Et la mémoire utilisée ne doit pas dépasser 500MB
+  Scenario: Managing large files (>10GB)
+    Given a table with 10 million articles (15GB of data)
+    When I perform CRUD operations
+    Then file must be fragmented in 1GB chunks
+    And each chunk must have its own index
+    And reads must target the right chunk directly
+    And performance must remain constant
+    And memory used must not exceed 500MB
 
-  Scénario: Détection et réparation automatique de corruption
-    Étant donné un fichier avec 5 blocs corrompus sur 1000
-    Quand le système détecte la corruption au démarrage
-    Alors les blocs corrompus doivent être identifiés précisément
-    Et le système doit tenter une réparation depuis le WAL
-    Et si impossible, restaurer depuis le dernier snapshot
-    Et les blocs irrécupérables doivent être marqués
-    Et un rapport de corruption doit être généré
+  Scenario: Automatic corruption detection and repair
+    Given a file with 5 corrupted blocks out of 1000
+    When the system detects corruption at startup
+    Then corrupted blocks must be identified precisely
+    And system must attempt repair from WAL
+    And if impossible, restore from last snapshot
+    And irrecoverable blocks must be marked
+    And a corruption report must be generated

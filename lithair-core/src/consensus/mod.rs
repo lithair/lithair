@@ -414,6 +414,9 @@ impl HyperReplicationCoordinator {
             timestamp: app_data.timestamp,
             payload: event.to_json(),
             aggregate_id: Some(format!("node_{}", self.node_id)),
+            // Hash chain fields - computed automatically by EventStore when enabled
+            event_hash: None,
+            previous_hash: None,
         };
 
         {

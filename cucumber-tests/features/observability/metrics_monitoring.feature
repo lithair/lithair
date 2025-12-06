@@ -1,53 +1,52 @@
-# language: fr
-Fonctionnalité: Métriques et Monitoring Lithair
-  En tant qu'administrateur système
-  Je veux monitorer les performances et l'état de santé de Lithair
-  Afin d'anticiper les problèmes et optimiser les performances
+Feature: Lithair Metrics and Monitoring
+  As a system administrator
+  I want to monitor Lithair performance and health status
+  In order to anticipate problems and optimize performance
 
-  Contexte:
-    Soit un serveur Lithair avec le monitoring activé
-    Et que les métriques soient collectées automatiquement
-    Et que l'endpoint /metrics soit exposé
+  Background:
+    Given a Lithair server with monitoring enabled
+    And metrics are collected automatically
+    And the /metrics endpoint is exposed
 
-  Scénario: Métriques de performance HTTP
-    Quand le serveur traite des requêtes HTTP
-    Alors le nombre de requêtes par seconde doit être mesuré
-    Et les temps de réponse moyens doivent être tracked
-    Et les codes de statut doivent être comptabilisés
-    Et les métriques doivent être disponibles sur /metrics
+  Scenario: HTTP performance metrics
+    When the server processes HTTP requests
+    Then the number of requests per second must be measured
+    And average response times must be tracked
+    And status codes must be counted
+    And metrics must be available on /metrics
 
-  Scénario: Monitoring de l'utilisation mémoire
-    Quand le serveur fonctionne sous charge
-    Alors l'utilisation mémoire doit être monitorée en temps réel
-    Et les pics de mémoire doivent être détectés
-    Et les fuites de mémoire doivent être identifiées
-    Et les alertes doivent être déclenchées si nécessaire
+  Scenario: Memory usage monitoring
+    When the server runs under load
+    Then memory usage must be monitored in real-time
+    And memory peaks must be detected
+    And memory leaks must be identified
+    And alerts must be triggered if necessary
 
-  Scénario: Métriques de concurrence et throughput
-    Quand 1000 requêtes simultanées sont traitées
-    Alors le nombre de connections actives doit être mesuré
-    Et le throughput par thread doit être calculé
-    Et la latence P95, P99 doit être tracked
-    Et les goulots d'étranglement doivent être identifiés
+  Scenario: Concurrency and throughput metrics
+    When 1000 simultaneous requests are processed
+    Then the number of active connections must be measured
+    And throughput per thread must be calculated
+    And P95, P99 latency must be tracked
+    And bottlenecks must be identified
 
-  Scénario: Health checks automatiques
-    Quand l'endpoint /health est appelé
-    Alors le statut du serveur doit être vérifié
-    Et les dépendances externes doivent être testées
-    Et un rapport de santé détaillé doit être retourné
-    Et le code de statut doit refléter l'état réel
+  Scenario: Automatic health checks
+    When the /health endpoint is called
+    Then the server status must be verified
+    And external dependencies must be tested
+    And a detailed health report must be returned
+    And the status code must reflect the real state
 
-  Scénario: Alertes et notifications proactives
-    Quand l'utilisation CPU dépasse 80%
-    Et que la latence moyenne dépasse 100ms
-    Et que le taux d'erreur dépasse 5%
-    Alors une alerte doit être générée automatiquement
-    Et les administrateurs doivent être notifiés
-    Et les actions correctives doivent être suggérées
+  Scenario: Proactive alerts and notifications
+    When CPU usage exceeds 80%
+    And average latency exceeds 100ms
+    And error rate exceeds 5%
+    Then an alert must be generated automatically
+    And administrators must be notified
+    And corrective actions must be suggested
 
-  Scénario: Agrégation et rétention des métriques
-    Quand les métriques sont collectées pendant 24h
-    Alors les données doivent être agrégées par intervalles
-    Et les métriques détaillées doivent être archivées
-    Et les tendances à long terme doivent être calculées
-    Et l'espace de stockage doit être optimisé
+  Scenario: Metrics aggregation and retention
+    When metrics are collected for 24h
+    Then data must be aggregated by intervals
+    And detailed metrics must be archived
+    And long-term trends must be calculated
+    And storage space must be optimized

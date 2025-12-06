@@ -1,163 +1,163 @@
-# language: fr
-# Event Sourcing vs CRUD - Benchmark Performance
-# Validation de la philosophie "append-only" de Lithair
+# Event Sourcing vs CRUD - Performance Benchmark
+# Validation of Lithair's "append-only" philosophy
 
-Fonctionnalité: Benchmark Event Sourcing vs CRUD traditionnel
-  En tant que développeur
-  Je veux comparer les performances event sourcing vs CRUD
-  Afin de valider que l'approche append-only est performante
+Feature: Event Sourcing vs traditional CRUD benchmark
+  As a developer
+  I want to compare event sourcing vs CRUD performance
+  In order to validate that the append-only approach is performant
 
-  Contexte:
-    Soit la persistence activée par défaut
+  Background:
+    Given persistence is enabled by default
 
   # ==================== WRITE PERFORMANCE ====================
 
   @benchmark @write
-  Scénario: Performance d'écriture append-only vs random I/O
-    Soit un serveur Lithair sur le port 21000 avec persistence "/tmp/lithair-bench-write"
-    Quand je mesure le temps pour créer 10000 articles en mode append
-    Alors le temps append-only doit être inférieur à 15 secondes
-    Et le throughput append doit être supérieur à 500 writes/sec
-    Et toutes les écritures doivent être séquentielles dans le fichier
+  Scenario: Append-only vs random I/O write performance
+    Given a Lithair server on port 21000 with persistence "/tmp/lithair-bench-write"
+    When I measure the time to create 10000 articles in append mode
+    Then append-only time must be less than 15 seconds
+    And append throughput must be greater than 500 writes/sec
+    And all writes must be sequential in the file
 
   @benchmark @write @bulk
-  Scénario: Performance d'écriture bulk - Correction massive de données
-    Soit un serveur Lithair sur le port 21001 avec persistence "/tmp/lithair-bench-bulk"
-    Et 1000 produits existants avec des prix incorrects
-    Quand je corrige les 1000 prix en créant des événements PriceUpdated
-    Alors les 1000 événements de correction doivent être créés en moins de 2 secondes
-    Et l'historique doit montrer 2000 événements (1000 Created + 1000 Updated)
-    Et aucune donnée originale ne doit être perdue
+  Scenario: Bulk write performance - Massive data correction
+    Given a Lithair server on port 21001 with persistence "/tmp/lithair-bench-bulk"
+    And 1000 existing products with incorrect prices
+    When I correct the 1000 prices by creating PriceUpdated events
+    Then the 1000 correction events must be created in less than 2 seconds
+    And history must show 2000 events (1000 Created + 1000 Updated)
+    And no original data must be lost
 
   # ==================== READ PERFORMANCE ====================
 
   @benchmark @read
-  Scénario: Performance de lecture depuis mémoire (projection)
-    Soit un serveur Lithair sur le port 21002 avec persistence "/tmp/lithair-bench-read"
-    Et 10000 articles chargés en mémoire
-    Quand je mesure le temps pour 100000 lectures aléatoires
-    Alors le temps moyen par lecture doit être inférieur à 0.1ms
-    Et le throughput doit être supérieur à 100000 reads/sec
-    Et aucune lecture ne doit accéder au disque
+  Scenario: Read performance from memory (projection)
+    Given a Lithair server on port 21002 with persistence "/tmp/lithair-bench-read"
+    And 10000 articles loaded in memory
+    When I measure the time for 100000 random reads
+    Then average time per read must be less than 0.1ms
+    And throughput must be greater than 100000 reads/sec
+    And no read must access disk
 
   @benchmark @read @history
-  Scénario: Performance de lecture d'historique d'entité
-    Soit un serveur Lithair sur le port 21003 avec persistence "/tmp/lithair-bench-history"
-    Et un article avec 100 événements dans son historique
-    Quand je récupère l'historique complet de l'article
-    Alors la réponse doit arriver en moins de 50ms
-    Et l'historique doit contenir exactement 100 événements
-    Et les événements doivent être ordonnés chronologiquement
+  Scenario: Entity history read performance
+    Given a Lithair server on port 21003 with persistence "/tmp/lithair-bench-history"
+    And an article with 100 events in its history
+    When I retrieve the complete history of the article
+    Then the response must arrive in less than 50ms
+    And the history must contain exactly 100 events
+    And events must be ordered chronologically
 
   # ==================== DATA ADMIN FEATURES ====================
 
   @benchmark @admin @history
-  Scénario: API Data Admin - Endpoint History
-    Soit un serveur Lithair sur le port 21004 avec persistence "/tmp/lithair-bench-admin"
-    Et 100 articles avec des historiques variés
-    Quand j'appelle GET /_admin/data/models/Article/{id}/history pour chaque article
-    Alors toutes les réponses doivent arriver en moins de 100ms chacune
-    Et chaque réponse doit contenir event_count, events, et timestamps
-    Et les events doivent inclure les types Created, Updated, AdminEdit
+  Scenario: Data Admin API - History endpoint
+    Given a Lithair server on port 21004 with persistence "/tmp/lithair-bench-admin"
+    And 100 articles with varied histories
+    When I call GET /_admin/data/models/Article/{id}/history for each article
+    Then all responses must arrive in less than 100ms each
+    And each response must contain event_count, events, and timestamps
+    And events must include Created, Updated, AdminEdit types
 
   @benchmark @admin @edit
-  Scénario: API Data Admin - Event-Sourced Edit
-    Soit un serveur Lithair sur le port 21005 avec persistence "/tmp/lithair-bench-edit"
-    Et un article existant avec id "test-article-001"
-    Quand j'appelle POST /_admin/data/models/Article/{id}/edit avec {"title": "Nouveau titre"}
-    Alors un nouvel événement AdminEdit doit être créé
-    Et l'événement ne doit PAS remplacer les événements précédents
-    Et l'historique doit maintenant contenir un événement de plus
-    Et le timestamp de l'AdminEdit doit être postérieur aux précédents
+  Scenario: Data Admin API - Event-Sourced Edit
+    Given a Lithair server on port 21005 with persistence "/tmp/lithair-bench-edit"
+    And an existing article with id "test-article-001"
+    When I call POST /_admin/data/models/Article/{id}/edit with {"title": "New title"}
+    Then a new AdminEdit event must be created
+    And the event must NOT replace previous events
+    And history must now contain one more event
+    And the AdminEdit timestamp must be later than previous ones
 
   @benchmark @admin @bulk-edit
-  Scénario: API Data Admin - Édition bulk event-sourced
-    Soit un serveur Lithair sur le port 21006 avec persistence "/tmp/lithair-bench-bulk-edit"
-    Et 500 articles existants
-    Quand je corrige le champ "category" de tous les 500 articles via l'API edit
-    Alors 500 événements AdminEdit doivent être créés en moins de 3 secondes
-    Et aucun événement original ne doit être modifié
-    Et l'audit trail doit être complet pour les 500 articles
+  Scenario: Data Admin API - Event-sourced bulk edit
+    Given a Lithair server on port 21006 with persistence "/tmp/lithair-bench-bulk-edit"
+    And 500 existing articles
+    When I correct the "category" field of all 500 articles via the edit API
+    Then 500 AdminEdit events must be created in less than 3 seconds
+    And no original event must be modified
+    And audit trail must be complete for all 500 articles
 
   # ==================== STARTUP PERFORMANCE ====================
 
   @benchmark @startup
-  Scénario: Performance de replay au démarrage
-    Soit un fichier events.raftlog avec 100000 événements
-    Quand je démarre un serveur Lithair avec ce fichier
-    Alors le replay doit prendre moins de 10 secondes
-    Et 100000 entités doivent être chargées en mémoire
-    Et le serveur doit être prêt à recevoir des requêtes
+  Scenario: Replay performance at startup
+    Given an events.raftlog file with 100000 events
+    When I start a Lithair server with this file
+    Then replay must take less than 10 seconds
+    And 100000 entities must be loaded in memory
+    And the server must be ready to receive requests
 
   @benchmark @startup @snapshot
-  Scénario: Performance de démarrage avec snapshot
-    Soit un snapshot contenant 100000 entités
-    Et un fichier events.raftlog avec 1000 événements post-snapshot
-    Quand je démarre un serveur Lithair avec snapshot activé
-    Alors le démarrage doit prendre moins de 3 secondes
-    Et seulement 1000 événements doivent être rejoués
-    Et l'état final doit être identique au scénario sans snapshot
+  Scenario: Startup performance with snapshot
+    Given a snapshot containing 100000 entities
+    And an events.raftlog file with 1000 post-snapshot events
+    When I start a Lithair server with snapshot enabled
+    Then startup must take less than 3 seconds
+    And only 1000 events must be replayed
+    And final state must be identical to scenario without snapshot
 
   # ==================== INTEGRITY UNDER LOAD ====================
 
   @benchmark @integrity
-  Scénario: Intégrité event sourcing sous charge
-    Soit un serveur Lithair sur le port 21007 avec persistence "/tmp/lithair-bench-integrity"
-    Quand je lance 100 threads qui créent chacun 100 articles
-    Et je lance 50 threads qui modifient des articles aléatoires
-    Et je lance 20 threads qui récupèrent des historiques
-    Alors tous les 10000 articles doivent être créés
-    Et aucun événement ne doit être perdu
-    Et l'ordre des événements doit être globalement cohérent
-    Et la validation CRC32 doit passer pour tous les événements
+  Scenario: Event sourcing integrity under load
+    Given a Lithair server on port 21007 with persistence "/tmp/lithair-bench-integrity"
+    When I launch 100 threads that each create 100 articles
+    And I launch 50 threads that modify random articles
+    And I launch 20 threads that retrieve histories
+    Then all 10000 articles must be created
+    And no event must be lost
+    And event order must be globally consistent
+    And CRC32 validation must pass for all events
 
   @benchmark @integrity @hash-chain
-  Scénario: Intégrité avec hash chain (future feature)
-    Soit un serveur Lithair avec hash chain activé
-    Et 1000 événements créés
-    Quand je vérifie l'intégrité de la chaîne
-    Alors chaque événement doit référencer le hash du précédent
-    Et toute modification manuelle du fichier doit être détectée
-    Et la chaîne doit être validable de bout en bout
+  Scenario: Integrity with SHA256 hash chain
+    Given a Lithair server with hash chain enabled
+    And 1000 created events
+    When I verify the integrity of the chain
+    Then each event must reference the hash of the previous one
+    And any manual file modification must be detected
+    And the chain must be validatable end-to-end
+    And verification should complete in less than 2 seconds
 
   # ==================== COMPACTION PERFORMANCE ====================
 
   @benchmark @compaction
-  Scénario: Performance de compaction avec snapshot
-    Soit un serveur Lithair sur le port 21008 avec persistence "/tmp/lithair-bench-compact"
-    Et 50000 événements dont 40000 sont obsolètes
-    Quand je déclenche une compaction avec snapshot
-    Alors un snapshot doit être créé avec l'état consolidé
-    Et les 40000 événements obsolètes doivent être archivés
-    Et la compaction doit prendre moins de 5 secondes
-    Et l'espace disque utilisé doit diminuer d'au moins 50%
+  Scenario: Compaction performance with snapshot
+    Given a Lithair server on port 21008 with persistence "/tmp/lithair-bench-compact"
+    And 50000 events of which 40000 are obsolete
+    When I trigger compaction with snapshot
+    Then a snapshot must be created with consolidated state
+    And the 40000 obsolete events must be archived
+    And compaction must take less than 5 seconds
+    And disk space used must decrease by at least 50%
 
   @benchmark @compaction @retention
-  Scénario: Compaction avec politique de rétention
-    Soit un serveur Lithair avec politique de rétention "garder 10 derniers par entité"
-    Et 100 entités avec 50 événements chacune (5000 total)
-    Quand je déclenche une compaction
-    Alors seulement 1000 événements doivent rester (100 entités x 10 events)
-    Et un snapshot doit capturer l'état avant compaction
-    Et le hash chain doit être préservé pour les événements restants
+  Scenario: Compaction with retention policy
+    Given a Lithair server with retention policy "keep last 10 per entity"
+    And 100 entities with 50 events each (5000 total)
+    When I trigger compaction
+    Then only 1000 events must remain (100 entities x 10 events)
+    And a snapshot must capture state before compaction
+    And hash chain must be preserved for remaining events
 
   # ==================== COMPARISON VS CRUD ====================
 
   @benchmark @comparison
-  Scénario: Comparaison directe append-only vs UPDATE simulé
-    Soit un serveur Lithair sur le port 21009 avec persistence "/tmp/lithair-bench-compare"
-    Et 1000 articles existants
-    Quand je mesure le temps pour 1000 modifications en mode append (événements)
-    Et je simule 1000 modifications en mode CRUD (lecture-écriture-réécriture)
-    Alors le mode append doit être au moins 3x plus rapide
-    Et le mode append doit utiliser moins de CPU
-    Et les deux modes doivent produire le même état final
+  Scenario: Direct comparison append-only vs simulated UPDATE
+    Given a Lithair server on port 21009 with persistence "/tmp/lithair-bench-compare"
+    And 1000 existing articles
+    When I measure time for 1000 modifications in append mode (events)
+    And I simulate 1000 modifications in CRUD mode (read-write-rewrite)
+    Then append mode must be at least 3x faster
+    And append mode must use less CPU
+    And both modes must produce the same final state
 
   @benchmark @comparison @audit
-  Scénario: Valeur ajoutée de l'audit trail
-    Soit un serveur Lithair sur le port 21010 avec persistence "/tmp/lithair-bench-audit"
-    Et 100 articles avec des modifications multiples
-    Quand je demande "qui a modifié quoi et quand" pour chaque article
-    Alors la réponse doit être instantanée (< 10ms) grâce à l'historique
-    Et l'information doit inclure timestamps, event_types, et données
-    Et aucune table d'audit séparée ne doit être nécessaire
+  Scenario: Added value of audit trail
+    Given a Lithair server on port 21010 with persistence "/tmp/lithair-bench-audit"
+    And 100 articles with multiple modifications
+    When I ask "who modified what and when" for each article
+    Then the response must be instant (< 10ms) thanks to history
+    And information must include timestamps, event_types, and data
+    And no separate audit table must be necessary

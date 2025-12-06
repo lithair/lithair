@@ -1,104 +1,103 @@
-# language: fr
 # Dual-Mode Serialization - JSON (simd-json) + Binary (rkyv)
-# Test des deux modes de sérialisation pour Lithair
+# Test of both serialization modes for Lithair
 
-Fonctionnalité: Sérialisation dual-mode JSON et rkyv
-  En tant que développeur
-  Je veux pouvoir utiliser JSON ou rkyv pour la sérialisation
-  Afin d'optimiser les performances selon le contexte d'utilisation
+Feature: Dual-mode JSON and rkyv serialization
+  As a developer
+  I want to be able to use JSON or rkyv for serialization
+  In order to optimize performance depending on the usage context
 
-  Contexte:
-    Soit un type de test "Article" avec les champs id, title, price
+  Background:
+    Given a test type "Article" with fields id, title, price
 
   # ==================== JSON MODE (simd-json) ====================
 
   @serialization @json
-  Plan du Scénario: Sérialisation JSON roundtrip
-    Soit un article avec id "<id>" titre "<titre>" et prix <prix>
-    Quand je sérialise l'article en mode JSON
-    Et je désérialise les données JSON
-    Alors l'article désérialisé doit avoir id "<id>"
-    Et l'article désérialisé doit avoir titre "<titre>"
-    Et l'article désérialisé doit avoir prix <prix>
+  Scenario Outline: JSON roundtrip serialization
+    Given an article with id "<id>" title "<title>" and price <price>
+    When I serialize the article in JSON mode
+    And I deserialize the JSON data
+    Then the deserialized article must have id "<id>"
+    And the deserialized article must have title "<title>"
+    And the deserialized article must have price <price>
 
-    Exemples:
-      | id          | titre                   | prix  |
-      | art-001     | Premier article         | 19.99 |
-      | art-002     | Article avec accents éè | 29.50 |
-      | art-003     | Article unicode 日本語   | 99.00 |
+    Examples:
+      | id          | title                   | price  |
+      | art-001     | First article           | 19.99  |
+      | art-002     | Article with accents éè | 29.50  |
+      | art-003     | Unicode article 日本語  | 99.00  |
 
   @serialization @json @benchmark
-  Scénario: Performance sérialisation JSON
-    Soit 1000 articles générés aléatoirement
-    Quand je mesure le temps pour sérialiser les 1000 articles en JSON
-    Et je mesure le temps pour désérialiser les 1000 articles JSON
-    Alors le throughput JSON serialize doit être supérieur à 10 MB/s
-    Et le throughput JSON deserialize doit être supérieur à 100 MB/s
+  Scenario: JSON serialization performance
+    Given 1000 randomly generated articles
+    When I measure the time to serialize the 1000 articles in JSON
+    And I measure the time to deserialize the 1000 JSON articles
+    Then JSON serialize throughput must be greater than 10 MB/s
+    And JSON deserialize throughput must be greater than 100 MB/s
 
   @serialization @json @simd
-  Scénario: Vérification utilisation simd-json pour parsing
-    Soit des données JSON valides représentant un article
-    Quand je désérialise avec simd-json
-    Alors le parsing doit utiliser les instructions SIMD si disponibles
-    Et le résultat doit être identique à serde_json
+  Scenario: Verification of simd-json usage for parsing
+    Given valid JSON data representing an article
+    When I deserialize with simd-json
+    Then parsing must use SIMD instructions if available
+    And the result must be identical to serde_json
 
   # ==================== BINARY MODE (rkyv) ====================
 
   @serialization @rkyv
-  Plan du Scénario: Sérialisation rkyv roundtrip
-    Soit un article avec id "<id>" titre "<titre>" et prix <prix>
-    Quand je sérialise l'article en mode rkyv
-    Et je désérialise les données rkyv
-    Alors l'article désérialisé doit avoir id "<id>"
-    Et l'article désérialisé doit avoir titre "<titre>"
-    Et l'article désérialisé doit avoir prix <prix>
+  Scenario Outline: rkyv roundtrip serialization
+    Given an article with id "<id>" title "<title>" and price <price>
+    When I serialize the article in rkyv mode
+    And I deserialize the rkyv data
+    Then the deserialized article must have id "<id>"
+    And the deserialized article must have title "<title>"
+    And the deserialized article must have price <price>
 
-    Exemples:
-      | id          | titre                   | prix  |
-      | art-001     | Premier article         | 19.99 |
-      | art-002     | Deuxieme article test   | 29.50 |
-      | art-003     | Troisieme article test  | 99.00 |
+    Examples:
+      | id          | title                   | price  |
+      | art-001     | First article           | 19.99  |
+      | art-002     | Second test article     | 29.50  |
+      | art-003     | Third test article      | 99.00  |
 
   @serialization @rkyv @benchmark
-  Scénario: Performance sérialisation rkyv
-    Soit 1000 articles générés aléatoirement
-    Quand je mesure le temps pour sérialiser les 1000 articles en rkyv
-    Et je mesure le temps pour désérialiser les 1000 articles rkyv
-    Alors le throughput rkyv serialize doit être supérieur à 500 MB/s
-    Et le throughput rkyv deserialize doit être supérieur à 1000 MB/s
+  Scenario: rkyv serialization performance
+    Given 1000 randomly generated articles
+    When I measure the time to serialize the 1000 articles in rkyv
+    And I measure the time to deserialize the 1000 rkyv articles
+    Then rkyv serialize throughput must be greater than 500 MB/s
+    And rkyv deserialize throughput must be greater than 1000 MB/s
 
   @serialization @rkyv @zero-copy
-  Scénario: Accès zero-copy avec rkyv
-    Soit un article sérialisé en rkyv
-    Quand j'accède aux données en mode zero-copy
-    Alors aucune allocation mémoire ne doit être effectuée
-    Et je dois pouvoir lire le titre sans désérialiser
+  Scenario: Zero-copy access with rkyv
+    Given an article serialized in rkyv
+    When I access the data in zero-copy mode
+    Then no memory allocation must be performed
+    And I must be able to read the title without deserializing
 
   # ==================== COMPARISON JSON vs RKYV ====================
 
   @serialization @comparison
-  Scénario: Comparaison taille des données
-    Soit un article avec id "test-size" titre "Test de taille comparative" et prix 42.50
-    Quand je sérialise en JSON
-    Et je sérialise en rkyv
-    Alors la taille rkyv doit être inférieure ou égale à la taille JSON
+  Scenario: Data size comparison
+    Given an article with id "test-size" title "Comparative size test" and price 42.50
+    When I serialize in JSON
+    And I serialize in rkyv
+    Then rkyv size must be less than or equal to JSON size
 
   @serialization @comparison @benchmark
-  Scénario: Benchmark comparatif JSON vs rkyv
-    Soit 10000 articles générés aléatoirement
-    Quand je benchmark la sérialisation JSON sur 10000 articles
-    Et je benchmark la sérialisation rkyv sur 10000 articles
-    Alors rkyv serialize doit être au moins 5x plus rapide que JSON serialize
-    Et rkyv deserialize doit être au moins 3x plus rapide que JSON deserialize
+  Scenario: Comparative JSON vs rkyv benchmark
+    Given 10000 randomly generated articles
+    When I benchmark JSON serialization on 10000 articles
+    And I benchmark rkyv serialization on 10000 articles
+    Then rkyv serialize must be at least 5x faster than JSON serialize
+    And rkyv deserialize must be at least 3x faster than JSON deserialize
 
   # ==================== MODE SELECTION ====================
 
   @serialization @mode-selection
-  Plan du Scénario: Sélection du mode via Accept header
-    Quand je reçois un header Accept "<accept>"
-    Alors le mode sélectionné doit être "<mode>"
+  Scenario Outline: Mode selection via Accept header
+    When I receive an Accept header "<accept>"
+    Then the selected mode must be "<mode>"
 
-    Exemples:
+    Examples:
       | accept                      | mode   |
       | application/json            | Json   |
       | application/octet-stream    | Binary |
@@ -107,11 +106,11 @@ Fonctionnalité: Sérialisation dual-mode JSON et rkyv
       | */*                         | Json   |
 
   @serialization @content-type
-  Plan du Scénario: Content-Type selon le mode
-    Soit le mode de sérialisation "<mode>"
-    Alors le content-type doit être "<content_type>"
+  Scenario Outline: Content-Type according to mode
+    Given the serialization mode "<mode>"
+    Then the content-type must be "<content_type>"
 
-    Exemples:
+    Examples:
       | mode   | content_type             |
       | Json   | application/json         |
       | Binary | application/octet-stream |
@@ -119,39 +118,39 @@ Fonctionnalité: Sérialisation dual-mode JSON et rkyv
   # ==================== ERROR HANDLING ====================
 
   @serialization @errors @json
-  Scénario: Gestion erreur JSON invalide
-    Soit des données JSON malformées "{ invalid json"
-    Quand je tente de désérialiser en JSON
-    Alors une erreur JsonDeserializeError doit être retournée
-    Et le message doit indiquer la position de l'erreur
+  Scenario: Invalid JSON error handling
+    Given malformed JSON data "{ invalid json"
+    When I attempt to deserialize in JSON
+    Then a JsonDeserializeError must be returned
+    And the message must indicate the error position
 
   @serialization @errors @rkyv
-  Scénario: Gestion erreur rkyv données corrompues
-    Soit des données binaires aléatoires de 100 bytes
-    Quand je tente de désérialiser en rkyv
-    Alors une erreur RkyvDeserializeError ou RkyvValidationError doit être retournée
+  Scenario: rkyv corrupted data error handling
+    Given random binary data of 100 bytes
+    When I attempt to deserialize in rkyv
+    Then a RkyvDeserializeError or RkyvValidationError must be returned
 
-  # ==================== INTEGRATION HTTP ====================
+  # ==================== HTTP INTEGRATION ====================
 
   @serialization @http @json
-  Scénario: Requête HTTP avec JSON
-    Soit un serveur Lithair sur le port 22000
-    Quand j'envoie une requête POST avec Content-Type "application/json"
-    Et le corps contient un article en JSON
-    Alors la réponse doit être en JSON
-    Et le Content-Type de réponse doit être "application/json"
+  Scenario: HTTP request with JSON
+    Given a Lithair server on port 22000
+    When I send a POST request with Content-Type "application/json"
+    And the body contains an article in JSON
+    Then the response must be in JSON
+    And the response Content-Type must be "application/json"
 
   @serialization @http @rkyv
-  Scénario: Requête HTTP avec rkyv
-    Soit un serveur Lithair sur le port 22001
-    Quand j'envoie une requête POST avec Content-Type "application/octet-stream"
-    Et le corps contient un article en rkyv
-    Et le header Accept est "application/octet-stream"
-    Alors la réponse doit être en format binaire rkyv
-    Et le Content-Type de réponse doit être "application/octet-stream"
+  Scenario: HTTP request with rkyv
+    Given a Lithair server on port 22001
+    When I send a POST request with Content-Type "application/octet-stream"
+    And the body contains an article in rkyv
+    And the Accept header is "application/octet-stream"
+    Then the response must be in rkyv binary format
+    And the response Content-Type must be "application/octet-stream"
 
   @serialization @http @negotiation
-  Scénario: Négociation de contenu automatique
-    Soit un serveur Lithair sur le port 22002
-    Quand j'envoie une requête avec Accept "application/octet-stream, application/json;q=0.5"
-    Alors le serveur doit répondre en rkyv (priorité plus haute)
+  Scenario: Automatic content negotiation
+    Given a Lithair server on port 22002
+    When I send a request with Accept "application/octet-stream, application/json;q=0.5"
+    Then the server must respond in rkyv (higher priority)

@@ -398,6 +398,8 @@ mod tests {
             timestamp: 1234567890,
             payload: "{}".to_string(),
             aggregate_id: Some("category_a".to_string()),
+            event_hash: None,
+            previous_hash: None,
         };
 
         let envelope2 = EventEnvelope {
@@ -406,6 +408,8 @@ mod tests {
             timestamp: 1234567891,
             payload: "{}".to_string(),
             aggregate_id: Some("category_b".to_string()),
+            event_hash: None,
+            previous_hash: None,
         };
 
         let envelope3 = EventEnvelope {
@@ -414,6 +418,8 @@ mod tests {
             timestamp: 1234567892,
             payload: "{}".to_string(),
             aggregate_id: None, // Global
+            event_hash: None,
+            previous_hash: None,
         };
 
         // Append events
@@ -448,6 +454,8 @@ mod tests {
                 timestamp: 1234567890 + i,
                 payload: "{}".to_string(),
                 aggregate_id: Some("category_a".to_string()),
+                event_hash: None,
+                previous_hash: None,
             };
             store.append_envelope(&envelope).unwrap();
         }

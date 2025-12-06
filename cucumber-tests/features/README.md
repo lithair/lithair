@@ -1,126 +1,126 @@
 # 🥒 Lithair BDD Testing with Cucumber + Gherkin
 
-Ce dossier contient la suite complète de tests **Behavior-Driven Development (BDD)** pour Lithair, utilisant Cucumber et le langage Gherkin.
+This folder contains the complete **Behavior-Driven Development (BDD)** test suite for Lithair, using Cucumber and the Gherkin language.
 
-## 📁 Structure des Features
+## 📁 Feature Structure
 
 ```
 features/
-├── core/                    # Fonctionnalités principales du framework
-│   ├── performance.feature # Tests de performance ultra-haute
-│   ├── security.feature    # Tests de sécurité enterprise
-│   └── distribution.feature# Tests de distribution et consensus
-├── integration/             # Tests d'intégration complets
-│   └── web_server.feature  # Serveur web complet avec frontend
-├── persistence/             # Persistance et event sourcing
-│   └── event_sourcing.feature# Tests de persistance des événements
-├── observability/           # Monitoring et métriques
-│   └── monitoring.feature  # Tests d'observabilité
-├── steps/                   # Implémentation des steps Gherkin
+├── core/                    # Core framework features
+│   ├── performance.feature  # Ultra-high performance tests
+│   ├── security.feature     # Enterprise security tests
+│   └── distribution.feature # Distribution and consensus tests
+├── integration/             # Complete integration tests
+│   └── web_server.feature   # Complete web server with frontend
+├── persistence/             # Persistence and event sourcing
+│   └── event_sourcing.feature # Event persistence tests
+├── observability/           # Monitoring and metrics
+│   └── monitoring.feature   # Observability tests
+├── steps/                   # Gherkin step implementations
 │   ├── performance_steps.rs
 │   ├── security_steps.rs
 │   └── mod.rs
-├── world.rs                 # État partagé des tests
-└── lib.rs                   # Module public des features
+├── world.rs                 # Shared test state
+└── lib.rs                   # Public features module
 ```
 
-## 🚀 Comment utiliser
+## 🚀 How to Use
 
 ### Installation
 ```bash
 task bdd:setup
 ```
 
-### Exécuter tous les tests
+### Run all tests
 ```bash
 task bdd:run
 ```
 
-### Tests par catégorie
+### Tests by category
 ```bash
-task bdd:performance    # Tests de performance
-task bdd:security       # Tests de sécurité
-task bdd:distribution   # Tests de distribution
-task bdd:integration    # Tests d'intégration
-task bdd:persistence    # Tests de persistance
-task bdd:observability  # Tests d'observabilité
+task bdd:performance    # Performance tests
+task bdd:security       # Security tests
+task bdd:distribution   # Distribution tests
+task bdd:integration    # Integration tests
+task bdd:persistence    # Persistence tests
+task bdd:observability  # Observability tests
 ```
 
-### CI/CD avec BDD
+### CI/CD with BDD
 ```bash
-task ci:bdd    # CI complète avec tests BDD
-task bdd:ci    # Mode CI (sortie JSON)
+task ci:bdd    # Full CI with BDD tests
+task bdd:ci    # CI mode (JSON output)
 ```
 
-## 📋 Scénarios couverts
+## 📋 Covered Scenarios
 
-### 🚀 Performance Ultra-Haute
-- Serveur HTTP avec performances maximales
-- Benchmark JSON throughput
-- Concurrence massive
-- Évolution des performances sous charge
+### 🚀 Ultra-High Performance
+- HTTP server with maximum performance
+- JSON throughput benchmark
+- Massive concurrency
+- Performance evolution under load
 
-### 🛡️ Sécurité Enterprise
-- Protection contre les attaques DDoS
-- Contrôle d'accès par rôles (RBAC)
-- Validation des tokens JWT
-- Filtrage IP géographique
-- Rate limiting par endpoint
+### 🛡️ Enterprise Security
+- DDoS attack protection
+- Role-based access control (RBAC)
+- JWT token validation
+- Geographic IP filtering
+- Rate limiting per endpoint
 
-### 🔄 Distribution et Consensus
-- Élection du leader
-- Réplication des données
-- Partition réseau et split-brain
-- Rejoindre un cluster existant
-- Scalabilité horizontale
+### 🔄 Distribution and Consensus
+- Leader election
+- Data replication
+- Network partition and split-brain
+- Joining an existing cluster
+- Horizontal scalability
 
-### 🌐 Serveur Web Complet
-- Service des pages HTML
-- API CRUD complète
-- CORS pour frontend externe
-- WebSockets temps réel
-- Cache intelligent des assets
+### 🌐 Complete Web Server
+- HTML page serving
+- Complete CRUD API
+- CORS for external frontend
+- Real-time WebSockets
+- Intelligent asset caching
 
-### 💾 Event Sourcing et Persistance
-- Persistance des événements
-- Reconstruction de l'état
-- Snapshots optimisés
-- Déduplication des événements
-- Récupération après corruption
+### 💾 Event Sourcing and Persistence
+- Event persistence
+- State reconstruction
+- Optimized snapshots
+- Event deduplication
+- Recovery after corruption
 
-### 📊 Observabilité et Monitoring
-- Health checks complets
-- Métriques Prometheus
+### 📊 Observability and Monitoring
+- Complete health checks
+- Prometheus metrics
 - Performance profiling
-- Logging structuré
-- Alertes automatiques
+- Structured logging
+- Automatic alerts
 
-## 🔧 Architecture Technique
+## 🔧 Technical Architecture
 
-### World partagé
-Les tests utilisent une structure `LithairWorld` qui maintient :
-- L'état des serveurs (port, PID, running status)
-- Les métriques de performance
-- Les données de test (articles, utilisateurs, tokens)
-- La dernière réponse HTTP
-- Les erreurs rencontrées
+### Shared World
+Tests use a `LithairWorld` structure that maintains:
+- Server state (port, PID, running status)
+- Performance metrics
+- Test data (articles, users, tokens)
+- Last HTTP response
+- Encountered errors
 
-### Steps réutilisables
-Chaque catégorie de tests a ses steps :
-- **Performance** : démarrage serveur, envoi requêtes, mesures
-- **Sécurité** : authentification, autorisation, rate limiting
-- **Distribution** : clustering, replication, consensus
-- **Integration** : APIs CRUD, CORS, WebSockets
+### Reusable Steps
+Each test category has its steps:
+- **Performance**: server startup, request sending, measurements
+- **Security**: authentication, authorization, rate limiting
+- **Distribution**: clustering, replication, consensus
+- **Integration**: CRUD APIs, CORS, WebSockets
 
-### Configuration dynamique
-Les tests peuvent être configurés avec :
-- Variables d'environnement (RUST_LOG, PORT, etc.)
-- Fichiers de configuration externes
-- Paramètres de ligne de commande
+### Dynamic Configuration
+Tests can be configured with:
+- Environment variables (RUST_LOG, PORT, etc.)
+- External configuration files
+- Command line parameters
 
-## 📈 Rapports et Résultats
+## 📈 Reports and Results
 
-### Sortie standard
+### Standard Output
 ```
 🥒 Cucumber Results:
 ✅ 45 scenarios passed
@@ -129,49 +129,49 @@ Les tests peuvent être configurés avec :
 ⏱️  Total time: 3m 24s
 ```
 
-### Rapport JSON (CI)
+### JSON Report (CI)
 ```bash
 task bdd:ci
-# Génère test-results/cucumber-results.json
+# Generates test-results/cucumber-results.json
 ```
 
-### Intégration avec GitHub Actions
-Les tests BDD s'intègrent parfaitement dans le pipeline CI :
+### GitHub Actions Integration
+BDD tests integrate perfectly into the CI pipeline:
 ```yaml
 - name: Run BDD Tests
   run: task ci:bdd
 ```
 
-## 🎯 Avantages du BDD pour Lithair
+## 🎯 Benefits of BDD for Lithair
 
-1. **Documentation vivante** : Les features servent de documentation technique
-2. **Collaboration** : Langage commun entre développeurs, QA et product owners
-3. **Traçabilité** : Chaque bug peut être lié à un scénario spécifique
-4. **Régression** : Tests automatiques complets après chaque changement
-5. **Vision client** : Focus sur le comportement utilisateur plutôt que l'implémentation
+1. **Living documentation**: Features serve as technical documentation
+2. **Collaboration**: Common language between developers, QA and product owners
+3. **Traceability**: Each bug can be linked to a specific scenario
+4. **Regression**: Complete automatic tests after each change
+5. **Customer vision**: Focus on user behavior rather than implementation
 
-## 🔄 Migration depuis les Examples
+## 🔄 Migration from Examples
 
-Les examples traditionnels sont progressivement migrés :
+Traditional examples are progressively migrated:
 - `scc2_server_demo/` → `performance.feature`
 - `http_firewall_demo/` → `security.feature`
 - `raft_replication_demo/` → `distribution.feature`
 - `blog_server/` → `web_server.feature`
 
-Cette approche permet de :
-- Conserver la fonctionnalité existante
-- Ajouter une couche de validation BDD
-- Améliorer la couverture de tests
-- Faciliter la maintenance
+This approach allows:
+- Preserving existing functionality
+- Adding a BDD validation layer
+- Improving test coverage
+- Facilitating maintenance
 
-## 🚀 Prochaines étapes
+## 🚀 Next Steps
 
-1. **Compléter** les step definitions manquantes
-2. **Ajouter** des scénarios de charge extrême
-3. **Intégrer** avec les benchmarks existants
-4. **Automatiser** la génération de rapports
-5. **Étendre** aux tests de negative testing
+1. **Complete** missing step definitions
+2. **Add** extreme load scenarios
+3. **Integrate** with existing benchmarks
+4. **Automate** report generation
+5. **Extend** to negative testing
 
 ---
 
-**Lithair BDD** - Transformant la façon dont nous testons les systèmes distribués ultra-performants ! 🚀
+**Lithair BDD** - Transforming the way we test ultra-performant distributed systems! 🚀

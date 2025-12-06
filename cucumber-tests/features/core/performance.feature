@@ -1,31 +1,30 @@
-# language: fr
-Fonctionnalité: Performance Ultra-Haute
-  En tant que développeur d'applications critiques
-  Je veux que Lithair offre des performances exceptionnelles
-  Afin de servir des millions de requêtes par seconde
+Feature: Ultra-High Performance
+  As a developer of critical applications
+  I want Lithair to offer exceptional performance
+  In order to serve millions of requests per second
 
-  Contexte:
-    Soit un serveur Lithair démarré
-    Et que le moteur SCC2 soit activé
-    Et que les optimisations lock-free soient configurées
+  Background:
+    Given a Lithair server is started
+    And the SCC2 engine is activated
+    And lock-free optimizations are configured
 
-  Scénario: Serveur HTTP avec performances maximales
-    Quand je démarre le serveur SCC2 sur le port 18321
-    Alors le serveur doit répondre en moins de 1ms
-    Et supporter plus de 40M requêtes/seconde
-    Et consommer moins de 100MB de mémoire
+  Scenario: HTTP server with maximum performance
+    When I start the SCC2 server on port 18321
+    Then the server should respond in less than 1ms
+    And support more than 40M requests/second
+    And consume less than 100MB of memory
 
-  Scénario: Benchmark JSON throughput
-    Quand j'envoie 1000 requêtes JSON de 64KB
-    Alors le throughput doit dépasser 20GB/s
-    Et la latence moyenne doit être inférieure à 0.5ms
+  Scenario: JSON throughput benchmark
+    When I send 1000 JSON requests of 64KB
+    Then the throughput should exceed 20GB/s
+    And the average latency should be below 0.5ms
 
-  Scénario: Concurrence massive
-    Quand 1000 clients se connectent simultanément
-    Alors aucun client ne doit être rejeté
-    Et le serveur doit maintenir la latence sous 10ms
+  Scenario: Massive concurrency
+    When 1000 clients connect simultaneously
+    Then no client should be rejected
+    And the server should maintain latency under 10ms
 
-  Scénario: Évolution des performances sous charge
-    Quand la charge augmente de 10x à 100x
-    Alors les performances doivent dégrader linéairement
-    Et le serveur ne doit jamais crasher
+  Scenario: Performance evolution under load
+    When the load increases from 10x to 100x
+    Then performance should degrade linearly
+    And the server should never crash

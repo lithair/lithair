@@ -1,39 +1,38 @@
-# language: fr
-Fonctionnalité: Distribution et Consensus
-  En tant qu'architecte de systèmes distribués
-  Je veux que Lithair supporte le clustering multi-nœuds
-  Afin d'assurer la haute disponibilité et la cohérence
+Feature: Distribution and Consensus
+  As a distributed systems architect
+  I want Lithair to support multi-node clustering
+  In order to ensure high availability and consistency
 
-  Contexte:
-    Soit un cluster Raft de 3 nœuds
-    Et que le nœud 1 soit le leader
-    Et que les nœuds 2 et 3 soient des followers
+  Background:
+    Given a Raft cluster of 3 nodes
+    And node 1 is the leader
+    And nodes 2 and 3 are followers
 
-  Scénario: Élection du leader
-    Quand le leader actuel tombe en panne
-    Alors un nouveau leader doit être élu en moins de 5 secondes
-    Et le cluster doit continuer à fonctionner
+  Scenario: Leader election
+    When the current leader fails
+    Then a new leader should be elected in less than 5 seconds
+    And the cluster should continue to function
 
-  Scénario: Réplication des données
-    Quand j'écris une donnée sur le leader
-    Alors cette donnée doit être répliquée sur tous les followers
-    Et la cohérence doit être garantie
-    Et l'opération doit être confirmée seulement après réplication majoritaire
+  Scenario: Data replication
+    When I write data on the leader
+    Then this data should be replicated on all followers
+    And consistency should be guaranteed
+    And the operation should be confirmed only after majority replication
 
-  Scénario: Partition réseau et split-brain
-    Quand le cluster est partitionné en 2 groupes
-    Alors seul le groupe majoritaire doit accepter les écritures
-    Et le groupe minoritaire doit refuser les écritures
-    Et la cohérence doit être préservée
+  Scenario: Network partition and split-brain
+    When the cluster is partitioned into 2 groups
+    Then only the majority group should accept writes
+    And the minority group should refuse writes
+    And consistency should be preserved
 
-  Scénario: Rejoindre un cluster existant
-    Quand un nouveau nœud rejoint le cluster
-    Alors il doit synchroniser toutes les données existantes
-    Et participer au consensus
-    Et ne pas perturber le service
+  Scenario: Joining an existing cluster
+    When a new node joins the cluster
+    Then it should synchronize all existing data
+    And participate in consensus
+    And not disrupt the service
 
-  Scénario: Scalabilité horizontale
-    Quand j'ajoute des nœuds au cluster
-    Alors la capacité de traitement doit augmenter
-    Et la latence doit rester stable
-    Et la disponibilité doit être maintenue
+  Scenario: Horizontal scalability
+    When I add nodes to the cluster
+    Then processing capacity should increase
+    And latency should remain stable
+    And availability should be maintained

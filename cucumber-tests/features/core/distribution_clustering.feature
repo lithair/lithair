@@ -1,59 +1,137 @@
-# language: fr
-Fonctionnalité: Distribution et Clustering Lithair
-  En tant qu'architecte de systèmes distribués
-  Je veux que Lithair supporte le clustering et la réplication
-  Afin d'assurer la haute disponibilité et la tolérance aux pannes
+Feature: Lithair Distribution and Clustering
+  As a distributed systems architect
+  I want Lithair to support clustering and replication
+  In order to ensure high availability and fault tolerance
 
-  Contexte:
-    Soit un cluster Lithair de 3 nœuds
-    Et que le protocole Raft soit activé pour le consensus
-    Et que la réplication des données soit configurée
+  Background:
+    Given a Lithair cluster of 3 nodes
+    And the Raft protocol is enabled for consensus
+    And data replication is configured
+    And hash chain is enabled on all nodes
 
-  Scénario: Élection du leader Raft
-    Quand un cluster de 3 nœuds démarre
-    Alors un leader doit être élu automatiquement
-    Et les 2 autres nœuds doivent devenir followers
-    Et le leader doit pouvoir accepter les écritures
-    Et les followers doivent rediriger les écritures vers le leader
+  # ==================== LEADER ELECTION ====================
 
-  Scénario: Tolérance aux pannes du leader
-    Quand le leader tombe en panne
-    Alors une nouvelle élection doit être déclenchée
-    Et un nouveau leader doit être élu parmi les followers
-    Et le cluster doit continuer à fonctionner
-    Et aucune donnée ne doit être perdue
+  @core @raft @leader-election
+  Scenario: Raft leader election
+    When a 3-node cluster starts
+    Then a leader must be elected automatically
+    And the 2 other nodes must become followers
+    And the leader must be able to accept writes
+    And followers must redirect writes to the leader
 
-  Scénario: Réplication synchrone des données
-    Quand une écriture est effectuée sur le leader
-    Alors elle doit être répliquée sur tous les followers
-    Et la confirmation doit attendre la majorité (quorum)
-    Et la cohérence forte doit être garantie
-    Et les followers doivent avoir les mêmes données
+  @core @raft @leader-election
+  Scenario: Leader fault tolerance
+    When the leader fails
+    Then a new election must be triggered
+    And a new leader must be elected among the followers
+    And the cluster must continue to function
+    And no data must be lost
 
-  Scénario: Partition réseau et split-brain
-    Quand le réseau est partitionné en 2 groupes
-    Alors seul le groupe avec majorité doit rester actif
-    Et le groupe minoritaire doit refuser les écritures
-    Et le split-brain doit être évité
-    Et la cohérence des données doit être préservée
+  # ==================== DATA REPLICATION ====================
 
-  Scénario: Rejoin d'un nœud après panne
-    Quand un nœud se reconnecte au cluster
-    Alors il doit synchroniser son état manquant
-    Et recevoir les données manquantes via snapshot
-    Et rejoindre le cluster comme follower
-    Et la synchronisation ne doit pas impacter les performances
+  @core @raft @replication
+  Scenario: Synchronous data replication
+    When a write is performed on the leader
+    Then it must be replicated on all followers
+    And confirmation must wait for majority (quorum)
+    And strong consistency must be guaranteed
+    And followers must have the same data
 
-  Scénario: Scaling horizontal avec ajout de nœuds
-    Quand un nouveau nœud rejoint le cluster
-    Alors il doit recevoir les données existantes
-    Et le quorum doit être mis à jour
-    Et les performances doivent s'améliorer
-    Et la charge doit être répartie équitablement
+  @core @raft @replication
+  Scenario: Bulk data replication
+    When 100 writes are performed on the leader in quick succession
+    Then all 100 items must be replicated to followers
+    And bulk replication must use batching for efficiency
+    And idempotence must prevent duplicate processing
 
-  Scénario: Consistance des opérations distribuées
-    Quand des écritures concurrentes sont effectuées
-    Alors l'ordre total doit être préservé
-    Et les conflits doivent être résolus par Raft
-    Et tous les nœuds doivent voir le même état final
-    Et les opérations doivent être ACID compliant
+  @core @raft @replication @http
+  Scenario: HTTP replication endpoints
+    Given a running 3-node cluster
+    Then the leader should expose POST /internal/replicate
+    And the leader should expose POST /internal/replicate_bulk
+    And followers should accept replication requests from leader
+    And unauthorized replication requests should be rejected
+
+  # ==================== FAULT TOLERANCE ====================
+
+  @core @raft @fault-tolerance
+  Scenario: Network partition and split-brain
+    When the network is partitioned into 2 groups
+    Then only the group with majority must remain active
+    And the minority group must refuse writes
+    And split-brain must be avoided
+    And data consistency must be preserved
+
+  @core @raft @fault-tolerance
+  Scenario: Node rejoin after failure
+    When a node reconnects to the cluster
+    Then it must synchronize its missing state
+    And receive missing data via snapshot
+    And rejoin the cluster as a follower
+    And synchronization must not impact performance
+
+  # ==================== SCALING ====================
+
+  @core @raft @scaling
+  Scenario: Horizontal scaling with node addition
+    When a new node joins the cluster
+    Then it must receive existing data
+    And quorum must be updated
+    And performance must improve
+    And load must be distributed evenly
+
+  # ==================== CONSISTENCY ====================
+
+  @core @raft @consistency
+  Scenario: Distributed operations consistency
+    When concurrent writes are performed
+    Then total order must be preserved
+    And conflicts must be resolved by Raft
+    And all nodes must see the same final state
+    And operations must be ACID compliant
+
+  # ==================== HASH CHAIN + REPLICATION ====================
+
+  @core @raft @hash-chain
+  Scenario: Hash chain maintained during replication
+    When I create 50 articles on the leader
+    And data is replicated to all followers
+    Then each node should have its own hash chain
+    And chain verification should pass on all nodes
+    And event hashes should be computed locally on each node
+
+  @security @raft @hash-chain @tamper
+  Scenario: Tamper detection across replicated cluster
+    Given 100 articles have been replicated across the cluster
+    When someone tampers with events on follower node 2
+    Then chain verification on node 2 should fail
+    But chain verification on leader and node 3 should pass
+    And the majority provides source of truth for recovery
+
+  @security @raft @hash-chain @recovery
+  Scenario: Automatic recovery from tampered node
+    Given a follower node with detected chain corruption
+    When the node requests resync from leader
+    Then it should receive uncorrupted data
+    And rebuild its local hash chain
+    And chain verification should pass after recovery
+
+  # ==================== CLUSTER STATUS ====================
+
+  @api @raft @status
+  Scenario: Cluster status endpoint
+    Given a running 3-node cluster
+    When I call GET /status on any node
+    Then I should receive cluster information including:
+      | field       | description                    |
+      | is_leader   | true/false                     |
+      | leader_port | port of current leader         |
+      | peers       | list of known peer addresses   |
+      | node_id     | unique identifier of this node |
+
+  @api @raft @leader
+  Scenario: Leader discovery endpoint
+    Given a running 3-node cluster
+    When I call GET /raft/leader on any node
+    Then I should receive the current leader's address
+    And the response should be consistent across all nodes

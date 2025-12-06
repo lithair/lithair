@@ -1,8 +1,7 @@
-# language: fr
-Fonctionnalité: Test Basique
-  Pour vérifier que l'infrastructure Cucumber fonctionne
+Feature: Basic Test
+  To verify that Cucumber infrastructure works
 
-  Scénario: Serveur de base
-    Etant donné un serveur Lithair démarré
-    Quand j'effectue une requête GET sur "/health"
-    Alors la réponse doit être réussie
+  Scenario: Basic server
+    Given a Lithair server is started
+    When I perform a GET request on "/health"
+    Then the response must be successful

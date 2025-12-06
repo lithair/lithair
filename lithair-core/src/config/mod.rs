@@ -40,6 +40,7 @@ pub mod logging;
 pub mod storage;
 pub mod performance;
 pub mod frontend;
+pub mod raft;
 
 pub use server::ServerConfig;
 pub use sessions::SessionsConfig;
@@ -50,6 +51,7 @@ pub use logging::LoggingConfig;
 pub use storage::StorageConfig;
 pub use performance::PerformanceConfig;
 pub use frontend::FrontendConfig;
+pub use raft::RaftConfig;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -67,6 +69,7 @@ pub struct LithairConfig {
     pub storage: StorageConfig,
     pub performance: PerformanceConfig,
     pub frontend: FrontendConfig,
+    pub raft: RaftConfig,
 }
 
 impl Default for LithairConfig {
@@ -81,6 +84,7 @@ impl Default for LithairConfig {
             storage: StorageConfig::default(),
             performance: PerformanceConfig::default(),
             frontend: FrontendConfig::default(),
+            raft: RaftConfig::default(),
         }
     }
 }
@@ -135,6 +139,7 @@ impl LithairConfig {
         self.logging.merge(other.logging);
         self.storage.merge(other.storage);
         self.performance.merge(other.performance);
+        self.raft.merge(other.raft);
     }
     
     /// Apply environment variables to configuration
@@ -147,6 +152,7 @@ impl LithairConfig {
         self.logging.apply_env_vars();
         self.storage.apply_env_vars();
         self.performance.apply_env_vars();
+        self.raft.apply_env_vars();
     }
     
     /// Validate configuration
@@ -159,6 +165,7 @@ impl LithairConfig {
         self.logging.validate()?;
         self.storage.validate()?;
         self.performance.validate()?;
+        self.raft.validate()?;
         Ok(())
     }
 }
@@ -176,6 +183,10 @@ mod tests {
         assert!(!config.rbac.enabled);
         assert!(!config.replication.enabled);
         assert!(config.admin.enabled);
+        // Raft defaults
+        assert!(config.raft.enabled);
+        assert_eq!(config.raft.path, "/raft");
+        assert!(!config.raft.auth_required);
     }
     
     #[test]

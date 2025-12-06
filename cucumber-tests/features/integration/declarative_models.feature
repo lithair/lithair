@@ -1,50 +1,49 @@
-# language: fr
-Fonctionnalité: Modèles Déclaratifs Lithair
-  En tant que développeur d'applications
-  Je veux utiliser les modèles déclaratifs pour générer automatiquement les APIs CRUD
-  Afin de réduire le code boilerplate et garantir la cohérence
+Feature: Lithair Declarative Models
+  As an application developer
+  I want to use declarative models to automatically generate CRUD APIs
+  In order to reduce boilerplate code and ensure consistency
 
-  Contexte:
-    Soit un serveur Lithair avec modèles déclaratifs activés
-    Et que les permissions soient configurées automatiquement
-    Et que les routes CRUD soient générées dynamiquement
+  Background:
+    Given a Lithair server with declarative models enabled
+    And permissions are configured automatically
+    And CRUD routes are generated dynamically
 
-  Scénario: Génération automatique des routes CRUD
-    Quand je définis un modèle Article avec DeclarativeModel
-    Alors les routes GET /articles, POST /articles, PUT /articles/{id}, DELETE /articles/{id} doivent être créées
-    Et chaque route doit avoir les permissions appropriées
-    Et le schéma JSON doit être généré automatiquement
+  Scenario: Automatic CRUD route generation
+    When I define an Article model with DeclarativeModel
+    Then routes GET /articles, POST /articles, PUT /articles/{id}, DELETE /articles/{id} must be created
+    And each route must have appropriate permissions
+    And the JSON schema must be generated automatically
 
-  Scénario: Validation des permissions par modèle
-    Quand un utilisateur "Contributor" accède à POST /articles
-    Alors la requête doit être acceptée avec permission "ArticleWrite"
-    Quand un utilisateur "Anonymous" accède à POST /articles
-    Alors la requête doit être rejetée avec erreur 403 Forbidden
-    Quand un utilisateur "Reporter" accède à GET /articles
-    Alors la requête doit être acceptée avec permission "ArticleRead"
+  Scenario: Permission validation per model
+    When a "Contributor" user accesses POST /articles
+    Then the request must be accepted with permission "ArticleWrite"
+    When an "Anonymous" user accesses POST /articles
+    Then the request must be rejected with 403 Forbidden error
+    When a "Reporter" user accesses GET /articles
+    Then the request must be accepted with permission "ArticleRead"
 
-  Scénario: Persistance automatique des entités
-    Quand je crée un article via POST /articles
-    Alors l'article doit être persisté dans le state engine
-    Et un ID unique doit être généré automatiquement
-    Et les métadonnées de création doivent être ajoutées
+  Scenario: Automatic entity persistence
+    When I create an article via POST /articles
+    Then the article must be persisted in the state engine
+    And a unique ID must be generated automatically
+    And creation metadata must be added
 
-  Scénario: Workflow d'états des entités
-    Quand je crée un article avec statut "Draft"
-    Et que je le mets à jour vers "Published"
-    Alors le workflow doit respecter les transitions valides
-    Et les hooks de cycle de vie doivent être exécutés
-    Et l'état doit être validé avant sauvegarde
+  Scenario: Entity state workflow
+    When I create an article with status "Draft"
+    And I update it to "Published"
+    Then the workflow must respect valid transitions
+    And lifecycle hooks must be executed
+    And state must be validated before saving
 
-  Scénario: Relations entre modèles
-    Quand je définis des modèles Article et Commentaire
-    Et que Commentaire référence Article
-    Alors les routes relationnelles doivent être générées
-    Et /articles/{id}/comments doit être accessible
-    Et la cohérence des références doit être garantie
+  Scenario: Relations between models
+    When I define Article and Comment models
+    And Comment references Article
+    Then relational routes must be generated
+    And /articles/{id}/comments must be accessible
+    And reference consistency must be guaranteed
 
-  Scénario: Performance des requêtes déclaratives
-    Quand j'effectue 1000 requêtes GET /articles en parallèle
-    Alors toutes les requêtes doivent réussir
-    Et le temps de réponse moyen doit être inférieur à 10ms
-    Et la mémoire utilisée doit rester stable
+  Scenario: Declarative query performance
+    When I perform 1000 GET /articles requests in parallel
+    Then all requests must succeed
+    And average response time must be less than 10ms
+    And memory usage must remain stable

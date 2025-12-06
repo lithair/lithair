@@ -1,93 +1,93 @@
 Feature: HTTP Server Performance
-  En tant que framework haute performance
-  Je veux garantir des throughputs élevés et une latence faible
-  Pour supporter des applications en production sous charge
+  As a high-performance framework
+  I want to guarantee high throughput and low latency
+  To support production applications under load
 
   Background:
-    Given un serveur Lithair démarre sur le port "21500"
-    And le serveur utilise la persistence dans "/tmp/cucumber-perf-test"
+    Given a Lithair server starts on port "21500"
+    And the server uses persistence in "/tmp/cucumber-perf-test"
 
   @performance @critical
-  Scenario: Throughput écriture - Minimum 1000 req/s
-    Given le serveur est prêt à recevoir des requêtes
-    When je crée 1000 articles en parallèle avec 10 workers
-    Then le temps total doit être inférieur à 1 seconde
-    And le throughput doit être supérieur à 1000 requêtes par seconde
-    And tous les articles doivent être persistés
-    And aucune erreur ne doit être enregistrée
+  Scenario: Write throughput - Minimum 1000 req/s
+    Given the server is ready to receive requests
+    When I create 1000 articles in parallel with 10 workers
+    Then the total time must be less than 1 second
+    And the throughput must be greater than 1000 requests per second
+    And all articles must be persisted
+    And no error must be logged
 
   @performance @critical
-  Scenario: Throughput lecture - Minimum 5000 req/s
-    Given le serveur contient 100 articles pré-créés
-    When je lis 5000 fois la liste des articles avec 20 workers
-    Then le temps total doit être inférieur à 1 seconde
-    And le throughput doit être supérieur à 5000 requêtes par seconde
-    And la latence p95 doit être inférieure à 50 millisecondes
-    And aucune erreur de connexion ne doit survenir
+  Scenario: Read throughput - Minimum 5000 req/s
+    Given the server contains 100 pre-created articles
+    When I read the article list 5000 times with 20 workers
+    Then the total time must be less than 1 second
+    And the throughput must be greater than 5000 requests per second
+    And the p95 latency must be less than 50 milliseconds
+    And no connection error must occur
 
   @performance
-  Scenario: Charge mixte 80/20 - Minimum 2000 req/s
-    Given le serveur contient 50 articles pré-créés
-    When je lance une charge mixte pendant 10 secondes:
-      | type     | pourcentage | workers |
-      | lecture  | 80          | 16      |
-      | écriture | 20          | 4       |
-    Then le throughput total doit être supérieur à 2000 requêtes par seconde
-    And le taux d'erreur doit être inférieur à 0.1%
-    And la latence p99 doit être inférieure à 100 millisecondes
+  Scenario: Mixed load 80/20 - Minimum 2000 req/s
+    Given the server contains 50 pre-created articles
+    When I run a mixed load for 10 seconds:
+      | type  | percentage | workers |
+      | read  | 80         | 16      |
+      | write | 20         | 4       |
+    Then the total throughput must be greater than 2000 requests per second
+    And the error rate must be less than 0.1%
+    And the p99 latency must be less than 100 milliseconds
 
   @performance @durability
-  Scenario: Performance avec persistence fsync
-    Given le serveur a fsync activé sur chaque écriture
-    When je crée 500 articles séquentiellement
-    Then le temps total doit être inférieur à 2 secondes
-    And tous les articles doivent être dans le fichier events.raftlog
-    And aucun article ne doit être perdu après un redémarrage brutal
+  Scenario: Performance with fsync persistence
+    Given the server has fsync enabled on each write
+    When I create 500 articles sequentially
+    Then the total time must be less than 2 seconds
+    And all articles must be in the events.raftlog file
+    And no article must be lost after a brutal restart
 
   @performance @http
-  Scenario: Keep-Alive HTTP/1.1
-    Given le serveur supporte HTTP/1.1 keep-alive
-    When je fais 100 requêtes avec la même connexion TCP
-    Then toutes les requêtes doivent réussir
-    And aucune erreur "Connection reset" ne doit survenir
-    And le nombre de connexions TCP doit être exactement 1
+  Scenario: HTTP/1.1 Keep-Alive
+    Given the server supports HTTP/1.1 keep-alive
+    When I make 100 requests with the same TCP connection
+    Then all requests must succeed
+    And no "Connection reset" error must occur
+    And the number of TCP connections must be exactly 1
 
   @performance @concurrency
-  Scenario: Charge concurrente élevée - 50 workers
-    Given le serveur est prêt
-    When je lance 50 workers en parallèle
-    And chaque worker crée 20 articles
-    Then 1000 articles doivent être créés au total
-    And le temps total doit être inférieur à 5 secondes
-    And tous les articles doivent avoir des IDs uniques
-    And aucune corruption de données ne doit être détectée
+  Scenario: High concurrent load - 50 workers
+    Given the server is ready
+    When I launch 50 workers in parallel
+    And each worker creates 20 articles
+    Then 1000 articles must be created in total
+    And the total time must be less than 5 seconds
+    And all articles must have unique IDs
+    And no data corruption must be detected
 
   @performance @latency
-  Scenario: Latence sous charge constante
-    Given le serveur est sous charge constante de 500 req/s
-    When je mesure la latence pendant 30 secondes
-    Then la latence p50 doit être inférieure à 10 millisecondes
-    And la latence p95 doit être inférieure à 50 millisecondes
-    And la latence p99 doit être inférieure à 100 millisecondes
-    And aucun timeout ne doit survenir
+  Scenario: Latency under constant load
+    Given the server is under constant load of 500 req/s
+    When I measure latency for 30 seconds
+    Then the p50 latency must be less than 10 milliseconds
+    And the p95 latency must be less than 50 milliseconds
+    And the p99 latency must be less than 100 milliseconds
+    And no timeout must occur
 
   @performance @stress
-  Scenario: Test de stress - 10000 articles
-    Given le serveur démarre avec une base vide
-    When je crée 10000 articles en batches de 100
-    Then tous les 10000 articles doivent être créés
-    And le temps total doit être inférieur à 30 secondes
-    And la mémoire du serveur doit rester sous 500 MB
-    And le fichier events.raftlog doit contenir exactement 10000 événements
+  Scenario: Stress test - 10000 articles
+    Given the server starts with an empty database
+    When I create 10000 articles in batches of 100
+    Then all 10000 articles must be created
+    And the total time must be less than 30 seconds
+    And the server memory must remain under 500 MB
+    And the events.raftlog file must contain exactly 10000 events
 
   @performance @regression
-  Scenario: Benchmark de référence
-    Given le serveur est en mode benchmark
-    When je lance le benchmark standard:
-      | opération | nombre | workers |
+  Scenario: Reference benchmark
+    Given the server is in benchmark mode
+    When I run the standard benchmark:
+      | operation | number | workers |
       | POST      | 1000   | 10      |
       | GET       | 5000   | 20      |
       | PUT       | 500    | 5       |
-    Then les métriques doivent être enregistrées
-    And le rapport de performance doit être généré
-    And les métriques ne doivent pas régresser de plus de 10%
+    Then the metrics must be recorded
+    And the performance report must be generated
+    And the metrics must not regress by more than 10%

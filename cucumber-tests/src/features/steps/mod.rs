@@ -10,7 +10,7 @@ pub mod eventsourcing_steps;
 
 // Steps avancés
 // pub mod advanced_persistence_steps;
-// pub mod cluster_steps;
+pub mod cluster_steps;
 pub mod database_performance_steps;
 // pub mod http_performance_steps;
 pub mod bench_isolated_steps;
@@ -21,6 +21,7 @@ pub mod snapshot_steps;
 pub mod stress_snapshot_steps;
 pub mod event_sourcing_benchmark_steps;
 pub mod serialization_steps;
+pub mod hash_chain_steps;
 // pub mod real_database_performance_steps; // Désactivé - doublons avec database_performance_steps
 
 // Exemples pratiques

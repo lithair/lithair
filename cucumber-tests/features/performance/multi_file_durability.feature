@@ -1,121 +1,121 @@
-# Test de Durabilité Multi-Fichiers Lithair
-# Vérifier que chaque structure a son propre fichier avec CRC32
+# Multi-File Durability Test for Lithair
+# Verify that each structure has its own file with CRC32
 
-Feature: Durabilité Multi-Fichiers Lithair
-  En tant que développeur
-  Je veux vérifier que Lithair supporte plusieurs structures
-  Avec un fichier séparé par type de données et CRC32 validé
+Feature: Multi-File Durability of Lithair
+  As a developer
+  I want to verify that Lithair supports multiple structures
+  With a separate file per data type and validated CRC32
 
   Background:
-    Given la persistence multi-fichiers est activée
+    Given multi-file persistence is enabled
 
-  # ==================== TEST ISOLATION PAR STRUCTURE ====================
+  # ==================== ISOLATION PER STRUCTURE TEST ====================
 
   @critical @multifile
-  Scenario: Chaque structure a son propre fichier
-    Given un store multi-fichiers dans "/tmp/lithair-multifile-test"
-    When je crée 100 "articles" avec aggregate_id "articles"
-    And je crée 50 "users" avec aggregate_id "users"
-    And je crée 75 "products" avec aggregate_id "products"
-    And je flush tous les stores
-    Then le fichier "articles/events.raftlog" doit exister
-    And le fichier "users/events.raftlog" doit exister
-    And le fichier "products/events.raftlog" doit exister
-    And le fichier "articles/events.raftlog" doit contenir exactement 100 lignes
-    And le fichier "users/events.raftlog" doit contenir exactement 50 lignes
-    And le fichier "products/events.raftlog" doit contenir exactement 75 lignes
+  Scenario: Each structure has its own file
+    Given a multi-file store in "/tmp/lithair-multifile-test"
+    When I create 100 "articles" with aggregate_id "articles"
+    And I create 50 "users" with aggregate_id "users"
+    And I create 75 "products" with aggregate_id "products"
+    And I flush all stores
+    Then the file "articles/events.raftlog" must exist
+    And the file "users/events.raftlog" must exist
+    And the file "products/events.raftlog" must exist
+    And the file "articles/events.raftlog" must contain exactly 100 lines
+    And the file "users/events.raftlog" must contain exactly 50 lines
+    And the file "products/events.raftlog" must contain exactly 75 lines
 
   @critical @multifile @isolation
-  Scenario: Isolation des données entre structures
-    Given un store multi-fichiers dans "/tmp/lithair-isolation-test"
-    When je crée 50 "articles" avec aggregate_id "articles"
-    And je crée 30 "users" avec aggregate_id "users"
-    And je flush tous les stores
-    Then le fichier "articles/events.raftlog" ne doit contenir que des événements "articles"
-    And le fichier "users/events.raftlog" ne doit contenir que des événements "users"
-    And aucun événement "users" ne doit être dans "articles/events.raftlog"
-    And aucun événement "articles" ne doit être dans "users/events.raftlog"
+  Scenario: Data isolation between structures
+    Given a multi-file store in "/tmp/lithair-isolation-test"
+    When I create 50 "articles" with aggregate_id "articles"
+    And I create 30 "users" with aggregate_id "users"
+    And I flush all stores
+    Then the file "articles/events.raftlog" must contain only "articles" events
+    And the file "users/events.raftlog" must contain only "users" events
+    And no "users" event must be in "articles/events.raftlog"
+    And no "articles" event must be in "users/events.raftlog"
 
-  # ==================== TEST CRC32 MULTI-FICHIERS ====================
+  # ==================== MULTI-FILE CRC32 TEST ====================
 
   @critical @multifile @crc32
-  Scenario: CRC32 validé sur tous les fichiers
-    Given un store multi-fichiers dans "/tmp/lithair-multifile-crc32"
-    When je crée 100 "articles" avec aggregate_id "articles"
-    And je crée 100 "users" avec aggregate_id "users"
-    And je flush tous les stores
-    Then tous les événements dans "articles/events.raftlog" doivent avoir un CRC32 valide
-    And tous les événements dans "users/events.raftlog" doivent avoir un CRC32 valide
-    And le format de chaque ligne doit être "<crc32>:<json>"
+  Scenario: CRC32 validated on all files
+    Given a multi-file store in "/tmp/lithair-multifile-crc32"
+    When I create 100 "articles" with aggregate_id "articles"
+    And I create 100 "users" with aggregate_id "users"
+    And I flush all stores
+    Then all events in "articles/events.raftlog" must have a valid CRC32
+    And all events in "users/events.raftlog" must have a valid CRC32
+    And the format of each line must be "<crc32>:<json>"
 
   @critical @multifile @corruption
-  Scenario: Détection de corruption par fichier
-    Given un store multi-fichiers dans "/tmp/lithair-corruption-test"
-    When je crée 50 "articles" avec aggregate_id "articles"
-    And je flush tous les stores
-    And je corromps volontairement une ligne dans "articles/events.raftlog"
-    Then la lecture de "articles/events.raftlog" doit détecter 1 événement corrompu
-    And les autres fichiers ne doivent pas être affectés
+  Scenario: Per-file corruption detection
+    Given a multi-file store in "/tmp/lithair-corruption-test"
+    When I create 50 "articles" with aggregate_id "articles"
+    And I flush all stores
+    And I deliberately corrupt a line in "articles/events.raftlog"
+    Then reading "articles/events.raftlog" must detect 1 corrupted event
+    And other files must not be affected
 
-  # ==================== TEST RECOVERY MULTI-FICHIERS ====================
+  # ==================== MULTI-FILE RECOVERY TEST ====================
 
   @critical @multifile @recovery
-  Scenario: Recovery après crash avec multi-fichiers
-    Given un store multi-fichiers dans "/tmp/lithair-multifile-crash"
-    When je crée 200 "articles" avec aggregate_id "articles"
-    And je crée 150 "users" avec aggregate_id "users"
-    And je crée 100 "orders" avec aggregate_id "orders"
-    And je flush tous les stores avec fsync
-    And je simule un crash brutal
-    When je recharge le store multi-fichiers depuis "/tmp/lithair-multifile-crash"
-    Then je dois récupérer exactement 200 "articles"
-    And je dois récupérer exactement 150 "users"
-    And je dois récupérer exactement 100 "orders"
-    And tous les CRC32 doivent être valides
+  Scenario: Recovery after crash with multi-files
+    Given a multi-file store in "/tmp/lithair-multifile-crash"
+    When I create 200 "articles" with aggregate_id "articles"
+    And I create 150 "users" with aggregate_id "users"
+    And I create 100 "orders" with aggregate_id "orders"
+    And I flush all stores with fsync
+    And I simulate a brutal crash
+    When I reload the multi-file store from "/tmp/lithair-multifile-crash"
+    Then I must recover exactly 200 "articles"
+    And I must recover exactly 150 "users"
+    And I must recover exactly 100 "orders"
+    And all CRC32 must be valid
 
-  # ==================== TEST PERFORMANCE MULTI-FICHIERS ====================
+  # ==================== MULTI-FILE PERFORMANCE TEST ====================
 
   @performance @multifile
-  Scenario: Performance d'écriture multi-fichiers
-    Given un store multi-fichiers dans "/tmp/lithair-multifile-perf"
-    When je mesure le temps pour créer 1000 événements répartis sur 5 structures
-    And je flush tous les stores
-    Then le temps total multifile doit être inférieur à 10 secondes
-    And chaque structure doit avoir environ 200 événements
-    And tous les fichiers doivent exister avec CRC32 valide
+  Scenario: Multi-file write performance
+    Given a multi-file store in "/tmp/lithair-multifile-perf"
+    When I measure the time to create 1000 events distributed across 5 structures
+    And I flush all stores
+    Then the total multifile time must be less than 10 seconds
+    And each structure must have approximately 200 events
+    And all files must exist with valid CRC32
 
   @performance @multifile @concurrent
-  Scenario: Écritures concurrentes sur plusieurs structures
-    Given un store multi-fichiers dans "/tmp/lithair-concurrent-test"
-    When je lance 5 tâches concurrentes écrivant chacune 100 événements sur une structure différente
-    And j'attends la fin de toutes les tâches
-    And je flush tous les stores
-    Then chaque structure doit avoir exactement 100 événements
-    And aucune donnée ne doit être mélangée entre structures
-    And tous les CRC32 doivent être valides
+  Scenario: Concurrent writes on multiple structures
+    Given a multi-file store in "/tmp/lithair-concurrent-test"
+    When I launch 5 concurrent tasks each writing 100 events on a different structure
+    And I wait for all tasks to complete
+    And I flush all stores
+    Then each structure must have exactly 100 events
+    And no data must be mixed between structures
+    And all CRC32 must be valid
 
-  # ==================== TEST GLOBAL STORE ====================
+  # ==================== GLOBAL STORE TEST ====================
 
   @multifile @global
-  Scenario: Événements sans aggregate_id vont dans global
-    Given un store multi-fichiers dans "/tmp/lithair-global-test"
-    When je crée 50 événements sans aggregate_id
-    And je crée 30 "articles" avec aggregate_id "articles"
-    And je flush tous les stores
-    Then le fichier "global/events.raftlog" doit contenir exactement 50 lignes
-    And le fichier "articles/events.raftlog" doit contenir exactement 30 lignes
+  Scenario: Events without aggregate_id go in global
+    Given a multi-file store in "/tmp/lithair-global-test"
+    When I create 50 events without aggregate_id
+    And I create 30 "articles" with aggregate_id "articles"
+    And I flush all stores
+    Then the file "global/events.raftlog" must contain exactly 50 lines
+    And the file "articles/events.raftlog" must contain exactly 30 lines
 
-  # ==================== TEST LECTURE SÉLECTIVE ====================
+  # ==================== SELECTIVE READ TEST ====================
 
   @multifile @read
-  Scenario: Lecture sélective par structure
-    Given un store multi-fichiers dans "/tmp/lithair-selective-read"
-    When je crée 100 "articles" avec aggregate_id "articles"
-    And je crée 100 "users" avec aggregate_id "users"
-    And je crée 100 "products" avec aggregate_id "products"
-    And je flush tous les stores
-    When je lis uniquement la structure "articles"
-    Then je dois obtenir exactement 100 événements
-    And tous doivent être de type "articles"
-    When je lis toutes les structures
-    Then je dois obtenir exactement 300 événements au total
+  Scenario: Selective read by structure
+    Given a multi-file store in "/tmp/lithair-selective-read"
+    When I create 100 "articles" with aggregate_id "articles"
+    And I create 100 "users" with aggregate_id "users"
+    And I create 100 "products" with aggregate_id "products"
+    And I flush all stores
+    When I read only the "articles" structure
+    Then I must get exactly 100 events
+    And all must be of type "articles"
+    When I read all structures
+    Then I must get exactly 300 events in total
