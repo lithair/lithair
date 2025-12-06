@@ -75,6 +75,87 @@ pub struct EventEnvelope {
     pub payload: String,
     /// Optional aggregate id for fast filtering/indexing (e.g., product id)
     pub aggregate_id: Option<String>,
+    /// SHA256 hash of this event's content (for tamper detection)
+    /// Computed from: event_type + event_id + timestamp + payload + previous_hash
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_hash: Option<String>,
+    /// SHA256 hash of the previous event in the chain (None for genesis event)
+    /// Forms a hash chain for tamper-evident audit trail
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_hash: Option<String>,
+}
+
+impl EventEnvelope {
+    /// Create a new envelope with hash chain support
+    pub fn new(
+        event_type: String,
+        event_id: String,
+        timestamp: u64,
+        payload: String,
+        aggregate_id: Option<String>,
+        previous_hash: Option<String>,
+    ) -> Self {
+        let mut envelope = Self {
+            event_type,
+            event_id,
+            timestamp,
+            payload,
+            aggregate_id,
+            event_hash: None,
+            previous_hash,
+        };
+        // Compute and set the hash after all fields are populated
+        envelope.event_hash = Some(envelope.compute_hash());
+        envelope
+    }
+
+    /// Compute SHA256 hash of this event's content
+    /// The hash covers all fields except event_hash itself
+    pub fn compute_hash(&self) -> String {
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+
+        // Include all fields that should be protected
+        hasher.update(self.event_type.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.event_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.timestamp.to_le_bytes());
+        hasher.update(b"|");
+        hasher.update(self.payload.as_bytes());
+        hasher.update(b"|");
+        if let Some(ref agg) = self.aggregate_id {
+            hasher.update(agg.as_bytes());
+        }
+        hasher.update(b"|");
+        if let Some(ref prev) = self.previous_hash {
+            hasher.update(prev.as_bytes());
+        }
+
+        let result = hasher.finalize();
+        hex::encode(result)
+    }
+
+    /// Verify that this event's hash is valid
+    pub fn verify_hash(&self) -> bool {
+        match &self.event_hash {
+            Some(stored_hash) => {
+                let computed = self.compute_hash();
+                stored_hash == &computed
+            }
+            None => true, // Legacy events without hash are considered valid
+        }
+    }
+
+    /// Check if this event links correctly to a previous event
+    pub fn links_to(&self, previous: &EventEnvelope) -> bool {
+        match (&self.previous_hash, &previous.event_hash) {
+            (Some(prev), Some(prev_hash)) => prev == prev_hash,
+            (None, None) => true, // Both legacy
+            (None, _) => false,   // This event should have previous_hash
+            (_, None) => false,   // Previous event should have event_hash
+        }
+    }
 }
 
 /// Backend storage for EventStore
@@ -96,6 +177,11 @@ pub struct EventStore {
     binary_mode: bool,
     disable_index: bool,
     dedup_persist: bool,
+    /// Last event hash for hash chain continuity
+    /// Initialized from the last event when loading, updated on each append
+    last_event_hash: Option<String>,
+    /// Enable hash chain for new events (default: true for new stores)
+    enable_hash_chain: bool,
 }
 
 impl EventStore {
@@ -134,6 +220,14 @@ impl EventStore {
             EventStoreBackend::Multi(m) => m.read_all_envelopes()?.len(),
         };
 
+        // Load the last event hash for chain continuity
+        let last_event_hash = Self::load_last_event_hash(&backend, binary_mode)?;
+
+        // Enable hash chain by default, can be disabled via env var
+        let enable_hash_chain = !std::env::var("RS_DISABLE_HASH_CHAIN")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
         Ok(Self {
             backend,
             events_count,
@@ -150,15 +244,26 @@ impl EventStore {
             dedup_persist: !std::env::var("RS_DEDUP_PERSIST")
                 .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
                 .unwrap_or(false),
+            last_event_hash,
+            enable_hash_chain,
         })
     }
 
     /// Create a new event store with existing file storage (single-file mode)
     pub fn with_storage(storage: FileStorage) -> EngineResult<Self> {
         let events_count = storage.read_all_events()?.len();
+        let backend = EventStoreBackend::Single(storage);
+
+        // Load the last event hash for chain continuity
+        let last_event_hash = Self::load_last_event_hash(&backend, false)?;
+
+        // Enable hash chain by default
+        let enable_hash_chain = !std::env::var("RS_DISABLE_HASH_CHAIN")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
         Ok(Self {
-            backend: EventStoreBackend::Single(storage),
+            backend,
             events_count,
             log_verbose: false, // Disabled for performance
             pending_since_flush: 0,
@@ -172,7 +277,41 @@ impl EventStore {
             dedup_persist: !std::env::var("RS_DEDUP_PERSIST")
                 .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
                 .unwrap_or(false),
+            last_event_hash,
+            enable_hash_chain,
         })
+    }
+
+    /// Load the last event hash from existing events (for chain continuity)
+    fn load_last_event_hash(backend: &EventStoreBackend, binary_mode: bool) -> EngineResult<Option<String>> {
+        let events = match backend {
+            EventStoreBackend::Single(s) => {
+                if binary_mode {
+                    // Binary mode: decode envelopes
+                    let bytes_lines = s.read_all_event_bytes()?;
+                    let mut envelopes = Vec::new();
+                    for line in bytes_lines {
+                        if line.is_empty() {
+                            continue;
+                        }
+                        if let Ok((env, _)) = decode_from_slice::<EventEnvelope, _>(&line, standard()) {
+                            envelopes.push(env);
+                        }
+                    }
+                    envelopes
+                } else {
+                    // JSON mode: parse envelopes
+                    s.read_all_events()?
+                        .into_iter()
+                        .filter_map(|line| serde_json::from_str::<EventEnvelope>(&line).ok())
+                        .collect()
+                }
+            }
+            EventStoreBackend::Multi(m) => m.read_all_envelopes()?,
+        };
+
+        // Get the last event's hash
+        Ok(events.last().and_then(|e| e.event_hash.clone()))
     }
 
     /// Enable or disable binary storage mode
@@ -226,18 +365,31 @@ impl EventStore {
     }
 
     /// Append an envelope to the persistent log (preferred)
+    ///
+    /// If hash chain is enabled, this will automatically add hash chain fields
+    /// to the envelope before persisting.
     pub fn append_envelope(&mut self, envelope: &EventEnvelope) -> EngineResult<()> {
+        // Apply hash chain if enabled and envelope doesn't already have hashes
+        let envelope_to_persist = if self.enable_hash_chain && envelope.event_hash.is_none() {
+            let mut chained = envelope.clone();
+            chained.previous_hash = self.last_event_hash.clone();
+            chained.event_hash = Some(chained.compute_hash());
+            chained
+        } else {
+            envelope.clone()
+        };
+
         match &mut self.backend {
             EventStoreBackend::Single(storage) => {
                 // Original single-file logic
                 let mut offset: u64 = 0;
-                let will_index = !self.disable_index && envelope.aggregate_id.is_some();
+                let will_index = !self.disable_index && envelope_to_persist.aggregate_id.is_some();
                 if will_index {
                     offset = storage.current_events_size()?;
                 }
 
                 if self.binary_mode {
-                    let bytes = encode_to_vec(envelope, standard()).map_err(|e| {
+                    let bytes = encode_to_vec(&envelope_to_persist, standard()).map_err(|e| {
                         EngineError::SerializationError(format!(
                             "Failed to serialize envelope (bincode): {}",
                             e
@@ -245,28 +397,44 @@ impl EventStore {
                     })?;
                     storage.append_binary_event_bytes(&bytes)?;
                 } else {
-                    let json = serde_json::to_string(envelope).map_err(|e| {
+                    let json = serde_json::to_string(&envelope_to_persist).map_err(|e| {
                         EngineError::SerializationError(format!("Failed to serialize envelope: {}", e))
                     })?;
                     storage.append_event(&json)?;
                 }
                 if will_index {
-                    if let Some(agg) = &envelope.aggregate_id {
+                    if let Some(agg) = &envelope_to_persist.aggregate_id {
                         let _ = storage.append_index_entry(agg, offset);
                     }
                 }
             }
             EventStoreBackend::Multi(multi_store) => {
                 // Multi-file logic - delegate to MultiFileEventStore
-                multi_store.append_envelope(envelope)?;
+                multi_store.append_envelope(&envelope_to_persist)?;
             }
         }
+
+        // Update the last event hash for chain continuity
+        if self.enable_hash_chain {
+            self.last_event_hash = envelope_to_persist.event_hash.clone();
+        }
+
         self.events_count += 1;
         self.pending_since_flush += 1;
         if self.flush_every > 0 && self.pending_since_flush >= self.flush_every {
             self.flush()?;
         }
         Ok(())
+    }
+
+    /// Enable or disable hash chain for new events
+    pub fn set_hash_chain(&mut self, enabled: bool) {
+        self.enable_hash_chain = enabled;
+    }
+
+    /// Get the current last event hash (for external chain verification)
+    pub fn get_last_event_hash(&self) -> Option<&String> {
+        self.last_event_hash.as_ref()
     }
 
     /// Flush pending events to disk
@@ -419,6 +587,164 @@ impl EventStore {
             }
         }
     }
+
+    /// Get all envelopes for chain verification
+    pub fn get_all_envelopes(&self) -> EngineResult<Vec<EventEnvelope>> {
+        match &self.backend {
+            EventStoreBackend::Single(s) => {
+                if self.binary_mode {
+                    let bytes_lines = s.read_all_event_bytes()?;
+                    let mut envelopes = Vec::new();
+                    for line in bytes_lines {
+                        if line.is_empty() {
+                            continue;
+                        }
+                        if let Ok((env, _)) = decode_from_slice::<EventEnvelope, _>(&line, standard()) {
+                            envelopes.push(env);
+                        }
+                    }
+                    Ok(envelopes)
+                } else {
+                    Ok(s.read_all_events()?
+                        .into_iter()
+                        .filter_map(|line| serde_json::from_str::<EventEnvelope>(&line).ok())
+                        .collect())
+                }
+            }
+            EventStoreBackend::Multi(m) => m.read_all_envelopes(),
+        }
+    }
+
+    /// Verify the integrity of the entire hash chain
+    ///
+    /// Returns a `ChainVerificationResult` with details about the verification.
+    /// - Checks each event's hash matches its computed hash
+    /// - Checks each event's previous_hash links to the prior event's hash
+    /// - Legacy events (without hashes) are accepted but noted
+    pub fn verify_chain(&self) -> EngineResult<ChainVerificationResult> {
+        let envelopes = self.get_all_envelopes()?;
+
+        let mut result = ChainVerificationResult {
+            total_events: envelopes.len(),
+            verified_events: 0,
+            legacy_events: 0,
+            invalid_hashes: Vec::new(),
+            broken_links: Vec::new(),
+            is_valid: true,
+        };
+
+        let mut prev_hash: Option<String> = None;
+
+        for (index, envelope) in envelopes.iter().enumerate() {
+            // Check if this is a legacy event (no hashes)
+            if envelope.event_hash.is_none() {
+                result.legacy_events += 1;
+                // Legacy events don't break the chain, just skip chain verification for them
+                prev_hash = None;
+                continue;
+            }
+
+            // Verify the event's own hash
+            if !envelope.verify_hash() {
+                result.invalid_hashes.push(ChainError {
+                    event_index: index,
+                    event_id: envelope.event_id.clone(),
+                    error: "Event hash does not match computed hash (tampered?)".to_string(),
+                });
+                result.is_valid = false;
+            }
+
+            // Verify the link to previous event
+            match (&envelope.previous_hash, &prev_hash) {
+                (Some(prev), Some(expected)) if prev != expected => {
+                    result.broken_links.push(ChainError {
+                        event_index: index,
+                        event_id: envelope.event_id.clone(),
+                        error: format!(
+                            "Chain broken: previous_hash {} doesn't match expected {}",
+                            prev, expected
+                        ),
+                    });
+                    result.is_valid = false;
+                }
+                (None, Some(_)) => {
+                    result.broken_links.push(ChainError {
+                        event_index: index,
+                        event_id: envelope.event_id.clone(),
+                        error: "Missing previous_hash but chain expected continuation".to_string(),
+                    });
+                    result.is_valid = false;
+                }
+                _ => {
+                    // Valid link (or genesis event with no previous)
+                    result.verified_events += 1;
+                }
+            }
+
+            prev_hash = envelope.event_hash.clone();
+        }
+
+        Ok(result)
+    }
+}
+
+/// Result of hash chain verification
+#[derive(Debug, Clone)]
+pub struct ChainVerificationResult {
+    /// Total number of events checked
+    pub total_events: usize,
+    /// Number of events with valid hashes and links
+    pub verified_events: usize,
+    /// Number of legacy events (without hash chain)
+    pub legacy_events: usize,
+    /// Events with invalid hashes (potential tampering)
+    pub invalid_hashes: Vec<ChainError>,
+    /// Events with broken links (chain discontinuity)
+    pub broken_links: Vec<ChainError>,
+    /// Overall chain validity
+    pub is_valid: bool,
+}
+
+impl ChainVerificationResult {
+    /// Check if the chain is fully verified (no legacy events)
+    pub fn is_fully_verified(&self) -> bool {
+        self.is_valid && self.legacy_events == 0
+    }
+
+    /// Human-readable summary
+    pub fn summary(&self) -> String {
+        if self.is_valid {
+            if self.legacy_events > 0 {
+                format!(
+                    "✅ Chain valid: {}/{} events verified ({} legacy events without hash chain)",
+                    self.verified_events, self.total_events, self.legacy_events
+                )
+            } else {
+                format!(
+                    "✅ Chain fully verified: {}/{} events",
+                    self.verified_events, self.total_events
+                )
+            }
+        } else {
+            format!(
+                "❌ Chain INVALID: {} hash errors, {} broken links out of {} events",
+                self.invalid_hashes.len(),
+                self.broken_links.len(),
+                self.total_events
+            )
+        }
+    }
+}
+
+/// Details about a chain verification error
+#[derive(Debug, Clone)]
+pub struct ChainError {
+    /// Index of the event in the chain
+    pub event_index: usize,
+    /// Event ID for identification
+    pub event_id: String,
+    /// Description of the error
+    pub error: String,
 }
 
 /// Event stream for real-time event processing
@@ -437,5 +763,142 @@ impl EventStream {
 impl Default for EventStream {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_envelope_hash_computation() {
+        let envelope = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-001".to_string(),
+            1234567890,
+            r#"{"test": "data"}"#.to_string(),
+            Some("aggregate-1".to_string()),
+            None, // Genesis event
+        );
+
+        // Hash should be computed
+        assert!(envelope.event_hash.is_some());
+        assert!(envelope.previous_hash.is_none()); // Genesis
+
+        // Hash should be verifiable
+        assert!(envelope.verify_hash());
+    }
+
+    #[test]
+    fn test_envelope_hash_chain() {
+        // Create genesis event
+        let genesis = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-001".to_string(),
+            1234567890,
+            r#"{"test": "genesis"}"#.to_string(),
+            Some("aggregate-1".to_string()),
+            None,
+        );
+
+        // Create second event linked to genesis
+        let second = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-002".to_string(),
+            1234567891,
+            r#"{"test": "second"}"#.to_string(),
+            Some("aggregate-1".to_string()),
+            genesis.event_hash.clone(),
+        );
+
+        // Verify both events
+        assert!(genesis.verify_hash());
+        assert!(second.verify_hash());
+
+        // Verify chain link
+        assert!(second.links_to(&genesis));
+    }
+
+    #[test]
+    fn test_envelope_tamper_detection() {
+        let envelope = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-001".to_string(),
+            1234567890,
+            r#"{"test": "data"}"#.to_string(),
+            None,
+            None,
+        );
+
+        // Original is valid
+        assert!(envelope.verify_hash());
+
+        // Tamper with the payload
+        let mut tampered = envelope.clone();
+        tampered.payload = r#"{"test": "TAMPERED"}"#.to_string();
+
+        // Tampered envelope should fail verification
+        assert!(!tampered.verify_hash());
+    }
+
+    #[test]
+    fn test_envelope_chain_break_detection() {
+        let event1 = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-001".to_string(),
+            1234567890,
+            "{}".to_string(),
+            None,
+            None,
+        );
+
+        let event2 = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-002".to_string(),
+            1234567891,
+            "{}".to_string(),
+            None,
+            event1.event_hash.clone(),
+        );
+
+        // Create event3 with wrong previous hash (chain break)
+        let event3 = EventEnvelope::new(
+            "TestEvent".to_string(),
+            "event-003".to_string(),
+            1234567892,
+            "{}".to_string(),
+            None,
+            Some("WRONG_HASH".to_string()),
+        );
+
+        // event2 should link to event1
+        assert!(event2.links_to(&event1));
+
+        // event3 should NOT link to event2
+        assert!(!event3.links_to(&event2));
+    }
+
+    #[test]
+    fn test_legacy_envelope_compatibility() {
+        // Simulate a legacy envelope (no hash fields)
+        let legacy = EventEnvelope {
+            event_type: "LegacyEvent".to_string(),
+            event_id: "legacy-001".to_string(),
+            timestamp: 1234567890,
+            payload: "{}".to_string(),
+            aggregate_id: None,
+            event_hash: None,
+            previous_hash: None,
+        };
+
+        // Legacy events should be considered valid (no hash to verify)
+        assert!(legacy.verify_hash());
+
+        // Serialize/deserialize should work
+        let json = serde_json::to_string(&legacy).unwrap();
+        let deserialized: EventEnvelope = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.event_id, "legacy-001");
+        assert!(deserialized.event_hash.is_none());
     }
 }

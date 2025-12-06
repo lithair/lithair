@@ -1,76 +1,75 @@
-# language: fr
-Fonctionnalité: Event Sourcing et Persistance
-  En tant que développeur d'applications critiques
-  Je veux que Lithair garantisse l'intégrité des données
-  Afin de pouvoir reconstruire l'état à tout moment
+Feature: Event Sourcing and Persistence
+  As a developer of critical applications
+  I want Lithair to guarantee data integrity
+  In order to be able to reconstruct state at any time
 
   @core
-  Scénario: Persistance des événements
-    Soit un moteur Lithair avec event sourcing activé
-    Quand j'effectue une opération CRUD
-    Alors un événement doit être créé et persisté
-    Et l'événement doit contenir toutes les métadonnées
-    Et le fichier de log doit être mis à jour atomiquement
+  Scenario: Event persistence
+    Given a Lithair engine with event sourcing enabled
+    When I perform a CRUD operation
+    Then an event should be created and persisted
+    And the event should contain all metadata
+    And the log file should be updated atomically
 
   @core
-  Scénario: Reconstruction de l'état
-    Quand je redémarre le serveur
-    Alors tous les événements doivent être rejoués
-    Et l'état doit être identique à avant le redémarrage
-    Et la reconstruction doit prendre moins de 5 secondes
+  Scenario: State reconstruction
+    When I restart the server
+    Then all events should be replayed
+    And state should be identical to before the restart
+    And reconstruction should take less than 5 seconds
 
   @core
-  Scénario: Snapshots optimisés
-    Quand 1000 événements ont été créés
-    Alors un snapshot doit être généré automatiquement
-    Et le snapshot doit compresser l'état actuel
-    Et les anciens événements doivent être archivés
-    Et la génération du snapshot doit prendre moins de 5 secondes
+  Scenario: Optimized snapshots
+    When 1000 events have been created
+    Then a snapshot should be generated automatically
+    And the snapshot should compress current state
+    And old events should be archived
+    And snapshot generation should take less than 5 seconds
 
   @core
-  Scénario: Déduplication des événements
-    Quand le même événement est reçu deux fois
-    Alors seul le premier doit être appliqué
-    Et le doublon doit être ignoré silencieusement
-    Et l'intégrité doit être préservée
+  Scenario: Event deduplication
+    When the same event is received twice
+    Then only the first should be applied
+    And the duplicate should be ignored silently
+    And integrity should be preserved
 
   @core
-  Scénario: Déduplication persistante après redémarrage
-    Quand un événement idempotent est appliqué avant et après redémarrage du moteur
-    Alors le moteur doit rejeter le doublon après redémarrage
+  Scenario: Persistent deduplication after restart
+    When an idempotent event is applied before and after engine restart
+    Then the engine should reject the duplicate after restart
 
   @advanced @multifile
-  Scénario: Routage multi-fichiers par agrégat
-    Quand je persiste des événements sur plusieurs agrégats dans un event store multi-fichiers
-    Alors les événements doivent être répartis par agrégat dans des fichiers distincts
-    Et chaque fichier d'agrégat ne doit contenir que les événements de cet agrégat
+  Scenario: Multi-file routing by aggregate
+    When I persist events on multiple aggregates in a multi-file event store
+    Then events should be distributed by aggregate into distinct files
+    And each aggregate file should contain only events for that aggregate
 
   @advanced @multifile @dedup
-  Scénario: Déduplication persistante en mode multi-fichiers
-    Quand un événement idempotent est appliqué avant et après redémarrage du moteur en mode multi-fichiers
-    Alors le moteur doit rejeter le doublon après redémarrage
-    Et le fichier de déduplication doit être global en mode multi-fichiers
+  Scenario: Persistent deduplication in multi-file mode
+    When an idempotent event is applied before and after engine restart in multi-file mode
+    Then the engine should reject the duplicate after restart
+    And the deduplication file should be global in multi-file mode
 
   @advanced @multifile @rotation
-  Scénario: Rotation des logs en mode multi-fichiers
-    Quand je génère suffisamment d'événements pour provoquer une rotation du log en mode multi-fichiers
-    Alors le log de l'agrégat de rotation doit être rotaté
-    Et les fichiers de log de cet agrégat doivent rester lisibles après rotation
+  Scenario: Log rotation in multi-file mode
+    When I generate enough events to trigger log rotation in multi-file mode
+    Then the rotation aggregate log should be rotated
+    And log files for that aggregate should remain readable after rotation
 
   @advanced @multifile @relations
-  Scénario: Relations dynamiques entre articles et utilisateurs en mode multi-fichiers
-    Quand je crée un utilisateur et un article liés en mode multi-fichiers
-    Alors les relations dynamiques doivent être reconstruites en mémoire à partir des événements multi-fichiers
-    Et les événements doivent être répartis par table de données et par table de relations
+  Scenario: Dynamic relations between articles and users in multi-file mode
+    When I create a linked user and article in multi-file mode
+    Then dynamic relations should be reconstructed in memory from multi-file events
+    And events should be distributed by data table and relation table
 
   @advanced @versioning
-  Scénario: Upcasting d'événements ArticleCreated versionnés
-    Quand je rejoue des événements ArticleCreated v1 et v2 via des désérialiseurs versionnés
-    Alors l'état des articles doit refléter le schéma courant (slug v2, slug absent en v1)
+  Scenario: Upcasting of versioned ArticleCreated events
+    When I replay ArticleCreated v1 and v2 events via versioned deserializers
+    Then article state should reflect current schema (slug v2, slug absent in v1)
 
   @core
-  Scénario: Récupération après corruption
-    Quand le fichier d'état est corrompu
-    Alors le système doit détecter la corruption
-    Et reconstruire depuis le dernier snapshot valide
-    Et continuer à fonctionner normalement
+  Scenario: Recovery after corruption
+    When the state file is corrupted
+    Then the system should detect corruption
+    And rebuild from last valid snapshot
+    And continue to function normally

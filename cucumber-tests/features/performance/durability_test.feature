@@ -1,77 +1,77 @@
-# Test de Durabilité Lithair
-# Vérifier que MaxDurability garantit ZÉRO perte de données
+# Lithair Durability Test
+# Verify that MaxDurability guarantees ZERO data loss
 
-Feature: Durabilité et Persistance des Données Lithair
-  En tant que développeur
-  Je veux vérifier que Lithair en mode MaxDurability
-  Garantit ZÉRO perte de données
+Feature: Durability and Data Persistence of Lithair
+  As a developer
+  I want to verify that Lithair in MaxDurability mode
+  Guarantees ZERO data loss
 
   Background:
-    Given la persistence est activée par défaut
+    Given persistence is enabled by default
 
-  # ==================== TEST DURABILITÉ ====================
+  # ==================== DURABILITY TEST ====================
 
-  Scenario: Mode MaxDurability - Garantie ZÉRO perte sur 1000 articles
-    Given un serveur Lithair sur le port 20100 avec persistence "/tmp/lithair-durability-test"
-    When je crée 1000 articles rapidement
-    And j'attends 3 secondes pour le flush
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 1000 événements "ArticleCreated"
-    And aucun événement ne doit être manquant
-    And le checksum des événements doit être valide
+  Scenario: MaxDurability mode - ZERO loss guarantee on 1000 articles
+    Given a Lithair server on port 20100 with persistence "/tmp/lithair-durability-test"
+    When I create 1000 articles quickly
+    And I wait 3 seconds for flush
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 1000 "ArticleCreated" events
+    And no event must be missing
+    And the event checksum must be valid
 
-  Scenario: Vérification performance avec MaxDurability
-    Given un serveur Lithair sur le port 20101 avec persistence "/tmp/lithair-perf-durable"
-    When je mesure le temps pour créer 500 articles
-    And j'attends 2 secondes pour le flush
-    Then le temps total doit être inférieur à 5 secondes
-    And tous les 500 événements doivent être persistés
-    And le fichier events.raftlog doit exister
+  Scenario: Performance verification with MaxDurability
+    Given a Lithair server on port 20101 with persistence "/tmp/lithair-perf-durable"
+    When I measure the time to create 500 articles
+    And I wait 2 seconds for flush
+    Then the total time must be less than 5 seconds
+    And all 500 events must be persisted
+    And the events.raftlog file must exist
 
-  Scenario: Cohérence Mémoire vs Disque avec MaxDurability
-    Given un serveur Lithair sur le port 20102 avec persistence "/tmp/lithair-consistency"
-    When je crée 100 articles rapidement
-    And j'attends 2 secondes pour le flush
-    Then le nombre d'articles en mémoire doit égaler le nombre sur disque
-    And tous les checksums doivent correspondre
+  Scenario: Memory vs Disk consistency with MaxDurability
+    Given a Lithair server on port 20102 with persistence "/tmp/lithair-consistency"
+    When I create 100 articles quickly
+    And I wait 2 seconds for flush
+    Then the number of articles in memory must equal the number on disk
+    And all checksums must match
 
-  Scenario: CRUD complet avec vérification durabilité
-    Given un serveur Lithair sur le port 20103 avec persistence "/tmp/lithair-crud-durable"
-    When je crée 50 articles rapidement
-    And je modifie 25 articles existants
-    And je supprime 10 articles
-    And j'attends 3 secondes pour le flush
-    Then le fichier events.raftlog doit contenir exactement 50 événements "ArticleCreated"
-    And le fichier events.raftlog doit contenir exactement 25 événements "ArticleUpdated"
-    And le fichier events.raftlog doit contenir exactement 10 événements "ArticleDeleted"
-    And l'état final doit avoir 40 articles actifs
+  Scenario: Complete CRUD with durability verification
+    Given a Lithair server on port 20103 with persistence "/tmp/lithair-crud-durable"
+    When I create 50 articles quickly
+    And I modify 25 existing articles
+    And I delete 10 articles
+    And I wait 3 seconds for flush
+    Then the events.raftlog file must contain exactly 50 "ArticleCreated" events
+    And the events.raftlog file must contain exactly 25 "ArticleUpdated" events
+    And the events.raftlog file must contain exactly 10 "ArticleDeleted" events
+    And the final state must have 40 active articles
 
-  # ==================== TEST FSYNC CRITIQUE ====================
+  # ==================== CRITICAL FSYNC TEST ====================
 
   @critical @fsync
-  Scenario: Fsync garantit la persistance immédiate sur disque
-    # Ce test vérifie que fsync écrit vraiment les données sur le disque physique
-    # et non pas seulement dans le buffer de l'OS
-    Given un serveur Lithair sur le port 20104 avec persistence "/tmp/lithair-fsync-test"
-    And le mode MaxDurability est activé avec fsync
-    When je crée 100 articles critiques
-    And je force un flush avec fsync immédiat
-    Then les 100 articles doivent être lisibles depuis le fichier immédiatement
-    And le fichier ne doit pas être vide
-    # Simuler un "crash" en lisant directement le fichier sans passer par le cache
-    When je lis le fichier directement avec O_DIRECT si disponible
-    Then les données doivent être présentes sur le disque physique
+  Scenario: Fsync guarantees immediate persistence to disk
+    # This test verifies that fsync actually writes data to physical disk
+    # and not just to the OS buffer
+    Given a Lithair server on port 20104 with persistence "/tmp/lithair-fsync-test"
+    And MaxDurability mode is enabled with fsync
+    When I create 100 critical articles
+    And I force an immediate flush with fsync
+    Then the 100 articles must be readable from the file immediately
+    And the file must not be empty
+    # Simulate a "crash" by reading the file directly without cache
+    When I read the file directly with O_DIRECT if available
+    Then the data must be present on the physical disk
 
   @critical @crash-recovery
-  Scenario: Recovery après crash brutal avec MaxDurability
-    # Vérifie qu'après un crash brutal (pas de shutdown propre), 
-    # les données flushées avec fsync sont récupérables
-    Given un serveur Lithair sur le port 20105 avec persistence "/tmp/lithair-crash-test"
-    And le mode MaxDurability est activé avec fsync
-    When je crée 500 articles critiques
-    And je force un flush avec fsync immédiat
-    And je simule un crash brutal du serveur sans shutdown
-    # Redémarrer et vérifier
-    When je redémarre le serveur depuis "/tmp/lithair-crash-test"
-    Then les 500 articles doivent être présents après recovery
-    And aucune donnée flushée ne doit être perdue
+  Scenario: Recovery after brutal crash with MaxDurability
+    # Verify that after a brutal crash (no clean shutdown),
+    # data flushed with fsync is recoverable
+    Given a Lithair server on port 20105 with persistence "/tmp/lithair-crash-test"
+    And MaxDurability mode is enabled with fsync
+    When I create 500 critical articles
+    And I force an immediate flush with fsync
+    And I simulate a brutal server crash without shutdown
+    # Restart and verify
+    When I restart the server from "/tmp/lithair-crash-test"
+    Then the 500 articles must be present after recovery
+    And no flushed data must be lost

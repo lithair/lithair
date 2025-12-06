@@ -140,6 +140,11 @@ where
         Ok(handler)
     }
 
+    /// Get a reference to the event store for chain verification
+    pub fn get_event_store(&self) -> &Arc<tokio::sync::RwLock<EventStore>> {
+        &self.event_store
+    }
+
     /// Create a new DeclarativeHttpHandler with automatic event replay
     /// 
     /// This is a convenience method that creates the handler and automatically
@@ -938,6 +943,9 @@ where
             timestamp: chrono::Utc::now().timestamp() as u64,
             payload: serde_json::to_string(item)?,
             aggregate_id: Some(item.get_primary_key()),
+            // Hash chain fields - computed automatically by EventStore when enabled
+            event_hash: None,
+            previous_hash: None,
         };
 
         let mut event_store = self.event_store.write().await;
@@ -1163,6 +1171,9 @@ where
             payload: serde_json::to_string(&item)
                 .map_err(|e| format!("Failed to serialize: {}", e))?,
             aggregate_id: Some(id.to_string()),
+            // Hash chain fields - computed automatically by EventStore when enabled
+            event_hash: None,
+            previous_hash: None,
         };
 
         {

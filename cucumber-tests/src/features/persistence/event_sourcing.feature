@@ -1,40 +1,39 @@
-# language: fr
-Fonctionnalité: Event Sourcing et Persistance
-  En tant que développeur d'applications critiques
-  Je veux que Lithair garantisse l'intégrité des données
-  Afin de pouvoir reconstruire l'état à tout moment
+Feature: Event Sourcing and Persistence
+  As a critical application developer
+  I want Lithair to guarantee data integrity
+  In order to be able to reconstruct state at any time
 
-  Contexte:
-    Soit un moteur Lithair avec event sourcing activé
-    Et que les événements soient persistés dans "events.raftlog"
-    Et que les snapshots soient créés périodiquement
+  Background:
+    Given a Lithair engine with event sourcing enabled
+    And events are persisted in "events.raftlog"
+    And snapshots are created periodically
 
-  Scénario: Persistance des événements
-    Quand j'effectue une opération CRUD
-    Alors un événement doit être créé et persisté
-    Et l'événement doit contenir toutes les métadonnées
-    Et le fichier de log doit être mis à jour atomiquement
+  Scenario: Event persistence
+    When I perform a CRUD operation
+    Then an event must be created and persisted
+    And the event must contain all metadata
+    And the log file must be updated atomically
 
-  Scénario: Reconstruction de l'état
-    Quand je redémarre le serveur
-    Alors tous les événements doivent être rejoués
-    Et l'état doit être identique à avant le redémarrage
-    Et la reconstruction doit prendre moins de 5 secondes
+  Scenario: State reconstruction
+    When I restart the server
+    Then all events must be replayed
+    And the state must be identical to before restart
+    And reconstruction must take less than 5 seconds
 
-  Scénario: Snapshots optimisés
-    Quand 1000 événements ont été créés
-    Alors un snapshot doit être généré automatiquement
-    Et le snapshot doit compresser l'état actuel
-    Et les anciens événements doivent être archivés
+  Scenario: Optimized snapshots
+    When 1000 events have been created
+    Then a snapshot must be generated automatically
+    And the snapshot must compress the current state
+    And old events must be archived
 
-  Scénario: Déduplication des événements
-    Quand le même événement est reçu deux fois
-    Alors seul le premier doit être appliqué
-    Et le doublon doit être ignoré silencieusement
-    Et l'intégrité doit être préservée
+  Scenario: Event deduplication
+    When the same event is received twice
+    Then only the first must be applied
+    And the duplicate must be ignored silently
+    And integrity must be preserved
 
-  Scénario: Récupération après corruption
-    Quand le fichier d'état est corrompu
-    Alors le système doit détecter la corruption
-    Et reconstruire depuis le dernier snapshot valide
-    Et continuer à fonctionner normalement
+  Scenario: Recovery after corruption
+    When the state file is corrupted
+    Then the system must detect the corruption
+    And rebuild from the last valid snapshot
+    And continue to function normally

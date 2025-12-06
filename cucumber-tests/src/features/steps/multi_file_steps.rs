@@ -70,6 +70,8 @@ async fn when_create_events_with_aggregate(
                 })
                 .to_string(),
                 aggregate_id: Some(aggregate_id.clone()),
+                event_hash: None,
+                previous_hash: None,
             };
 
             store.append_envelope(&envelope).expect("Failed to append envelope");
@@ -109,6 +111,8 @@ async fn when_create_events_without_aggregate(world: &mut LithairWorld, count: u
                 })
                 .to_string(),
                 aggregate_id: None, // Global!
+                event_hash: None,
+                previous_hash: None,
             };
 
             store.append_envelope(&envelope).expect("Failed to append envelope");
@@ -535,6 +539,8 @@ async fn when_measure_distributed_creation(
                     })
                     .to_string(),
                     aggregate_id: Some(aggregate_id.clone()),
+                    event_hash: None,
+                    previous_hash: None,
                 };
 
                 store.append_envelope(&envelope).expect("Failed to append");
@@ -676,6 +682,8 @@ async fn when_launch_concurrent_tasks(
                     })
                     .to_string(),
                     aggregate_id: Some(aggregate_id.clone()),
+                    event_hash: None,
+                    previous_hash: None,
                 };
 
                 store.append_envelope(&envelope).expect("Failed to append");

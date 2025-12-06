@@ -32,6 +32,8 @@ async fn when_create_events_with_throughput(
                 })
                 .to_string(),
                 aggregate_id: Some(aggregate_id.clone()),
+                event_hash: None,
+                previous_hash: None,
             };
 
             store.append_envelope(&envelope).expect("Failed to append envelope");
@@ -95,6 +97,8 @@ async fn when_create_events_by_batch(
                     })
                     .to_string(),
                     aggregate_id: Some(aggregate_id.clone()),
+                    event_hash: None,
+                    previous_hash: None,
                 };
 
                 store.append_envelope(&envelope).expect("Failed to append envelope");
@@ -162,6 +166,8 @@ async fn when_create_distributed_events(
                     })
                     .to_string(),
                     aggregate_id: Some(aggregate_id.clone()),
+                    event_hash: None,
+                    previous_hash: None,
                 };
 
                 store.append_envelope(&envelope).expect("Failed to append envelope");

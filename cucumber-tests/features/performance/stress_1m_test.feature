@@ -1,119 +1,119 @@
-# Test de Stress 1 Million d'Articles - Lithair
-# Vérification performance + cohérence + durabilité à grande échelle
+# Stress Test 1 Million Articles - Lithair
+# Performance + consistency + durability verification at large scale
 
-Feature: STRESS TEST 1M - CRUD Mixte avec Vérification Intégrité
-  En tant que développeur
-  Je veux vérifier que Lithair peut gérer 1 million d'articles
-  Avec des opérations CRUD mixtes et garantir l'intégrité des données
+Feature: STRESS TEST 1M - Mixed CRUD with Integrity Verification
+  As a developer
+  I want to verify that Lithair can handle 1 million articles
+  With mixed CRUD operations and guarantee data integrity
 
   Background:
-    Given la persistence est activée par défaut
+    Given persistence is enabled by default
 
-  # ==================== VALIDATION RAPIDE ====================
+  # ==================== QUICK VALIDATION ====================
 
-  Scenario: 10K articles - Validation rapide de l'architecture
-    Given un serveur Lithair sur le port 20200 avec persistence "/tmp/lithair-stress-10k"
+  Scenario: 10K articles - Quick architecture validation
+    Given a Lithair server on port 20200 with persistence "/tmp/lithair-stress-10k"
 
-    # Phase 1 : Création
-    When je crée 10000 articles rapidement
-    Then je mesure le throughput de création
+    # Phase 1: Creation
+    When I create 10000 articles quickly
+    Then I measure the creation throughput
 
-    # Phase 2 : Modifications
-    When je modifie 2000 articles existants
-    Then je mesure le throughput de modification
+    # Phase 2: Modifications
+    When I modify 2000 existing articles
+    Then I measure the modification throughput
 
-    # Phase 3 : Suppressions
-    When je supprime 1000 articles
-    Then je mesure le throughput de suppression
+    # Phase 3: Deletions
+    When I delete 1000 articles
+    Then I measure the deletion throughput
 
-    # Phase 4 : Attente flush
-    And j'attends 3 secondes pour le flush
+    # Phase 4: Wait for flush
+    And I wait 3 seconds for flush
 
-    # Phase 5 : Vérifications
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 10000 événements "ArticleCreated"
-    And le fichier events.raftlog doit contenir exactement 2000 événements "ArticleUpdated"
-    And le fichier events.raftlog doit contenir exactement 1000 événements "ArticleDeleted"
-    And l'état final doit avoir 9000 articles actifs
-    And le nombre d'articles en mémoire doit égaler le nombre sur disque
+    # Phase 5: Verifications
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 10000 "ArticleCreated" events
+    And the events.raftlog file must contain exactly 2000 "ArticleUpdated" events
+    And the events.raftlog file must contain exactly 1000 "ArticleDeleted" events
+    And the final state must have 9000 active articles
+    And the number of articles in memory must equal the number on disk
 
-    # Phase 6 : Métriques
-    And j'arrête le serveur proprement
-    And j'affiche les statistiques finales
+    # Phase 6: Metrics
+    And I stop the server cleanly
+    And I display the final statistics
 
-  # ==================== STRESS TEST ULTIME ====================
+  # ==================== ULTIMATE STRESS TEST ====================
 
-  Scenario: 1 MILLION d'articles - CRUD mixte avec vérification complète
-    Given un serveur Lithair sur le port 20200 avec persistence "/tmp/lithair-stress-1m"
+  Scenario: 1 MILLION articles - Mixed CRUD with complete verification
+    Given a Lithair server on port 20200 with persistence "/tmp/lithair-stress-1m"
 
-    # Phase 1 : Création massive
-    When je crée 1000000 articles rapidement
-    Then je mesure le throughput de création
+    # Phase 1: Massive creation
+    When I create 1000000 articles quickly
+    Then I measure the creation throughput
 
-    # Phase 2 : Modifications sur un sous-ensemble
-    When je modifie 200000 articles existants
-    Then je mesure le throughput de modification
+    # Phase 2: Modifications on subset
+    When I modify 200000 existing articles
+    Then I measure the modification throughput
 
-    # Phase 3 : Suppressions sur un sous-ensemble
-    When je supprime 100000 articles
-    Then je mesure le throughput de suppression
+    # Phase 3: Deletions on subset
+    When I delete 100000 articles
+    Then I measure the deletion throughput
 
-    # Phase 4 : Attente flush complet
-    And j'attends 5 secondes pour le flush
+    # Phase 4: Wait for complete flush
+    And I wait 5 seconds for flush
 
-    # Phase 5 : Vérifications d'intégrité
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 1000000 événements "ArticleCreated"
-    And le fichier events.raftlog doit contenir exactement 200000 événements "ArticleUpdated"
-    And le fichier events.raftlog doit contenir exactement 100000 événements "ArticleDeleted"
-    And l'état final doit avoir 900000 articles actifs
-    And tous les événements doivent être dans l'ordre chronologique
-    And le nombre d'articles en mémoire doit égaler le nombre sur disque
-    And tous les checksums doivent correspondre
+    # Phase 5: Integrity verifications
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 1000000 "ArticleCreated" events
+    And the events.raftlog file must contain exactly 200000 "ArticleUpdated" events
+    And the events.raftlog file must contain exactly 100000 "ArticleDeleted" events
+    And the final state must have 900000 active articles
+    And all events must be in chronological order
+    And the number of articles in memory must equal the number on disk
+    And all checksums must match
 
-    # Phase 6 : Métriques finales
-    And j'arrête le serveur proprement
-    And j'affiche les statistiques finales
+    # Phase 6: Final metrics
+    And I stop the server cleanly
+    And I display the final statistics
 
-  # ==================== TEST PERFORMANCE PURE ====================
+  # ==================== PURE PERFORMANCE TEST ====================
 
-  Scenario: 500K articles - Performance maximale en mode Performance
-    Given un serveur Lithair sur le port 20201 avec persistence "/tmp/lithair-perf-500k"
-    And le mode de durabilité est "Performance"
+  Scenario: 500K articles - Maximum performance in Performance mode
+    Given a Lithair server on port 20201 with persistence "/tmp/lithair-perf-500k"
+    And the durability mode is "Performance"
 
-    When je crée 500000 articles rapidement
-    Then le throughput doit être supérieur à 20000 articles/sec
-    And le temps total doit être inférieur à 30 secondes
+    When I create 500000 articles quickly
+    Then the throughput must be greater than 20000 articles/sec
+    And the total time must be less than 30 seconds
 
-    When je supprime 100000 articles
-    Then le throughput de suppression doit être supérieur à 15000 articles/sec
+    When I delete 100000 articles
+    Then the deletion throughput must be greater than 15000 articles/sec
 
-  # ==================== TEST COHÉRENCE SOUS CHARGE ====================
+  # ==================== CONSISTENCY UNDER LOAD TEST ====================
 
-  Scenario: 100K articles - Cohérence garantie avec MaxDurability
-    Given un serveur Lithair sur le port 20202 avec persistence "/tmp/lithair-coherence-100k"
-    And le mode de durabilité est "MaxDurability"
+  Scenario: 100K articles - Guaranteed consistency with MaxDurability
+    Given a Lithair server on port 20202 with persistence "/tmp/lithair-coherence-100k"
+    And the durability mode is "MaxDurability"
 
-    When je crée 100000 articles rapidement
-    And je modifie 50000 articles existants
-    And je supprime 25000 articles
-    And j'attends 3 secondes pour le flush
+    When I create 100000 articles quickly
+    And I modify 50000 existing articles
+    And I delete 25000 articles
+    And I wait 3 seconds for flush
 
-    Then l'état final doit avoir 75000 articles actifs
-    And le fichier events.raftlog doit contenir exactement 100000 événements "ArticleCreated"
-    And le fichier events.raftlog doit contenir exactement 50000 événements "ArticleUpdated"
-    And le fichier events.raftlog doit contenir exactement 25000 événements "ArticleDeleted"
-    And le nombre d'articles en mémoire doit égaler le nombre sur disque
-    And aucun événement ne doit être manquant
+    Then the final state must have 75000 active articles
+    And the events.raftlog file must contain exactly 100000 "ArticleCreated" events
+    And the events.raftlog file must contain exactly 50000 "ArticleUpdated" events
+    And the events.raftlog file must contain exactly 25000 "ArticleDeleted" events
+    And the number of articles in memory must equal the number on disk
+    And no event must be missing
 
-  # ==================== TEST RÉSILIENCE ====================
+  # ==================== RESILIENCE TEST ====================
 
-  Scenario: Résilience - 10K opérations mixtes aléatoires
-    Given un serveur Lithair sur le port 20203 avec persistence "/tmp/lithair-resilience"
+  Scenario: Resilience - 10K random mixed operations
+    Given a Lithair server on port 20203 with persistence "/tmp/lithair-resilience"
 
-    When je lance 10000 opérations CRUD aléatoires
-    And j'attends 2 secondes pour le flush
+    When I run 10000 random CRUD operations
+    And I wait 2 seconds for flush
 
-    Then tous les événements doivent être persistés
-    And le nombre d'articles en mémoire doit égaler le nombre sur disque
-    And la cohérence des données doit être validée
+    Then all events must be persisted
+    And the number of articles in memory must equal the number on disk
+    And data consistency must be validated

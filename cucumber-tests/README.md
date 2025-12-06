@@ -1,29 +1,29 @@
-# 🥒 Tests Cucumber pour Lithair
+# 🥒 Cucumber Tests for Lithair
 
-Suite de tests BDD (Behavior-Driven Development) complète pour le framework Lithair.
+Complete BDD (Behavior-Driven Development) test suite for the Lithair framework.
 
-## 🎯 Objectif
+## 🎯 Objective
 
-**Utiliser Cucumber comme pilier central** pour :
-- ✅ Tester toutes les fonctionnalités (features + bugs)
-- ✅ Documenter le comportement attendu (Gherkin lisible)
-- ✅ Valider l'intégration complète (vrais tests, pas des stubs)
-- ✅ Tracer les bugs découverts avec contexte technique
+**Use Cucumber as central pillar** for:
+- ✅ Testing all features (features + bugs)
+- ✅ Documenting expected behavior (readable Gherkin)
+- ✅ Validating complete integration (real tests, not stubs)
+- ✅ Tracking discovered bugs with technical context
 
 ## 📁 Structure
 
 ```
 cucumber-tests/
-├── features/                   # Spécifications Gherkin (.feature)
-│   ├── basic.feature          # Tests de base
-│   ├── core/                  # Fonctionnalités core
-│   ├── persistence/           # Persistance & event sourcing
-│   ├── integration/           # Intégrations (sessions, web, models)
-│   └── observability/         # Monitoring, logs, métriques
+├── features/                   # Gherkin specifications (.feature)
+│   ├── basic.feature          # Basic tests
+│   ├── core/                  # Core framework features
+│   ├── persistence/           # Persistence & event sourcing
+│   ├── integration/           # Integrations (sessions, web, models)
+│   └── observability/         # Monitoring, logs, metrics
 │
 ├── src/features/
-│   ├── world.rs              # LithairWorld (état partagé + moteur réel)
-│   └── steps/                # Implémentations des steps
+│   ├── world.rs              # LithairWorld (shared state + real engine)
+│   └── steps/                # Step implementations
 │       ├── basic_steps.rs
 │       ├── advanced_persistence_steps.rs
 │       ├── distribution_steps.rs
@@ -31,33 +31,33 @@ cucumber-tests/
 │       └── ...
 │
 ├── tests/
-│   └── cucumber_tests.rs     # Runner principal
+│   └── cucumber_tests.rs     # Main runner
 │
-├── TESTING_STACK.md          # 📊 Documentation technique complète
-├── BUG_REPORTS.md            # 🐛 Historique des bugs découverts
-└── README.md                 # 📖 Ce fichier
+├── TESTING_STACK.md          # 📊 Complete technical documentation
+├── BUG_REPORTS.md            # 🐛 History of discovered bugs
+└── README.md                 # 📖 This file
 ```
 
 ## 🚀 Quick Start
 
-### Lancer tous les tests
+### Run all tests
 
 ```bash
 cd cucumber-tests
 cargo test --test cucumber_tests
 ```
 
-### Lancer un feature spécifique
+### Run a specific feature
 
 ```bash
-# Uniquement la persistance avancée
+# Only advanced persistence
 cargo test --test cucumber_tests -- features/persistence/advanced_persistence.feature
 
-# Uniquement le basic
+# Only basic
 cargo test --test cucumber_tests -- features/basic.feature
 ```
 
-### Activer les logs détaillés
+### Enable detailed logs
 
 ```bash
 export RUST_LOG=debug
@@ -65,248 +65,247 @@ export RS_OPT_PERSIST=1
 cargo test --test cucumber_tests
 ```
 
-## 📝 Workflow : Ajouter un nouveau test
+## 📝 Workflow: Add a new test
 
-### 1. Créer la feature Gherkin
+### 1. Create the Gherkin feature
 
-`features/mon_module/nouvelle_feature.feature` :
+`features/my_module/new_feature.feature`:
 
 ```gherkin
-# language: fr
-# Stack: Lithair Core + MonModule v1.0
-# Bugs connus: Aucun
+# Stack: Lithair Core + MyModule v1.0
+# Known bugs: None
 
-Fonctionnalité: Ma Nouvelle Feature
-  En tant que développeur
-  Je veux tester MonModule
-  Afin de garantir son bon fonctionnement
+Feature: My New Feature
+  As a developer
+  I want to test MyModule
+  In order to ensure it works correctly
 
-  Contexte:
-    Soit un serveur Lithair avec MonModule activé
+  Background:
+    Given a Lithair server with MyModule enabled
 
-  @critical @mon_module
-  Scénario: Cas nominal
-    Quand j'effectue l'action X
-    Alors le résultat doit être Y
-    Et l'état doit être cohérent
+  @critical @my_module
+  Scenario: Nominal case
+    When I perform action X
+    Then the result should be Y
+    And state should be consistent
 ```
 
-### 2. Créer les steps
+### 2. Create the steps
 
-`src/features/steps/mon_module_steps.rs` :
+`src/features/steps/my_module_steps.rs`:
 
 ```rust
 use cucumber::{given, when, then};
 use crate::features::world::LithairWorld;
 
-/// Initialise MonModule pour les tests
-/// 
-/// # Stack Technique
-/// - Utilise MonModule::new() avec config test
-/// - Crée répertoire temporaire pour données
-/// 
-/// # Performances
-/// - Temps: ~100ms
-#[given(expr = "un serveur Lithair avec MonModule activé")]
-async fn given_mon_module_enabled(world: &mut LithairWorld) {
-    // Vraie initialisation, pas un stub !
+/// Initialize MyModule for tests
+///
+/// # Technical Stack
+/// - Uses MyModule::new() with test config
+/// - Creates temporary directory for data
+///
+/// # Performance
+/// - Time: ~100ms
+#[given(expr = "a Lithair server with MyModule enabled")]
+async fn given_my_module_enabled(world: &mut LithairWorld) {
+    // Real initialization, not a stub!
     let temp_path = world.init_temp_storage().await
         .expect("Init storage failed");
-    
-    // TODO: Initialiser MonModule ici
-    
-    println!("✅ MonModule activé: {:?}", temp_path);
+
+    // TODO: Initialize MyModule here
+
+    println!("✅ MyModule enabled: {:?}", temp_path);
 }
 
-#[when(expr = "j'effectue l'action X")]
+#[when(expr = "I perform action X")]
 async fn when_action_x(world: &mut LithairWorld) {
-    // VRAI TEST: Appeler MonModule
-    // let result = world.mon_module.do_action_x().await?;
-    
-    println!("🔧 Action X effectuée");
+    // REAL TEST: Call MyModule
+    // let result = world.my_module.do_action_x().await?;
+
+    println!("🔧 Action X performed");
 }
 
-#[then(expr = "le résultat doit être Y")]
+#[then(expr = "the result should be Y")]
 async fn then_result_is_y(world: &mut LithairWorld) {
-    // VRAIE ASSERTION
-    // let actual = world.mon_module.get_result();
-    // assert_eq!(actual, "Y", "Résultat incorrect");
-    
-    println!("✅ Résultat validé: Y");
+    // REAL ASSERTION
+    // let actual = world.my_module.get_result();
+    // assert_eq!(actual, "Y", "Incorrect result");
+
+    println!("✅ Result validated: Y");
 }
 
-#[then(expr = "l'état doit être cohérent")]
+#[then(expr = "state should be consistent")]
 async fn then_state_consistent(world: &mut LithairWorld) {
-    // VRAIE VÉRIFICATION
+    // REAL VERIFICATION
     let checksum = world.compute_memory_checksum().await;
-    println!("✅ État cohérent (checksum: 0x{:08x})", checksum);
+    println!("✅ Consistent state (checksum: 0x{:08x})", checksum);
 }
 ```
 
-### 3. Enregistrer le module
+### 3. Register the module
 
-`src/features/steps/mod.rs` :
+`src/features/steps/mod.rs`:
 
 ```rust
-pub mod mon_module_steps;
+pub mod my_module_steps;
 ```
 
-### 4. Lancer les tests
+### 4. Run the tests
 
 ```bash
 cargo test --test cucumber_tests
 ```
 
-## 🐛 Documenter un bug découvert
+## 🐛 Document a discovered bug
 
-### Quand un test échoue
+### When a test fails
 
-1. **Identifier** le scénario qui échoue
-2. **Reproduire** manuellement
-3. **Documenter** dans `BUG_REPORTS.md` :
+1. **Identify** the failing scenario
+2. **Reproduce** manually
+3. **Document** in `BUG_REPORTS.md`:
 
 ```markdown
-## 🐛 Bug #XXX : Titre descriptif
+## 🐛 Bug #XXX: Descriptive title
 
-**Status:** 🔴 CRITIQUE  
-**Découvert par:** `feature.feature:42` - Nom du scénario  
-**Date:** 2024-11-11  
-**Reproductible:** ✅ Oui
+**Status:** 🔴 CRITICAL
+**Discovered by:** `feature.feature:42` - Scenario name
+**Date:** 2024-11-11
+**Reproducible:** ✅ Yes
 
-### Symptôme
+### Symptom
 ...
 
-### Stack Technique Impliquée
+### Technical Stack Involved
 ...
 
-### Cause Racine
+### Root Cause
 \`\`\`rust
-// Code buggé
+// Buggy code
 \`\`\`
 
-### Fix Appliqué
+### Applied Fix
 \`\`\`rust
-// Code corrigé
+// Fixed code
 \`\`\`
 ```
 
-4. **Ajouter un test de régression** dans les steps
-5. **Référencer** le bug dans la feature Gherkin :
+4. **Add a regression test** in the steps
+5. **Reference** the bug in the Gherkin feature:
 
 ```gherkin
-Scénario: Test de régression Bug #XXX
+Scenario: Regression test Bug #XXX
   # BUG #XXX: Description
   # FIX: Commit hash
-  Quand ...
-  Alors ...
+  When ...
+  Then ...
 ```
 
-## 📊 Consulter la stack technique
+## 📊 Consult the technical stack
 
-### Documentation complète
+### Complete documentation
 
-Voir [`TESTING_STACK.md`](./TESTING_STACK.md) pour :
-- Architecture des tests
-- Composants Lithair testés
-- Dépendances et versions
-- Métriques de couverture
-- Guide de debugging
+See [`TESTING_STACK.md`](./TESTING_STACK.md) for:
+- Test architecture
+- Tested Lithair components
+- Dependencies and versions
+- Coverage metrics
+- Debugging guide
 
-### Historique des bugs
+### Bug history
 
-Voir [`BUG_REPORTS.md`](./BUG_REPORTS.md) pour :
-- Tous les bugs découverts
-- Contexte technique complet
-- Fixes appliqués
-- Tests de régression
+See [`BUG_REPORTS.md`](./BUG_REPORTS.md) for:
+- All discovered bugs
+- Complete technical context
+- Applied fixes
+- Regression tests
 
 ## 🔍 Debugging
 
-### Test spécifique qui échoue
+### Specific failing test
 
 ```bash
-# Voir le détail complet
-RUST_LOG=trace cargo test --test cucumber_tests -- features/mon_feature.feature
+# See complete details
+RUST_LOG=trace cargo test --test cucumber_tests -- features/my_feature.feature
 
-# Garder les fichiers temporaires
+# Keep temporary files
 export LITHAIR_KEEP_TEMP=1
 cargo test --test cucumber_tests
 
-# Inspecter les fichiers après
+# Inspect files after
 ls -la /tmp/lithair-test-*/
 cat /tmp/lithair-test-*/events.raftlog | jq .
 ```
 
-### Ajouter un step de debug
+### Add a debug step
 
 ```rust
-#[then(expr = "je debug l'état complet")]
+#[then(expr = "I debug the full state")]
 async fn debug_full_state(world: &mut LithairWorld) {
     let articles = world.get_articles().await;
     let checksum = world.compute_memory_checksum().await;
-    
+
     eprintln!("🐛 DEBUG STATE:");
     eprintln!("  Articles count: {}", articles.len());
     eprintln!("  Articles: {:#?}", articles);
     eprintln!("  Checksum: 0x{:08x}", checksum);
-    
+
     // Dump files
     if let Some(dir) = world.temp_dir.lock().await.as_ref() {
         eprintln!("  Temp dir: {:?}", dir.path());
         for entry in std::fs::read_dir(dir.path()).unwrap() {
             let entry = entry.unwrap();
-            eprintln!("    - {:?} ({} bytes)", 
-                entry.file_name(), 
+            eprintln!("    - {:?} ({} bytes)",
+                entry.file_name(),
                 entry.metadata().unwrap().len());
         }
     }
 }
 ```
 
-## 📈 Métriques & Rapports
+## 📈 Metrics & Reports
 
-### Générer un rapport HTML
+### Generate HTML report
 
 ```bash
-# TODO: À implémenter avec cucumber-html-formatter
+# TODO: To implement with cucumber-html-formatter
 cargo test --test cucumber_tests -- --format json > report.json
 ```
 
-### Statistiques de couverture
+### Coverage statistics
 
-Voir [`TESTING_STACK.md`](./TESTING_STACK.md#métriques-de-test) pour :
-- Couverture par composant
-- Temps d'exécution
-- Taux de réussite
+See [`TESTING_STACK.md`](./TESTING_STACK.md#test-metrics) for:
+- Coverage per component
+- Execution time
+- Success rate
 
-## 🎯 Bonnes Pratiques
+## 🎯 Best Practices
 
 ### ✅ DO
 
-- **Écrire des vrais tests** avec assertions réelles
-- **Documenter la stack** technique dans les commentaires
-- **Tracer les bugs** dans BUG_REPORTS.md
-- **Ajouter tests de régression** pour chaque bug
-- **Utiliser TempDir** pour isolation des tests
-- **Calculer checksums** pour vérifier intégrité
+- **Write real tests** with actual assertions
+- **Document the stack** in comments
+- **Track bugs** in BUG_REPORTS.md
+- **Add regression tests** for each bug
+- **Use TempDir** for test isolation
+- **Calculate checksums** to verify integrity
 
 ### ❌ DON'T
 
-- **Pas de `println!()` seuls** sans assertions
-- **Pas de stubs vides** (toujours tester vraiment)
-- **Pas de fichiers hardcodés** (utiliser TempDir)
-- **Pas de tests dépendants** (isolation complète)
-- **Pas de secrets** dans les tests
+- **No `println!()` alone** without assertions
+- **No empty stubs** (always test for real)
+- **No hardcoded files** (use TempDir)
+- **No dependent tests** (complete isolation)
+- **No secrets** in tests
 
-## 🤝 Contribuer
+## 🤝 Contributing
 
-1. Créer une branche `feature/test-mon-module`
-2. Ajouter les `.feature` + steps
-3. Documenter dans TESTING_STACK.md si nouveau composant
-4. Valider que tous les tests passent
-5. Créer une PR avec description des tests ajoutés
+1. Create a branch `feature/test-my-module`
+2. Add the `.feature` files + steps
+3. Document in TESTING_STACK.md if new component
+4. Validate that all tests pass
+5. Create a PR with description of added tests
 
-## 📚 Ressources
+## 📚 Resources
 
 - **Cucumber Book:** <https://cucumber.io/docs/guides/>
 - **Lithair Docs:** `../docs/`
@@ -315,6 +314,6 @@ Voir [`TESTING_STACK.md`](./TESTING_STACK.md#métriques-de-test) pour :
 
 ---
 
-**Mainteneur:** Lithair Team  
-**Dernière mise à jour:** 2024-11-11  
-**Questions ?** Ouvrir une issue GitHub
+**Maintainer:** Lithair Team
+**Last update:** 2024-11-11
+**Questions?** Open a GitHub issue

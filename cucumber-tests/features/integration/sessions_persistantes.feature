@@ -1,50 +1,49 @@
-# language: fr
-Fonctionnalité: Sessions Persistantes Lithair
-  En tant qu'utilisateur d'une application web
-  Je veux que ma session reste active entre les redémarrages du serveur
-  Afin de ne pas avoir à me reconnecter constamment
+Feature: Lithair Persistent Sessions
+  As a web application user
+  I want my session to remain active between server restarts
+  In order not to have to reconnect constantly
 
-  Contexte:
-    Soit un serveur Lithair avec sessions persistantes activées
-    Et que le store de sessions soit configuré pour la persistance
-    Et que les cookies de session soient sécurisés
+  Background:
+    Given a Lithair server with persistent sessions enabled
+    And the session store is configured for persistence
+    And session cookies are secured
 
-  Scénario: Création et persistance d'une session
-    Quand un utilisateur se connecte avec des identifiants valides
-    Alors une session doit être créée avec un ID unique
-    Et la session doit être persistée dans le store
-    Et un cookie sécurisé doit être retourné
-    Et le cookie doit avoir les attributs HttpOnly, Secure, SameSite
+  Scenario: Session creation and persistence
+    When a user logs in with valid credentials
+    Then a session must be created with a unique ID
+    And the session must be persisted in the store
+    And a secure cookie must be returned
+    And the cookie must have HttpOnly, Secure, SameSite attributes
 
-  Scénario: Reconnexion automatique après redémarrage
-    Quand un utilisateur a une session active
-    Et que le serveur redémarre
-    Alors l'utilisateur doit rester connecté
-    Et sa session doit être rechargée depuis le store persistant
-    Et toutes les données de session doivent être intactes
+  Scenario: Automatic reconnection after restart
+    When a user has an active session
+    And the server restarts
+    Then the user must remain connected
+    And their session must be reloaded from the persistent store
+    And all session data must be intact
 
-  Scénario: Timeout de session inactivité
-    Quand un utilisateur est inactif pendant 30 minutes
-    Alors sa session doit expirer automatiquement
-    Et sa prochaine requête doit être traitée comme anonyme
-    Et les données de session doivent être nettoyées
+  Scenario: Session inactivity timeout
+    When a user is inactive for 30 minutes
+    Then their session must expire automatically
+    And their next request must be treated as anonymous
+    And session data must be cleaned up
 
-  Scénario: Gestion multi-utilisateurs simultanés
-    Quand 100 utilisateurs se connectent simultanément
-    Alors chaque utilisateur doit recevoir une session unique
-    Et les sessions ne doivent pas se confliter
-    Et le store doit gérer la concurrence sans corruption
+  Scenario: Multi-user simultaneous management
+    When 100 users connect simultaneously
+    Then each user must receive a unique session
+    And sessions must not conflict
+    And the store must handle concurrency without corruption
 
-  Scénario: Sécurité des sessions contre hijacking
-    Quand une session est créée pour une adresse IP
-    Et que la même session est utilisée depuis une autre IP
-    Alors la session doit être invalidée pour sécurité
-    Et l'utilisateur doit être déconnecté
-    Et un événement de sécurité doit être loggué
+  Scenario: Session security against hijacking
+    When a session is created for an IP address
+    And the same session is used from another IP
+    Then the session must be invalidated for security
+    And the user must be disconnected
+    And a security event must be logged
 
-  Scénario: Nettoyage des sessions expirées
-    Quand 1000 sessions expirent
-    Alors le processus de nettoyage doit s'exécuter
-    Et les sessions expirées doivent être supprimées du store
-    Et l'espace de stockage doit être libéré
-    Et les performances doivent rester stables
+  Scenario: Expired session cleanup
+    When 1000 sessions expire
+    Then the cleanup process must execute
+    And expired sessions must be removed from the store
+    And storage space must be freed
+    And performance must remain stable

@@ -1,48 +1,47 @@
-# language: fr
-Fonctionnalité: Observabilité et Monitoring
-  En tant qu'ingénieur DevOps
-  Je veux que Lithair expose des métriques détaillées
-  Afin de monitorer la santé et les performances du système
+Feature: Observability and Monitoring
+  As a DevOps engineer
+  I want Lithair to expose detailed metrics
+  In order to monitor system health and performance
 
-  Contexte:
-    Soit un serveur Lithair avec monitoring activé
-    Et que les endpoints Prometheus soient configurés
-    Et que les health checks soient implémentés
+  Background:
+    Given a Lithair server with monitoring enabled
+    And the Prometheus endpoints are configured
+    And the health checks are implemented
 
-  Scénario: Health checks complets
-    Quand j'appelle "/health"
-    Alors je dois recevoir le statut "UP" ou "DOWN"
-    Quand j'appelle "/ready"
-    Alors je dois savoir si le serveur est prêt pour le trafic
-    Quand j'appelle "/info"
-    Alors je dois recevoir la version et les informations système
+  Scenario: Complete health checks
+    When I call "/health"
+    Then I must receive status "UP" or "DOWN"
+    When I call "/ready"
+    Then I must know if the server is ready for traffic
+    When I call "/info"
+    Then I must receive the version and system information
 
-  Scénario: Métriques Prometheus
-    Quand j'appelle "/observe/metrics"
-    Alors je dois recevoir des métriques au format Prometheus
-    Et les métriques doivent inclure: requêtes/sec, latence, mémoire
-    Et les métriques doivent être étiquetées par endpoint et statut
+  Scenario: Prometheus metrics
+    When I call "/observe/metrics"
+    Then I must receive metrics in Prometheus format
+    And the metrics must include: requests/sec, latency, memory
+    And the metrics must be labeled by endpoint and status
 
-  Scénario: Performance profiling
-    Quand j'appelle "/observe/perf/cpu"
-    Alors je dois recevoir l'utilisation CPU actuelle
-    Quand j'appelle "/observe/perf/memory"
-    Alors je dois recevoir l'utilisation mémoire détaillée
-    Quand j'appelle "/observe/perf/latency"
-    Alors je dois recevoir les percentiles de latence
+  Scenario: Performance profiling
+    When I call "/observe/perf/cpu"
+    Then I must receive current CPU usage
+    When I call "/observe/perf/memory"
+    Then I must receive detailed memory usage
+    When I call "/observe/perf/latency"
+    Then I must receive latency percentiles
 
-  Scénario: Logging structuré
-    Quand une erreur se produit
-    Alors elle doit être logguée avec niveau ERROR
-    Et contenir timestamp, contexte et stack trace
-    Quand une requête est traitée
-    Alors elle doit être logguée avec niveau INFO
-    Et contenir méthode, URL, latence et statut
+  Scenario: Structured logging
+    When an error occurs
+    Then it must be logged with ERROR level
+    And contain timestamp, context and stack trace
+    When a request is processed
+    Then it must be logged with INFO level
+    And contain method, URL, latency and status
 
-  Scénario: Alertes automatiques
-    Quand la latence dépasse 100ms
-    Alors une alerte doit être générée
-    Quand la mémoire dépasse 80%
-    Alors une alerte critique doit être émise
-    Quand le taux d'erreur dépasse 5%
-    Alors une alerte doit être déclenchée
+  Scenario: Automatic alerts
+    When latency exceeds 100ms
+    Then an alert must be generated
+    When memory exceeds 80%
+    Then a critical alert must be issued
+    When error rate exceeds 5%
+    Then an alert must be triggered

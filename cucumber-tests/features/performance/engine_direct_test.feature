@@ -1,90 +1,90 @@
 @perf
-Feature: TEST DIRECT MOTEUR - Performance Pure Lithair
-  En tant que développeur
-  Je veux tester le moteur Lithair DIRECTEMENT
-  Sans overhead HTTP pour mesurer la vraie performance
+Feature: DIRECT ENGINE TEST - Pure Lithair Performance
+  As a developer
+  I want to test the Lithair engine DIRECTLY
+  Without HTTP overhead to measure true performance
 
   Background:
-    Given le moteur Lithair est initialisé en mode MaxDurability
+    Given the Lithair engine is initialized in MaxDurability mode
 
-  # ==================== TEST 10K - VALIDATION RAPIDE ====================
+  # ==================== 10K TEST - QUICK VALIDATION ====================
 
-  Scenario: 10K articles - Test direct du moteur
-    Given un moteur avec persistence dans "/tmp/lithair-engine-10k"
+  Scenario: 10K articles - Direct engine test
+    Given an engine with persistence in "/tmp/lithair-engine-10k"
 
-    # Phase 1 : Création
-    When je crée 10000 articles directement dans le moteur
-    Then le throughput de création doit être supérieur à 200000 articles/sec
+    # Phase 1: Creation
+    When I create 10000 articles directly in the engine
+    Then the creation throughput must be greater than 200000 articles/sec
 
-    # Phase 2 : Modifications
-    When je modifie 2000 articles directement dans le moteur
-    Then le throughput de modification doit être supérieur à 200000 articles/sec
+    # Phase 2: Modifications
+    When I modify 2000 articles directly in the engine
+    Then the modification throughput must be greater than 200000 articles/sec
 
-    # Phase 3 : Suppressions
-    When je supprime 1000 articles directement dans le moteur
-    Then le throughput de suppression doit être supérieur à 200000 articles/sec
+    # Phase 3: Deletions
+    When I delete 1000 articles directly in the engine
+    Then the deletion throughput must be greater than 200000 articles/sec
 
-    # Phase 4 : Flush et vérifications
-    And j'attends le flush complet du moteur
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 13000 événements
-    And le moteur doit avoir 9000 articles en mémoire
-    And tous les événements doivent être persistés
+    # Phase 4: Flush and verifications
+    And I wait for complete engine flush
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 13000 events
+    And the engine must have 9000 articles in memory
+    And all events must be persisted
 
-  # ==================== TEST 100K - MONTÉE EN CHARGE ====================
+  # ==================== 100K TEST - SCALE UP ====================
 
-  Scenario: 100K articles - Test direct montée en charge
-    Given un moteur avec persistence dans "/tmp/lithair-engine-100k"
+  Scenario: 100K articles - Direct scale up test
+    Given an engine with persistence in "/tmp/lithair-engine-100k"
 
-    When je crée 100000 articles directement dans le moteur
-    Then le throughput de création doit être supérieur à 200000 articles/sec
+    When I create 100000 articles directly in the engine
+    Then the creation throughput must be greater than 200000 articles/sec
 
-    When je modifie 20000 articles directement dans le moteur
-    Then le throughput de modification doit être supérieur à 200000 articles/sec
+    When I modify 20000 articles directly in the engine
+    Then the modification throughput must be greater than 200000 articles/sec
 
-    When je supprime 10000 articles directement dans le moteur
-    And j'attends le flush complet du moteur
+    When I delete 10000 articles directly in the engine
+    And I wait for complete engine flush
 
-    Then le fichier events.raftlog doit contenir exactement 130000 événements
-    And le moteur doit avoir 90000 articles en mémoire
+    Then the events.raftlog file must contain exactly 130000 events
+    And the engine must have 90000 articles in memory
 
-  # ==================== TEST 1M - STRESS ULTIME ====================
+  # ==================== 1M TEST - ULTIMATE STRESS ====================
 
   @stress
-  Scenario: 1 MILLION d'articles - Test direct stress ultime
-    Given un moteur avec persistence dans "/tmp/lithair-engine-1m"
+  Scenario: 1 MILLION articles - Ultimate direct stress test
+    Given an engine with persistence in "/tmp/lithair-engine-1m"
 
-    # Phase 1 : Création massive
-    When je crée 1000000 articles directement dans le moteur
-    Then le throughput de création doit être supérieur à 300000 articles/sec
-    And le temps de création doit être inférieur à 5 secondes
+    # Phase 1: Massive creation
+    When I create 1000000 articles directly in the engine
+    Then the creation throughput must be greater than 300000 articles/sec
+    And the creation time must be less than 5 seconds
 
-    # Phase 2 : Modifications
-    When je modifie 200000 articles directement dans le moteur
-    Then le throughput de modification doit être supérieur à 200000 articles/sec
+    # Phase 2: Modifications
+    When I modify 200000 articles directly in the engine
+    Then the modification throughput must be greater than 200000 articles/sec
 
-    # Phase 3 : Suppressions
-    When je supprime 100000 articles directement dans le moteur
-    Then le throughput de suppression doit être supérieur à 200000 articles/sec
+    # Phase 3: Deletions
+    When I delete 100000 articles directly in the engine
+    Then the deletion throughput must be greater than 200000 articles/sec
 
-    # Phase 4 : Vérifications complètes
-    And j'attends le flush complet du moteur
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 1300000 événements
-    And le moteur doit avoir 900000 articles en mémoire
-    And la taille du fichier events.raftlog doit être environ 85 MB
-    And tous les événements doivent être dans l'ordre chronologique
-    And aucun événement ne doit être manquant
+    # Phase 4: Complete verifications
+    And I wait for complete engine flush
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 1300000 events
+    And the engine must have 900000 articles in memory
+    And the events.raftlog file size must be approximately 85 MB
+    And all events must be in chronological order
+    And no event must be missing
 
-  # ==================== TEST COHÉRENCE ====================
+  # ==================== CONSISTENCY TEST ====================
 
-  Scenario: Vérification cohérence mémoire/disque avec 50K articles
-    Given un moteur avec persistence dans "/tmp/lithair-engine-coherence"
+  Scenario: Memory/disk consistency verification with 50K articles
+    Given an engine with persistence in "/tmp/lithair-engine-coherence"
 
-    When je crée 50000 articles directement dans le moteur
-    And je modifie 10000 articles directement dans le moteur
-    And je supprime 5000 articles directement dans le moteur
-    And j'attends le flush complet du moteur
+    When I create 50000 articles directly in the engine
+    And I modify 10000 articles directly in the engine
+    And I delete 5000 articles directly in the engine
+    And I wait for complete engine flush
 
-    Then le nombre d'articles en mémoire doit égaler le nombre reconstruit depuis le disque
-    And tous les checksums doivent correspondre entre mémoire et disque
+    Then the number of articles in memory must equal the number reconstructed from disk
+    And all checksums must match between memory and disk

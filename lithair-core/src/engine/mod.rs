@@ -24,7 +24,7 @@ pub mod snapshot;
 
 // Re-export types
 pub use async_writer::{AsyncWriter, DurabilityMode, WriteEvent};
-pub use events::{Event, EventStore, EventDeserializer};
+pub use events::{Event, EventStore, EventDeserializer, EventEnvelope, ChainVerificationResult, ChainError};
 pub use persistence::{DatabaseStats, FileStorage};
 pub use persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 pub use relations::{AutoJoiner, DataSource, RelationRegistry};

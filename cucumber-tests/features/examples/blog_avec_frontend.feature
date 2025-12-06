@@ -1,59 +1,59 @@
-Feature: Blog Lithair avec Frontend
+Feature: Lithair Blog with Frontend
 
-  # Configuration du serveur
+  # Server configuration
   Background:
-    Given un serveur Lithair avec les options:
-      | option              | valeur                    |
+    Given a Lithair server with options:
+      | option              | value                     |
       | port                | 0                         |
       | static_dir          | /tmp/blog-static          |
       | enable_sessions     | true                      |
       | session_store_path  | /tmp/blog-sessions        |
       | enable_admin        | true                      |
 
-  Scenario: Le frontend HTML est accessible
-    When je charge la page "/"
-    Then je dois voir du HTML
-    And le titre doit être "Mon Blog Lithair"
-    And le CSS doit être chargé
-    And le JavaScript doit être actif
+  Scenario: HTML frontend is accessible
+    When I load the page "/"
+    Then I should see HTML
+    And the title should be "My Lithair Blog"
+    And CSS should be loaded
+    And JavaScript should be active
 
-  Scenario: Créer un article via l'API
-    When je POST sur "/api/articles" avec:
+  Scenario: Create an article via the API
+    When I POST to "/api/articles" with:
       """json
       {
-        "title": "Premier Article",
-        "content": "Contenu de mon article",
+        "title": "First Article",
+        "content": "Content of my article",
         "author": "John Doe"
       }
       """
-    Then la réponse doit être 201 Created
-    And un ID unique doit être généré
-    And l'article doit être persisté dans events.raftlog
+    Then the response should be 201 Created
+    And a unique ID should be generated
+    And the article should be persisted in events.raftlog
 
-  Scenario: Le frontend affiche les articles
-    Given 3 articles créés via l'API
-    When je charge la page "/"
-    Then je dois voir 3 articles dans le DOM
-    And chaque article doit avoir un titre
-    And chaque article doit avoir un lien "Lire la suite"
+  Scenario: Frontend displays articles
+    Given 3 articles created via the API
+    When I load the page "/"
+    Then I should see 3 articles in the DOM
+    And each article should have a title
+    And each article should have a "Read more" link
 
-  Scenario: Session utilisateur
-    When je me connecte avec username "admin" et password "secret"
-    Then je dois recevoir un cookie de session
-    And le cookie doit être HttpOnly
-    When je charge "/admin/dashboard"
-    Then je dois voir le dashboard admin
-    And je ne dois PAS voir "Login"
+  Scenario: User session
+    When I log in with username "admin" and password "secret"
+    Then I should receive a session cookie
+    And the cookie should be HttpOnly
+    When I load "/admin/dashboard"
+    Then I should see the admin dashboard
+    And I should NOT see "Login"
 
-  Scenario: Frontend + Backend intégrés
-    When je charge la page "/"
-    And je clique sur "Créer un article" (JavaScript)
-    And je remplis le formulaire avec:
-      | champ   | valeur              |
-      | titre   | Article via Frontend|
-      | contenu | Contenu du frontend |
-    And je soumets le formulaire
-    Then une requête POST doit être envoyée à "/api/articles"
-    And l'article doit apparaître dans la liste
-    And l'article doit être en mémoire (StateEngine)
-    And l'article doit être sur disque (FileStorage)
+  Scenario: Frontend + Backend integrated
+    When I load the page "/"
+    And I click on "Create an article" (JavaScript)
+    And I fill the form with:
+      | field   | value               |
+      | title   | Article via Frontend|
+      | content | Frontend content    |
+    And I submit the form
+    Then a POST request should be sent to "/api/articles"
+    And the article should appear in the list
+    And the article should be in memory (StateEngine)
+    And the article should be on disk (FileStorage)

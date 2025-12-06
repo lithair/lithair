@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::time::sleep;
 
+use crate::config::RaftConfig;
 use crate::consensus::{ConsensusConfig, ReplicatedModel};
 use crate::http::{DeclarativeHttpHandler, HttpExposable};
 use crate::lifecycle::LifecycleAware;
@@ -43,30 +44,48 @@ pub enum RaftNodeState {
 /// Raft Leadership State
 pub struct RaftLeadershipState {
     pub node_id: u64,
+    pub self_port: u16,
     pub current_state: AtomicU64, // 0=Follower, 1=Candidate, 2=Leader
     pub is_leader: AtomicBool,
     pub current_leader_id: AtomicU64,
+    pub leader_port: AtomicU16,
     pub peers: Vec<String>,
     pub last_heartbeat: std::sync::Mutex<Instant>,
     pub election_timeout: Duration,
 }
 
-impl RaftLeadershipState {
-    pub fn new(node_id: u64, peers: Vec<String>) -> Self {
-        // Simple leadership election: lowest node_id starts as leader
-        let is_leader = peers.iter().all(|peer| {
-            let peer_port: u16 = peer.split(':').nth(1).unwrap_or("0").parse().unwrap_or(0);
-            let peer_id = (peer_port - 8080 + 1) as u64; // Convert to u64 for comparison
-            node_id <= peer_id
-        });
+use std::sync::atomic::AtomicU16;
 
-        let current_leader_id = if is_leader { node_id } else { 1 }; // Default to node 1 as leader
+impl RaftLeadershipState {
+    pub fn new(node_id: u64, self_port: u16, peers: Vec<String>) -> Self {
+        // Simple leadership election: lowest node_id is leader
+        // This is a static election - node_id 0 is always leader if present
+        let is_leader = node_id == 0 || peers.is_empty();
+
+        // Find the leader port
+        // If we are leader, it's our port
+        // If not, find the smallest port among peers (leader is node_id=0, first allocated)
+        let leader_port = if is_leader {
+            self_port
+        } else {
+            // Find the smallest port among peers (that's the leader)
+            peers.iter()
+                .filter_map(|peer| peer.split(':').nth(1))
+                .filter_map(|port_str| port_str.parse::<u16>().ok())
+                .min()
+                .unwrap_or(self_port)
+        };
+
+        // Find the leader node_id (always 0 in static election)
+        let current_leader_id = 0u64;
 
         Self {
             node_id,
+            self_port,
             current_state: AtomicU64::new(if is_leader { 2 } else { 0 }), // 2=Leader, 0=Follower
             is_leader: AtomicBool::new(is_leader),
             current_leader_id: AtomicU64::new(current_leader_id),
+            leader_port: AtomicU16::new(leader_port),
             peers,
             last_heartbeat: std::sync::Mutex::new(Instant::now()),
             election_timeout: Duration::from_secs(5), // 5 second timeout
@@ -87,7 +106,7 @@ impl RaftLeadershipState {
     }
 
     pub fn get_leader_port(&self) -> u16 {
-        8080 + self.current_leader_id.load(Ordering::Relaxed) as u16 - 1
+        self.leader_port.load(Ordering::Relaxed)
     }
 
     /// Check if the provided id matches the current authoritative leader id
@@ -111,6 +130,86 @@ impl RaftLeadershipState {
             heartbeat.elapsed() > self.election_timeout
         } else {
             false
+        }
+    }
+
+    /// Become the leader - called when this node wins an election
+    pub fn become_leader(&self) {
+        self.is_leader.store(true, Ordering::SeqCst);
+        self.current_state.store(2, Ordering::SeqCst); // 2 = Leader
+        self.current_leader_id.store(self.node_id, Ordering::SeqCst);
+        self.leader_port.store(self.self_port, Ordering::SeqCst);
+        self.update_heartbeat();
+        println!("👑 Node {} is now the LEADER", self.node_id);
+    }
+
+    /// Become a follower - called when a new leader is detected
+    pub fn become_follower(&self, new_leader_id: u64, new_leader_port: u16) {
+        self.is_leader.store(false, Ordering::SeqCst);
+        self.current_state.store(0, Ordering::SeqCst); // 0 = Follower
+        self.current_leader_id.store(new_leader_id, Ordering::SeqCst);
+        self.leader_port.store(new_leader_port, Ordering::SeqCst);
+        self.update_heartbeat();
+        println!("👥 Node {} is now a FOLLOWER (leader: node {} on port {})",
+                 self.node_id, new_leader_id, new_leader_port);
+    }
+
+    /// Start election process - find the lowest available node_id to be leader
+    /// Returns (should_become_leader, new_leader_id, new_leader_port)
+    pub async fn start_election(&self) -> (bool, u64, u16) {
+        println!("🗳️ Node {} starting election...", self.node_id);
+        self.current_state.store(1, Ordering::SeqCst); // 1 = Candidate
+
+        let client = HttpClient::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .unwrap_or_else(|_| HttpClient::new());
+
+        // Check which peers are alive
+        let mut alive_peers: Vec<(u64, u16)> = Vec::new();
+
+        for peer in &self.peers {
+            let url = format!("http://{}/status", peer);
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(status) = resp.json::<serde_json::Value>().await {
+                        if let Some(raft) = status.get("raft") {
+                            let peer_id = raft.get("node_id")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(u64::MAX);
+                            let peer_port = peer.split(':').nth(1)
+                                .and_then(|p| p.parse::<u16>().ok())
+                                .unwrap_or(0);
+                            alive_peers.push((peer_id, peer_port));
+                            println!("   ✅ Peer {} (node {}) is alive", peer, peer_id);
+                        }
+                    }
+                }
+                _ => {
+                    println!("   ❌ Peer {} is not responding", peer);
+                }
+            }
+        }
+
+        // Find the lowest node_id among alive nodes (including self)
+        let mut candidates: Vec<(u64, u16)> = alive_peers;
+        candidates.push((self.node_id, self.self_port));
+        candidates.sort_by_key(|(id, _)| *id);
+
+        let (winner_id, winner_port) = candidates[0];
+        let should_become_leader = winner_id == self.node_id;
+
+        println!("🗳️ Election result: node {} wins (port {})", winner_id, winner_port);
+
+        (should_become_leader, winner_id, winner_port)
+    }
+
+    /// Get time since last heartbeat
+    pub fn time_since_heartbeat(&self) -> Duration {
+        if let Ok(heartbeat) = self.last_heartbeat.lock() {
+            heartbeat.elapsed()
+        } else {
+            Duration::from_secs(0)
         }
     }
 }
@@ -150,13 +249,45 @@ impl DeclarativeCluster {
     /// // This starts a complete distributed system:
     /// DeclarativeCluster::start::<Product>(1, 8080, vec!["127.0.0.1:8081"]).await?;
     /// ```
-    /// }
-    ///
-    /// // That's ALL the user needs to write!
-    /// // This starts a complete distributed system:
-    /// DeclarativeCluster::start::<Product>(1, 8080, vec!["127.0.0.1:8081"]).await?;
-    /// ```
     pub async fn start<T>(node_id: u64, port: u16, peers: Vec<String>) -> Result<()>
+    where
+        T: HttpExposable
+            + ReplicatedModel
+            + LifecycleAware
+            + Clone
+            + Send
+            + Sync
+            + 'static
+            + for<'de> Deserialize<'de>
+            + Serialize,
+    {
+        // Use default Raft configuration (applies LITHAIR_RAFT_* env vars)
+        let mut raft_config = RaftConfig::default();
+        raft_config.apply_env_vars();
+        Self::start_with_config::<T>(node_id, port, peers, raft_config).await
+    }
+
+    /// Start a declarative cluster node with custom Raft configuration
+    ///
+    /// Allows configuring:
+    /// - Custom Raft endpoint path (e.g., "/_internal/raft")
+    /// - Authentication with token
+    /// - Heartbeat and election timeouts
+    ///
+    /// # Example Usage
+    /// ```rust,ignore
+    /// let raft_config = RaftConfig::new()
+    ///     .with_path("/_cluster/raft")
+    ///     .with_auth("my-secret-token");
+    ///
+    /// DeclarativeCluster::start_with_config::<Product>(1, 8080, peers, raft_config).await?;
+    /// ```
+    pub async fn start_with_config<T>(
+        node_id: u64,
+        port: u16,
+        peers: Vec<String>,
+        raft_config: RaftConfig,
+    ) -> Result<()>
     where
         T: HttpExposable
             + ReplicatedModel
@@ -174,6 +305,8 @@ impl DeclarativeCluster {
         println!("   Port: {}", port);
         println!("   Peers: {:?}", peers);
         println!("   Mode: PURE DECLARATIVE");
+        println!("   Raft path: {}", raft_config.path);
+        println!("   Raft auth: {}", if raft_config.auth_required { "enabled" } else { "disabled" });
         println!();
 
         // Auto-detect model capabilities from attributes
@@ -226,7 +359,7 @@ impl DeclarativeCluster {
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to enable consensus: {}", e))?;
 
-            let raft_state = Arc::new(RaftLeadershipState::new(node_id, peers.clone()));
+            let raft_state = Arc::new(RaftLeadershipState::new(node_id, port, peers.clone()));
             let is_leader = raft_state.is_leader();
 
             // Create the simple but effective replication manager
@@ -254,7 +387,7 @@ impl DeclarativeCluster {
         println!("🌐 Starting auto-generated HTTP server with TRUE Raft leadership...");
 
         // Start the auto-generated server with TRUE Raft replication
-        Self::start_auto_server_with_raft(handler, port, raft_state, replication_manager).await
+        Self::start_auto_server_with_raft(handler, port, raft_state, replication_manager, raft_config).await
     }
 
     /// Start server with TRUE Raft replication and auto-redirection
@@ -265,6 +398,7 @@ impl DeclarativeCluster {
         port: u16,
         raft_state: Option<Arc<RaftLeadershipState>>,
         replication_manager: Option<SimpleDataReplicator<T>>,
+        raft_config: RaftConfig,
     ) -> Result<()>
     where
         T: HttpExposable
@@ -279,6 +413,7 @@ impl DeclarativeCluster {
     {
         let addr: std::net::SocketAddr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
         let handler = Arc::new(handler);
+        let raft_config = Arc::new(raft_config);
 
         // Print auto-generated API documentation with Raft info
         println!("📡 Auto-generated endpoints from DeclarativeModel (TRUE Raft consensus):");
@@ -293,8 +428,8 @@ impl DeclarativeCluster {
         if T::needs_replication() {
             println!("   POST   /internal/replicate - TRUE Raft replication");
             if let Some(ref _state) = raft_state {
-                println!("   GET    /raft/leader    - Get current leader");
-                println!("   POST   /raft/election  - Trigger leader election");
+                println!("   GET    {}/leader    - Get current leader", raft_config.path);
+                println!("   POST   {}/heartbeat - Heartbeat endpoint{}", raft_config.path, if raft_config.auth_required { " (auth required)" } else { "" });
             }
         }
 
@@ -318,6 +453,88 @@ impl DeclarativeCluster {
         // Auto-generated service with Raft-aware routing and data replication
         let raft_clone = raft_state.clone();
         let replication_clone = replication_manager.map(Arc::new);
+        let raft_config_clone = Arc::clone(&raft_config);
+
+        // Start background tasks for fault tolerance
+        if let Some(ref state) = raft_state {
+            let state_for_heartbeat = Arc::clone(state);
+            let peers_for_heartbeat = state.peers.clone();
+            let config_for_heartbeat = Arc::clone(&raft_config);
+
+            if state.is_leader() {
+                // Leader: send heartbeats to all followers periodically
+                tokio::spawn(async move {
+                    let client = HttpClient::builder()
+                        .timeout(Duration::from_secs(2))
+                        .build()
+                        .unwrap_or_else(|_| HttpClient::new());
+
+                    let heartbeat_interval = Duration::from_secs(config_for_heartbeat.heartbeat_interval_secs);
+
+                    loop {
+                        sleep(heartbeat_interval).await;
+
+                        // Only send heartbeats if we're still the leader
+                        if !state_for_heartbeat.is_leader() {
+                            println!("💔 No longer leader, stopping heartbeat sender");
+                            break;
+                        }
+
+                        let heartbeat_msg = serde_json::json!({
+                            "leader_id": state_for_heartbeat.node_id,
+                            "leader_port": state_for_heartbeat.self_port,
+                            "term": 1  // Simplified term for now
+                        });
+
+                        for peer in &peers_for_heartbeat {
+                            let url = format!("http://{}{}/heartbeat", peer, config_for_heartbeat.path);
+                            let mut req = client.post(&url).json(&heartbeat_msg);
+
+                            // Add auth token if configured
+                            if let Some(ref token) = config_for_heartbeat.auth_token {
+                                req = req.header("X-Raft-Token", token);
+                            }
+
+                            match req.send().await {
+                                Ok(resp) if resp.status().is_success() => {
+                                    // Heartbeat acknowledged
+                                }
+                                Ok(resp) => {
+                                    println!("⚠️ Heartbeat to {} failed: HTTP {}", peer, resp.status());
+                                }
+                                Err(_) => {
+                                    // Peer not responding - that's OK, they might be down
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Follower: monitor heartbeats and trigger election if timeout
+                let state_for_election = Arc::clone(state);
+                tokio::spawn(async move {
+                    loop {
+                        sleep(Duration::from_secs(1)).await;
+
+                        // Check if we should start an election
+                        if state_for_election.should_start_election() {
+                            println!("⏰ Heartbeat timeout detected! Starting election...");
+
+                            let (should_become_leader, new_leader_id, new_leader_port) =
+                                state_for_election.start_election().await;
+
+                            if should_become_leader {
+                                state_for_election.become_leader();
+                                // TODO: Start sending heartbeats as new leader
+                                // For now, the node will accept writes as leader
+                            } else {
+                                state_for_election.become_follower(new_leader_id, new_leader_port);
+                            }
+                        }
+                    }
+                });
+            }
+        }
 
         // If follower, start background sync from leader to reconcile any drift
         if let (Some(ref state), Some(ref replicator)) = (&raft_state, &replication_clone) {
@@ -377,12 +594,14 @@ impl DeclarativeCluster {
             let handler = Arc::clone(&handler);
             let raft = raft_clone.clone();
             let replicator = replication_clone.clone();
+            let config = Arc::clone(&raft_config_clone);
             tokio::spawn(async move {
                 let service = service_fn(move |req: Req| {
                     let handler = Arc::clone(&handler);
                     let raft = raft.clone();
                     let replicator = replicator.clone();
-                    Self::raft_aware_router::<T>(req, handler, raft, replicator)
+                    let config = Arc::clone(&config);
+                    Self::raft_aware_router::<T>(req, handler, raft, replicator, config)
                 });
 
                 let builder = AutoBuilder::new(TokioExecutor::new());
@@ -401,6 +620,7 @@ impl DeclarativeCluster {
         handler: Arc<DeclarativeHttpHandler<T>>,
         raft_state: Option<Arc<RaftLeadershipState>>,
         replication_manager: Option<Arc<SimpleDataReplicator<T>>>,
+        raft_config: Arc<RaftConfig>,
     ) -> Result<Resp, Infallible>
     where
         T: HttpExposable
@@ -444,9 +664,116 @@ impl DeclarativeCluster {
                     .unwrap();
                 return Ok(response);
             }
+            // Note: Don't update heartbeat for regular requests - only for /raft/heartbeat
+            // This ensures followers can detect when the leader is actually down
+        }
 
-            // Update heartbeat if we're processing any request
-            state.update_heartbeat();
+        // Check if this is a Raft endpoint request
+        let heartbeat_path = raft_config.heartbeat_path();
+        let leader_path = raft_config.leader_path();
+
+        // Heartbeat endpoint for leader to ping followers
+        if uri == heartbeat_path && method == Method::POST {
+            // Validate authentication token if required
+            let provided_token = req.headers()
+                .get("X-Raft-Token")
+                .and_then(|v| v.to_str().ok());
+
+            if !raft_config.validate_token(provided_token) {
+                let response = Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .header("content-type", "application/json")
+                    .body(body_from(r#"{"error":"Invalid or missing Raft authentication token"}"#))
+                    .unwrap();
+                return Ok(response);
+            }
+
+            if let Some(ref state) = raft_state {
+                // Parse heartbeat message
+                let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        let error_response = Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .header("content-type", "application/json")
+                            .body(body_from(format!(r#"{{"error":"Failed to read body: {}"}}"#, e)))
+                            .unwrap();
+                        return Ok(error_response);
+                    }
+                };
+
+                if let Ok(heartbeat) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                    let leader_id = heartbeat.get("leader_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let leader_port = heartbeat.get("leader_port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+                    let term = heartbeat.get("term").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                    // Update heartbeat and potentially update leader info
+                    state.update_heartbeat();
+
+                    // If we're a follower and this heartbeat is from a valid leader, update our state
+                    if !state.is_leader() {
+                        let current_leader = state.current_leader_id.load(Ordering::Relaxed);
+                        if leader_id != current_leader {
+                            println!("💓 Heartbeat: updating leader to node {} (port {})", leader_id, leader_port);
+                            state.become_follower(leader_id, leader_port);
+                        }
+                    }
+
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "application/json")
+                        .body(body_from(format!(
+                            r#"{{"status":"ok","node_id":{},"term":{},"is_leader":{}}}"#,
+                            state.node_id, term, state.is_leader()
+                        )))
+                        .unwrap();
+                    return Ok(response);
+                }
+            }
+
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "application/json")
+                .body(body_from(r#"{"status":"ok","message":"heartbeat received"}"#))
+                .unwrap();
+            return Ok(response);
+        }
+
+        // Leader discovery endpoint
+        if uri == leader_path && method == Method::GET {
+            // Validate authentication token if required
+            let provided_token = req.headers()
+                .get("X-Raft-Token")
+                .and_then(|v| v.to_str().ok());
+
+            if !raft_config.validate_token(provided_token) {
+                let response = Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .header("content-type", "application/json")
+                    .body(body_from(r#"{"error":"Invalid or missing Raft authentication token"}"#))
+                    .unwrap();
+                return Ok(response);
+            }
+            if let Some(ref state) = raft_state {
+                let response = Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(body_from(format!(
+                        r#"{{"leader_id":{},"leader_port":{},"is_current_node_leader":{}}}"#,
+                        state.current_leader_id.load(Ordering::Relaxed),
+                        state.get_leader_port(),
+                        state.is_leader()
+                    )))
+                    .unwrap();
+                return Ok(response);
+            }
+
+            let response = Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header("content-type", "application/json")
+                .body(body_from(r#"{"error":"No Raft state available"}"#))
+                .unwrap();
+            return Ok(response);
         }
 
         // Enhanced status endpoint with Raft info
@@ -789,24 +1116,6 @@ impl DeclarativeCluster {
                         .unwrap();
                     return Ok(error_response);
                 }
-            }
-        }
-
-        // Raft leader endpoint
-        if let Some(ref state) = raft_state {
-            if uri == "/raft/leader" && method == Method::GET {
-                let leader_info = serde_json::json!({
-                    "leader_port": state.get_leader_port(),
-                    "current_node_is_leader": state.is_leader(),
-                    "leader_url": format!("http://127.0.0.1:{}", state.get_leader_port())
-                });
-
-                let response = Response::builder()
-                    .status(StatusCode::OK)
-                    .header("content-type", "application/json")
-                    .body(body_from(leader_info.to_string()))
-                    .unwrap();
-                return Ok(response);
             }
         }
 

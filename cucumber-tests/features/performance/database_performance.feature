@@ -1,192 +1,192 @@
-# Performance et Intégrité de la Base de Données Lithair
-# Tests critiques pour vérifier que sous charge, AUCUNE donnée n'est perdue
+# Performance and Integrity of Lithair Database
+# Critical tests to verify that under load, NO data is lost
 
-Feature: Performance et Intégrité de la Persistence Lithair
-  En tant que développeur
-  Je veux vérifier que Lithair sous charge
-  Persiste TOUTES les données sans perte ni troncature
+Feature: Performance and Persistence Integrity of Lithair
+  As a developer
+  I want to verify that Lithair under load
+  Persists ALL data without loss or truncation
 
   Background:
-    Given la persistence est activée par défaut
+    Given persistence is enabled by default
 
-  # ==================== TESTS D'INTÉGRITÉ ====================
+  # ==================== INTEGRITY TESTS ====================
 
-  Scenario: Créer 1000 articles et vérifier qu'ils sont TOUS persistés
-    Given un serveur Lithair sur le port 20000 avec persistence "/tmp/lithair-integrity-1000"
-    When je crée 1000 articles rapidement
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 1000 événements "ArticleCreated"
-    And aucun événement ne doit être manquant
-    And le checksum des événements doit être valide
+  Scenario: Create 1000 articles and verify they are ALL persisted
+    Given a Lithair server on port 20000 with persistence "/tmp/lithair-integrity-1000"
+    When I create 1000 articles quickly
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 1000 "ArticleCreated" events
+    And no event must be missing
+    And the event checksum must be valid
 
-  Scenario: CRUD complet - Créer, Modifier, Supprimer et vérifier la persistence
-    Given un serveur Lithair sur le port 20001 avec persistence "/tmp/lithair-crud-test"
-    When je crée 100 articles rapidement
-    And je modifie 50 articles existants
-    And je supprime 25 articles
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 100 événements "ArticleCreated"
-    And le fichier events.raftlog doit contenir exactement 50 événements "ArticleUpdated"
-    And le fichier events.raftlog doit contenir exactement 25 événements "ArticleDeleted"
-    And l'état final doit avoir 75 articles actifs
-    And tous les événements doivent être dans l'ordre chronologique
+  Scenario: Complete CRUD - Create, Modify, Delete and verify persistence
+    Given a Lithair server on port 20001 with persistence "/tmp/lithair-crud-test"
+    When I create 100 articles quickly
+    And I modify 50 existing articles
+    And I delete 25 articles
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 100 "ArticleCreated" events
+    And the events.raftlog file must contain exactly 50 "ArticleUpdated" events
+    And the events.raftlog file must contain exactly 25 "ArticleDeleted" events
+    And the final state must have 75 active articles
+    And all events must be in chronological order
 
-  Scenario: STRESS TEST - 100K articles avec CRUD complet et mesure de performance
-    Given un serveur Lithair sur le port 20002 avec persistence "/tmp/lithair-stress-100k"
-    When je crée 100000 articles rapidement
-    And je modifie 10000 articles existants
-    And je supprime 5000 articles
-    Then le fichier events.raftlog doit exister
-    And le fichier events.raftlog doit contenir exactement 100000 événements "ArticleCreated"
-    And le fichier events.raftlog doit contenir exactement 10000 événements "ArticleUpdated"
-    And le fichier events.raftlog doit contenir exactement 5000 événements "ArticleDeleted"
-    And l'état final doit avoir 95000 articles actifs
-    And tous les événements doivent être dans l'ordre chronologique
-    And j'arrête le serveur proprement
+  Scenario: STRESS TEST - 100K articles with complete CRUD and performance measurement
+    Given a Lithair server on port 20002 with persistence "/tmp/lithair-stress-100k"
+    When I create 100000 articles quickly
+    And I modify 10000 existing articles
+    And I delete 5000 articles
+    Then the events.raftlog file must exist
+    And the events.raftlog file must contain exactly 100000 "ArticleCreated" events
+    And the events.raftlog file must contain exactly 10000 "ArticleUpdated" events
+    And the events.raftlog file must contain exactly 5000 "ArticleDeleted" events
+    And the final state must have 95000 active articles
+    And all events must be in chronological order
+    And I stop the server cleanly
 
-  Scenario: Créer 10000 articles et vérifier l'intégrité complète
-    Given un serveur Lithair sur le port 20001 avec persistence "/tmp/lithair-integrity-10k"
-    When je crée 10000 articles en parallèle avec 50 threads
-    Then tous les 10000 articles doivent être persistés
-    And le nombre d'événements dans events.raftlog doit être exactement 10000
-    And aucun doublon ne doit exister
-    And la séquence des IDs doit être continue de 0 à 9999
+  Scenario: Create 10000 articles and verify complete integrity
+    Given a Lithair server on port 20001 with persistence "/tmp/lithair-integrity-10k"
+    When I create 10000 articles in parallel with 50 threads
+    Then all 10000 articles must be persisted
+    And the number of events in events.raftlog must be exactly 10000
+    And no duplicate must exist
+    And the ID sequence must be continuous from 0 to 9999
 
-  Scenario: Test de charge avec vérification d'intégrité
-    Given un serveur Lithair sur le port 20002 avec persistence "/tmp/lithair-load-test"
-    When je lance 5000 requêtes POST concurrentes avec 100 threads
-    And j'attends que toutes les écritures soient terminées
-    Then le serveur doit avoir répondu à toutes les 5000 requêtes
-    And le fichier events.raftlog doit contenir exactement 5000 événements
-    And aucune erreur ne doit être présente dans les logs
-    And le temps de réponse moyen doit être inférieur à 50ms
+  Scenario: Load test with integrity verification
+    Given a Lithair server on port 20002 with persistence "/tmp/lithair-load-test"
+    When I launch 5000 concurrent POST requests with 100 threads
+    And I wait for all writes to complete
+    Then the server must have responded to all 5000 requests
+    And the events.raftlog file must contain exactly 5000 events
+    And no error must be present in the logs
+    And the average response time must be less than 50ms
 
-  # ==================== TESTS DE PERFORMANCE ====================
+  # ==================== PERFORMANCE TESTS ====================
 
-  Scenario: Performance d'écriture - 1000 req/s
-    Given un serveur Lithair sur le port 20003 avec persistence "/tmp/lithair-perf-write"
-    When je mesure la performance d'écriture sur 10 secondes
-    Then le serveur doit traiter au moins 1000 requêtes par seconde
-    And toutes les requêtes doivent être persistées
-    And le taux d'erreur doit être de 0%
-    And la latence p95 doit être inférieure à 100ms
+  Scenario: Write performance - 1000 req/s
+    Given a Lithair server on port 20003 with persistence "/tmp/lithair-perf-write"
+    When I measure write performance for 10 seconds
+    Then the server must process at least 1000 requests per second
+    And all requests must be persisted
+    And the error rate must be 0%
+    And the p95 latency must be less than 100ms
 
-  Scenario: Performance de lecture avec persistence
-    Given un serveur Lithair sur le port 20004 avec persistence "/tmp/lithair-perf-read"
-    And 5000 articles déjà créés et persistés
-    When je mesure la performance de lecture sur 10 secondes
-    Then le serveur doit traiter au moins 5000 requêtes par seconde
-    And toutes les lectures doivent retourner des données valides
-    And le taux d'erreur doit être de 0%
-    And la latence p99 doit être inférieure à 20ms
+  Scenario: Read performance with persistence
+    Given a Lithair server on port 20004 with persistence "/tmp/lithair-perf-read"
+    And 5000 articles already created and persisted
+    When I measure read performance for 10 seconds
+    Then the server must process at least 5000 requests per second
+    And all reads must return valid data
+    And the error rate must be 0%
+    And the p99 latency must be less than 20ms
 
-  Scenario: Performance mixte lecture/écriture (80/20)
-    Given un serveur Lithair sur le port 20005 avec persistence "/tmp/lithair-perf-mixed"
-    When je lance un test mixte pendant 30 secondes avec:
-      | Type     | Pourcentage | Concurrence |
-      | Lecture  | 80%         | 100         |
-      | Écriture | 20%         | 20          |
-    Then le throughput total doit être supérieur à 2000 req/s
-    And toutes les écritures doivent être persistées
-    And le taux d'erreur doit être inférieur à 0.1%
-    And la latence moyenne doit être inférieure à 30ms
+  Scenario: Mixed read/write performance (80/20)
+    Given a Lithair server on port 20005 with persistence "/tmp/lithair-perf-mixed"
+    When I run a mixed test for 30 seconds with:
+      | Type  | Percentage | Concurrency |
+      | Read  | 80%        | 100         |
+      | Write | 20%        | 20          |
+    Then the total throughput must be greater than 2000 req/s
+    And all writes must be persisted
+    And the error rate must be less than 0.1%
+    And the average latency must be less than 30ms
 
-  # ==================== TESTS DE PERSISTENCE SOUS CHARGE ====================
+  # ==================== PERSISTENCE UNDER LOAD TESTS ====================
 
-  Scenario: Persistence continue sous charge élevée
-    Given un serveur Lithair sur le port 20006 avec persistence "/tmp/lithair-persist-load"
-    When je lance une charge constante de 500 req/s pendant 60 secondes
-    Then exactement 30000 événements doivent être persistés
-    And le fichier events.raftlog doit avoir une taille cohérente
-    And aucun événement ne doit être corrompu
-    And la séquence temporelle doit être strictement croissante
+  Scenario: Continuous persistence under high load
+    Given a Lithair server on port 20006 with persistence "/tmp/lithair-persist-load"
+    When I run a constant load of 500 req/s for 60 seconds
+    Then exactly 30000 events must be persisted
+    And the events.raftlog file must have a consistent size
+    And no event must be corrupted
+    And the time sequence must be strictly increasing
 
-  Scenario: Redémarrage avec données persistées
-    Given un serveur Lithair sur le port 20007 avec persistence "/tmp/lithair-restart-test"
-    And 1000 articles créés et persistés
-    When j'arrête le serveur
-    And je redémarre le serveur sur le même port avec la même persistence
-    Then les 1000 articles doivent être présents en mémoire
-    And je peux créer 1000 articles supplémentaires
-    And le fichier events.raftlog doit contenir exactement 2000 événements
-    And les IDs doivent être continus de 0 à 1999
+  Scenario: Restart with persisted data
+    Given a Lithair server on port 20007 with persistence "/tmp/lithair-restart-test"
+    And 1000 articles created and persisted
+    When I stop the server
+    And I restart the server on the same port with the same persistence
+    Then the 1000 articles must be present in memory
+    And I can create 1000 additional articles
+    And the events.raftlog file must contain exactly 2000 events
+    And the IDs must be continuous from 0 to 1999
 
-  # ==================== TESTS D'INTÉGRITÉ AVANCÉS ====================
+  # ==================== ADVANCED INTEGRITY TESTS ====================
 
-  Scenario: Vérification de l'ordre des événements
-    Given un serveur Lithair sur le port 20008 avec persistence "/tmp/lithair-event-order"
-    When je crée des événements dans cet ordre:
+  Scenario: Event order verification
+    Given a Lithair server on port 20008 with persistence "/tmp/lithair-event-order"
+    When I create events in this order:
       | Type           | ID   |
       | ArticleCreated | art1 |
       | UserCreated    | usr1 |
       | ArticleUpdated | art1 |
       | CommentAdded   | cmt1 |
       | ArticleDeleted | art1 |
-    Then les événements doivent être dans le fichier dans le même ordre
-    And chaque événement doit avoir un timestamp strictement croissant
-    And les relations entre événements doivent être préservées
+    Then the events must be in the file in the same order
+    And each event must have a strictly increasing timestamp
+    And the relationships between events must be preserved
 
-  Scenario: Détection de corruption de données
-    Given un serveur Lithair sur le port 20009 avec persistence "/tmp/lithair-corruption-test"
-    When je crée 100 articles avec des checksums
-    Then chaque article doit avoir un checksum valide dans la base
-    And la somme totale des checksums doit correspondre
-    And aucun article ne doit avoir de données corrompues
-    And la vérification CRC32 doit passer
+  Scenario: Data corruption detection
+    Given a Lithair server on port 20009 with persistence "/tmp/lithair-corruption-test"
+    When I create 100 articles with checksums
+    Then each article must have a valid checksum in the database
+    And the total sum of checksums must match
+    And no article must have corrupted data
+    And the CRC32 verification must pass
 
-  # ==================== TESTS DE CHARGE EXTRÊME ====================
+  # ==================== EXTREME LOAD TESTS ====================
 
-  Scenario: Charge extrême - 50000 articles
-    Given un serveur Lithair sur le port 20010 avec persistence "/tmp/lithair-extreme-load"
-    When je crée 50000 articles en 10 batches de 5000
-    Then tous les 50000 articles doivent être persistés
-    And le fichier events.raftlog doit faire au moins 5MB
-    And aucun article ne doit manquer
-    And la base doit rester cohérente
-    And le serveur doit rester réactif (< 100ms de latence)
+  Scenario: Extreme load - 50000 articles
+    Given a Lithair server on port 20010 with persistence "/tmp/lithair-extreme-load"
+    When I create 50000 articles in 10 batches of 5000
+    Then all 50000 articles must be persisted
+    And the events.raftlog file must be at least 5MB
+    And no article must be missing
+    And the database must remain consistent
+    And the server must remain responsive (< 100ms latency)
 
-  Scenario: Test de concurrence extrême
-    Given un serveur Lithair sur le port 20011 avec persistence "/tmp/lithair-concurrency"
-    When je lance 1000 threads qui créent chacun 10 articles simultanément
-    Then exactement 10000 articles doivent être persistés
-    And aucun conflit de concurrence ne doit être détecté
-    And tous les IDs doivent être uniques
-    And aucun événement ne doit être dupliqué
+  Scenario: Extreme concurrency test
+    Given a Lithair server on port 20011 with persistence "/tmp/lithair-concurrency"
+    When I launch 1000 threads that each create 10 articles simultaneously
+    Then exactly 10000 articles must be persisted
+    And no concurrency conflict must be detected
+    And all IDs must be unique
+    And no event must be duplicated
 
-  # ==================== TESTS DE TAILLE DE BASE ====================
+  # ==================== DATABASE SIZE TESTS ====================
 
-  Scenario: Base de données volumineuse
-    Given un serveur Lithair sur le port 20012 avec persistence "/tmp/lithair-large-db"
-    When je crée des articles avec des contenus de 10KB chacun
-    And je crée 1000 de ces articles
-    Then le fichier events.raftlog doit faire au moins 10MB
-    And tous les articles doivent être récupérables
-    And le temps de lecture ne doit pas dégrader (< 50ms)
-    And la base doit pouvoir être rechargée en moins de 5 secondes
+  Scenario: Large database
+    Given a Lithair server on port 20012 with persistence "/tmp/lithair-large-db"
+    When I create articles with 10KB content each
+    And I create 1000 of these articles
+    Then the events.raftlog file must be at least 10MB
+    And all articles must be retrievable
+    And the read time must not degrade (< 50ms)
+    And the database must be reloadable in less than 5 seconds
 
-  # ==================== TESTS DE SNAPSHOT ====================
+  # ==================== SNAPSHOT TESTS ====================
 
-  Scenario: Création de snapshot sous charge
-    Given un serveur Lithair sur le port 20013 avec persistence "/tmp/lithair-snapshot"
-    And la configuration snapshot est activée tous les 1000 événements
-    When je crée 5000 articles
-    Then au moins 5 snapshots doivent être créés
-    And chaque snapshot doit être valide et récupérable
-    And je peux restaurer depuis n'importe quel snapshot
-    And les données après snapshot doivent être identiques
+  Scenario: Snapshot creation under load
+    Given a Lithair server on port 20013 with persistence "/tmp/lithair-snapshot"
+    And the snapshot configuration is enabled every 1000 events
+    When I create 5000 articles
+    Then at least 5 snapshots must be created
+    And each snapshot must be valid and recoverable
+    And I can restore from any snapshot
+    And the data after snapshot must be identical
 
-  # ==================== TESTS DE DURABILITÉ ====================
+  # ==================== DURABILITY TESTS ====================
 
-  Scenario: Durabilité fsync
-    Given un serveur Lithair sur le port 20014 avec fsync activé
-    When je crée 100 articles
-    And je tue brutalement le serveur (SIGKILL)
-    And je redémarre le serveur
-    Then tous les 100 articles doivent être présents
-    And aucune corruption ne doit être détectée
+  Scenario: Fsync durability
+    Given a Lithair server on port 20014 with fsync enabled
+    When I create 100 articles
+    And I brutally kill the server (SIGKILL)
+    And I restart the server
+    Then all 100 articles must be present
+    And no corruption must be detected
 
-  Scenario: Durabilité sans fsync (mode performance)
-    Given un serveur Lithair sur le port 20015 sans fsync
-    When je crée 1000 articles rapidement
-    Then le throughput doit être supérieur à 5000 req/s
-    And au moins 95% des articles doivent être récupérables après crash
+  Scenario: Durability without fsync (performance mode)
+    Given a Lithair server on port 20015 without fsync
+    When I create 1000 articles quickly
+    Then the throughput must be greater than 5000 req/s
+    And at least 95% of articles must be recoverable after crash
