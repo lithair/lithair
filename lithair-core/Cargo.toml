@@ -26,7 +26,7 @@ anyhow = "1.0"
 lazy_static = "1.5"
 serde_json = "1.0"
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing (~3GB/s)
-rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization (~10GB/s)
+rkyv = { version = "0.8", features = ["bytecheck", "std"] }       # Zero-copy serialization (~10GB/s)
 toml = "0.8"
 # Optimizations ultra-performantes
 bincode = { version = "2", features = ["serde"] }        # Sérialisation binaire (3-5x plus rapide)
@@ -60,8 +60,10 @@ totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"] }  # Battl
 # OpenAPI documentation support (optional)
 utoipa = { git = "https://github.com/juhaku/utoipa.git", rev = "cecda0531bf7d90800af66b186055932ee730526", optional = true }
 thiserror = "2.0.17"
+futures.workspace = true
 
 [dev-dependencies]
+tempfile = "3"
 # Only for testing - not included in final binary
 
 [features]

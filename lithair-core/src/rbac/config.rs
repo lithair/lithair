@@ -171,8 +171,10 @@ mod tests {
             .with_role("Admin", vec!["*".to_string()])
             .with_role("Editor", vec!["Read".to_string(), "Write".to_string()])
             .with_user(RbacUser::new("admin", "pass", "Admin"));
-        
-        assert_eq!(config.roles.len(), 3); // Default + 2 new
+
+        // Default has 2 roles (Admin, User), with_role adds 2 more (Admin duplicate, Editor)
+        // Total: 4 roles (with_role doesn't deduplicate)
+        assert_eq!(config.roles.len(), 4);
         assert_eq!(config.users.len(), 1);
     }
     

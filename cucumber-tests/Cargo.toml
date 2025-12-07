@@ -93,6 +93,11 @@ name = "serialization_test"
 path = "tests/serialization_test.rs"
 harness = false
 
+[[test]]
+name = "cluster_stress_test"
+path = "tests/cluster_stress_test.rs"
+harness = false
+
 [dependencies]
 cucumber = { git = "https://github.com/cucumber-rs/cucumber.git" }
 tokio = { version = "1.47", features = ["full"] }
@@ -115,3 +120,4 @@ portpicker = "0.1"
 # Serialization testing (dual-mode JSON + rkyv)
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing
 rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization
+lazy_static = "1.4"                                         # Thread-safe static variables

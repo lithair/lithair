@@ -56,6 +56,25 @@ pub trait ModelHandler: Send + Sync {
     /// Submit an edit event (event-sourced update - never replaces, always appends)
     /// Returns the new state after applying the edit event
     async fn submit_edit_event(&self, id: &str, changes: serde_json::Value) -> Result<serde_json::Value, String>;
+
+    // ========================================================================
+    // REPLICATION METHODS - For cluster data replication from leader to followers
+    // ========================================================================
+
+    /// Apply a replicated item from leader (type-erased via JSON)
+    /// Called by followers when receiving replication data from leader
+    async fn apply_replicated_item_json(&self, item_json: serde_json::Value) -> Result<(), String>;
+
+    /// Apply multiple replicated items from leader (bulk replication)
+    async fn apply_replicated_items_json(&self, items_json: Vec<serde_json::Value>) -> Result<usize, String>;
+
+    /// Apply a replicated UPDATE from leader (type-erased via JSON)
+    /// Called by followers when receiving UPDATE replication data from leader
+    async fn apply_replicated_update_json(&self, id: &str, item_json: serde_json::Value) -> Result<(), String>;
+
+    /// Apply a replicated DELETE from leader
+    /// Called by followers when receiving DELETE replication from leader
+    async fn apply_replicated_delete_json(&self, id: &str) -> Result<bool, String>;
 }
 
 /// Wrapper for DeclarativeHttpHandler that implements ModelHandler
@@ -187,5 +206,40 @@ where
         let updated_item = self.handler.submit_admin_edit(id, changes).await?;
         serde_json::to_value(&updated_item)
             .map_err(|e| format!("Failed to serialize result: {}", e))
+    }
+
+    async fn apply_replicated_item_json(&self, item_json: serde_json::Value) -> Result<(), String> {
+        // Deserialize JSON to typed item
+        let item: T = serde_json::from_value(item_json)
+            .map_err(|e| format!("Failed to deserialize replicated item: {}", e))?;
+
+        // Apply using the typed method on the handler
+        self.handler.apply_replicated_item(item).await
+    }
+
+    async fn apply_replicated_items_json(&self, items_json: Vec<serde_json::Value>) -> Result<usize, String> {
+        // Deserialize each JSON to typed item
+        let items: Vec<T> = items_json
+            .into_iter()
+            .map(|json| serde_json::from_value::<T>(json))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to deserialize replicated items: {}", e))?;
+
+        // Apply using the typed method on the handler
+        self.handler.apply_replicated_items(items).await
+    }
+
+    async fn apply_replicated_update_json(&self, id: &str, item_json: serde_json::Value) -> Result<(), String> {
+        // Deserialize JSON to typed item
+        let item: T = serde_json::from_value(item_json)
+            .map_err(|e| format!("Failed to deserialize replicated update: {}", e))?;
+
+        // Apply using the typed method on the handler
+        self.handler.apply_replicated_update(id, item).await
+    }
+
+    async fn apply_replicated_delete_json(&self, id: &str) -> Result<bool, String> {
+        // Apply using the typed method on the handler
+        self.handler.apply_replicated_delete(id).await
     }
 }

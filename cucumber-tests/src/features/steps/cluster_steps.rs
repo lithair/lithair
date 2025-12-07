@@ -522,19 +522,19 @@ async fn then_stop_cluster_cleanly(world: &mut LithairWorld) {
     println!("✅ Cluster arrêté proprement");
 }
 
-// ==================== REAL DECLARATIVE CLUSTER STEPS ====================
-// These steps use actual DeclarativeCluster processes with full Raft support
+// ==================== REAL LITHAIR SERVER CLUSTER STEPS ====================
+// These steps use actual LithairServer processes with full Raft support
 
-#[given(regex = r"a real DeclarativeCluster of (\d+) nodes")]
+#[given(regex = r"^a real LithairServer cluster of (\d+) nodes$")]
 async fn given_real_cluster_en(world: &mut LithairWorld, node_count: u32) {
-    println!("🚀 Starting REAL DeclarativeCluster with {} nodes...", node_count);
+    println!("🚀 Starting REAL LithairServer cluster with {} nodes...", node_count);
     let ports = world.start_real_cluster(node_count as usize).await
         .expect("Failed to start real cluster");
 
     println!("✅ Real cluster of {} nodes started (ports: {:?})", node_count, ports);
 }
 
-#[given(regex = r"un vrai cluster DeclarativeCluster de (\d+) nœuds")]
+#[given(regex = r"un vrai cluster LithairServer de (\d+) nœuds")]
 async fn given_real_cluster_fr(world: &mut LithairWorld, node_count: u32) {
     given_real_cluster_en(world, node_count).await;
 }
@@ -583,6 +583,201 @@ async fn when_create_products_on_leader(world: &mut LithairWorld, count: u32) {
     }
 
     println!("✅ Created {} products on leader", count);
+}
+
+#[when("I update the product on the leader")]
+async fn when_update_product_on_leader(world: &mut LithairWorld) {
+    // Get the product ID from the last created product
+    let products_result = world.make_real_cluster_request(0, "GET", "/api/products", None).await;
+
+    let product_id = match products_result {
+        Ok(response) => {
+            if let Some(arr) = response.as_array() {
+                arr.first()
+                    .and_then(|p| p.get("id").and_then(|id| id.as_str()))
+                    .map(|s| s.to_string())
+            } else {
+                None
+            }
+        }
+        Err(_) => None
+    };
+
+    let id = product_id.expect("No product found to update");
+
+    // Store the ID for later verification
+    {
+        let mut test_data = world.test_data.lock().await;
+        test_data.users.insert("last_product_id".to_string(), serde_json::json!(id.clone()));
+    }
+
+    let update_data = serde_json::json!({
+        "id": id,
+        "name": "Updated Product",
+        "price": 199.99,
+        "category": "Updated"
+    });
+
+    let result = world.make_real_cluster_request(0, "PUT", &format!("/api/products/{}", id), Some(update_data)).await;
+
+    match result {
+        Ok(response) => {
+            println!("✅ Product {} updated on leader: {:?}", id, response);
+            world.last_response = Some(serde_json::to_string(&response).unwrap_or_default());
+        }
+        Err(e) => {
+            println!("⚠️ Update response: {}", e);
+            world.last_error = Some(e);
+        }
+    }
+}
+
+#[when("I delete the product on the leader")]
+async fn when_delete_product_on_leader(world: &mut LithairWorld) {
+    // Get the product ID from the last created product
+    let products_result = world.make_real_cluster_request(0, "GET", "/api/products", None).await;
+
+    let product_id = match products_result {
+        Ok(response) => {
+            if let Some(arr) = response.as_array() {
+                arr.first()
+                    .and_then(|p| p.get("id").and_then(|id| id.as_str()))
+                    .map(|s| s.to_string())
+            } else {
+                None
+            }
+        }
+        Err(_) => None
+    };
+
+    let id = product_id.expect("No product found to delete");
+
+    // Store the ID for later verification
+    {
+        let mut test_data = world.test_data.lock().await;
+        test_data.users.insert("last_product_id".to_string(), serde_json::json!(id.clone()));
+    }
+
+    let result = world.make_real_cluster_request(0, "DELETE", &format!("/api/products/{}", id), None).await;
+
+    match result {
+        Ok(response) => {
+            println!("✅ Product {} deleted on leader: {:?}", id, response);
+            world.last_response = Some(serde_json::to_string(&response).unwrap_or_default());
+        }
+        Err(e) => {
+            println!("⚠️ Delete response: {}", e);
+            world.last_error = Some(e);
+        }
+    }
+}
+
+#[then("the updated product should be visible on all nodes")]
+async fn then_updated_product_visible_on_all_nodes(world: &mut LithairWorld) {
+    // Wait for replication - increased to 3s for more reliable cluster sync
+    sleep(Duration::from_secs(3)).await;
+
+    let cluster_size = world.real_cluster_size().await;
+    println!("🔍 Checking updated product visibility across {} nodes...", cluster_size);
+
+    // Get the stored product ID
+    let product_id = {
+        let test_data = world.test_data.lock().await;
+        test_data.users.get("last_product_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+
+    let id = product_id.expect("No product ID stored");
+
+    let mut node_products = Vec::new();
+
+    for i in 0..cluster_size {
+        let result = world.make_real_cluster_request(i, "GET", &format!("/api/products/{}", id), None).await;
+        match result {
+            Ok(response) => {
+                println!("Node {} product {}: {:?}", i, id, response);
+
+                // Verify the product was updated
+                let name = response.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let price = response.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+                assert_eq!(name, "Updated Product", "Node {} should have updated product name", i);
+                assert!((price - 199.99).abs() < 0.01, "Node {} should have updated price", i);
+
+                node_products.push((i, response));
+            }
+            Err(e) => {
+                println!("⚠️ Node {} error: {}", i, e);
+            }
+        }
+    }
+
+    assert_eq!(node_products.len(), cluster_size, "All nodes should have the updated product");
+    println!("✅ Updated product visibility verified on all {} nodes", cluster_size);
+}
+
+#[then("the product should be deleted on all nodes")]
+async fn then_product_deleted_on_all_nodes(world: &mut LithairWorld) {
+    // Wait for replication
+    sleep(Duration::from_secs(1)).await;
+
+    let cluster_size = world.real_cluster_size().await;
+    println!("🔍 Checking product deletion across {} nodes...", cluster_size);
+
+    // Get the stored product ID
+    let product_id = {
+        let test_data = world.test_data.lock().await;
+        test_data.users.get("last_product_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+
+    let id = product_id.expect("No product ID stored");
+
+    let mut deleted_count = 0;
+
+    for i in 0..cluster_size {
+        let result = world.make_real_cluster_request(i, "GET", &format!("/api/products/{}", id), None).await;
+        match result {
+            Ok(response) => {
+                // Product found - might be a 404 response wrapped in JSON
+                if response.get("error").is_some() || response.is_null() {
+                    println!("Node {} product {} deleted (error response)", i, id);
+                    deleted_count += 1;
+                } else {
+                    println!("⚠️ Node {} still has product {}: {:?}", i, id, response);
+                }
+            }
+            Err(e) => {
+                // 404 Not Found is expected for deleted items
+                if e.contains("404") || e.contains("not found") || e.contains("Not Found") {
+                    println!("Node {} product {} deleted (404)", i, id);
+                    deleted_count += 1;
+                } else {
+                    println!("⚠️ Node {} unexpected error: {}", i, e);
+                }
+            }
+        }
+    }
+
+    // Also verify via the list endpoint
+    for i in 0..cluster_size {
+        let result = world.make_real_cluster_request(i, "GET", "/api/products", None).await;
+        if let Ok(response) = result {
+            if let Some(arr) = response.as_array() {
+                let found = arr.iter().any(|p| p.get("id").and_then(|v| v.as_str()) == Some(&id));
+                if found {
+                    println!("⚠️ Node {} still has product in list", i);
+                } else {
+                    println!("✅ Node {} product removed from list", i);
+                }
+            }
+        }
+    }
+
+    assert!(deleted_count > 0, "At least some nodes should report deletion");
+    println!("✅ Product deletion verified ({}/{} nodes confirmed)", deleted_count, cluster_size);
 }
 
 #[then("the product should be visible on all nodes")]

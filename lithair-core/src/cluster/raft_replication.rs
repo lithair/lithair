@@ -29,13 +29,33 @@ impl openraft::RaftTypeConfig for LithairTypeConfig {
     type AsyncRuntime = openraft::TokioRuntime;
 }
 
-/// Lithair Request Types
+/// Lithair Request Types - Generic CRUD operations for any model
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum LithairRequest {
+    /// Create a new item in a model (generic)
+    Create {
+        model_path: String,  // e.g., "/api/products"
+        data: serde_json::Value,
+    },
+    /// Update an existing item (generic)
+    Update {
+        model_path: String,
+        id: String,
+        data: serde_json::Value,
+    },
+    /// Delete an item (generic)
+    Delete {
+        model_path: String,
+        id: String,
+    },
+    /// Batch operation (multiple operations in a single consensus round)
+    BatchOperation {
+        operations: Vec<LithairRequest>,
+    },
+    // Legacy variants for backwards compatibility
     CreateProduct { data: serde_json::Value },
     UpdateProduct { id: String, data: serde_json::Value },
     DeleteProduct { id: String },
-    BatchOperation { operations: Vec<LithairRequest> },
 }
 
 /// Lithair Response Types

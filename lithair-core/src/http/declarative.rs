@@ -287,6 +287,104 @@ where
         }
     }
 
+    /// Apply a single replicated item from leader (for followers to receive replication)
+    /// This adds to storage AND persists to event store (idempotent via key-based storage)
+    pub async fn apply_replicated_item(&self, item: T) -> Result<(), String> {
+        let actual_key = serde_json::to_value(&item)
+            .ok()
+            .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
+            .unwrap_or_else(|| item.get_primary_key());
+
+        // Insert into storage
+        {
+            let mut storage = self.storage.write().await;
+            storage.insert(actual_key.clone(), item.clone());
+        }
+
+        // Persist to event store (for durability)
+        self.persist_to_event_store("Replicated", &item)
+            .await
+            .map_err(|e| format!("Failed to persist replicated item: {:?}", e))?;
+
+        if Self::is_verbose() {
+            println!("📥 Replicated item {} applied to follower", actual_key);
+        }
+
+        Ok(())
+    }
+
+    /// Apply multiple replicated items from leader (bulk replication for followers)
+    pub async fn apply_replicated_items(&self, items: Vec<T>) -> Result<usize, String> {
+        let count = items.len();
+        for item in items {
+            self.apply_replicated_item(item).await?;
+        }
+        if Self::is_verbose() {
+            println!("📥 Bulk replicated {} items applied to follower", count);
+        }
+        Ok(count)
+    }
+
+    /// Apply a replicated UPDATE from leader (for followers to receive UPDATE replication)
+    /// This updates storage AND persists to event store
+    pub async fn apply_replicated_update(&self, id: &str, item: T) -> Result<(), String> {
+        // Check if item exists
+        {
+            let storage = self.storage.read().await;
+            if !storage.contains_key(id) {
+                // If item doesn't exist, treat as create (eventual consistency)
+                drop(storage);
+                return self.apply_replicated_item(item).await;
+            }
+        }
+
+        // Update in storage
+        {
+            let mut storage = self.storage.write().await;
+            storage.insert(id.to_string(), item.clone());
+        }
+
+        // Persist to event store (for durability)
+        self.persist_to_event_store("Updated", &item)
+            .await
+            .map_err(|e| format!("Failed to persist replicated update: {:?}", e))?;
+
+        if Self::is_verbose() {
+            println!("📥 Replicated UPDATE for {} applied to follower", id);
+        }
+
+        Ok(())
+    }
+
+    /// Apply a replicated DELETE from leader (for followers to receive DELETE replication)
+    /// This removes from storage AND persists deletion event to event store
+    pub async fn apply_replicated_delete(&self, id: &str) -> Result<bool, String> {
+        // Remove from storage
+        let removed_item = {
+            let mut storage = self.storage.write().await;
+            storage.remove(id)
+        };
+
+        if let Some(item) = removed_item {
+            // Persist deletion to event store (for durability and audit trail)
+            self.persist_to_event_store("Deleted", &item)
+                .await
+                .map_err(|e| format!("Failed to persist replicated delete: {:?}", e))?;
+
+            if Self::is_verbose() {
+                println!("📥 Replicated DELETE for {} applied to follower", id);
+            }
+
+            Ok(true)
+        } else {
+            // Item didn't exist (idempotent behavior - not an error)
+            if Self::is_verbose() {
+                println!("📥 Replicated DELETE for {} - item not found (idempotent)", id);
+            }
+            Ok(false)
+        }
+    }
+
     /// GET /api/{model}/count - Return item count only (lightweight read)
     async fn handle_count(&self) -> Result<Resp, Infallible> {
         let count = self.storage_count().await as u64;
@@ -1038,45 +1136,6 @@ where
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(12 * 1024 * 1024) // 12 MiB
-    }
-
-    /// Apply replicated item directly to local storage (bypass consensus)
-    /// Used when receiving replication data via HYPER HTTP from leader
-    pub async fn apply_replicated_item(&self, item: T) {
-        // Use the item's actual ID as key, not the placeholder
-        let actual_key = serde_json::to_value(&item)
-            .ok()
-            .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
-            .unwrap_or_else(|| item.get_primary_key());
-        if Self::is_verbose() {
-            println!(
-                "🔍 REPLICATION DEBUG: actual_key = {}, item.get_primary_key() = {}",
-                actual_key,
-                item.get_primary_key()
-            );
-            println!(
-                "🔍 REPLICATION DEBUG: About to insert replicated item {} into local storage",
-                actual_key
-            );
-        }
-        // Apply directly to local storage without consensus (consensus already happened on leader)
-        {
-            let mut storage = self.storage.write().await;
-            storage.insert(actual_key.clone(), item.clone());
-            if Self::is_verbose() {
-                println!("🔍 REPLICATION DEBUG: Storage now has {} items", storage.len());
-            }
-        }
-
-        // Persist to local EventStore
-        if let Err(e) = self.persist_to_event_store("Replicated", &item).await {
-            eprintln!("❌ Failed to persist replicated item to EventStore: {}", e);
-        } else if Self::is_verbose() {
-            println!(
-                "✅ HYPER: Successfully applied replicated item {} to local storage",
-                actual_key
-            );
-        }
     }
 
     // ========================================================================
