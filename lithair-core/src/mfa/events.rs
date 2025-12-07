@@ -165,9 +165,15 @@ impl MfaState {
             }
             
             MfaEvent::MfaCodeVerificationFailed { .. } => {
-                if let Some(user_state) = self.users.get_mut(&username) {
-                    user_state.failed_attempts += 1;
-                }
+                // Create user entry if doesn't exist (user may have attempted MFA without setup)
+                let user_state = self.users.entry(username).or_insert_with(|| UserMfaState {
+                    secret: None,
+                    status: MfaStatus::default(),
+                    backup_codes: Vec::new(),
+                    last_verification: None,
+                    failed_attempts: 0,
+                });
+                user_state.failed_attempts += 1;
             }
             
             MfaEvent::BackupCodesGenerated { .. } => {

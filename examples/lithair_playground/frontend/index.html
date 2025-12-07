@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lithair Playground</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-purple: #a371f7;
+            --accent-orange: #f0883e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-info {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-leader {
+            background: var(--accent-green);
+            color: #000;
+        }
+
+        .badge-follower {
+            background: var(--accent-blue);
+            color: #000;
+        }
+
+        .badge-node {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .main-content {
+            padding: 24px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: var(--bg-tertiary);
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .panel-body {
+            padding: 16px;
+        }
+
+        /* Cluster Status Panel */
+        .cluster-nodes {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .node-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 180px;
+            flex: 1;
+        }
+
+        .node-card.leader {
+            border-color: var(--accent-green);
+        }
+
+        .node-card.unreachable {
+            border-color: var(--accent-red);
+            opacity: 0.7;
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .node-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .node-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .node-status.healthy {
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .node-status.unhealthy {
+            background: var(--accent-red);
+            box-shadow: 0 0 8px var(--accent-red);
+        }
+
+        .node-stats {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .node-stats div {
+            margin: 4px 0;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.8;
+        }
+
+        .btn-danger {
+            background: var(--accent-red);
+            color: #fff;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
+        .btn-success {
+            background: var(--accent-green);
+            color: #000;
+        }
+
+        .btn-warning {
+            background: var(--accent-yellow);
+            color: #000;
+        }
+
+        /* Benchmark Panel */
+        .benchmark-config {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-group label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .form-group select,
+        .form-group input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .form-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        .checkbox-group {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .benchmark-results {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            padding: 12px;
+            margin-top: 16px;
+        }
+
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 13px;
+        }
+
+        .result-label {
+            color: var(--text-secondary);
+        }
+
+        .result-value {
+            font-family: monospace;
+            color: var(--text-primary);
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            transition: width 0.3s;
+        }
+
+        /* CRUD Stats Grid */
+        .crud-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .crud-stat-card {
+            background: var(--bg-primary);
+            border-radius: 4px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .crud-stat-card.create { border-left: 3px solid var(--accent-green); }
+        .crud-stat-card.read { border-left: 3px solid var(--accent-blue); }
+        .crud-stat-card.update { border-left: 3px solid var(--accent-yellow); }
+        .crud-stat-card.delete { border-left: 3px solid var(--accent-red); }
+
+        .crud-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            font-family: monospace;
+        }
+
+        .crud-stat-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        /* Table Stats */
+        .table-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .table-stat-card {
+            background: var(--bg-primary);
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .table-stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .table-stat-name {
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--accent-purple);
+        }
+
+        .table-stat-total {
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .table-stat-breakdown {
+            display: flex;
+            gap: 8px;
+            font-size: 10px;
+        }
+
+        .table-stat-breakdown span {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .dot.create { background: var(--accent-green); }
+        .dot.read { background: var(--accent-blue); }
+        .dot.update { background: var(--accent-yellow); }
+        .dot.delete { background: var(--accent-red); }
+
+        /* Data Explorer Panel */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .data-table th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .data-table tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .status-draft {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .status-active {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--accent-green);
+        }
+
+        .status-archived {
+            background: rgba(139, 148, 158, 0.2);
+            color: var(--text-secondary);
+        }
+
+        /* Replication Monitor */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent-blue);
+            font-family: monospace;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .metric-sublabel {
+            font-size: 11px;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        /* Consistency Panel */
+        .consistency-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+
+        .consistency-status.consistent {
+            border-left: 3px solid var(--accent-green);
+        }
+
+        .consistency-status.inconsistent {
+            border-left: 3px solid var(--accent-red);
+        }
+
+        .consistency-tables {
+            display: grid;
+            gap: 8px;
+        }
+
+        .consistency-table-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .consistency-table-name {
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .consistency-table-count {
+            font-family: monospace;
+        }
+
+        .consistency-check-icon {
+            font-size: 16px;
+        }
+
+        /* Live log */
+        .live-log {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 8px;
+            margin-top: 12px;
+        }
+
+        .log-entry {
+            padding: 2px 0;
+            color: var(--text-secondary);
+        }
+
+        .log-entry.success {
+            color: var(--accent-green);
+        }
+
+        .log-entry.error {
+            color: var(--accent-red);
+        }
+
+        .log-entry.info {
+            color: var(--accent-blue);
+        }
+
+        /* Full width panels */
+        .panel-full {
+            grid-column: span 2;
+        }
+
+        /* Create item form */
+        .create-form {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .create-form .form-group {
+            flex: 1;
+        }
+
+        /* Data tabs */
+        .data-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .data-tab {
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .data-tab.active {
+            background: var(--accent-blue);
+            color: #000;
+            border-color: var(--accent-blue);
+        }
+
+        .data-tab:hover:not(.active) {
+            border-color: var(--accent-blue);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .panel-full {
+                grid-column: span 1;
+            }
+
+            .benchmark-config {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Lithair Playground</h1>
+        <div class="header-info">
+            <span class="badge badge-node" id="node-badge">Node ?</span>
+            <span class="badge" id="role-badge">Loading...</span>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- Cluster Status Panel -->
+        <div class="panel panel-full">
+            <div class="panel-header">
+                <h2>Cluster Status</h2>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-warning" onclick="checkConsistency()">Check Consistency</button>
+                    <button class="btn btn-primary" onclick="refreshClusterStatus()">Refresh</button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="cluster-nodes" id="cluster-nodes">
+                    <p style="color: var(--text-secondary)">Loading cluster status...</p>
+                </div>
+                <div id="consistency-result" style="margin-top: 16px; display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Migration Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Rolling Upgrade</h2>
+                <span class="badge" id="migration-status-badge" style="background: var(--bg-tertiary)">No Migration</span>
+            </div>
+            <div class="panel-body">
+                <!-- Current Version -->
+                <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                    <div class="metric-card" style="flex: 1; padding: 12px;">
+                        <div class="metric-value" id="current-schema-version" style="font-size: 20px;">v1</div>
+                        <div class="metric-label">Schema Version</div>
+                    </div>
+                    <div class="metric-card" style="flex: 1; padding: 12px;">
+                        <div class="metric-value" id="migration-step-count" style="font-size: 20px;">0</div>
+                        <div class="metric-label">Steps Applied</div>
+                    </div>
+                </div>
+
+                <!-- Migration Controls -->
+                <div id="migration-controls">
+                    <!-- Begin Migration -->
+                    <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 4px; margin-bottom: 12px;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Start New Migration</div>
+                        <div style="display: flex; gap: 8px; align-items: flex-end;">
+                            <div class="form-group" style="flex: 1;">
+                                <label>Target Version</label>
+                                <input type="text" id="migration-target-version" placeholder="2.0.0" value="2.0.0">
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label>Description</label>
+                                <input type="text" id="migration-description" placeholder="Add category field">
+                            </div>
+                            <button class="btn btn-success" onclick="beginMigration()">Begin</button>
+                        </div>
+                    </div>
+
+                    <!-- Active Migration Actions -->
+                    <div id="active-migration-panel" style="display: none; background: var(--bg-tertiary); padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 3px solid var(--accent-yellow);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-size: 12px; color: var(--text-secondary);">Active Migration</div>
+                                <div style="font-size: 14px; font-family: monospace;" id="active-migration-id">-</div>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-success" onclick="commitMigration()">Commit</button>
+                                <button class="btn btn-danger" onclick="rollbackMigration()">Rollback</button>
+                            </div>
+                        </div>
+
+                        <!-- Add Step -->
+                        <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Add Migration Step</div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <select id="step-type" style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 12px;">
+                                    <option value="add_field">Add Field</option>
+                                    <option value="remove_field">Remove Field</option>
+                                    <option value="rename_field">Rename Field</option>
+                                    <option value="add_model">Add Model</option>
+                                    <option value="remove_model">Remove Model</option>
+                                </select>
+                                <input type="text" id="step-model" placeholder="Model (e.g. PlaygroundItem)" style="flex: 1; min-width: 120px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 12px;">
+                                <input type="text" id="step-field" placeholder="Field name" style="flex: 1; min-width: 100px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; color: var(--text-primary); font-size: 12px;">
+                                <button class="btn btn-primary" onclick="addMigrationStep()">+ Add Step</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Migration Log -->
+                <div class="live-log" id="migration-log" style="height: 120px;">
+                    <div class="log-entry info">[Migration] Ready for rolling upgrades</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Replication Monitor -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Replication Monitor</h2>
+            </div>
+            <div class="panel-body">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value" id="ops-per-sec">0</div>
+                        <div class="metric-label">Ops/sec</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="commit-index">0</div>
+                        <div class="metric-label">Commit Index</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="current-term">0</div>
+                        <div class="metric-label">Current Term</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="wal-size">0</div>
+                        <div class="metric-label">WAL Size</div>
+                        <div class="metric-sublabel">bytes</div>
+                    </div>
+                </div>
+                <div class="live-log" id="replication-log">
+                    <div class="log-entry info">[System] Initializing...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Benchmark Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Multi-Table CRUD Benchmark</h2>
+            </div>
+            <div class="panel-body">
+                <div class="benchmark-config">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="bench-type">
+                            <option value="crud" selected>CRUD (All ops)</option>
+                            <option value="write">Write only</option>
+                            <option value="read">Read only</option>
+                            <option value="mixed">Mixed R/W</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Concurrency</label>
+                        <input type="number" id="bench-concurrency" value="10" min="1" max="100">
+                    </div>
+                    <div class="form-group">
+                        <label>Duration (sec)</label>
+                        <input type="number" id="bench-duration" value="10" min="1" max="300">
+                    </div>
+                    <div class="form-group">
+                        <label>Payload Size</label>
+                        <input type="number" id="bench-payload" value="256" min="1" max="10000">
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="bench-multi-table" checked>
+                        <label for="bench-multi-table">Multi-table</label>
+                    </div>
+                    <div class="form-group">
+                        <label>CRUD Ratio (C:R:U:D)</label>
+                        <input type="text" id="bench-crud-ratio" value="40:30:20:10" placeholder="40:30:20:10">
+                    </div>
+                </div>
+                <button class="btn btn-success" id="bench-start-btn" onclick="startBenchmark()">Start Benchmark</button>
+                <button class="btn btn-danger" id="bench-stop-btn" onclick="stopBenchmark()" style="display:none;">Stop</button>
+
+                <div class="progress-bar" id="bench-progress-container" style="display:none;">
+                    <div class="progress-fill" id="bench-progress" style="width: 0%"></div>
+                </div>
+
+                <div class="benchmark-results" id="bench-results" style="display:none;">
+                    <div class="result-row">
+                        <span class="result-label">Total Operations</span>
+                        <span class="result-value" id="bench-total-ops">0</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Ops/sec</span>
+                        <span class="result-value" id="bench-ops-sec">0</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Avg Latency</span>
+                        <span class="result-value" id="bench-avg-latency">0 ms</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">P95 / P99 Latency</span>
+                        <span class="result-value"><span id="bench-p95-latency">0</span> / <span id="bench-p99-latency">0</span> ms</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Success Rate</span>
+                        <span class="result-value" id="bench-success-rate">0%</span>
+                    </div>
+
+                    <!-- CRUD Stats -->
+                    <h4 style="margin-top: 16px; font-size: 12px; color: var(--text-secondary);">Operations Breakdown</h4>
+                    <div class="crud-stats-grid">
+                        <div class="crud-stat-card create">
+                            <div class="crud-stat-value" id="bench-creates">0</div>
+                            <div class="crud-stat-label">Creates</div>
+                        </div>
+                        <div class="crud-stat-card read">
+                            <div class="crud-stat-value" id="bench-reads">0</div>
+                            <div class="crud-stat-label">Reads</div>
+                        </div>
+                        <div class="crud-stat-card update">
+                            <div class="crud-stat-value" id="bench-updates">0</div>
+                            <div class="crud-stat-label">Updates</div>
+                        </div>
+                        <div class="crud-stat-card delete">
+                            <div class="crud-stat-value" id="bench-deletes">0</div>
+                            <div class="crud-stat-label">Deletes</div>
+                        </div>
+                    </div>
+
+                    <!-- Table Stats -->
+                    <h4 style="margin-top: 16px; font-size: 12px; color: var(--text-secondary);">Per-Table Breakdown</h4>
+                    <div class="table-stats-grid">
+                        <div class="table-stat-card">
+                            <div class="table-stat-header">
+                                <span class="table-stat-name">Items</span>
+                                <span class="table-stat-total" id="bench-items-total">0</span>
+                            </div>
+                            <div class="table-stat-breakdown">
+                                <span><div class="dot create"></div><span id="bench-items-c">0</span></span>
+                                <span><div class="dot read"></div><span id="bench-items-r">0</span></span>
+                                <span><div class="dot update"></div><span id="bench-items-u">0</span></span>
+                                <span><div class="dot delete"></div><span id="bench-items-d">0</span></span>
+                            </div>
+                        </div>
+                        <div class="table-stat-card">
+                            <div class="table-stat-header">
+                                <span class="table-stat-name">Orders</span>
+                                <span class="table-stat-total" id="bench-orders-total">0</span>
+                            </div>
+                            <div class="table-stat-breakdown">
+                                <span><div class="dot create"></div><span id="bench-orders-c">0</span></span>
+                                <span><div class="dot read"></div><span id="bench-orders-r">0</span></span>
+                                <span><div class="dot update"></div><span id="bench-orders-u">0</span></span>
+                                <span><div class="dot delete"></div><span id="bench-orders-d">0</span></span>
+                            </div>
+                        </div>
+                        <div class="table-stat-card">
+                            <div class="table-stat-header">
+                                <span class="table-stat-name">Logs</span>
+                                <span class="table-stat-total" id="bench-logs-total">0</span>
+                            </div>
+                            <div class="table-stat-breakdown">
+                                <span><div class="dot create"></div><span id="bench-logs-c">0</span></span>
+                                <span><div class="dot read"></div><span id="bench-logs-r">0</span></span>
+                                <span><div class="dot update"></div><span id="bench-logs-u">0</span></span>
+                                <span><div class="dot delete"></div><span id="bench-logs-d">0</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Explorer Panel -->
+        <div class="panel panel-full">
+            <div class="panel-header">
+                <h2>Data Explorer</h2>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary" onclick="loadCurrentTable()">Refresh</button>
+                    <span class="badge badge-node" id="items-count">0 items</span>
+                </div>
+            </div>
+            <div class="panel-body">
+                <!-- Table Tabs -->
+                <div class="data-tabs">
+                    <div class="data-tab active" data-table="items" onclick="switchTable('items')">Items</div>
+                    <div class="data-tab" data-table="orders" onclick="switchTable('orders')">Orders</div>
+                    <div class="data-tab" data-table="logs" onclick="switchTable('logs')">Logs</div>
+                </div>
+
+                <!-- Create Form (Items) -->
+                <div id="create-form-items" class="create-form" style="margin-bottom: 16px;">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" id="new-item-name" placeholder="Item name">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" id="new-item-desc" placeholder="Description">
+                    </div>
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <input type="number" id="new-item-priority" value="0" min="0" max="10">
+                    </div>
+                    <button class="btn btn-success" onclick="createItem()">+ Create</button>
+                </div>
+
+                <!-- Create Form (Orders) -->
+                <div id="create-form-orders" class="create-form" style="margin-bottom: 16px; display: none;">
+                    <div class="form-group">
+                        <label>Customer ID</label>
+                        <input type="text" id="new-order-customer" placeholder="customer-123">
+                    </div>
+                    <div class="form-group">
+                        <label>Total (cents)</label>
+                        <input type="number" id="new-order-total" value="1000" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Item Count</label>
+                        <input type="number" id="new-order-items" value="1" min="1">
+                    </div>
+                    <button class="btn btn-success" onclick="createOrder()">+ Create</button>
+                </div>
+
+                <!-- Create Form (Logs) -->
+                <div id="create-form-logs" class="create-form" style="margin-bottom: 16px; display: none;">
+                    <div class="form-group">
+                        <label>Level</label>
+                        <select id="new-log-level">
+                            <option value="Info">Info</option>
+                            <option value="Warning">Warning</option>
+                            <option value="Error">Error</option>
+                            <option value="Debug">Debug</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Action</label>
+                        <input type="text" id="new-log-action" placeholder="user.login">
+                    </div>
+                    <div class="form-group">
+                        <label>Entity</label>
+                        <input type="text" id="new-log-entity" placeholder="User">
+                    </div>
+                    <button class="btn btn-success" onclick="createLog()">+ Create</button>
+                </div>
+
+                <table class="data-table">
+                    <thead id="data-table-head">
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="items-table">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary);">Loading items...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State
+        let currentNodeId = null;
+        let isLeader = false;
+        let benchmarkRunning = false;
+        let refreshInterval = null;
+        let currentTable = 'items';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshClusterStatus();
+            loadCurrentTable();
+
+            // Auto-refresh every 2 seconds
+            refreshInterval = setInterval(() => {
+                refreshClusterStatus();
+                if (benchmarkRunning) {
+                    checkBenchmarkStatus();
+                }
+            }, 2000);
+
+            addLog('replication-log', 'Live monitoring active (polling every 2s)', 'info');
+        });
+
+        // Cluster Status
+        async function refreshClusterStatus() {
+            try {
+                const response = await fetch('/_playground/cluster/status');
+                const data = await response.json();
+
+                currentNodeId = data.node_id;
+                document.getElementById('node-badge').textContent = `Node ${data.node_id}`;
+
+                // Update role badge
+                const localHealth = data.local_health;
+                isLeader = localHealth.is_leader === true;
+                const roleBadge = document.getElementById('role-badge');
+                roleBadge.textContent = isLeader ? 'LEADER' : 'FOLLOWER';
+                roleBadge.className = `badge ${isLeader ? 'badge-leader' : 'badge-follower'}`;
+
+                // Update metrics
+                if (localHealth.consensus) {
+                    document.getElementById('commit-index').textContent = localHealth.consensus.commit_index || 0;
+                    document.getElementById('current-term').textContent = localHealth.consensus.term || 0;
+                }
+                if (localHealth.storage) {
+                    document.getElementById('wal-size').textContent = formatBytes(localHealth.storage.wal_size || 0);
+                }
+
+                // Render nodes
+                renderClusterNodes(data);
+            } catch (err) {
+                console.error('Failed to refresh cluster status:', err);
+            }
+        }
+
+        function renderClusterNodes(data) {
+            const container = document.getElementById('cluster-nodes');
+            let html = '';
+
+            // Local node
+            const localHealth = data.local_health;
+            const localIsLeader = localHealth.is_leader === true;
+            html += renderNodeCard({
+                id: data.node_id,
+                port: data.port,
+                isLeader: localIsLeader,
+                reachable: true,
+                health: localHealth,
+                isLocal: true
+            });
+
+            // Peer nodes
+            for (const peer of data.peers || []) {
+                const peerIsLeader = peer.health?.is_leader === true;
+                html += renderNodeCard({
+                    id: peer.health?.node_id ?? '?',
+                    port: peer.port,
+                    isLeader: peerIsLeader,
+                    reachable: peer.reachable,
+                    health: peer.health,
+                    error: peer.error,
+                    isLocal: false
+                });
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderNodeCard(node) {
+            const statusClass = node.reachable ? 'healthy' : 'unhealthy';
+            const cardClass = node.isLeader ? 'leader' : (node.reachable ? '' : 'unreachable');
+
+            let stats = '';
+            if (node.health && node.health.consensus) {
+                stats = `
+                    <div>Commit: ${node.health.consensus.commit_index || 0}</div>
+                    <div>Term: ${node.health.consensus.term || 0}</div>
+                `;
+            } else if (node.error) {
+                stats = `<div style="color: var(--accent-red)">${node.error}</div>`;
+            }
+
+            return `
+                <div class="node-card ${cardClass}">
+                    <div class="node-header">
+                        <span class="node-name">
+                            Node ${node.id}
+                            ${node.isLocal ? '<span style="color: var(--accent-blue)">(this)</span>' : ''}
+                        </span>
+                        <div class="node-status ${statusClass}"></div>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <span class="badge ${node.isLeader ? 'badge-leader' : 'badge-follower'}" style="font-size: 10px;">
+                            ${node.isLeader ? 'LEADER' : 'FOLLOWER'}
+                        </span>
+                    </div>
+                    <div class="node-stats">
+                        <div>Port: ${node.port}</div>
+                        ${stats}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Consistency Check
+        async function checkConsistency() {
+            const resultDiv = document.getElementById('consistency-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<p style="color: var(--text-secondary)">Checking consistency...</p>';
+
+            try {
+                const response = await fetch('/_playground/consistency');
+                const data = await response.json();
+
+                let html = `
+                    <div class="consistency-status ${data.all_consistent ? 'consistent' : 'inconsistent'}">
+                        <span class="consistency-check-icon">${data.all_consistent ? '✓' : '⚠'}</span>
+                        <div>
+                            <strong>${data.all_consistent ? 'All tables consistent' : 'Inconsistency detected!'}</strong>
+                            <div style="font-size: 11px; color: var(--text-secondary)">
+                                ${data.cluster_size} nodes checked at ${new Date(data.timestamp).toLocaleTimeString()}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="consistency-tables">
+                `;
+
+                for (const table of data.tables || []) {
+                    html += `
+                        <div class="consistency-table-row">
+                            <span class="consistency-table-name">${table.table}</span>
+                            <span>${table.consistent ? '✓' : '⚠'} ${table.consistent ? 'Consistent' : 'Mismatch'}</span>
+                            <span class="consistency-table-count">${table.total_count} records</span>
+                            <span style="font-size: 10px; color: var(--text-secondary)">
+                                ${(table.nodes || []).map(n => `${n.port}:${n.count}`).join(' | ')}
+                            </span>
+                        </div>
+                    `;
+                }
+
+                html += '</div>';
+                resultDiv.innerHTML = html;
+
+                addLog('replication-log', `Consistency check: ${data.all_consistent ? 'PASS' : 'FAIL'}`, data.all_consistent ? 'success' : 'error');
+            } catch (err) {
+                resultDiv.innerHTML = `<p style="color: var(--accent-red)">Failed to check consistency: ${err}</p>`;
+                addLog('replication-log', `Consistency check failed: ${err}`, 'error');
+            }
+        }
+
+        // Benchmark
+        async function startBenchmark() {
+            // Parse CRUD ratio
+            const ratioStr = document.getElementById('bench-crud-ratio').value;
+            const ratios = ratioStr.split(':').map(n => parseInt(n.trim()) || 0);
+            while (ratios.length < 4) ratios.push(0);
+
+            const config = {
+                benchmark_type: document.getElementById('bench-type').value,
+                concurrency: parseInt(document.getElementById('bench-concurrency').value),
+                duration_secs: parseInt(document.getElementById('bench-duration').value),
+                payload_size: parseInt(document.getElementById('bench-payload').value),
+                multi_table: document.getElementById('bench-multi-table').checked,
+                crud_ratios: ratios.slice(0, 4)
+            };
+
+            try {
+                const response = await fetch('/_playground/benchmark/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await response.json();
+
+                if (data.started) {
+                    benchmarkRunning = true;
+                    document.getElementById('bench-start-btn').style.display = 'none';
+                    document.getElementById('bench-stop-btn').style.display = 'inline-block';
+                    document.getElementById('bench-progress-container').style.display = 'block';
+                    document.getElementById('bench-results').style.display = 'block';
+                    addLog('replication-log', `Benchmark started: ${config.benchmark_type}, ${config.concurrency} workers, ${config.duration_secs}s`, 'info');
+                } else if (data.error) {
+                    addLog('replication-log', `Benchmark error: ${data.error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to start benchmark:', err);
+                addLog('replication-log', `Failed to start benchmark: ${err}`, 'error');
+            }
+        }
+
+        async function stopBenchmark() {
+            try {
+                await fetch('/_playground/benchmark/stop', { method: 'POST' });
+                benchmarkRunning = false;
+                document.getElementById('bench-start-btn').style.display = 'inline-block';
+                document.getElementById('bench-stop-btn').style.display = 'none';
+                addLog('replication-log', 'Benchmark stopped', 'info');
+            } catch (err) {
+                console.error('Failed to stop benchmark:', err);
+            }
+        }
+
+        async function checkBenchmarkStatus() {
+            try {
+                const response = await fetch('/_playground/benchmark/status');
+                const data = await response.json();
+
+                if (data.running && data.progress) {
+                    updateBenchmarkUI(data.progress);
+                } else if (!data.running && data.last_result) {
+                    updateBenchmarkUI(data.last_result);
+                    benchmarkRunning = false;
+                    document.getElementById('bench-start-btn').style.display = 'inline-block';
+                    document.getElementById('bench-stop-btn').style.display = 'none';
+                    addLog('replication-log', `Benchmark completed: ${formatNumber(data.last_result.total_ops)} ops, ${Math.round(data.last_result.ops_per_sec)} ops/sec`, 'success');
+                }
+            } catch (err) {
+                console.error('Failed to check benchmark status:', err);
+            }
+        }
+
+        function updateBenchmarkUI(status) {
+            document.getElementById('bench-progress').style.width = `${status.progress_percent || 0}%`;
+            document.getElementById('bench-total-ops').textContent = formatNumber(status.total_ops || 0);
+            document.getElementById('bench-ops-sec').textContent = formatNumber(Math.round(status.ops_per_sec || 0));
+            document.getElementById('bench-avg-latency').textContent = `${(status.avg_latency_ms || 0).toFixed(2)} ms`;
+            document.getElementById('bench-p95-latency').textContent = (status.p95_latency_ms || 0).toFixed(2);
+            document.getElementById('bench-p99-latency').textContent = (status.p99_latency_ms || 0).toFixed(2);
+
+            const successRate = status.total_ops > 0
+                ? ((status.successful_ops / status.total_ops) * 100).toFixed(1)
+                : 0;
+            document.getElementById('bench-success-rate').textContent = `${successRate}%`;
+
+            // CRUD breakdown
+            document.getElementById('bench-creates').textContent = formatNumber(status.creates?.total || 0);
+            document.getElementById('bench-reads').textContent = formatNumber(status.reads?.total || 0);
+            document.getElementById('bench-updates').textContent = formatNumber(status.updates?.total || 0);
+            document.getElementById('bench-deletes').textContent = formatNumber(status.deletes?.total || 0);
+
+            // Per-table breakdown
+            const items = status.items_stats || {};
+            document.getElementById('bench-items-total').textContent = formatNumber(items.total_ops || 0);
+            document.getElementById('bench-items-c').textContent = items.creates?.total || 0;
+            document.getElementById('bench-items-r').textContent = items.reads?.total || 0;
+            document.getElementById('bench-items-u').textContent = items.updates?.total || 0;
+            document.getElementById('bench-items-d').textContent = items.deletes?.total || 0;
+
+            const orders = status.orders_stats || {};
+            document.getElementById('bench-orders-total').textContent = formatNumber(orders.total_ops || 0);
+            document.getElementById('bench-orders-c').textContent = orders.creates?.total || 0;
+            document.getElementById('bench-orders-r').textContent = orders.reads?.total || 0;
+            document.getElementById('bench-orders-u').textContent = orders.updates?.total || 0;
+            document.getElementById('bench-orders-d').textContent = orders.deletes?.total || 0;
+
+            const logs = status.logs_stats || {};
+            document.getElementById('bench-logs-total').textContent = formatNumber(logs.total_ops || 0);
+            document.getElementById('bench-logs-c').textContent = logs.creates?.total || 0;
+            document.getElementById('bench-logs-r').textContent = logs.reads?.total || 0;
+            document.getElementById('bench-logs-u').textContent = logs.updates?.total || 0;
+            document.getElementById('bench-logs-d').textContent = logs.deletes?.total || 0;
+
+            // Update ops/sec metric
+            document.getElementById('ops-per-sec').textContent = formatNumber(Math.round(status.ops_per_sec || 0));
+        }
+
+        // Data Explorer - Table switching
+        function switchTable(table) {
+            currentTable = table;
+
+            // Update tabs
+            document.querySelectorAll('.data-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.table === table);
+            });
+
+            // Show/hide create forms
+            document.getElementById('create-form-items').style.display = table === 'items' ? 'flex' : 'none';
+            document.getElementById('create-form-orders').style.display = table === 'orders' ? 'flex' : 'none';
+            document.getElementById('create-form-logs').style.display = table === 'logs' ? 'flex' : 'none';
+
+            // Update table headers
+            const thead = document.getElementById('data-table-head');
+            if (table === 'items') {
+                thead.innerHTML = '<tr><th>ID</th><th>Name</th><th>Status</th><th>Priority</th><th>Created</th><th>Actions</th></tr>';
+            } else if (table === 'orders') {
+                thead.innerHTML = '<tr><th>ID</th><th>Customer</th><th>Status</th><th>Total</th><th>Items</th><th>Actions</th></tr>';
+            } else if (table === 'logs') {
+                thead.innerHTML = '<tr><th>ID</th><th>Level</th><th>Action</th><th>Entity</th><th>Timestamp</th><th>Node</th></tr>';
+            }
+
+            loadCurrentTable();
+        }
+
+        async function loadCurrentTable() {
+            if (currentTable === 'items') {
+                await loadItems();
+            } else if (currentTable === 'orders') {
+                await loadOrders();
+            } else if (currentTable === 'logs') {
+                await loadLogs();
+            }
+        }
+
+        async function loadItems() {
+            try {
+                const response = await fetch('/api/items');
+                const items = await response.json();
+
+                document.getElementById('items-count').textContent = `${items.length} items`;
+
+                const tbody = document.getElementById('items-table');
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No items yet. Create one above!</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = items.map(item => `
+                    <tr>
+                        <td style="font-family: monospace; font-size: 11px;">${item.id.substring(0, 8)}...</td>
+                        <td>${escapeHtml(item.name)}</td>
+                        <td><span class="status-badge status-${(item.status || 'draft').toLowerCase()}">${item.status || 'Draft'}</span></td>
+                        <td>${item.priority || 0}</td>
+                        <td style="font-size: 11px; color: var(--text-secondary);">${formatDate(item.created_at)}</td>
+                        <td>
+                            <button class="btn btn-danger" style="padding: 2px 8px; font-size: 10px;" onclick="deleteRecord('items', '${item.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load items:', err);
+            }
+        }
+
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                const orders = await response.json();
+
+                document.getElementById('items-count').textContent = `${orders.length} orders`;
+
+                const tbody = document.getElementById('items-table');
+                if (orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No orders yet. Create one above!</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = orders.map(order => `
+                    <tr>
+                        <td style="font-family: monospace; font-size: 11px;">${order.id.substring(0, 8)}...</td>
+                        <td>${escapeHtml(order.customer_id || '')}</td>
+                        <td><span class="status-badge">${order.status || 'Pending'}</span></td>
+                        <td>$${((order.total_cents || 0) / 100).toFixed(2)}</td>
+                        <td>${order.item_count || 0}</td>
+                        <td>
+                            <button class="btn btn-danger" style="padding: 2px 8px; font-size: 10px;" onclick="deleteRecord('orders', '${order.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load orders:', err);
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+
+                document.getElementById('items-count').textContent = `${logs.length} logs`;
+
+                const tbody = document.getElementById('items-table');
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No logs yet. Create one above!</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = logs.map(log => `
+                    <tr>
+                        <td style="font-family: monospace; font-size: 11px;">${log.id.substring(0, 8)}...</td>
+                        <td><span class="status-badge" style="background: ${getLevelColor(log.level)}">${log.level || 'Info'}</span></td>
+                        <td>${escapeHtml(log.action || '')}</td>
+                        <td>${escapeHtml(log.entity_type || '')}</td>
+                        <td style="font-size: 11px; color: var(--text-secondary);">${formatDate(log.timestamp)}</td>
+                        <td style="font-family: monospace;">${log.source_node || '-'}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load logs:', err);
+            }
+        }
+
+        function getLevelColor(level) {
+            const colors = {
+                'Info': 'var(--accent-blue)',
+                'Warning': 'var(--accent-yellow)',
+                'Error': 'var(--accent-red)',
+                'Debug': 'var(--text-secondary)'
+            };
+            return colors[level] || 'var(--bg-tertiary)';
+        }
+
+        async function createItem() {
+            const name = document.getElementById('new-item-name').value.trim();
+            const description = document.getElementById('new-item-desc').value.trim();
+            const priority = parseInt(document.getElementById('new-item-priority').value) || 0;
+
+            if (!name) {
+                alert('Name is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/items', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description, priority, status: 'Draft' })
+                });
+
+                if (response.ok) {
+                    document.getElementById('new-item-name').value = '';
+                    document.getElementById('new-item-desc').value = '';
+                    document.getElementById('new-item-priority').value = '0';
+                    loadItems();
+                    addLog('replication-log', `Created item: ${name}`, 'success');
+                } else {
+                    const error = await response.text();
+                    addLog('replication-log', `Failed to create item: ${error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to create item:', err);
+                addLog('replication-log', `Failed to create item: ${err}`, 'error');
+            }
+        }
+
+        async function createOrder() {
+            const customer_id = document.getElementById('new-order-customer').value.trim();
+            const total_cents = parseInt(document.getElementById('new-order-total').value) || 0;
+            const item_count = parseInt(document.getElementById('new-order-items').value) || 1;
+
+            if (!customer_id) {
+                alert('Customer ID is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ customer_id, total_cents, item_count, status: 'Pending' })
+                });
+
+                if (response.ok) {
+                    document.getElementById('new-order-customer').value = '';
+                    document.getElementById('new-order-total').value = '1000';
+                    document.getElementById('new-order-items').value = '1';
+                    loadOrders();
+                    addLog('replication-log', `Created order for: ${customer_id}`, 'success');
+                } else {
+                    const error = await response.text();
+                    addLog('replication-log', `Failed to create order: ${error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to create order:', err);
+                addLog('replication-log', `Failed to create order: ${err}`, 'error');
+            }
+        }
+
+        async function createLog() {
+            const level = document.getElementById('new-log-level').value;
+            const action = document.getElementById('new-log-action').value.trim();
+            const entity_type = document.getElementById('new-log-entity').value.trim();
+
+            if (!action) {
+                alert('Action is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/logs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level, action, entity_type, source_node: currentNodeId || 0 })
+                });
+
+                if (response.ok) {
+                    document.getElementById('new-log-action').value = '';
+                    document.getElementById('new-log-entity').value = '';
+                    loadLogs();
+                    addLog('replication-log', `Created log: ${action}`, 'success');
+                } else {
+                    const error = await response.text();
+                    addLog('replication-log', `Failed to create log: ${error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to create log:', err);
+                addLog('replication-log', `Failed to create log: ${err}`, 'error');
+            }
+        }
+
+        async function deleteRecord(table, id) {
+            if (!confirm(`Delete this ${table.slice(0, -1)}?`)) return;
+
+            try {
+                const response = await fetch(`/api/${table}/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadCurrentTable();
+                    addLog('replication-log', `Deleted ${table.slice(0, -1)}: ${id.substring(0, 8)}...`, 'success');
+                }
+            } catch (err) {
+                console.error(`Failed to delete ${table}:`, err);
+            }
+        }
+
+        // Utilities
+        function addLog(containerId, message, type = '') {
+            const container = document.getElementById(containerId);
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+
+            // Keep only last 100 entries
+            while (container.children.length > 100) {
+                container.removeChild(container.firstChild);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function formatNumber(num) {
+            return num.toLocaleString();
+        }
+
+        function formatDate(dateStr) {
+            try {
+                return new Date(dateStr).toLocaleString();
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ============================
+        // Migration Functions
+        // ============================
+
+        let activeMigrationId = null;
+        let migrationStepCount = 0;
+
+        // Store active migration info locally (not from server)
+        let activeMigrationInfo = null;
+
+        function updateMigrationUI() {
+            const badge = document.getElementById('migration-status-badge');
+            const activePanel = document.getElementById('active-migration-panel');
+
+            if (activeMigrationId && activeMigrationInfo) {
+                badge.textContent = 'Migration Active';
+                badge.style.background = 'var(--accent-yellow)';
+                badge.style.color = '#000';
+
+                activePanel.style.display = 'block';
+                document.getElementById('active-migration-id').textContent =
+                    `${activeMigrationId.substring(0, 8)}... (→ ${activeMigrationInfo.to_version})`;
+                document.getElementById('migration-step-count').textContent = migrationStepCount;
+            } else {
+                badge.textContent = 'No Migration';
+                badge.style.background = 'var(--bg-tertiary)';
+                badge.style.color = 'var(--text-secondary)';
+
+                activePanel.style.display = 'none';
+            }
+        }
+
+        async function refreshMigrationStatus() {
+            try {
+                const response = await fetch('/_playground/migration/status');
+                const data = await response.json();
+
+                // Update schema version display
+                const versionEl = document.getElementById('current-schema-version');
+                versionEl.textContent = data.schema_version || 'v1';
+
+                // Update UI based on local state (not server - server doesn't track active migration)
+                updateMigrationUI();
+            } catch (err) {
+                console.error('Failed to refresh migration status:', err);
+            }
+        }
+
+        async function beginMigration() {
+            const targetVersion = document.getElementById('migration-target-version').value.trim();
+            const description = document.getElementById('migration-description').value.trim();
+
+            if (!targetVersion) {
+                alert('Target version is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/_playground/migration/begin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to_version: targetVersion,
+                        description: description || `Migration to ${targetVersion}`
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    activeMigrationId = data.migration_id;
+                    activeMigrationInfo = { to_version: targetVersion, description: description };
+                    migrationStepCount = 0;
+                    addLog('migration-log', `Migration started: ${data.migration_id.substring(0, 8)}... (→ ${targetVersion})`, 'success');
+                    updateMigrationUI();
+                } else {
+                    addLog('migration-log', `Failed to start migration: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to begin migration:', err);
+                addLog('migration-log', `Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function addMigrationStep() {
+            if (!activeMigrationId) {
+                alert('No active migration. Start a migration first.');
+                return;
+            }
+
+            const stepType = document.getElementById('step-type').value;
+            const model = document.getElementById('step-model').value.trim();
+            const field = document.getElementById('step-field').value.trim();
+
+            if (!model) {
+                alert('Model name is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/_playground/migration/step', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        migration_id: activeMigrationId,
+                        step_type: stepType,
+                        model: model,
+                        field: field || undefined,
+                        field_type: 'String'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    migrationStepCount++;
+                    document.getElementById('migration-step-count').textContent = migrationStepCount;
+                    addLog('migration-log', `Step applied: ${stepType} on ${model}${field ? '.' + field : ''}`, 'success');
+
+                    // Clear inputs
+                    document.getElementById('step-field').value = '';
+                } else {
+                    addLog('migration-log', `Step failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to add migration step:', err);
+                addLog('migration-log', `Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function commitMigration() {
+            if (!activeMigrationId) {
+                alert('No active migration to commit');
+                return;
+            }
+
+            if (!confirm('Commit this migration? This will finalize all schema changes.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/_playground/migration/commit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        migration_id: activeMigrationId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addLog('migration-log', `Migration committed successfully!`, 'success');
+                    activeMigrationId = null;
+                    activeMigrationInfo = null;
+                    migrationStepCount = 0;
+                    updateMigrationUI();
+                    refreshMigrationStatus();
+                } else {
+                    addLog('migration-log', `Commit failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to commit migration:', err);
+                addLog('migration-log', `Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function rollbackMigration() {
+            if (!activeMigrationId) {
+                alert('No active migration to rollback');
+                return;
+            }
+
+            const reason = prompt('Reason for rollback (optional):');
+
+            if (!confirm('Rollback this migration? All applied steps will be reversed.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/_playground/migration/rollback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        migration_id: activeMigrationId,
+                        reason: reason || 'Manual rollback'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addLog('migration-log', `Migration rolled back: ${reason || 'Manual rollback'}`, 'info');
+                    activeMigrationId = null;
+                    activeMigrationInfo = null;
+                    migrationStepCount = 0;
+                    updateMigrationUI();
+                    refreshMigrationStatus();
+                } else {
+                    addLog('migration-log', `Rollback failed: ${data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to rollback migration:', err);
+                addLog('migration-log', `Error: ${err.message}`, 'error');
+            }
+        }
+
+        // Add migration status refresh to the interval
+        const originalRefresh = refreshInterval;
+        setInterval(() => {
+            refreshMigrationStatus();
+        }, 5000);
+
+        // Initial migration status load
+        setTimeout(refreshMigrationStatus, 1000);
+    </script>
+</body>
+</html>

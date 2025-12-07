@@ -30,6 +30,10 @@ pub struct LithairServerBuilder {
 
     // Frontend configurations (path_prefix -> static_dir)
     frontend_configs: Vec<(String, String)>, // (route_prefix, static_dir)
+
+    // Cluster/Raft configuration
+    cluster_peers: Vec<String>,
+    node_id: Option<u64>,
 }
 
 impl LithairServerBuilder {
@@ -59,6 +63,8 @@ impl LithairServerBuilder {
             legacy_endpoints: false,
             deprecation_warnings: false,
             frontend_configs: Vec::new(),
+            cluster_peers: Vec::new(),
+            node_id: None,
         }
     }
 
@@ -83,6 +89,8 @@ impl LithairServerBuilder {
             legacy_endpoints: false,
             deprecation_warnings: false,
             frontend_configs: Vec::new(),
+            cluster_peers: Vec::new(),
+            node_id: None,
         }
     }
 
@@ -211,6 +219,63 @@ impl LithairServerBuilder {
     /// Set cluster nodes
     pub fn with_cluster(mut self, nodes: Vec<String>) -> Self {
         self.config.replication.cluster_nodes = nodes;
+        self
+    }
+
+    // ========================================================================
+    // RAFT CLUSTER (Distributed Consensus)
+    // ========================================================================
+
+    /// Configure Raft cluster mode with peers
+    ///
+    /// This enables distributed consensus with automatic leader election,
+    /// heartbeat monitoring, and write redirection to the leader.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// LithairServer::new()
+    ///     .with_port(8080)
+    ///     .with_raft_cluster(1, vec!["127.0.0.1:8081", "127.0.0.1:8082"])
+    ///     .with_model::<Product>("./data/products", "/api/products")
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_raft_cluster(mut self, node_id: u64, peers: Vec<impl Into<String>>) -> Self {
+        self.node_id = Some(node_id);
+        self.cluster_peers = peers.into_iter().map(|p| p.into()).collect();
+        self.config.raft.enabled = true;
+        self
+    }
+
+    /// Set the Raft configuration (path, auth, timeouts)
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use lithair_core::config::RaftConfig;
+    ///
+    /// LithairServer::new()
+    ///     .with_raft_cluster(1, vec!["127.0.0.1:8081"])
+    ///     .with_raft_config(RaftConfig::new()
+    ///         .with_path("/_internal/raft")
+    ///         .with_auth("secret-token"))
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_raft_config(mut self, config: crate::config::RaftConfig) -> Self {
+        self.config.raft = config;
+        self
+    }
+
+    /// Set Raft endpoint path (default: "/raft")
+    pub fn with_raft_path(mut self, path: impl Into<String>) -> Self {
+        self.config.raft.path = path.into();
+        self
+    }
+
+    /// Enable Raft authentication with token
+    pub fn with_raft_auth(mut self, token: impl Into<String>) -> Self {
+        self.config.raft.auth_required = true;
+        self.config.raft.auth_token = Some(token.into());
         self
     }
 
@@ -1186,6 +1251,65 @@ impl LithairServerBuilder {
             anti_ddos_config: self.anti_ddos_config,
             legacy_endpoints: self.legacy_endpoints,
             deprecation_warnings: self.deprecation_warnings,
+            // Raft cluster
+            cluster_peers: self.cluster_peers.clone(),
+            node_id: self.node_id,
+            raft_state: None, // Initialized in serve() if cluster mode enabled
+            raft_crud_sender: None, // Initialized in serve() if cluster mode enabled
+            // Initialize consensus log only if cluster mode is enabled
+            consensus_log: if !self.cluster_peers.is_empty() {
+                Some(Arc::new(crate::cluster::ConsensusLog::new()))
+            } else {
+                None
+            },
+            // Initialize WAL for durability (only in cluster mode)
+            wal: if !self.cluster_peers.is_empty() {
+                let wal_path = format!("./data/raft/node_{}/wal", self.node_id.unwrap_or(0));
+                match crate::cluster::WriteAheadLog::new(&wal_path) {
+                    Ok(wal) => {
+                        log::info!("📝 WAL initialized at {}", wal_path);
+                        Some(Arc::new(wal))
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Failed to initialize WAL: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            },
+            // Initialize replication batcher for intelligent batching
+            replication_batcher: if !self.cluster_peers.is_empty() {
+                let batcher = crate::cluster::ReplicationBatcher::with_default_config();
+                Some(Arc::new(batcher))
+            } else {
+                None
+            },
+            // Initialize snapshot manager for resync
+            snapshot_manager: if !self.cluster_peers.is_empty() {
+                let snapshot_path = format!("./data/raft/node_{}/snapshots", self.node_id.unwrap_or(0));
+                match crate::cluster::SnapshotManager::new(&snapshot_path) {
+                    Ok(mgr) => {
+                        log::info!("📸 Snapshot manager initialized at {}", snapshot_path);
+                        Some(Arc::new(tokio::sync::RwLock::new(mgr)))
+                    }
+                    Err(e) => {
+                        log::warn!("⚠️ Failed to initialize snapshot manager: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            },
+            // Initialize migration manager for rolling upgrades
+            migration_manager: if !self.cluster_peers.is_empty() {
+                log::info!("🔄 Migration manager initialized for rolling upgrades");
+                Some(Arc::new(crate::cluster::MigrationManager::default()))
+            } else {
+                None
+            },
+            // Resync stats for observability
+            resync_stats: Arc::new(crate::cluster::ResyncStats::new()),
         })
     }
 

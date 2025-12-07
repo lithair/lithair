@@ -235,6 +235,72 @@ where
         }
     }
 
+    /// Propose update through HTTP consensus (HYPER-based replication)
+    pub async fn propose_update(&self, item: T, primary_key: String) -> anyhow::Result<()> {
+        match &self.http_replicator {
+            Some(replicator) => {
+                println!("🌐 HYPER: Proposing UPDATE operation through HTTP replication...");
+
+                let operation = CrudOperation::Update { item, primary_key: primary_key.clone() };
+
+                let app_data = LithairAppData {
+                    operation,
+                    model_type: T::consensus_group(),
+                    node_id: self.config.node_id,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                };
+
+                // Replicate via HTTP to all peers using HYPER
+                replicator.replicate_operation(app_data).await?;
+
+                println!("✅ HYPER: UPDATE operation successfully replicated via HTTP");
+                Ok(())
+            }
+            None => {
+                println!(
+                    "⚠️ HTTP replicator not initialized - UPDATE proceeding without consensus"
+                );
+                Ok(())
+            }
+        }
+    }
+
+    /// Propose delete through HTTP consensus (HYPER-based replication)
+    pub async fn propose_delete(&self, primary_key: String) -> anyhow::Result<()> {
+        match &self.http_replicator {
+            Some(replicator) => {
+                println!("🌐 HYPER: Proposing DELETE operation through HTTP replication...");
+
+                let operation = CrudOperation::<T>::Delete { primary_key: primary_key.clone() };
+
+                let app_data = LithairAppData {
+                    operation,
+                    model_type: T::consensus_group(),
+                    node_id: self.config.node_id,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                };
+
+                // Replicate via HTTP to all peers using HYPER
+                replicator.replicate_operation(app_data).await?;
+
+                println!("✅ HYPER: DELETE operation successfully replicated via HTTP");
+                Ok(())
+            }
+            None => {
+                println!(
+                    "⚠️ HTTP replicator not initialized - DELETE proceeding without consensus"
+                );
+                Ok(())
+            }
+        }
+    }
+
     /// Get all items from consensus state via EventStore
     pub async fn get_all_items(&self) -> anyhow::Result<std::collections::HashMap<String, T>> {
         if let Some(replicator) = &self.http_replicator {

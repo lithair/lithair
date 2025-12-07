@@ -29,7 +29,7 @@ pub struct ClusterNode {
     pub server_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
-/// Représente un vrai nœud DeclarativeCluster en tant que processus externe
+/// Représente un vrai nœud LithairServer en tant que processus externe
 pub struct RealClusterNode {
     pub node_id: u64,
     pub port: u16,
@@ -377,7 +377,7 @@ pub struct LithairWorld {
     pub server_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     // Support cluster distribué (mock simple)
     pub cluster_nodes: Arc<Mutex<Vec<ClusterNode>>>,
-    // Support cluster réel avec vrais processus DeclarativeCluster
+    // Support cluster réel avec vrais processus LithairServer
     pub real_cluster_nodes: Arc<Mutex<Vec<RealClusterNode>>>,
     pub real_cluster_temp_dirs: Arc<Mutex<Vec<tempfile::TempDir>>>,
     // Support tests de fiabilité
@@ -934,9 +934,9 @@ impl LithairWorld {
         self.cluster_nodes.lock().await.len()
     }
 
-    // ==================== REAL DECLARATIVE CLUSTER SUPPORT ====================
+    // ==================== REAL LITHAIR SERVER CLUSTER SUPPORT ====================
 
-    /// Démarre un vrai cluster DeclarativeCluster avec N nœuds en tant que processus externes
+    /// Démarre un vrai cluster LithairServer avec N nœuds en tant que processus externes
     ///
     /// Utilise le binaire `pure_declarative_node` compilé depuis `raft_replication_demo`
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
@@ -1014,18 +1014,18 @@ impl LithairWorld {
             temp_dirs.push(temp_dir);
         }
 
-        // Attendre que tous les serveurs soient prêts (DeclarativeCluster takes ~4s to start)
+        // Attendre que tous les serveurs soient prêts (LithairServer takes ~4s to start)
         println!("⏳ Waiting for nodes to start (this may take up to 30s)...");
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-        // Vérifier que chaque nœud répond (using /status endpoint for DeclarativeCluster)
+        // Vérifier que chaque nœud répond (using /status endpoint for LithairServer)
         for (i, port) in ports.iter().enumerate() {
             let client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .map_err(|e| format!("Failed to create client: {}", e))?;
 
-            // DeclarativeCluster uses /status endpoint, not /health
+            // LithairServer uses /status endpoint, not /health
             let url = format!("http://127.0.0.1:{}/status", port);
             let mut retries = 20;  // More retries with longer total wait
 
@@ -1083,6 +1083,144 @@ impl LithairWorld {
         self.real_cluster_temp_dirs.lock().await.clear();
 
         Ok(())
+    }
+
+    /// Démarre un vrai cluster LithairServer avec répertoire de données persistant
+    ///
+    /// Les données sont stockées dans /tmp/lithair-stress-test/ et nettoyées au démarrage
+    pub async fn start_real_cluster_persistent(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
+        use std::process::{Command, Stdio};
+
+        // Répertoire persistant pour les données de test
+        let base_data_dir = std::path::PathBuf::from("/tmp/lithair-stress-test");
+
+        // Nettoyer le répertoire au début
+        if base_data_dir.exists() {
+            println!("🧹 Cleaning up previous test data at {:?}...", base_data_dir);
+            std::fs::remove_dir_all(&base_data_dir)
+                .map_err(|e| format!("Failed to clean data dir: {}", e))?;
+        }
+        std::fs::create_dir_all(&base_data_dir)
+            .map_err(|e| format!("Failed to create data dir: {}", e))?;
+
+        // Trouver le chemin du binaire
+        let binary_path = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current dir: {}", e))?
+            .parent()
+            .ok_or("Failed to find parent directory")?
+            .join("target/debug/pure_declarative_node");
+
+        if !binary_path.exists() {
+            return Err(format!(
+                "Binary not found at {:?}. Please run: cargo build --package raft_replication_demo --bin pure_declarative_node",
+                binary_path
+            ));
+        }
+
+        let mut ports = Vec::new();
+        let mut nodes = Vec::new();
+
+        // Allouer les ports d'abord
+        for _ in 0..node_count {
+            let port = portpicker::pick_unused_port()
+                .ok_or_else(|| "No port available".to_string())?;
+            ports.push(port);
+        }
+
+        // Construire les listes de peers pour chaque nœud
+        for i in 0..node_count {
+            let data_dir = base_data_dir.join(format!("node_{}", i));
+            std::fs::create_dir_all(&data_dir)
+                .map_err(|e| format!("Failed to create node data dir: {}", e))?;
+
+            // Les peers sont tous les autres nœuds
+            let peers: Vec<u16> = ports.iter()
+                .enumerate()
+                .filter(|(idx, _)| *idx != i)
+                .map(|(_, port)| *port)
+                .collect();
+
+            let port = ports[i];
+            let node_id = i as u64;
+
+            // Construire les arguments --peers
+            let peers_args: Vec<String> = peers.iter()
+                .flat_map(|p| vec!["--peers".to_string(), p.to_string()])
+                .collect();
+
+            println!("🚀 Starting real node {} on port {} with peers {:?} (data: {:?})...",
+                     node_id, port, peers, data_dir);
+
+            // Démarrer le processus
+            let mut cmd = Command::new(&binary_path);
+            cmd.arg("--node-id").arg(node_id.to_string())
+                .arg("--port").arg(port.to_string())
+                .args(&peers_args)
+                .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            let process = cmd.spawn()
+                .map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
+
+            let node = RealClusterNode {
+                node_id,
+                port,
+                process: Some(process),
+                data_dir,
+                peers,
+            };
+
+            nodes.push(node);
+        }
+
+        // Attendre que tous les serveurs soient prêts
+        println!("⏳ Waiting for nodes to start...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Vérifier que chaque nœud répond
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .pool_max_idle_per_host(10)
+            .build()
+            .map_err(|e| format!("Failed to create client: {}", e))?;
+
+        for (i, port) in ports.iter().enumerate() {
+            let url = format!("http://127.0.0.1:{}/status", port);
+            let mut retries = 20;
+
+            while retries > 0 {
+                match client.get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        let body = resp.text().await.unwrap_or_default();
+                        println!("✅ Node {} ready on port {} - status: {}", i, port,
+                                 body.chars().take(100).collect::<String>());
+                        break;
+                    }
+                    Ok(resp) => {
+                        retries -= 1;
+                        if retries == 0 {
+                            return Err(format!("Node {} returned status {} on port {}", i, resp.status(), port));
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    }
+                    Err(e) => {
+                        retries -= 1;
+                        if retries == 0 {
+                            return Err(format!("Node {} failed to start on port {}: {}", i, port, e));
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    }
+                }
+            }
+        }
+
+        // Sauvegarder les nœuds (pas de temp_dirs car persistant)
+        *self.real_cluster_nodes.lock().await = nodes;
+
+        println!("✅ Real cluster of {} nodes started (ports: {:?})", node_count, ports);
+        println!("📁 Data directory: {:?}", base_data_dir);
+        Ok(ports)
     }
 
     /// Fait une requête à un vrai nœud du cluster
