@@ -13,11 +13,14 @@ pub mod consensus_log;
 pub mod wal;
 pub mod replication_batcher;
 pub mod snapshot;
+pub mod upgrade;
 
 pub use consensus_log::{ConsensusLog, CrudOperation, LogEntry, LogId, ApplyResult};
-pub use wal::WriteAheadLog;
+pub use wal::{WriteAheadLog, GroupCommitConfig};
 pub use replication_batcher::{ReplicationBatcher, BatcherConfig, FollowerHealth, FollowerStats};
 pub use snapshot::{SnapshotManager, SnapshotData, SnapshotMeta, InstallSnapshotRequest, InstallSnapshotResponse};
+pub use upgrade::{Version, NodeMode, SchemaChange, FieldDefinition, FieldType, ModelSchema, MigrationContext, MigrationManager, MigrationStatus, RollbackOp};
+// Resync stats are defined in this file, no re-export needed
 
 /// Raft Node State for leader election and failover
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +223,117 @@ impl RaftLeadershipState {
             Duration::from_secs(0)
         }
     }
+}
+
+// ============================================================================
+// RESYNC STATISTICS
+// ============================================================================
+
+/// Statistics for snapshot-based resync operations
+///
+/// Tracks all snapshot resync activity to provide observability into the
+/// resync mechanism. Useful for debugging and validating that resync is working.
+#[derive(Debug, Default)]
+pub struct ResyncStats {
+    /// Number of snapshots created by leader for resync
+    pub snapshots_created: AtomicU64,
+    /// Number of snapshot send attempts
+    pub snapshot_send_attempts: AtomicU64,
+    /// Number of successful snapshot sends
+    pub snapshot_send_successes: AtomicU64,
+    /// Number of failed snapshot sends
+    pub snapshot_send_failures: AtomicU64,
+    /// Number of snapshots received (follower side)
+    pub snapshots_received: AtomicU64,
+    /// Number of snapshots successfully applied (follower side)
+    pub snapshots_applied: AtomicU64,
+    /// Last snapshot index sent
+    pub last_snapshot_index_sent: AtomicU64,
+    /// Last snapshot index received
+    pub last_snapshot_index_received: AtomicU64,
+    /// Timestamp of last resync activity (unix millis)
+    pub last_resync_timestamp_ms: AtomicU64,
+}
+
+impl ResyncStats {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a snapshot creation
+    pub fn record_snapshot_created(&self) {
+        self.snapshots_created.fetch_add(1, Ordering::Relaxed);
+        self.update_timestamp();
+    }
+
+    /// Record a snapshot send attempt
+    pub fn record_send_attempt(&self, index: u64) {
+        self.snapshot_send_attempts.fetch_add(1, Ordering::Relaxed);
+        self.last_snapshot_index_sent.store(index, Ordering::Relaxed);
+        self.update_timestamp();
+    }
+
+    /// Record a successful snapshot send
+    pub fn record_send_success(&self) {
+        self.snapshot_send_successes.fetch_add(1, Ordering::Relaxed);
+        self.update_timestamp();
+    }
+
+    /// Record a failed snapshot send
+    pub fn record_send_failure(&self) {
+        self.snapshot_send_failures.fetch_add(1, Ordering::Relaxed);
+        self.update_timestamp();
+    }
+
+    /// Record a snapshot received (follower side)
+    pub fn record_snapshot_received(&self, index: u64) {
+        self.snapshots_received.fetch_add(1, Ordering::Relaxed);
+        self.last_snapshot_index_received.store(index, Ordering::Relaxed);
+        self.update_timestamp();
+    }
+
+    /// Record a snapshot applied (follower side)
+    pub fn record_snapshot_applied(&self) {
+        self.snapshots_applied.fetch_add(1, Ordering::Relaxed);
+        self.update_timestamp();
+    }
+
+    fn update_timestamp(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        self.last_resync_timestamp_ms.store(now, Ordering::Relaxed);
+    }
+
+    /// Get stats as JSON-serializable struct
+    pub fn to_json(&self) -> ResyncStatsJson {
+        ResyncStatsJson {
+            snapshots_created: self.snapshots_created.load(Ordering::Relaxed),
+            snapshot_send_attempts: self.snapshot_send_attempts.load(Ordering::Relaxed),
+            snapshot_send_successes: self.snapshot_send_successes.load(Ordering::Relaxed),
+            snapshot_send_failures: self.snapshot_send_failures.load(Ordering::Relaxed),
+            snapshots_received: self.snapshots_received.load(Ordering::Relaxed),
+            snapshots_applied: self.snapshots_applied.load(Ordering::Relaxed),
+            last_snapshot_index_sent: self.last_snapshot_index_sent.load(Ordering::Relaxed),
+            last_snapshot_index_received: self.last_snapshot_index_received.load(Ordering::Relaxed),
+            last_resync_timestamp_ms: self.last_resync_timestamp_ms.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// JSON-serializable version of ResyncStats
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ResyncStatsJson {
+    pub snapshots_created: u64,
+    pub snapshot_send_attempts: u64,
+    pub snapshot_send_successes: u64,
+    pub snapshot_send_failures: u64,
+    pub snapshots_received: u64,
+    pub snapshots_applied: u64,
+    pub last_snapshot_index_sent: u64,
+    pub last_snapshot_index_received: u64,
+    pub last_resync_timestamp_ms: u64,
 }
 
 /// Standard command line arguments for Lithair cluster applications

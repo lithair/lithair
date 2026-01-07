@@ -43,6 +43,8 @@ tasks:
             task bench:crud-suite:durability    # Suite: durability profiles
             task bench:crud-suite:reads         # Suite: heavy vs light reads
             task bench:crud-suite:bulk-vs-single# Suite: bulk vs single creates
+            task raft:consistency     # Raft consistency test (3-node auto)
+            task raft:consistency:heavy # Heavy load consistency test
             task docs                 # Show docs pointers
             task bdd:setup            # Install Cucumber dependencies
             task bdd:run              # Run all Cucumber tests
@@ -303,6 +305,37 @@ tasks:
       STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
     cmds:
       - bash examples/raft_replication_demo/bench_1000_crud_parallel.sh {{.OPS}}
+
+  raft:consistency:
+    desc: Run Raft consistency test (3 nodes, auto-launch, verify replication)
+    vars:
+      OPS: '{{.OPS | default "100"}}'
+      CONC: '{{.CONC | default "10"}}'
+      SETTLE: '{{.SETTLE | default "3000"}}'
+    cmds:
+      - |
+          echo "🧪 Raft Consistency Test"
+          echo "   Ops/table: {{.OPS}}, Concurrency: {{.CONC}}, Settle: {{.SETTLE}}ms"
+          pkill -9 playground_node 2>/dev/null || true
+          rm -rf data/playground_node_* data/raft 2>/dev/null || true
+          sleep 1
+          cargo run -q -p raft_consistency_test -- --ops {{.OPS}} --concurrency {{.CONC}} --settle-time {{.SETTLE}}
+
+  raft:consistency:clean:
+    desc: Clean Raft data and run fresh consistency test
+    cmds:
+      - pkill -9 playground_node 2>/dev/null || true
+      - rm -rf data/playground_node_* data/raft
+      - task raft:consistency
+
+  raft:consistency:heavy:
+    desc: Heavy load consistency test (500 ops, 50 concurrency)
+    cmds:
+      - task: raft:consistency
+        vars:
+          OPS: '500'
+          CONC: '50'
+          SETTLE: '5000'
 
   examples:rbac-session:
     desc: Run RBAC session demo with persistent sessions

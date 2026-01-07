@@ -4,6 +4,9 @@ members = [
     "lithair-core",
     "lithair-macros",
     "examples/raft_replication_demo",
+    "examples/blog_replicated_demo",
+    "examples/lithair_playground",
+    "examples/raft_consistency_test",
     "examples/scc2_server_demo",
     "examples/rbac_sso_demo",
     "examples/rbac_session_demo",
@@ -12,6 +15,7 @@ members = [
     "examples/test_server",
     "examples/ecommerce_app",
     "examples/datatable_demo",
+    "examples/replication_stress_test",
     "cucumber-tests"
 ]
 

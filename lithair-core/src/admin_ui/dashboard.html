@@ -335,14 +335,171 @@
             margin-left: 0.5rem;
         }
         .badge-events { background: #8b5cf6; color: white; }
+
+        /* Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 0.25rem;
+            background: var(--bg-tertiary);
+            padding: 0.25rem;
+            border-radius: 8px;
+            margin-right: 1rem;
+        }
+        .nav-tab {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            background: transparent;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { color: var(--text-primary); }
+        .nav-tab.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Cluster Status */
+        .cluster-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .status-badge {
+            padding: 0.375rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-healthy { background: var(--success); color: white; }
+        .status-degraded { background: var(--warning); color: black; }
+        .status-unhealthy { background: var(--danger); color: white; }
+        .status-leader { background: var(--accent); color: white; }
+        .status-follower { background: var(--bg-tertiary); color: var(--text-primary); }
+
+        .cluster-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .cluster-stat {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .cluster-stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .cluster-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        .nodes-table { width: 100%; }
+        .nodes-table th { background: var(--bg-tertiary); }
+        .node-role {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .node-role.leader { background: var(--accent); color: white; }
+        .node-role.follower { background: var(--bg-tertiary); color: var(--text-primary); }
+        .node-health {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .health-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .health-dot.healthy { background: var(--success); }
+        .health-dot.unhealthy { background: var(--danger); }
+        .health-dot.unknown { background: var(--warning); }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+            min-width: 100px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--success);
+            transition: width 0.3s ease;
+        }
+
+        .storage-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .storage-item {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .storage-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+        .storage-value {
+            font-weight: 600;
+        }
+
+        .auto-refresh-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-left: auto;
+        }
+        .auto-refresh-control input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .auto-refresh-control label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .no-cluster {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        .no-cluster-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
     <header class="header">
         <h1>Lithair Data Admin</h1>
+        <div class="nav-tabs">
+            <button class="nav-tab active" id="tab-data" onclick="switchTab('data')">🗄️ Data</button>
+            <button class="nav-tab" id="tab-cluster" onclick="switchTab('cluster')">🔄 Cluster</button>
+        </div>
         <div class="nav-buttons">
-            <button class="btn btn-secondary" onclick="loadModels()">🔄 Refresh</button>
-            <button class="btn btn-warning" onclick="downloadBackup()">📦 Backup All</button>
+            <button class="btn btn-secondary" id="refresh-btn" onclick="refreshCurrentView()">🔄 Refresh</button>
+            <button class="btn btn-warning" id="backup-btn" onclick="downloadBackup()">📦 Backup All</button>
         </div>
     </header>
 
@@ -389,14 +546,374 @@
 
     <script>
         const API_BASE = '/_admin/data';
+        let currentTab = 'data';
         let currentView = 'models';
         let currentModel = null;
         let editingId = null;
         let editingData = null;
+        let clusterRefreshInterval = null;
+        let clusterAutoRefresh = true;
 
         async function api(endpoint, options = {}) {
             const res = await fetch(API_BASE + endpoint, options);
             return res.json();
+        }
+
+        // ==================== TAB NAVIGATION ====================
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+
+            // Update header buttons visibility
+            const backupBtn = document.getElementById('backup-btn');
+            if (tab === 'data') {
+                backupBtn.style.display = 'block';
+                stopClusterRefresh();
+                loadModels();
+            } else if (tab === 'cluster') {
+                backupBtn.style.display = 'none';
+                loadClusterView();
+            }
+        }
+
+        function refreshCurrentView() {
+            if (currentTab === 'data') {
+                if (currentModel) {
+                    loadModelData(currentModel);
+                } else {
+                    loadModels();
+                }
+            } else if (currentTab === 'cluster') {
+                loadClusterData();
+            }
+        }
+
+        // ==================== CLUSTER VIEW ====================
+
+        async function loadClusterView() {
+            document.getElementById('breadcrumb').innerHTML = 'Cluster';
+            document.getElementById('stats').innerHTML = '';
+            document.getElementById('content').innerHTML = '<div class="loading">Loading cluster info...</div>';
+
+            await loadClusterData();
+
+            if (clusterAutoRefresh) {
+                startClusterRefresh();
+            }
+        }
+
+        async function loadClusterData() {
+            try {
+                const res = await fetch('/_raft/health');
+                if (!res.ok) {
+                    throw new Error('Cluster endpoint not available');
+                }
+                const data = await res.json();
+                renderClusterView(data);
+            } catch (e) {
+                renderNoCluster();
+            }
+        }
+
+        function renderNoCluster() {
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div class="no-cluster">
+                        <div class="no-cluster-icon">🔗</div>
+                        <h3>No Cluster Configured</h3>
+                        <p style="margin-top: 0.5rem;">This server is running in single-node mode.</p>
+                        <p style="margin-top: 1rem; font-size: 0.875rem;">
+                            To enable clustering, start the server with:<br>
+                            <code style="background: var(--bg-tertiary); padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem; display: inline-block;">
+                                --peers 8081,8082
+                            </code>
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderClusterView(data) {
+            const isLeader = data.is_leader === true;
+            const currentPort = window.location.port || 8080;
+
+            // If this is a follower, show simplified view
+            if (!isLeader) {
+                renderFollowerView(data);
+                return;
+            }
+
+            const healthyFollowers = data.followers ? data.followers.filter(f => f.health === 'healthy').length : 0;
+            const totalFollowers = data.followers ? data.followers.length : 0;
+            const clusterHealth = getClusterHealth(data);
+
+            // Build nodes array: leader + followers
+            const nodes = [];
+            nodes.push({
+                address: `127.0.0.1:${currentPort}`,
+                role: 'Leader',
+                health: 'healthy',
+                replicated_index: data.consensus?.commit_index || 0,
+                pending: 0,
+                latency: null
+            });
+
+            if (data.followers) {
+                data.followers.forEach(f => {
+                    nodes.push({
+                        address: f.address,
+                        role: 'Follower',
+                        health: f.health || 'unknown',
+                        replicated_index: f.last_replicated_index || 0,
+                        pending: f.pending_count || 0,
+                        latency: f.last_latency_ms
+                    });
+                });
+            }
+
+            const commitIndex = data.consensus?.commit_index || 0;
+
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div class="cluster-header">
+                        <span class="status-badge status-${clusterHealth.toLowerCase()}">${clusterHealth}</span>
+                        <span class="status-badge ${isLeader ? 'status-leader' : 'status-follower'}">
+                            ${isLeader ? 'LEADER' : 'FOLLOWER'} (Node ${data.node_id})
+                        </span>
+                        <span style="color: var(--text-secondary);">${healthyFollowers}/${totalFollowers} followers healthy</span>
+                        <div class="auto-refresh-control">
+                            <input type="checkbox" id="auto-refresh" ${clusterAutoRefresh ? 'checked' : ''} onchange="toggleClusterAutoRefresh()">
+                            <label for="auto-refresh">Auto-refresh (2s)</label>
+                        </div>
+                    </div>
+
+                    <div class="cluster-stats">
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${nodes.length}</div>
+                            <div class="cluster-stat-label">Total Nodes</div>
+                        </div>
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${data.consensus?.term || 1}</div>
+                            <div class="cluster-stat-label">Current Term</div>
+                        </div>
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${commitIndex}</div>
+                            <div class="cluster-stat-label">Commit Index</div>
+                        </div>
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${data.cluster_peers || 0}</div>
+                            <div class="cluster-stat-label">Cluster Peers</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Replication Status</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="nodes-table">
+                            <thead>
+                                <tr>
+                                    <th>Node</th>
+                                    <th>Role</th>
+                                    <th>Health</th>
+                                    <th>Replicated Index</th>
+                                    <th>Pending</th>
+                                    <th>Latency</th>
+                                    <th>Sync Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${nodes.map(node => `
+                                    <tr>
+                                        <td><strong>${node.address}</strong></td>
+                                        <td><span class="node-role ${node.role.toLowerCase()}">${node.role.toUpperCase()}</span></td>
+                                        <td>
+                                            <div class="node-health">
+                                                <span class="health-dot ${node.health}"></span>
+                                                ${node.health}
+                                            </div>
+                                        </td>
+                                        <td>${node.replicated_index}</td>
+                                        <td>${node.pending}</td>
+                                        <td>${node.latency !== null ? node.latency + 'ms' : '-'}</td>
+                                        <td>
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style="width: ${commitIndex > 0 ? Math.min(100, (node.replicated_index / commitIndex) * 100) : 100}%"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Storage</span>
+                    </div>
+                    <div class="storage-grid">
+                        <div class="storage-item">
+                            <div class="storage-label">WAL</div>
+                            <div class="storage-value">${data.wal?.enabled ? 'Enabled (Group Commit)' : 'Disabled'}</div>
+                        </div>
+                        <div class="storage-item">
+                            <div class="storage-label">Snapshot</div>
+                            <div class="storage-value">${data.snapshot?.available ? 'Available' : 'Not available'}</div>
+                        </div>
+                        <div class="storage-item">
+                            <div class="storage-label">Last Applied</div>
+                            <div class="storage-value">${data.consensus?.last_applied || 0}</div>
+                        </div>
+                        <div class="storage-item">
+                            <div class="storage-label">Desynced</div>
+                            <div class="storage-value" style="color: ${(data.desynced_followers?.length || 0) > 0 ? 'var(--warning)' : 'var(--success)'}">
+                                ${data.desynced_followers?.length || 0} nodes
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getClusterHealth(data) {
+            if (!data.followers || data.followers.length === 0) {
+                return 'Healthy';
+            }
+            const healthyCount = data.followers.filter(f => f.health === 'healthy').length;
+            const total = data.followers.length;
+            if (healthyCount === total) return 'Healthy';
+            if (healthyCount >= Math.ceil(total / 2)) return 'Degraded';
+            return 'Unhealthy';
+        }
+
+        function renderFollowerView(data) {
+            const currentPort = window.location.port || 8080;
+            const peers = data.followers || [];
+
+            // Find the leader among peers (the one we should redirect to for full stats)
+            // For now, assume port 8080 is the leader
+            const leaderPort = 8080;
+            const leaderUrl = `http://127.0.0.1:${leaderPort}/_admin/`;
+
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div class="cluster-header">
+                        <span class="status-badge status-healthy">Connected</span>
+                        <span class="status-badge status-follower">FOLLOWER (Node ${data.node_id})</span>
+                        <span style="color: var(--text-secondary);">${peers.length} peers in cluster</span>
+                        <div class="auto-refresh-control">
+                            <input type="checkbox" id="auto-refresh" ${clusterAutoRefresh ? 'checked' : ''} onchange="toggleClusterAutoRefresh()">
+                            <label for="auto-refresh">Auto-refresh (2s)</label>
+                        </div>
+                    </div>
+
+                    <div class="cluster-stats">
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${peers.length + 1}</div>
+                            <div class="cluster-stat-label">Total Nodes</div>
+                        </div>
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${data.consensus?.term || 1}</div>
+                            <div class="cluster-stat-label">Current Term</div>
+                        </div>
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${data.consensus?.commit_index || 0}</div>
+                            <div class="cluster-stat-label">Commit Index</div>
+                        </div>
+                        <div class="cluster-stat">
+                            <div class="cluster-stat-value">${data.consensus?.last_applied || 0}</div>
+                            <div class="cluster-stat-label">Last Applied</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Cluster Peers</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="nodes-table">
+                            <thead>
+                                <tr>
+                                    <th>Node</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>127.0.0.1:${currentPort}</strong></td>
+                                    <td><span class="node-role follower">THIS NODE (FOLLOWER)</span></td>
+                                </tr>
+                                ${peers.map(p => `
+                                    <tr>
+                                        <td>${p.address}</td>
+                                        <td><span class="node-role ${p.address.endsWith(':8080') ? 'leader' : 'follower'}">${p.address.endsWith(':8080') ? 'LEADER' : 'PEER'}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Storage</span>
+                    </div>
+                    <div class="storage-grid">
+                        <div class="storage-item">
+                            <div class="storage-label">WAL</div>
+                            <div class="storage-value">${data.wal?.enabled ? 'Enabled (Group Commit)' : 'Disabled'}</div>
+                        </div>
+                        <div class="storage-item">
+                            <div class="storage-label">Snapshot</div>
+                            <div class="storage-value">${data.snapshot?.available ? 'Available' : 'Not available'}</div>
+                        </div>
+                        <div class="storage-item">
+                            <div class="storage-label">Status</div>
+                            <div class="storage-value" style="color: var(--success)">${data.status || 'ok'}</div>
+                        </div>
+                        <div class="storage-item">
+                            <div class="storage-label">Role</div>
+                            <div class="storage-value">Follower</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="text-align: center; padding: 2rem;">
+                    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                        📊 For full replication statistics, visit the <strong>Leader</strong> node's admin panel:
+                    </p>
+                    <a href="${leaderUrl}" class="btn btn-primary" target="_blank" style="text-decoration: none;">
+                        🔗 Open Leader Admin (port ${leaderPort})
+                    </a>
+                </div>
+            `;
+        }
+
+        function toggleClusterAutoRefresh() {
+            clusterAutoRefresh = document.getElementById('auto-refresh').checked;
+            if (clusterAutoRefresh) {
+                startClusterRefresh();
+            } else {
+                stopClusterRefresh();
+            }
+        }
+
+        function startClusterRefresh() {
+            stopClusterRefresh();
+            clusterRefreshInterval = setInterval(loadClusterData, 2000);
+        }
+
+        function stopClusterRefresh() {
+            if (clusterRefreshInterval) {
+                clearInterval(clusterRefreshInterval);
+                clusterRefreshInterval = null;
+            }
         }
 
         function showToast(message, isError = false) {

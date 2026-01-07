@@ -91,25 +91,31 @@ impl FollowerState {
         }
     }
 
-    /// Check if follower needs resync based on time and index gap
+    /// Check if follower needs resync based on health status and index gap
     pub async fn needs_resync(&self, leader_commit_index: u64) -> bool {
         let health = self.health.read().await;
+
+        // Desynced if explicitly marked as desynced (>=3 consecutive failures)
         if *health == FollowerHealth::Desynced {
             return true;
         }
 
-        let last_response = self.last_response.read().await;
-        let time_since_response = last_response.elapsed();
-
-        // Desynced if > 5s without response
-        if time_since_response > Duration::from_secs(5) {
-            return true;
-        }
-
-        // Desynced if > 1000 ops behind
+        // Desynced if significantly behind (> 1000 ops)
         let last_index = self.last_replicated_index.load(Ordering::SeqCst);
         if leader_commit_index > last_index && leader_commit_index - last_index > 1000 {
             return true;
+        }
+
+        // Check for prolonged unresponsiveness only if there are pending entries
+        // (idle cluster with no pending work is not "desynced")
+        let pending = self.pending_entries.read().await;
+        if !pending.is_empty() {
+            let last_response = self.last_response.read().await;
+            let time_since_response = last_response.elapsed();
+            // Desynced if > 30s without response while having pending work
+            if time_since_response > Duration::from_secs(30) {
+                return true;
+            }
         }
 
         false
@@ -156,6 +162,20 @@ impl Default for BatcherConfig {
             healthy_latency_ms: 500,
             desync_timeout_secs: 5,
             desync_index_gap: 1000,
+        }
+    }
+}
+
+impl BatcherConfig {
+    /// Create BatcherConfig from ReplicationConfig
+    /// Uses the resync parameters from ReplicationConfig
+    pub fn from_replication_config(repl_config: &crate::config::ReplicationConfig) -> Self {
+        Self {
+            batch_interval_ms: 10,
+            max_batch_size: 100,
+            healthy_latency_ms: 500,
+            desync_timeout_secs: 30, // Longer timeout, resync handles fast recovery
+            desync_index_gap: repl_config.max_resync_gap,
         }
     }
 }
@@ -330,6 +350,40 @@ impl ReplicationBatcher {
             pending_count,
             consecutive_failures: follower.consecutive_failures.load(Ordering::SeqCst),
         })
+    }
+
+    /// Get stats for all followers
+    pub async fn get_all_follower_stats(&self) -> Vec<FollowerStats> {
+        let followers = self.followers.read().await;
+        let mut stats = Vec::new();
+
+        for (_, follower) in followers.iter() {
+            let health = *follower.health.read().await;
+            let pending_count = follower.pending_count().await;
+
+            stats.push(FollowerStats {
+                address: follower.address.clone(),
+                health,
+                last_replicated_index: follower.last_replicated_index.load(Ordering::SeqCst),
+                last_latency_ms: follower.last_latency_ms.load(Ordering::SeqCst),
+                pending_count,
+                consecutive_failures: follower.consecutive_failures.load(Ordering::SeqCst),
+            });
+        }
+
+        stats
+    }
+
+    /// Mark a follower as desynced (for manual resync trigger)
+    pub async fn mark_follower_desynced(&self, address: &str) -> bool {
+        if let Some(follower) = self.get_follower(address).await {
+            let mut health = follower.health.write().await;
+            *health = FollowerHealth::Desynced;
+            log::info!("📛 Marked follower {} as desynced for manual resync", address);
+            true
+        } else {
+            false
+        }
     }
 }
 

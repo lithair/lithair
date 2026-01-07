@@ -295,16 +295,17 @@ where
             .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
             .unwrap_or_else(|| item.get_primary_key());
 
-        // Insert into storage
+        // Insert into storage FIRST (this is the critical operation)
         {
             let mut storage = self.storage.write().await;
             storage.insert(actual_key.clone(), item.clone());
         }
 
-        // Persist to event store (for durability)
-        self.persist_to_event_store("Replicated", &item)
-            .await
-            .map_err(|e| format!("Failed to persist replicated item: {:?}", e))?;
+        // Persist to event store (best-effort - don't fail the operation)
+        // IMPORTANT: Storage is already updated, so operation must succeed for consistency
+        if let Err(e) = self.persist_to_event_store("Replicated", &item).await {
+            log::warn!("⚠️ Failed to persist replicated item event for {}: {:?} (storage already updated)", actual_key, e);
+        }
 
         if Self::is_verbose() {
             println!("📥 Replicated item {} applied to follower", actual_key);
@@ -331,9 +332,12 @@ where
         // Check if item exists
         {
             let storage = self.storage.read().await;
-            if !storage.contains_key(id) {
+            let has_key = storage.contains_key(id);
+            log::debug!("📝 APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}", id, has_key, storage.len());
+            if !has_key {
                 // If item doesn't exist, treat as create (eventual consistency)
                 drop(storage);
+                log::debug!("📝 APPLY UPDATE: item doesn't exist, creating instead");
                 return self.apply_replicated_item(item).await;
             }
         }
@@ -344,13 +348,14 @@ where
             storage.insert(id.to_string(), item.clone());
         }
 
-        // Persist to event store (for durability)
-        self.persist_to_event_store("Updated", &item)
-            .await
-            .map_err(|e| format!("Failed to persist replicated update: {:?}", e))?;
+        // Persist to event store (best-effort - don't fail the operation)
+        // IMPORTANT: Storage is already updated, so we must succeed for consistency
+        if let Err(e) = self.persist_to_event_store("Updated", &item).await {
+            log::warn!("⚠️ Failed to persist update event for {}: {:?} (storage already updated)", id, e);
+        }
 
         if Self::is_verbose() {
-            println!("📥 Replicated UPDATE for {} applied to follower", id);
+            println!("📥 Replicated UPDATE for {} applied", id);
         }
 
         Ok(())
@@ -358,29 +363,31 @@ where
 
     /// Apply a replicated DELETE from leader (for followers to receive DELETE replication)
     /// This removes from storage AND persists deletion event to event store
+    /// IMPORTANT: This must be fully idempotent and never fail once storage is modified
     pub async fn apply_replicated_delete(&self, id: &str) -> Result<bool, String> {
         // Remove from storage
         let removed_item = {
             let mut storage = self.storage.write().await;
+            let has_key = storage.contains_key(id);
+            log::debug!("🗑️ APPLY DELETE: id={}, exists_in_storage={}, storage_len={}", id, has_key, storage.len());
             storage.remove(id)
         };
 
         if let Some(item) = removed_item {
-            // Persist deletion to event store (for durability and audit trail)
-            self.persist_to_event_store("Deleted", &item)
-                .await
-                .map_err(|e| format!("Failed to persist replicated delete: {:?}", e))?;
+            // Persist deletion to event store (best-effort - don't fail the operation)
+            // This ensures idempotency: once item is removed from storage, operation succeeds
+            if let Err(e) = self.persist_to_event_store("Deleted", &item).await {
+                log::warn!("⚠️ Failed to persist delete event for {}: {:?} (storage already updated)", id, e);
+            }
 
             if Self::is_verbose() {
-                println!("📥 Replicated DELETE for {} applied to follower", id);
+                println!("📥 Replicated DELETE for {} applied", id);
             }
 
             Ok(true)
         } else {
             // Item didn't exist (idempotent behavior - not an error)
-            if Self::is_verbose() {
-                println!("📥 Replicated DELETE for {} - item not found (idempotent)", id);
-            }
+            log::debug!("📥 Replicated DELETE for {} - item not found (idempotent)", id);
             Ok(false)
         }
     }
@@ -930,8 +937,33 @@ where
             return Ok(self.bad_request_response(&lifecycle_error));
         }
 
-        // Update storage
-        {
+        // RAFT INTEGRATION: Check if consensus is required for UPDATE
+        if let Some(consensus_arc) = &self.consensus {
+            println!("🔄 Raft: Proposing UPDATE operation for item {}", id);
+            match consensus_arc
+                .read()
+                .await
+                .propose_update(updated_item.clone(), id.to_string())
+                .await
+            {
+                Ok(_) => {
+                    // Apply to local storage after successful consensus
+                    let mut storage = self.storage.write().await;
+                    if !storage.contains_key(id) {
+                        return Ok(self.not_found_response());
+                    }
+                    storage.insert(id.to_string(), updated_item.clone());
+                }
+                Err(e) => {
+                    return Ok(Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .header("content-type", "application/json")
+                        .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
+                        .unwrap());
+                }
+            }
+        } else {
+            // No consensus - update storage directly (single-node mode)
             let mut storage = self.storage.write().await;
             if !storage.contains_key(id) {
                 return Ok(self.not_found_response());
@@ -1003,24 +1035,66 @@ where
             }
         }
 
-        let removed_item = {
-            let mut storage = self.storage.write().await;
-            storage.remove(id)
-        };
+        // RAFT INTEGRATION: Check if consensus is required for DELETE
+        if let Some(consensus_arc) = &self.consensus {
+            println!("🔄 Raft: Proposing DELETE operation for item {}", id);
+            match consensus_arc
+                .read()
+                .await
+                .propose_delete(id.to_string())
+                .await
+            {
+                Ok(_) => {
+                    // Apply to local storage after successful consensus
+                    let removed_item = {
+                        let mut storage = self.storage.write().await;
+                        storage.remove(id)
+                    };
 
-        match removed_item {
-            Some(item) => {
-                // Persist deletion to EventStore
-                if (self.persist_to_event_store("Deleted", &item).await).is_err() {
-                    return Ok(self.internal_error_response());
+                    match removed_item {
+                        Some(item) => {
+                            // Persist deletion to EventStore
+                            if (self.persist_to_event_store("Deleted", &item).await).is_err() {
+                                return Ok(self.internal_error_response());
+                            }
+
+                            Ok(Response::builder()
+                                .status(StatusCode::NO_CONTENT)
+                                .body(body_from(Bytes::new()))
+                                .unwrap())
+                        }
+                        None => Ok(self.not_found_response()),
+                    }
                 }
-
-                Ok(Response::builder()
-                    .status(StatusCode::NO_CONTENT)
-                    .body(body_from(Bytes::new()))
-                    .unwrap())
+                Err(e) => {
+                    Ok(Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .header("content-type", "application/json")
+                        .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
+                        .unwrap())
+                }
             }
-            None => Ok(self.not_found_response()),
+        } else {
+            // No consensus - delete directly (single-node mode)
+            let removed_item = {
+                let mut storage = self.storage.write().await;
+                storage.remove(id)
+            };
+
+            match removed_item {
+                Some(item) => {
+                    // Persist deletion to EventStore
+                    if (self.persist_to_event_store("Deleted", &item).await).is_err() {
+                        return Ok(self.internal_error_response());
+                    }
+
+                    Ok(Response::builder()
+                        .status(StatusCode::NO_CONTENT)
+                        .body(body_from(Bytes::new()))
+                        .unwrap())
+                }
+                None => Ok(self.not_found_response()),
+            }
         }
     }
 

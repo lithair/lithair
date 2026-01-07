@@ -1301,6 +1301,15 @@ impl LithairServerBuilder {
             } else {
                 None
             },
+            // Initialize migration manager for rolling upgrades
+            migration_manager: if !self.cluster_peers.is_empty() {
+                log::info!("🔄 Migration manager initialized for rolling upgrades");
+                Some(Arc::new(crate::cluster::MigrationManager::default()))
+            } else {
+                None
+            },
+            // Resync stats for observability
+            resync_stats: Arc::new(crate::cluster::ResyncStats::new()),
         })
     }
 
