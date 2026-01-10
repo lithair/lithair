@@ -44,6 +44,9 @@ http-body-util = "0.1"
 flate2 = "1"
 sha2 = "0.10"
 sha1 = "0.10"
+hmac = "0.12"                  # HMAC for JWT signatures (crypto-secure)
+argon2 = "0.5"                 # Password hashing (OWASP recommended)
+base64 = "0.22"                # Proper base64 encoding/decoding
 rustls = { version = "0.23", features = ["ring"] }
 hex = "0.4"
 ipnet = "2"
