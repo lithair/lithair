@@ -1,10 +1,10 @@
 # Event Sourcing in Lithair
 
-## 🎯 Overview
+##  Overview
 
 Lithair implements a **production-ready Event Sourcing architecture** with intelligent compaction, providing enterprise-grade performance, scalability, and data integrity. This document covers the complete implementation, testing methodology, and validation results.
 
-## 🔄 Event Sourcing Architecture
+##  Event Sourcing Architecture
 
 ### Core Components
 
@@ -28,7 +28,7 @@ graph TD
     G --> H
 ```
 
-## 🗜️ Persistence Model (Log, Snapshot, Envelope)
+##  Persistence Model (Log, Snapshot, Envelope)
 
 - Active log: `events.raftlog` (JSON lines)
 - Snapshot: `state.raftsnap` (full-state JSON when app provides serializers; otherwise metadata-only)
@@ -57,7 +57,7 @@ During startup, the engine reconstructs the dedup set by:
 
 This guarantees exactly-once across restarts, compaction, and rotation.
 
-## ⚡ Optimized (Binary) Persistence
+##  Optimized (Binary) Persistence
 
 Lithair also ships an optimized persistence path (module `persistence_optimized`) focused on throughput:
 
@@ -114,7 +114,7 @@ export RS_FSYNC_ON_APPEND=0
 export RS_ENABLE_BINARY=1
 ```
 
-## 🗜️ Intelligent Compaction & Rotation
+##  Intelligent Compaction & Rotation
 
 ### Problem Statement
 
@@ -182,9 +182,9 @@ Real-world performance improvements from our testing:
 | **File Size**      | 25+ MB            | 22 KB            | **99.9% reduction** |
 | **Startup Time**   | 2-5 seconds       | 50ms             | **40-100x faster**  |
 | **Memory Usage**   | 50+ MB            | 2 MB             | **25x reduction**   |
-| **Data Integrity** | ✅ Complete       | ✅ Complete      | **No data loss**    |
+| **Data Integrity** |  Complete       |  Complete      | **No data loss**    |
 
-## 🧪 Comprehensive Testing Suite (What we validate)
+##  Comprehensive Testing Suite (What we validate)
 
 ### Stress Test Scripts
 
@@ -230,7 +230,7 @@ done
 ```bash
 #!/bin/bash
 # Validates that critical events are preserved during compaction
-echo "🧠 Lithair Smart Compaction Test"
+echo " Lithair Smart Compaction Test"
 
 # Count initial critical events
 initial_critical=$(grep -c '"type":"ProductCreated"' events.raftlog)
@@ -244,9 +244,9 @@ done
 final_critical=$(grep -c '"type":"ProductCreated"' events.raftlog)
 
 if [ $final_critical -eq $initial_critical ]; then
-    echo "✅ SUCCESS: All critical events preserved!"
+    echo " SUCCESS: All critical events preserved!"
 else
-    echo "❌ FAILURE: Critical events lost!"
+    echo " FAILURE: Critical events lost!"
 fi
 ```
 
@@ -257,7 +257,7 @@ fi
 # Tests system behavior under extreme load
 TOTAL_UPDATES=10000
 
-echo "⚡ Generating $TOTAL_UPDATES updates for extreme stress test..."
+echo " Generating $TOTAL_UPDATES updates for extreme stress test..."
 
 for i in $(seq 1 $TOTAL_UPDATES); do
     curl --http1.1 -s -X PUT "$BASE_URL/api/products/1" \
@@ -267,7 +267,7 @@ for i in $(seq 1 $TOTAL_UPDATES); do
 
     # Progress tracking every 1000 updates
     if [ $((i % 1000)) -eq 0 ]; then
-        echo "📊 Progress: $i/$TOTAL_UPDATES updates completed"
+        echo " Progress: $i/$TOTAL_UPDATES updates completed"
     fi
 done
 ```
@@ -285,14 +285,14 @@ cargo test -p benchmark_comparison --test rotation -- --nocapture | cat
 #### Smart Compaction Test Results
 
 ```
-🧠 Lithair Smart Compaction Test
+ Lithair Smart Compaction Test
 ═══════════════════════════════════════════════════════════════
-📊 Configuration:
+ Configuration:
    • Target updates: 110
    • Compaction threshold: 100 events
    • Smart compaction: Preserve CREATE events, compact UPDATE events
 
-📊 Initial event log state:
+ Initial event log state:
    • Initial events: 5
    • Critical events (CREATE): 5
      - ProductCreated: 2
@@ -300,23 +300,23 @@ cargo test -p benchmark_comparison --test rotation -- --nocapture | cat
      - OrderCreated: 1
      - PaymentProcessed: 1
 
-🔍 Final event log state:
+ Final event log state:
    • Final events: 70
    • File size: 17412 bytes (17.0 KB)
 
-🧠 Smart Compaction Analysis:
+ Smart Compaction Analysis:
    • Critical events after compaction: 5
-   • ✅ SUCCESS: All critical events preserved!
-   • 🎉 SMART COMPACTION DETECTED! Event count reduced while preserving critical events!
+   •  SUCCESS: All critical events preserved!
+   •  SMART COMPACTION DETECTED! Event count reduced while preserving critical events!
 
-✅ Smart compaction test completed!
+ Smart compaction test completed!
    • Updates sent: 110
    • Successful: 110
    • Failed: 0
    • Success rate: 100.0%
 ```
 
-## 🎯 Production Deployment Considerations
+##  Production Deployment Considerations
 
 ### Configuration Parameters
 
@@ -347,7 +347,7 @@ Lithair provides multiple recovery mechanisms:
 3. **Backup Restoration** - Restore from pre-compaction backup
 4. **Point-in-Time Recovery** - Replay to specific timestamp
 
-## 🚀 Performance Benchmarks
+##  Performance Benchmarks
 
 ### Throughput Testing
 
@@ -362,12 +362,12 @@ Lithair provides multiple recovery mechanisms:
 
 Tested with:
 
-- ✅ **1M+ events** - Compaction maintains performance
-- ✅ **10K concurrent requests** - No degradation
-- ✅ **24/7 continuous load** - Stable memory usage
-- ✅ **Multiple compaction cycles** - Data integrity preserved
+-  **1M+ events** - Compaction maintains performance
+-  **10K concurrent requests** - No degradation
+-  **24/7 continuous load** - Stable memory usage
+-  **Multiple compaction cycles** - Data integrity preserved
 
-## 🔮 Future Enhancements
+##  Future Enhancements
 
 ### Planned Features
 
@@ -384,7 +384,7 @@ Tested with:
 - **Edge Computing** - Distributed event sourcing
 - **Time Travel Queries** - Historical state analysis
 
-## 📚 References
+##  References
 
 - [Event Sourcing Pattern](https://martinfowler.com/eaaDev/EventSourcing.html)
 - [CQRS Architecture](https://docs.microsoft.com/en-us/azure/architecture/patterns/cqrs)

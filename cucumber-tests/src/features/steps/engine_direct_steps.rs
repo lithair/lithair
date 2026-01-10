@@ -7,39 +7,39 @@ use std::sync::{Arc, RwLock};
 
 // ==================== BACKGROUND ====================
 
-#[given("le moteur Lithair est initialisé en mode MaxDurability")]
+#[given("the Lithair engine is initialized in MaxDurability mode")]
 async fn init_engine_max_durability(_world: &mut LithairWorld) {
-    println!("✅ Moteur Lithair en mode MaxDurability");
+    println!("✅ Lithair engine in MaxDurability mode");
 }
 
-#[given(expr = "un moteur avec persistence dans {string}")]
+#[given(expr = "an engine with persistence in {string}")]
 async fn init_engine_with_persistence(world: &mut LithairWorld, persist_path: String) {
-    println!("🚀 Initialisation moteur avec persistence: {}", persist_path);
+    println!("🚀 Initializing engine with persistence: {}", persist_path);
 
-    // Nettoyer et créer le dossier
+    // Clean and create the folder
     std::fs::remove_dir_all(&persist_path).ok();
     std::fs::create_dir_all(&persist_path).ok();
 
-    // Créer EventStore + AsyncWriter
+    // Create EventStore + AsyncWriter
     // Note: AsyncWriter requires Arc<RwLock<EventStore>>
     let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
     let async_writer = AsyncWriter::new(event_store, 1000); // batch_size = 1000
 
-    // Stocker dans world
+    // Store in world
     *world.async_writer.lock().await = Some(async_writer);
 
-    // Sauvegarder le chemin
+    // Save the path
     let mut metrics = world.metrics.lock().await;
     metrics.persist_path = persist_path;
 
-    println!("✅ Moteur initialisé (AsyncWriter batch_size: 1000)");
+    println!("✅ Engine initialized (AsyncWriter batch_size: 1000)");
 }
 
-// ==================== OPÉRATIONS DIRECTES ====================
+// ==================== DIRECT OPERATIONS ====================
 
-#[when(expr = "je crée {int} articles directement dans le moteur")]
+#[when(expr = "I create {int} articles directly in the engine")]
 async fn create_articles_direct(world: &mut LithairWorld, count: usize) {
-    println!("📝 Création de {} articles directement...", count);
+    println!("📝 Creating {} articles directly...", count);
 
     let start = Instant::now();
 
@@ -50,20 +50,20 @@ async fn create_articles_direct(world: &mut LithairWorld, count: usize) {
             content: format!("Content {}", i),
         };
 
-        // Persister via AsyncWriter
+        // Persist via AsyncWriter
         if let Some(ref writer) = *world.async_writer.lock().await {
             let event_json = serde_json::to_string(&article).unwrap();
             writer.write(event_json).ok();
         }
 
-        // Stocker en mémoire (SCC2)
+        // Store in memory (SCC2)
         let id = article.id.clone();
         world.scc2_articles.write(&id, |s| *s = article).ok();
 
         if count >= 10_000 && i % 10_000 == 0 && i > 0 {
-            println!("  ... {} articles créés", i);
+            println!("  ... {} articles created", i);
         } else if count < 10_000 && i % 1_000 == 0 && i > 0 {
-            println!("  ... {} articles créés", i);
+            println!("  ... {} articles created", i);
         }
     }
 
@@ -71,21 +71,21 @@ async fn create_articles_direct(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} articles créés en {:.2}s ({:.0} articles/sec)",
+        "✅ {} articles created in {:.2}s ({:.0} articles/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 
-    // Sauvegarder les métriques
+    // Save the metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
     metrics.total_duration = elapsed;
 }
 
-#[when(expr = "je modifie {int} articles directement dans le moteur")]
+#[when(expr = "I update {int} articles directly in the engine")]
 async fn update_articles_direct(world: &mut LithairWorld, count: usize) {
-    println!("🔄 Modification de {} articles directement...", count);
+    println!("🔄 Updating {} articles directly...", count);
 
     let start = Instant::now();
 
@@ -96,20 +96,20 @@ async fn update_articles_direct(world: &mut LithairWorld, count: usize) {
             article.title = format!("Updated Title {}", i);
             article.content = format!("Updated Content {}", i);
 
-            // Persister
+            // Persist
             if let Some(ref writer) = *world.async_writer.lock().await {
                 let event_json = serde_json::to_string(&article).unwrap();
                 writer.write(event_json).ok();
             }
 
-            // Mettre à jour SCC2
+            // Update SCC2
             world.scc2_articles.write(&article_id, |s| *s = article).ok();
         }
 
         if count >= 10_000 && i % 10_000 == 0 && i > 0 {
-            println!("  ... {} articles modifiés", i);
+            println!("  ... {} articles updated", i);
         } else if count < 10_000 && i % 1_000 == 0 && i > 0 {
-            println!("  ... {} articles modifiés", i);
+            println!("  ... {} articles updated", i);
         }
     }
 
@@ -117,31 +117,31 @@ async fn update_articles_direct(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} articles modifiés en {:.2}s ({:.0} articles/sec)",
+        "✅ {} articles updated in {:.2}s ({:.0} articles/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 
-    // Sauvegarder les métriques
+    // Save the metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
     metrics.total_duration = elapsed;
 }
 
-#[when(expr = "je supprime {int} articles directement dans le moteur")]
+#[when(expr = "I delete {int} articles directly in the engine")]
 async fn delete_articles_direct(world: &mut LithairWorld, count: usize) {
-    println!("🗑️  Suppression de {} articles directement...", count);
+    println!("🗑️  Deleting {} articles directly...", count);
 
     let start = Instant::now();
 
     for i in 0..count {
         let article_id = format!("article-{}", i);
 
-        // Supprimer de SCC2
+        // Delete from SCC2
         world.scc2_articles.remove_sync(&article_id);
 
-        // Persister événement delete
+        // Persist delete event
         if let Some(ref writer) = *world.async_writer.lock().await {
             let event = serde_json::json!({
                 "type": "ArticleDeleted",
@@ -151,9 +151,9 @@ async fn delete_articles_direct(world: &mut LithairWorld, count: usize) {
         }
 
         if count >= 10_000 && i % 10_000 == 0 && i > 0 {
-            println!("  ... {} articles supprimés", i);
+            println!("  ... {} articles deleted", i);
         } else if count < 10_000 && i % 1_000 == 0 && i > 0 {
-            println!("  ... {} articles supprimés", i);
+            println!("  ... {} articles deleted", i);
         }
     }
 
@@ -161,49 +161,49 @@ async fn delete_articles_direct(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} articles supprimés en {:.2}s ({:.0} articles/sec)",
+        "✅ {} articles deleted in {:.2}s ({:.0} articles/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 
-    // Sauvegarder les métriques
+    // Save the metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
     metrics.total_duration = elapsed;
 }
 
-#[when("j'attends le flush complet du moteur")]
+#[when("I wait for the engine to fully flush")]
 async fn wait_for_engine_flush(world: &mut LithairWorld) {
-    println!("💾 Flush du moteur en cours...");
+    println!("💾 Engine flush in progress...");
 
-    // Récupérer le chemin de persistance actuel
+    // Get the current persistence path
     let persist_path = {
         let metrics = world.metrics.lock().await;
         metrics.persist_path.clone()
     };
 
-    // Shutdown AsyncWriter pour forcer le flush, puis en recréer un nouveau
+    // Shutdown AsyncWriter to force the flush, then recreate a new one
     {
         let mut guard = world.async_writer.lock().await;
         if let Some(writer) = guard.take() {
             writer.shutdown().await;
 
-            // Recréer un AsyncWriter pour permettre d'autres écritures
-            let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore failed après flush")));
+            // Recreate an AsyncWriter to allow further writes
+            let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore failed after flush")));
             *guard = Some(AsyncWriter::new(event_store, 1000));
         }
     }
 
-    // Attendre un peu pour être sûr
+    // Wait a bit to be sure
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    println!("✅ Flush terminé");
+    println!("✅ Flush completed");
 }
 
-// ==================== VÉRIFICATIONS ====================
+// ==================== VERIFICATIONS ====================
 
-#[then(expr = "le throughput de création doit être supérieur à {int} articles/sec")]
+#[then(expr = "the creation throughput must be greater than {int} articles\\/sec")]
 async fn check_creation_throughput_gt(world: &mut LithairWorld, min_throughput: usize) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration.as_secs_f64();
@@ -211,18 +211,18 @@ async fn check_creation_throughput_gt(world: &mut LithairWorld, min_throughput: 
 
     assert!(
         throughput >= min_throughput as f64,
-        "❌ Throughput de création trop faible: {:.0} articles/sec (min: {})",
+        "❌ Creation throughput too low: {:.0} articles/sec (min: {})",
         throughput,
         min_throughput
     );
 
     println!(
-        "✅ Throughput création validé: {:.0} articles/sec > {}",
+        "✅ Creation throughput validated: {:.0} articles/sec > {}",
         throughput, min_throughput
     );
 }
 
-#[then(expr = "le throughput de modification doit être supérieur à {int} articles/sec")]
+#[then(expr = "the update throughput must be greater than {int} articles\\/sec")]
 async fn check_update_throughput_gt(world: &mut LithairWorld, min_throughput: usize) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration.as_secs_f64();
@@ -230,18 +230,18 @@ async fn check_update_throughput_gt(world: &mut LithairWorld, min_throughput: us
 
     assert!(
         throughput >= min_throughput as f64,
-        "❌ Throughput de modification trop faible: {:.0} articles/sec (min: {})",
+        "❌ Update throughput too low: {:.0} articles/sec (min: {})",
         throughput,
         min_throughput
     );
 
     println!(
-        "✅ Throughput modification validé: {:.0} articles/sec > {}",
+        "✅ Update throughput validated: {:.0} articles/sec > {}",
         throughput, min_throughput
     );
 }
 
-#[then(expr = "le throughput de suppression doit être supérieur à {int} articles/sec")]
+#[then(expr = "the deletion throughput must be greater than {int} articles\\/sec")]
 async fn check_deletion_throughput_gt(world: &mut LithairWorld, min_throughput: usize) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration.as_secs_f64();
@@ -249,33 +249,33 @@ async fn check_deletion_throughput_gt(world: &mut LithairWorld, min_throughput: 
 
     assert!(
         throughput >= min_throughput as f64,
-        "❌ Throughput de suppression trop faible: {:.0} articles/sec (min: {})",
+        "❌ Deletion throughput too low: {:.0} articles/sec (min: {})",
         throughput,
         min_throughput
     );
 
     println!(
-        "✅ Throughput suppression validé: {:.0} articles/sec > {}",
+        "✅ Deletion throughput validated: {:.0} articles/sec > {}",
         throughput, min_throughput
     );
 }
 
-#[then(expr = "le temps de création doit être inférieur à {int} secondes")]
+#[then(expr = "the creation time must be less than {int} seconds")]
 async fn check_creation_time(world: &mut LithairWorld, max_seconds: u64) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration.as_secs_f64();
 
     assert!(
         elapsed < max_seconds as f64,
-        "❌ Temps trop long: {:.2}s (max: {}s)",
+        "❌ Time too long: {:.2}s (max: {}s)",
         elapsed,
         max_seconds
     );
 
-    println!("✅ Temps validé: {:.2}s < {}s", elapsed, max_seconds);
+    println!("✅ Time validated: {:.2}s < {}s", elapsed, max_seconds);
 }
 
-#[then(expr = "le fichier events.raftlog doit contenir exactement {int} événements")]
+#[then(expr = "the events.raftlog file must contain exactly {int} events")]
 async fn check_event_count_exact(world: &mut LithairWorld, expected: usize) {
     let persist_path = {
         let metrics = world.metrics.lock().await;
@@ -286,36 +286,36 @@ async fn check_event_count_exact(world: &mut LithairWorld, expected: usize) {
 
     assert!(
         std::path::Path::new(&events_file).exists(),
-        "❌ Fichier events.raftlog manquant"
+        "❌ events.raftlog file missing"
     );
 
-    let content = std::fs::read_to_string(&events_file).expect("Impossible de lire events.raftlog");
+    let content = std::fs::read_to_string(&events_file).expect("Unable to read events.raftlog");
 
     let actual = content.lines().count();
 
     assert_eq!(
         actual, expected,
-        "❌ Nombre d'événements incorrect: {} (attendu: {})",
+        "❌ Incorrect number of events: {} (expected: {})",
         actual, expected
     );
 
-    println!("✅ {} événements persistés (exact)", actual);
+    println!("✅ {} events persisted (exact)", actual);
 }
 
-#[then(expr = "le moteur doit avoir {int} articles en mémoire")]
+#[then(expr = "the engine must have {int} articles in memory")]
 async fn check_memory_article_count(world: &mut LithairWorld, expected: usize) {
     let actual = world.scc2_articles.iter_all_sync().len();
 
     assert_eq!(
         actual, expected,
-        "❌ Nombre d'articles en mémoire incorrect: {} (attendu: {})",
+        "❌ Incorrect number of articles in memory: {} (expected: {})",
         actual, expected
     );
 
-    println!("✅ {} articles en mémoire (SCC2)", actual);
+    println!("✅ {} articles in memory (SCC2)", actual);
 }
 
-#[then(expr = "la taille du fichier events.raftlog doit être environ {int} MB")]
+#[then(expr = "the events.raftlog file size must be approximately {int} MB")]
 async fn check_file_size_approx(world: &mut LithairWorld, expected_mb: usize) {
     let persist_path = {
         let metrics = world.metrics.lock().await;
@@ -323,24 +323,24 @@ async fn check_file_size_approx(world: &mut LithairWorld, expected_mb: usize) {
     };
 
     let events_file = format!("{}/events.raftlog", persist_path);
-    let metadata = std::fs::metadata(&events_file).expect("Fichier manquant");
+    let metadata = std::fs::metadata(&events_file).expect("File missing");
     let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
 
-    // Tolérance de ±20%
+    // Tolerance of ±20%
     let min_mb = expected_mb as f64 * 0.8;
     let max_mb = expected_mb as f64 * 1.2;
 
     assert!(
         size_mb >= min_mb && size_mb <= max_mb,
-        "❌ Taille fichier hors limites: {:.2} MB (attendu: ~{} MB)",
+        "❌ File size out of bounds: {:.2} MB (expected: ~{} MB)",
         size_mb,
         expected_mb
     );
 
-    println!("✅ Taille fichier: {:.2} MB (~{} MB)", size_mb, expected_mb);
+    println!("✅ File size: {:.2} MB (~{} MB)", size_mb, expected_mb);
 }
 
-#[then("le nombre d'articles en mémoire doit égaler le nombre reconstruit depuis le disque")]
+#[then("the number of articles in memory must equal the number rebuilt from disk")]
 async fn check_memory_disk_equality(world: &mut LithairWorld) {
     let memory_count = world.scc2_articles.iter_all_sync().len();
 
@@ -355,19 +355,19 @@ async fn check_memory_disk_equality(world: &mut LithairWorld) {
         let content = std::fs::read_to_string(&events_file).unwrap();
         let disk_events = content.lines().count();
 
-        println!("✅ Mémoire: {} articles, Disque: {} événements", memory_count, disk_events);
-        println!("✅ Cohérence mémoire/disque validée");
+        println!("✅ Memory: {} articles, Disk: {} events", memory_count, disk_events);
+        println!("✅ Memory/disk consistency validated");
     } else {
-        panic!("❌ Fichier events.raftlog manquant");
+        panic!("❌ events.raftlog file missing");
     }
 }
 
-#[then("tous les checksums doivent correspondre entre mémoire et disque")]
+#[then("all checksums must match between memory and disk")]
 async fn check_checksums_match(world: &mut LithairWorld) {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    // Checksum mémoire (SCC2)
+    // Memory checksum (SCC2)
     let articles = world.scc2_articles.iter_all_sync();
     let mut memory_hasher = DefaultHasher::new();
     for (_key, article) in articles.iter() {
@@ -376,7 +376,7 @@ async fn check_checksums_match(world: &mut LithairWorld) {
     }
     let memory_checksum = memory_hasher.finish();
 
-    // Checksum disque
+    // Disk checksum
     let persist_path = {
         let metrics = world.metrics.lock().await;
         metrics.persist_path.clone()
@@ -388,34 +388,34 @@ async fn check_checksums_match(world: &mut LithairWorld) {
     content.hash(&mut disk_hasher);
     let disk_checksum = disk_hasher.finish();
 
-    println!("✅ Checksum mémoire: {}", memory_checksum);
-    println!("✅ Checksum disque: {}", disk_checksum);
-    println!("✅ Checksums calculés");
+    println!("✅ Memory checksum: {}", memory_checksum);
+    println!("✅ Disk checksum: {}", disk_checksum);
+    println!("✅ Checksums calculated");
 }
 
-#[then(expr = "l'état final doit avoir {int} articles actifs en mémoire SCC2")]
+#[then(expr = "the final state must have {int} active articles in SCC2 memory")]
 async fn check_final_active_articles_scc2(world: &mut LithairWorld, expected: usize) {
     let actual = world.scc2_articles.iter_all_sync().len();
 
     assert_eq!(
         actual, expected,
-        "❌ Nombre d'articles actifs incorrect: {} (attendu: {})",
+        "❌ Incorrect number of active articles: {} (expected: {})",
         actual, expected
     );
 
-    println!("✅ {} articles actifs validés (SCC2)", actual);
+    println!("✅ {} active articles validated (SCC2)", actual);
 }
 
-// Note: step "le fichier events.raftlog doit exister" définie dans database_performance_steps.rs
+// Note: step "the events.raftlog file must exist" defined in database_performance_steps.rs
 
 
-#[then("tous les événements doivent être persistés")]
+#[then("all events must be persisted")]
 async fn check_all_events_persisted(_world: &mut LithairWorld) {
-    // Cette vérification est déjà couverte par le check du nombre d'événements exact
-    println!("✅ Tous les événements persistés (vérifié par comptage exact)");
+    // This check is already covered by the exact event count check
+    println!("✅ All events persisted (verified by exact count)");
 }
 
-#[then("tous les événements doivent être dans l'ordre chronologique")]
+#[then("all events must be in chronological order")]
 async fn check_events_chronological(world: &mut LithairWorld) {
     let persist_path = {
         let metrics = world.metrics.lock().await;
@@ -425,12 +425,12 @@ async fn check_events_chronological(world: &mut LithairWorld) {
     let events_file = format!("{}/events.raftlog", persist_path);
     let content = std::fs::read_to_string(&events_file).unwrap();
 
-    // Vérifier simplement que le fichier contient des lignes
+    // Simply verify that the file contains lines
     let line_count = content.lines().count();
 
-    assert!(line_count > 0, "❌ Fichier events.raftlog vide");
+    assert!(line_count > 0, "❌ events.raftlog file empty");
 
-    println!("✅ Ordre chronologique validé ({} événements)", line_count);
+    println!("✅ Chronological order validated ({} events)", line_count);
 }
 
-// Note: step "aucun événement ne doit être manquant" définie dans database_performance_steps.rs
+// Note: step "no event must be missing" defined in database_performance_steps.rs

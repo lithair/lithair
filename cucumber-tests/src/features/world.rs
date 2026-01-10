@@ -4,7 +4,7 @@ use crc32fast::Hasher as Crc32Hasher;
 use cucumber::World as CucumberWorld;
 use lithair_core::engine::persistence::FileStorage;
 use lithair_core::engine::{Event, StateEngine};
-use lithair_core::http::{HttpResponse, HttpServer, Router, StatusCode};
+use lithair_core::http::{AsyncHttpServer, HttpResponse, HttpServer, Router, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -570,17 +570,92 @@ impl LithairWorld {
             })
     }
 
-    // Désactivé temporairement - conflit avec std::thread::JoinHandle
-    /*
-    /// Démarre un VRAI serveur HTTP Lithair en background
+    /// Start a REAL HTTP server in background
+    ///
+    /// # Arguments
+    /// * `requested_port` - The port to listen on (0 for random)
+    /// * `_binary` - Binary name (unused, kept for API compatibility)
     pub async fn start_server(&mut self, requested_port: u16, _binary: &str) -> Result<(), String> {
-        unimplemented!("Utilisez les steps Cucumber à la place")
+        // Pick port (0 = random)
+        let port = if requested_port == 0 {
+            portpicker::pick_unused_port()
+                .ok_or_else(|| "No available port".to_string())?
+        } else {
+            requested_port
+        };
+
+        // Create router
+        let router = self.create_test_router();
+
+        // Start async server using tokio::spawn (native async - no spawn_blocking needed)
+        let addr = format!("127.0.0.1:{}", port);
+
+        // Use AsyncHttpServer which uses Tokio's native TcpListener and Hyper
+        tokio::spawn(async move {
+            let server = AsyncHttpServer::new(router, ());
+            if let Err(e) = server.serve(&addr).await {
+                eprintln!("Server error: {}", e);
+            }
+        });
+
+        // Update server state
+        {
+            let mut server_state = self.server.lock().await;
+            server_state.port = port;
+            server_state.is_running = true;
+            server_state.process_id = Some(std::process::id());
+            server_state.base_url = Some(format!("http://127.0.0.1:{}", port));
+        }
+
+        // Give the server time to start and bind
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Verify server responds
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| format!("Failed to create client: {}", e))?;
+
+        let url = format!("http://127.0.0.1:{}/health", port);
+
+        for i in 0..20 {
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    println!("Server started on port {}", port);
+                    return Ok(());
+                }
+                Ok(resp) => {
+                    if i % 5 == 0 {
+                        println!("Health check returned status {}, retrying...", resp.status());
+                    }
+                }
+                Err(e) => {
+                    if i % 5 == 0 {
+                        println!("Health check attempt {}: {}", i + 1, e);
+                    }
+                }
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        Err(format!("Server failed to start on port {}", port))
     }
 
+    /// Stop the HTTP server
     pub async fn stop_server(&mut self) -> Result<(), String> {
-        unimplemented!("Utilisez les steps Cucumber à la place")
+        // Take the handle - this will drop and stop the thread
+        let handle = self.server_handle.lock().await.take();
+
+        if handle.is_some() {
+            // Update state
+            let mut server_state = self.server.lock().await;
+            server_state.is_running = false;
+            server_state.process_id = None;
+            println!("Server stopped");
+        }
+
+        Ok(())
     }
-    */
 
     /// Initialise un répertoire temporaire pour les tests de persistance
     pub async fn init_temp_storage(&mut self) -> Result<PathBuf, String> {

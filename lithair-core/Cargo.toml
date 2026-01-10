@@ -33,7 +33,7 @@ bincode = { version = "2", features = ["serde"] }        # Sérialisation binair
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps pour metadata
 tempfile = "3"       # Tests des optimisations
 scc = "3"            # SCC2 HashMap ultra-performant (40M+ ops/sec)
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }  # HTTP client with rustls
+reqwest = { version = "0.13", features = ["json", "rustls", "form"], default-features = false }  # HTTP client with rustls
 uuid = { version = "1", features = ["v4", "serde"] }  # For generating unique IDs with Serde
 urlencoding = "2.1"  # URL encoding for OAuth2 parameters
 clap = { version = "4", features = ["derive"] }  # CLI argument parsing for auto-generated apps

@@ -3,11 +3,11 @@ use cucumber::{given, then, when};
 use lithair_core::engine::{Engine, EngineConfig, EngineError, Event};
 
 // Background
-#[given(expr = "un moteur Lithair avec event sourcing activé")]
+#[given(expr = "a Lithair engine with event sourcing enabled")]
 async fn given_event_sourcing_enabled(_world: &mut LithairWorld) {
-    // Initialisation réalisée à la première opération CRUD pour éviter toute dépendance fragile
+    // Initialization done at first CRUD operation to avoid fragile dependencies
     println!(
-        "📝 Contexte event sourcing activé (initialisation effectuée lors de la première opération CRUD)"
+        "Event sourcing context enabled (initialization done at first CRUD operation)"
     );
 }
 
@@ -38,20 +38,20 @@ async fn ensure_event_sourcing_initialized(world: &mut LithairWorld) {
     println!("📝 Moteur event sourcing direct activé dans {:?}", path);
 }
 
-#[given(expr = "que les événements soient persistés dans {string}")]
+#[given(expr = "events are persisted in {string}")]
 async fn given_events_persisted_in(_world: &mut LithairWorld, filename: String) {
-    println!("💾 Événements persistés dans: {}", filename);
+    println!("Events persisted in: {}", filename);
 }
 
-#[given(expr = "que les snapshots soient créés périodiquement")]
+#[given(expr = "snapshots are created periodically")]
 async fn given_periodic_snapshots(_world: &mut LithairWorld) {
-    println!("📸 Snapshots périodiques activés");
+    println!("Periodic snapshots enabled");
 }
 
 // Scénario: Persistance des événements
-#[when(expr = "j'effectue une opération CRUD")]
+#[when(expr = "I perform a CRUD operation")]
 async fn when_perform_crud_operation(world: &mut LithairWorld) {
-    // S'assurer que l'environnement event sourcing est bien initialisé
+    // Ensure event sourcing environment is initialized
     ensure_event_sourcing_initialized(world).await;
 
     let payload = serde_json::json!({
@@ -93,7 +93,7 @@ async fn when_perform_crud_operation(world: &mut LithairWorld) {
     println!("✍️ Opération CRUD directe effectuée et événement persisté");
 }
 
-#[then(expr = "un événement doit être créé et persisté")]
+#[then(expr = "an event should be created and persisted")]
 async fn then_event_created_and_persisted(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir.as_ref().expect("TempDir non initialisé pour event sourcing");
@@ -109,7 +109,7 @@ async fn then_event_created_and_persisted(world: &mut LithairWorld) {
     println!("✅ {} événement(s) persisté(s) dans {:?}", lines.len(), events_file);
 }
 
-#[then(expr = "l'événement doit contenir toutes les métadonnées")]
+#[then(expr = "the event should contain all metadata")]
 async fn then_event_contains_metadata(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir.as_ref().expect("TempDir non initialisé pour event sourcing");
@@ -144,7 +144,7 @@ async fn then_event_contains_metadata(world: &mut LithairWorld) {
     println!("✅ Métadonnées présentes dans l'événement persisté");
 }
 
-#[then(expr = "le fichier de log doit être mis à jour atomiquement")]
+#[then(expr = "the log file should be updated atomically")]
 async fn then_log_file_updated_atomically(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir.as_ref().expect("TempDir non initialisé pour event sourcing");
@@ -168,7 +168,7 @@ async fn then_log_file_updated_atomically(world: &mut LithairWorld) {
 }
 
 // Scénario: Reconstruction de l'état
-#[when(expr = "je redémarre le serveur")]
+#[when(expr = "I restart the server")]
 async fn when_restart_server(world: &mut LithairWorld) {
     println!("🔄 Préparation du scénario de reconstruction d'état...");
 
@@ -291,7 +291,7 @@ async fn when_restart_server(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "tous les événements doivent être rejoués")]
+#[then(expr = "all events should be replayed")]
 async fn then_all_events_replayed(world: &mut LithairWorld) {
     let expected = {
         let metrics = world.metrics.lock().await;
@@ -317,7 +317,7 @@ async fn then_all_events_replayed(world: &mut LithairWorld) {
     println!("✅ Tous les événements ({}) ont été rejoués", actual);
 }
 
-#[then(expr = "l'état doit être identique à avant le redémarrage")]
+#[then(expr = "state should be identical to before the restart")]
 async fn then_state_identical(world: &mut LithairWorld) {
     // État avant redémarrage (snapshot)
     let pre_state = { world.test_data.lock().await.clone() };
@@ -341,7 +341,7 @@ async fn then_state_identical(world: &mut LithairWorld) {
     println!("✅ État restauré identiquement ({} articles)", post_state.articles.len());
 }
 
-#[then(expr = "la reconstruction doit prendre moins de {int} secondes")]
+#[then(expr = "reconstruction should take less than {int} seconds")]
 async fn then_reconstruction_within(world: &mut LithairWorld, max_seconds: u32) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration;
@@ -358,7 +358,7 @@ async fn then_reconstruction_within(world: &mut LithairWorld, max_seconds: u32) 
 }
 
 // Scénario: Snapshots optimisés
-#[when(expr = "{int} événements ont été créés")]
+#[when(expr = "{int} events have been created")]
 async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
     println!("📊 Création de {} événements...", event_count);
 
@@ -438,7 +438,7 @@ async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
     println!("✅ {} événements créés et snapshot écrit", event_count);
 }
 
-#[then(expr = "un snapshot doit être généré automatiquement")]
+#[then(expr = "a snapshot should be generated automatically")]
 async fn then_snapshot_generated(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir.as_ref().expect("TempDir non initialisé pour snapshots");
@@ -465,7 +465,7 @@ async fn then_snapshot_generated(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "le snapshot doit compresser l'état actuel")]
+#[then(expr = "the snapshot should compress current state")]
 async fn then_snapshot_compresses_state(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir.as_ref().expect("TempDir non initialisé pour snapshots");
@@ -490,7 +490,7 @@ async fn then_snapshot_compresses_state(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "les anciens événements doivent être archivés")]
+#[then(expr = "old events should be archived")]
 async fn then_old_events_archived(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir.as_ref().expect("TempDir non initialisé pour snapshots");
@@ -515,7 +515,7 @@ async fn then_old_events_archived(world: &mut LithairWorld) {
     println!("✅ Anciens événements archivés (events.raftlog tronqué à 0 byte)");
 }
 
-#[then(expr = "la génération du snapshot doit prendre moins de {int} secondes")]
+#[then(expr = "snapshot generation should take less than {int} seconds")]
 async fn then_snapshot_generation_within(world: &mut LithairWorld, max_seconds: u32) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration;
@@ -532,7 +532,7 @@ async fn then_snapshot_generation_within(world: &mut LithairWorld, max_seconds: 
 }
 
 // Scénario: Déduplication des événements
-#[when(expr = "le même événement est reçu deux fois")]
+#[when(expr = "the same event is received twice")]
 async fn when_duplicate_event_received(world: &mut LithairWorld) {
     println!("🔁 Préparation du scénario de déduplication (moteur direct)...");
 
@@ -613,7 +613,7 @@ async fn when_duplicate_event_received(world: &mut LithairWorld) {
     println!("🔁 Même événement reçu deux fois, appliqué une seule fois en mémoire et persisté deux fois dans le log");
 }
 
-#[then(expr = "seul le premier doit être appliqué")]
+#[then(expr = "only the first should be applied")]
 async fn then_only_first_applied(world: &mut LithairWorld) {
     let articles = world.engine.with_state(|state| state.data.articles.clone()).unwrap_or_default();
 
@@ -627,7 +627,7 @@ async fn then_only_first_applied(world: &mut LithairWorld) {
     println!("✅ Seul le premier événement a été appliqué (1 article en mémoire)");
 }
 
-#[then(expr = "le doublon doit être ignoré silencieusement")]
+#[then(expr = "the duplicate should be ignored silently")]
 async fn then_duplicate_ignored(world: &mut LithairWorld) {
     // Vérifier qu'aucune erreur n'a été enregistrée au niveau des métriques
     let metrics = world.metrics.lock().await;
@@ -679,7 +679,7 @@ async fn then_duplicate_ignored(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "l'intégrité doit être préservée")]
+#[then(expr = "integrity should be preserved")]
 async fn then_integrity_preserved(world: &mut LithairWorld) {
     // Rejouer le log avec déduplication par event_id dans un état vierge
     let temp_dir = world.temp_dir.lock().await;
@@ -736,7 +736,7 @@ async fn then_integrity_preserved(world: &mut LithairWorld) {
 }
 
 // Scénario: Récupération après corruption (moteur direct)
-#[when(expr = "le fichier d'état est corrompu")]
+#[when(expr = "the state file is corrupted")]
 async fn when_state_file_corrupted(world: &mut LithairWorld) {
     println!("💥 Préparation d'un fichier d'état corrompu (event sourcing direct)...");
 
@@ -829,7 +829,7 @@ async fn when_state_file_corrupted(world: &mut LithairWorld) {
     println!("⚠️ Fichier d'état corrompu simulé dans {:?}", events_file);
 }
 
-#[then(expr = "le système doit détecter la corruption")]
+#[then(expr = "the system should detect corruption")]
 async fn then_system_detects_corruption(world: &mut LithairWorld) {
     let events_file = {
         let temp_dir = world.temp_dir.lock().await;
@@ -866,7 +866,7 @@ async fn then_system_detects_corruption(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "reconstruire depuis le dernier snapshot valide")]
+#[then(expr = "rebuild from last valid snapshot")]
 async fn then_rebuild_from_last_valid_snapshot(world: &mut LithairWorld) {
     assert!(
         world.corruption_detected,
@@ -909,7 +909,7 @@ async fn then_rebuild_from_last_valid_snapshot(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "continuer à fonctionner normalement")]
+#[then(expr = "continue to function normally")]
 async fn then_continue_to_operate_normally(world: &mut LithairWorld) {
     // Appliquer un nouvel événement après récupération
     let id = "corruption-recovery-new-1".to_string();
@@ -963,7 +963,7 @@ async fn then_continue_to_operate_normally(world: &mut LithairWorld) {
 }
 
 // Scénario: Déduplication persistante après redémarrage
-#[when(expr = "un événement idempotent est appliqué avant et après redémarrage du moteur")]
+#[when(expr = "an idempotent event is applied before and after engine restart")]
 async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
@@ -1049,7 +1049,7 @@ async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld
     );
 }
 
-#[then(expr = "le moteur doit rejeter le doublon après redémarrage")]
+#[then(expr = "the engine should reject the duplicate after restart")]
 async fn then_engine_rejects_duplicate_after_restart(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
 
@@ -1082,7 +1082,7 @@ async fn then_engine_rejects_duplicate_after_restart(world: &mut LithairWorld) {
 }
 
 #[when(
-    expr = "un événement idempotent est appliqué avant et après redémarrage du moteur en mode multi-fichiers"
+    expr = "an idempotent event is applied before and after engine restart in multi-file mode"
 )]
 async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
@@ -1179,7 +1179,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
     );
 }
 
-#[then(expr = "le fichier de déduplication doit être global en mode multi-fichiers")]
+#[then(expr = "the deduplication file should be global in multi-file mode")]
 async fn then_dedup_file_is_global_multifile(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
     let base_path = test_data
@@ -1225,9 +1225,7 @@ async fn then_dedup_file_is_global_multifile(world: &mut LithairWorld) {
     );
 }
 
-#[when(
-    expr = "je persiste des événements sur plusieurs agrégats dans un event store multi-fichiers"
-)]
+#[when(expr = "I persist events on multiple aggregates in a multi-file event store")]
 async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
@@ -1293,7 +1291,7 @@ async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld
     );
 }
 
-#[then(expr = "les événements doivent être répartis par agrégat dans des fichiers distincts")]
+#[then(expr = "events should be distributed by aggregate into distinct files")]
 async fn then_events_routed_to_distinct_files(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
     let base_path = test_data
@@ -1350,7 +1348,7 @@ async fn then_events_routed_to_distinct_files(world: &mut LithairWorld) {
     println!("✅ Événements correctement répartis dans des fichiers distincts pour chaque agrégat",);
 }
 
-#[then(expr = "chaque fichier d'agrégat ne doit contenir que les événements de cet agrégat")]
+#[then(expr = "each aggregate file should contain only events for that aggregate")]
 async fn then_each_aggregate_file_contains_only_its_events(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
     let base_path = test_data
@@ -1401,9 +1399,7 @@ async fn then_each_aggregate_file_contains_only_its_events(world: &mut LithairWo
     );
 }
 
-#[when(
-    expr = "je génère suffisamment d'événements pour provoquer une rotation du log en mode multi-fichiers"
-)]
+#[when(expr = "I generate enough events to trigger log rotation in multi-file mode")]
 async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
@@ -1463,7 +1459,7 @@ async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "le log de l'agrégat de rotation doit être rotaté")]
+#[then(expr = "the rotation aggregate log should be rotated")]
 async fn then_rotation_aggregate_log_must_be_rotated(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
     let base_path = test_data
@@ -1505,7 +1501,7 @@ async fn then_rotation_aggregate_log_must_be_rotated(world: &mut LithairWorld) {
     );
 }
 
-#[then(expr = "les fichiers de log de cet agrégat doivent rester lisibles après rotation")]
+#[then(expr = "log files for that aggregate should remain readable after rotation")]
 async fn then_rotation_aggregate_logs_must_remain_readable_after_rotation(
     world: &mut LithairWorld,
 ) {
@@ -1560,7 +1556,7 @@ async fn then_rotation_aggregate_logs_must_remain_readable_after_rotation(
     println!("✅ Fichiers de log de l'agrégat de rotation lisibles et cohérents après rotation",);
 }
 
-#[when(expr = "je crée un utilisateur et un article liés en mode multi-fichiers")]
+#[when(expr = "I create a linked user and article in multi-file mode")]
 async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
@@ -1632,9 +1628,7 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     );
 }
 
-#[then(
-    expr = "les relations dynamiques doivent être reconstruites en mémoire à partir des événements multi-fichiers"
-)]
+#[then(expr = "dynamic relations should be reconstructed in memory from multi-file events")]
 async fn then_dynamic_relations_rebuilt_from_multifile_events(world: &mut LithairWorld) {
     use crate::features::world::TestAppState;
 
@@ -1738,9 +1732,7 @@ async fn then_dynamic_relations_rebuilt_from_multifile_events(world: &mut Lithai
     );
 }
 
-#[then(
-    expr = "les événements doivent être répartis par table de données et par table de relations"
-)]
+#[then(expr = "events should be distributed by data table and relation table")]
 async fn then_events_routed_by_data_and_relations_tables(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
     let base_path = test_data
@@ -1802,7 +1794,7 @@ async fn then_events_routed_by_data_and_relations_tables(world: &mut LithairWorl
     );
 }
 
-#[when(expr = "je rejoue des événements ArticleCreated v1 et v2 via des désérialiseurs versionnés")]
+#[when(expr = "I replay ArticleCreated v1 and v2 events via versioned deserializers")]
 async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
     use crate::features::world::TestEngineApp;
 
@@ -1898,7 +1890,7 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
     test_data.tokens.insert("versioning_article_v2_version".to_string(), v2_version);
 }
 
-#[then(expr = "l'état des articles doit refléter le schéma courant (slug v2, slug absent en v1)")]
+#[then(expr = "article state should reflect current schema (slug v2, slug absent in v1)")]
 async fn then_versioned_articles_state_must_match_current_schema(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
 

@@ -399,10 +399,10 @@ Valid token but insufficient permissions:
 Grant minimum permissions needed:
 
 ```rust
-// ❌ Bad: Too permissive
+//  Bad: Too permissive
 ("Customer", _) => true,
 
-// ✅ Good: Explicit permissions
+//  Good: Explicit permissions
 ("Customer", "ProductRead") => true,
 ("Customer", "OrderRead") => true,
 ```
@@ -431,7 +431,7 @@ impl PermissionChecker for SecureChecker {
 Keep all permission logic in the `PermissionChecker`:
 
 ```rust
-// ❌ Bad: Permission logic in handlers
+//  Bad: Permission logic in handlers
 async fn create_product(req: Request) -> Response {
     if user.role != "Admin" && user.role != "Employee" {
         return forbidden();
@@ -439,7 +439,7 @@ async fn create_product(req: Request) -> Response {
     // ...
 }
 
-// ✅ Good: Logic in PermissionChecker
+//  Good: Logic in PermissionChecker
 impl PermissionChecker for AppChecker {
     fn has_permission(&self, role: &str, permission: &str) -> bool {
         matches!((role, permission),
@@ -455,10 +455,10 @@ impl PermissionChecker for AppChecker {
 ///
 /// | Role       | ProductRead | ProductWrite | ProductDelete |
 /// |------------|-------------|--------------|---------------|
-/// | Customer   | ✓           | ✗            | ✗             |
-/// | Employee   | ✓           | ✓            | ✗             |
-/// | Manager    | ✓           | ✓            | ✓             |
-/// | Admin      | ✓           | ✓            | ✓             |
+/// | Customer   |            |             |              |
+/// | Employee   |            |             |              |
+/// | Manager    |            |             |              |
+/// | Admin      |            |             |              |
 impl PermissionChecker for DocumentedChecker {
     fn has_permission(&self, role: &str, permission: &str) -> bool {
         // Implementation
@@ -507,12 +507,12 @@ task examples:rbac-session:test
 
 Lithair's RBAC system:
 
-✅ **Declarative** - Define rules, framework enforces
-✅ **Automatic** - Zero permission checks in handlers
-✅ **Flexible** - Support any permission model (RBAC, ABAC, etc.)
-✅ **Type-safe** - Compile-time guarantees
-✅ **Testable** - Easy to unit test permission logic
-✅ **Zero overhead** - Checks only on write operations
+ **Declarative** - Define rules, framework enforces
+ **Automatic** - Zero permission checks in handlers
+ **Flexible** - Support any permission model (RBAC, ABAC, etc.)
+ **Type-safe** - Compile-time guarantees
+ **Testable** - Easy to unit test permission logic
+ **Zero overhead** - Checks only on write operations
 
 **You focus on business rules, Lithair handles security enforcement.**
 

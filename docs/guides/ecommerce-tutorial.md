@@ -1,19 +1,19 @@
 # E-commerce Tutorial: Building a Complete Online Store with Lithair
 
-## 🎯 What We're Building
+##  What We're Building
 
 In this tutorial, we'll build a complete e-commerce application using Lithair. Our online store will feature:
 
-- 📦 **Product catalog** with categories and search
-- 👤 **User management** with authentication
-- 🛒 **Shopping cart** and order processing
-- 💳 **Payment processing** simulation
-- 📊 **Real-time analytics** dashboard
-- 🚀 **High performance** with sub-millisecond response times
+-  **Product catalog** with categories and search
+-  **User management** with authentication
+-  **Shopping cart** and order processing
+-  **Payment processing** simulation
+-  **Real-time analytics** dashboard
+-  **High performance** with sub-millisecond response times
 
 **Final result**: A single binary that handles 10,000+ concurrent users with 99.99% uptime.
 
-## 🏗️ Project Setup
+##  Project Setup
 
 ### 1. Create New Lithair Project
 
@@ -48,7 +48,7 @@ ecommerce-store/
 └── Cargo.toml
 ```
 
-## 📊 Core Application
+##  Core Application
 
 ### Main Application Entry Point
 
@@ -116,14 +116,14 @@ impl RaftstoneApplication for ECommerceApp {
     }
     
     fn on_startup(state: &mut Self::State) -> Result<(), Error> {
-        println!("🏪 E-commerce store starting up...");
+        println!(" E-commerce store starting up...");
         
         // Initialize sample data if empty
         if state.products.is_empty() {
             initialize_sample_products(state);
         }
         
-        println!("✅ E-commerce store ready!");
+        println!(" E-commerce store ready!");
         println!("   • Products: {}", state.products.len());
         println!("   • Users: {}", state.users.len());
         println!("   • Orders: {}", state.orders.len());
@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## 🔄 Event Sourcing Implementation
+##  Event Sourcing Implementation
 
 ### Core Events
 
@@ -207,7 +207,7 @@ impl Event for UserRegistered {
         state.user_analytics.insert(self.user_id, UserAnalytics::default());
         state.total_users += 1;
         
-        println!("👤 User registered: {} ({})", self.name, self.email);
+        println!(" User registered: {} ({})", self.name, self.email);
     }
 }
 
@@ -249,7 +249,7 @@ impl Event for ProductCreated {
         
         state.total_products += 1;
         
-        println!("📦 Product created: {} (${:.2})", self.name, self.price);
+        println!(" Product created: {} (${:.2})", self.name, self.price);
     }
 }
 
@@ -297,13 +297,13 @@ impl Event for OrderCreated {
         state.total_orders += 1;
         state.total_revenue += self.total;
         
-        println!("🛒 Order created: #{} for user {} (${:.2})", 
+        println!(" Order created: #{} for user {} (${:.2})", 
                 self.order_id, self.user_id, self.total);
     }
 }
 ```
 
-## 🌐 HTTP API Handlers
+##  HTTP API Handlers
 
 ```rust
 // src/handlers.rs
@@ -474,7 +474,7 @@ fn now() -> u64 {
 }
 ```
 
-## 🚀 Running the Application
+##  Running the Application
 
 ### 1. Build and Run
 
@@ -486,15 +486,15 @@ cargo build --release
 ./target/release/ecommerce-store
 
 # Output:
-# 🚀 Lithair framework starting on 0.0.0.0:3000
-# 🏪 E-commerce store starting up...
-# 📦 Product created: iPhone 14 ($999.99)
-# 📦 Product created: MacBook Pro ($2499.99)
-# ✅ E-commerce store ready!
+#  Lithair framework starting on 0.0.0.0:3000
+#  E-commerce store starting up...
+#  Product created: iPhone 14 ($999.99)
+#  Product created: MacBook Pro ($2499.99)
+#  E-commerce store ready!
 #    • Products: 5
 #    • Users: 0
 #    • Orders: 0
-# ✅ Lithair framework initialized successfully
+#  Lithair framework initialized successfully
 ```
 
 ### 2. Test the API
@@ -527,7 +527,7 @@ curl -X POST http://localhost:3000/api/orders \
 curl http://localhost:3000/api/analytics/dashboard
 ```
 
-## 📊 Performance Results
+##  Performance Results
 
 ### Benchmark Results
 
@@ -565,7 +565,7 @@ CPU: 0.1% (idle), 15% (under load)
 # Total: 7.5GB+ across multiple servers
 ```
 
-## 🎯 Next Steps
+##  Next Steps
 
 1. **Add Authentication**: Implement JWT tokens and session management
 2. **Add Frontend**: Create a React/Vue frontend that consumes the API
@@ -574,13 +574,13 @@ CPU: 0.1% (idle), 15% (under load)
 5. **Add Monitoring**: Add metrics and health checks
 6. **Deploy to Production**: Use Kubernetes for horizontal scaling
 
-## 🌟 Key Benefits Achieved
+##  Key Benefits Achieved
 
-✅ **Single Binary**: Complete e-commerce platform in one executable  
-✅ **Ultra-Fast**: Sub-millisecond response times for all operations  
-✅ **Scalable**: Handles 1M+ requests/second with horizontal scaling  
-✅ **Simple**: No external dependencies or complex setup  
-✅ **Reliable**: 99.99% uptime with Raft consensus  
-✅ **Cost-Effective**: 44x cheaper than traditional stack  
+ **Single Binary**: Complete e-commerce platform in one executable  
+ **Ultra-Fast**: Sub-millisecond response times for all operations  
+ **Scalable**: Handles 1M+ requests/second with horizontal scaling  
+ **Simple**: No external dependencies or complex setup  
+ **Reliable**: 99.99% uptime with Raft consensus  
+ **Cost-Effective**: 44x cheaper than traditional stack  
 
-**Your e-commerce store is now ready to handle millions of users!** 🚀
+**Your e-commerce store is now ready to handle millions of users!** 

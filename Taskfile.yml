@@ -462,6 +462,24 @@ tasks:
     cmds:
       - npx -y markdownlint-cli@0.38.0 --fix "docs/**/*.md" "README.md"
 
+  docs:build:
+    desc: Build documentation with mdBook (outputs to lithair-website/public/docs)
+    dir: docs
+    cmds:
+      - mdbook build
+      - rm -rf ../../lithair-website/public/docs/internal
+
+  docs:serve:
+    desc: Serve documentation locally with hot-reload
+    dir: docs
+    cmds:
+      - mdbook serve --open
+
+  docs:clean:
+    desc: Clean built documentation
+    cmds:
+      - rm -rf ../lithair-website/public/docs
+
   # 🥒 Cucumber BDD Testing Tasks
   bdd:setup:
     desc: "Install Cucumber CLI and dependencies"

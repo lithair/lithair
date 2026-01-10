@@ -1,10 +1,10 @@
-# 🧠 Lithair: Data-First Philosophy
+#  Lithair: Data-First Philosophy
 
-## 🎯 **The Mental Model Revolution**
+##  **The Mental Model Revolution**
 
 Lithair fundamentally changes how we think about backend applications. Instead of **separating** business logic and persistence, we **unify** everything in the data definition.
 
-## 📊 **PROVEN: Real-World Results**
+##  **PROVEN: Real-World Results**
 
 Our `simplified_consensus_demo.rs` benchmark **proves** the Data-First philosophy works:
 - **1 DeclarativeModel struct → Complete distributed backend**
@@ -18,7 +18,7 @@ cd examples/raft_replication_demo
 cargo run --bin simplified_consensus_demo
 ```
 
-### 🏗️ **Traditional 3-Tier Architecture**
+###  **Traditional 3-Tier Architecture**
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -31,12 +31,12 @@ cargo run --bin simplified_consensus_demo
 ```
 
 **Problems:**
-- 🔥 **Scattered complexity**: Business logic spread across 3 layers
-- 🐛 **Desynchronization**: Models, migrations, validations diverge
-- 🏭 **Massive boilerplate**: Repetitive CRUD, ORM mapping, DTOs...
-- 🕳️ **Gaps**: History, audit, permissions added as afterthoughts
+-  **Scattered complexity**: Business logic spread across 3 layers
+-  **Desynchronization**: Models, migrations, validations diverge
+-  **Massive boilerplate**: Repetitive CRUD, ORM mapping, DTOs...
+-  **Gaps**: History, audit, permissions added as afterthoughts
 
-### ⚡ **Lithair: Data-First Unification** (PROVEN)
+###  **Lithair: Data-First Unification** (PROVEN)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -62,16 +62,16 @@ cargo run --bin simplified_consensus_demo
 ```
 
 **BENCHMARK RESULTS:**
-✅ **2,000 random CRUD operations**  
-✅ **Perfect data consistency** across 3 nodes  
-✅ **250.91 ops/sec HTTP throughput**  
-✅ **Zero manual processing**
+ **2,000 random CRUD operations**  
+ **Perfect data consistency** across 3 nodes  
+ **250.91 ops/sec HTTP throughput**  
+ **Zero manual processing**
 
-## 🎨 **Comparative Examples**
+##  **Comparative Examples**
 
-### 📝 **Need: User with Email History**
+###  **Need: User with Email History**
 
-#### 🏭 **Traditional 3-Tier Approach**
+####  **Traditional 3-Tier Approach**
 
 ```sql
 -- Migration 1: Main table
@@ -195,12 +195,12 @@ pub async fn update_user_email(
 ```
 
 **Problems:**
-- 📄 **50+ lines of code** for a simple update
-- 🔗 **3 places to maintain** (migration, model, service)
-- 🐛 **Frequent bugs**: forgotten history, permissions, cache
-- 🔄 **Duplicated logic** across different services
+-  **50+ lines of code** for a simple update
+-  **3 places to maintain** (migration, model, service)
+-  **Frequent bugs**: forgotten history, permissions, cache
+-  **Duplicated logic** across different services
 
-#### ⚡ **Lithair Data-First Approach**
+####  **Lithair Data-First Approach**
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
@@ -227,23 +227,23 @@ pub struct User {
 ```
 
 **That's IT!** Lithair automatically generates:
-- ✅ **Event sourcing** with complete history
-- ✅ **Email validation** built-in  
-- ✅ **RBAC permissions**
-- ✅ **HTTP API** with CRUD routes
-- ✅ **JSON serialization**
-- ✅ **Database constraints**
+-  **Event sourcing** with complete history
+-  **Email validation** built-in  
+-  **RBAC permissions**
+-  **HTTP API** with CRUD routes
+-  **JSON serialization**
+-  **Database constraints**
 
-## 🧠 **Mental Model Shift**
+##  **Mental Model Shift**
 
-### 🏭 **3-Tier Thinking: "How to store?"**
+###  **3-Tier Thinking: "How to store?"**
 ```
 Business Logic ──► "How do I save this?" ──► Database Design
      ▲                                              │
      └─────────── "How do I retrieve this?" ◄──────┘
 ```
 
-### ⚡ **Lithair Thinking: "What is this?"**
+###  **Lithair Thinking: "What is this?"**
 ```
 Data Model ──► "What is this data?"
     │
@@ -254,14 +254,14 @@ Data Model ──► "What is this data?"
     └─► #[http(expose)]           ──► "It's exposed in API"
 ```
 
-## 🎯 **Revolutionary Advantages**
+##  **Revolutionary Advantages**
 
-### 📍 **Single Source of Truth**
+###  **Single Source of Truth**
 - **1 definition** → Everything generated consistently
 - **No desync** between model, DB, API
 - **Safe refactoring**: change 1 line propagates everywhere
 
-### 🚀 **Development Velocity**
+###  **Development Velocity**
 ```rust
 // Add field with history and permissions
 #[lifecycle(audited)]
@@ -269,36 +269,36 @@ Data Model ──► "What is this data?"
 pub phone: Option<String>,  // ◄── 3 lines = complete feature!
 ```
 
-### 🛡️ **Security by Design**
+###  **Security by Design**
 - Permissions **declared** in the model
 - Impossible to forget validations
 - Audit trail **automatic**
 
-### 🔧 **Schema Evolution**
+###  **Schema Evolution**
 ```rust
 // Automatic migration with history preservation
 #[lifecycle(audited, retention = 365)]  // ◄── Keep 1 year of history
 pub email: String,
 ```
 
-### 🌊 **Natural Mental Flow**
-1. 🤔 **"I need a User with email"**
-2. ✍️ **Describe structure + attributes**
-3. 🚀 **Lithair does the rest**
+###  **Natural Mental Flow**
+1.  **"I need a User with email"**
+2.  **Describe structure + attributes**
+3.  **Lithair does the rest**
 
 Vs traditional approach:
-1. 🤔 "I need a User"
-2. 📄 Write the model
-3. 🗄️ Create migration
-4. 🔧 Implement service
-5. 🌐 Create routes
-6. ✅ Add validations
-7. 🔒 Handle permissions
-8. 📚 History (often forgotten)
+1.  "I need a User"
+2.  Write the model
+3.  Create migration
+4.  Implement service
+5.  Create routes
+6.  Add validations
+7.  Handle permissions
+8.  History (often forgotten)
 
-## 🎨 **Advanced Patterns**
+##  **Advanced Patterns**
 
-### 🔄 **Temporal Evolution**
+###  **Temporal Evolution**
 ```rust
 #[derive(DeclarativeModel)]
 pub struct Product {
@@ -313,7 +313,7 @@ pub struct Product {
 }
 ```
 
-### 🌐 **Intelligent Distribution**
+###  **Intelligent Distribution**
 ```rust
 #[derive(DeclarativeModel)]
 pub struct Order {
@@ -328,7 +328,7 @@ pub struct Order {
 }
 ```
 
-### 🔐 **Multi-Level Security**
+###  **Multi-Level Security**
 ```rust
 #[derive(DeclarativeModel)]
 pub struct User {
@@ -344,26 +344,26 @@ pub struct User {
 }
 ```
 
-## 🎭 **Psychological Impact**
+##  **Psychological Impact**
 
-### 🧠 **Reduced Cognitive Load**
+###  **Reduced Cognitive Load**
 - **Focus on WHAT** (the data) instead of HOW (implementation)
 - **Less context switching** between layers
 - **Living documentation** in code
 
-### 🎯 **10x Productivity**
+###  **10x Productivity**
 - **Features in minutes** instead of hours
 - **Fewer bugs** (consistent generation)
 - **Simplified maintenance** (1 place to change)
 
-### 🚀 **Accelerated Innovation**
+###  **Accelerated Innovation**
 - **Rapid prototyping** of new ideas
 - **Fearless refactoring**
 - **Safe experimentation**
 
 ---
 
-## 💡 **Conclusion: The Future of Backend**
+##  **Conclusion: The Future of Backend**
 
 Lithair doesn't just **simplify** backend development - it **revolutionizes** how we think about applications.
 

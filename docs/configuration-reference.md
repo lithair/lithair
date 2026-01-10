@@ -2,7 +2,7 @@
 
 Complete reference for all configuration variables in Lithair.
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Configuration Hierarchy](#configuration-hierarchy)
 - [Server Configuration](#server-configuration)
@@ -52,13 +52,13 @@ Core HTTP server settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `port` | `8080` | ✅ | `RS_PORT` | `.with_port(u16)` | ❌ | Server listening port |
-| `host` | `"127.0.0.1"` | ✅ | `RS_HOST` | `.with_host(String)` | ❌ | Server listening address |
-| `workers` | `num_cpus` | ✅ | `RS_WORKERS` | `.with_workers(usize)` | ❌ | Number of Tokio worker threads |
-| `cors_enabled` | `false` | ✅ | `RS_CORS_ENABLED` | `.with_cors(bool)` | ✅ | Enable CORS support |
-| `cors_origins` | `["*"]` | ✅ | `RS_CORS_ORIGINS` | `.with_cors_origins(Vec<String>)` | ✅ | Allowed CORS origins (comma-separated in env) |
-| `request_timeout` | `30` | ✅ | `RS_REQUEST_TIMEOUT` | `.with_timeout(u64)` | ✅ | Request timeout in seconds |
-| `max_body_size` | `10485760` | ✅ | `RS_MAX_BODY_SIZE` | `.with_max_body_size(usize)` | ✅ | Maximum request body size in bytes (10MB default) |
+| `port` | `8080` |  | `RS_PORT` | `.with_port(u16)` |  | Server listening port |
+| `host` | `"127.0.0.1"` |  | `RS_HOST` | `.with_host(String)` |  | Server listening address |
+| `workers` | `num_cpus` |  | `RS_WORKERS` | `.with_workers(usize)` |  | Number of Tokio worker threads |
+| `cors_enabled` | `false` |  | `RS_CORS_ENABLED` | `.with_cors(bool)` |  | Enable CORS support |
+| `cors_origins` | `["*"]` |  | `RS_CORS_ORIGINS` | `.with_cors_origins(Vec<String>)` |  | Allowed CORS origins (comma-separated in env) |
+| `request_timeout` | `30` |  | `RS_REQUEST_TIMEOUT` | `.with_timeout(u64)` |  | Request timeout in seconds |
+| `max_body_size` | `10485760` |  | `RS_MAX_BODY_SIZE` | `.with_max_body_size(usize)` |  | Maximum request body size in bytes (10MB default) |
 
 ### Example
 
@@ -108,13 +108,13 @@ Session management and authentication settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `true` | ✅ | `RS_SESSION_ENABLED` | `.with_sessions(SessionManager)` | ❌ | Enable session management |
-| `cleanup_interval` | `300` | ✅ | `RS_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)` | ✅ | Cleanup interval in seconds (5 min default) |
-| `max_age` | `3600` | ✅ | `RS_SESSION_MAX_AGE` | `.with_session_max_age(u64)` | ✅ | Session lifetime in seconds (1 hour default) |
-| `cookie_enabled` | `true` | ✅ | `RS_SESSION_COOKIE_ENABLED` | `.with_session_cookie(bool)` | ✅ | Enable cookie-based sessions |
-| `cookie_secure` | `true` | ✅ | `RS_SESSION_COOKIE_SECURE` | - | ✅ | Set Secure flag on cookies (HTTPS only) |
-| `cookie_httponly` | `true` | ✅ | `RS_SESSION_COOKIE_HTTPONLY` | - | ✅ | Set HttpOnly flag on cookies (XSS protection) |
-| `cookie_samesite` | `"Lax"` | ✅ | `RS_SESSION_COOKIE_SAMESITE` | - | ✅ | SameSite policy (Strict/Lax/None) |
+| `enabled` | `true` |  | `RS_SESSION_ENABLED` | `.with_sessions(SessionManager)` |  | Enable session management |
+| `cleanup_interval` | `300` |  | `RS_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)` |  | Cleanup interval in seconds (5 min default) |
+| `max_age` | `3600` |  | `RS_SESSION_MAX_AGE` | `.with_session_max_age(u64)` |  | Session lifetime in seconds (1 hour default) |
+| `cookie_enabled` | `true` |  | `RS_SESSION_COOKIE_ENABLED` | `.with_session_cookie(bool)` |  | Enable cookie-based sessions |
+| `cookie_secure` | `true` |  | `RS_SESSION_COOKIE_SECURE` | - |  | Set Secure flag on cookies (HTTPS only) |
+| `cookie_httponly` | `true` |  | `RS_SESSION_COOKIE_HTTPONLY` | - |  | Set HttpOnly flag on cookies (XSS protection) |
+| `cookie_samesite` | `"Lax"` |  | `RS_SESSION_COOKIE_SAMESITE` | - |  | SameSite policy (Strict/Lax/None) |
 
 ### Example
 
@@ -164,12 +164,12 @@ Role-Based Access Control settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `false` | ✅ | `RS_RBAC_ENABLED` | `.with_rbac(RbacConfig)` | ❌ | Enable RBAC system |
-| `default_role` | `"guest"` | ✅ | `RS_RBAC_DEFAULT_ROLE` | `.with_default_role(String)` | ✅ | Default role for unauthenticated users |
-| `audit_enabled` | `true` | ✅ | `RS_RBAC_AUDIT_ENABLED` | `.with_audit(bool)` | ✅ | Enable audit trail for RBAC events |
-| `rate_limit_enabled` | `false` | ✅ | `RS_RBAC_RATE_LIMIT` | `.with_rate_limit(bool)` | ✅ | Enable rate limiting on login attempts |
-| `max_login_attempts` | `5` | ✅ | `RS_RBAC_MAX_LOGIN_ATTEMPTS` | - | ✅ | Maximum login attempts before lockout |
-| `lockout_duration` | `300` | ✅ | `RS_RBAC_LOCKOUT_DURATION` | - | ✅ | Account lockout duration in seconds (5 min) |
+| `enabled` | `false` |  | `RS_RBAC_ENABLED` | `.with_rbac(RbacConfig)` |  | Enable RBAC system |
+| `default_role` | `"guest"` |  | `RS_RBAC_DEFAULT_ROLE` | `.with_default_role(String)` |  | Default role for unauthenticated users |
+| `audit_enabled` | `true` |  | `RS_RBAC_AUDIT_ENABLED` | `.with_audit(bool)` |  | Enable audit trail for RBAC events |
+| `rate_limit_enabled` | `false` |  | `RS_RBAC_RATE_LIMIT` | `.with_rate_limit(bool)` |  | Enable rate limiting on login attempts |
+| `max_login_attempts` | `5` |  | `RS_RBAC_MAX_LOGIN_ATTEMPTS` | - |  | Maximum login attempts before lockout |
+| `lockout_duration` | `300` |  | `RS_RBAC_LOCKOUT_DURATION` | - |  | Account lockout duration in seconds (5 min) |
 
 ### Example
 
@@ -215,12 +215,12 @@ Raft consensus and cluster replication settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `false` | ✅ | `RS_REPLICATION_ENABLED` | `.with_replication(bool)` | ❌ | Enable Raft replication |
-| `node_id` | `auto` | ✅ | `RS_NODE_ID` | `.with_node_id(String)` | ❌ | Unique node identifier |
-| `cluster_nodes` | `[]` | ✅ | `RS_CLUSTER_NODES` | `.with_cluster(Vec<String>)` | ❌ | List of cluster nodes (comma-separated in env) |
-| `election_timeout` | `150` | ✅ | `RS_ELECTION_TIMEOUT` | - | ✅ | Election timeout in milliseconds |
-| `heartbeat_interval` | `50` | ✅ | `RS_HEARTBEAT_INTERVAL` | - | ✅ | Heartbeat interval in milliseconds |
-| `snapshot_threshold` | `1000` | ✅ | `RS_SNAPSHOT_THRESHOLD` | - | ✅ | Number of log entries before snapshot |
+| `enabled` | `false` |  | `RS_REPLICATION_ENABLED` | `.with_replication(bool)` |  | Enable Raft replication |
+| `node_id` | `auto` |  | `RS_NODE_ID` | `.with_node_id(String)` |  | Unique node identifier |
+| `cluster_nodes` | `[]` |  | `RS_CLUSTER_NODES` | `.with_cluster(Vec<String>)` |  | List of cluster nodes (comma-separated in env) |
+| `election_timeout` | `150` |  | `RS_ELECTION_TIMEOUT` | - |  | Election timeout in milliseconds |
+| `heartbeat_interval` | `50` |  | `RS_HEARTBEAT_INTERVAL` | - |  | Heartbeat interval in milliseconds |
+| `snapshot_threshold` | `1000` |  | `RS_SNAPSHOT_THRESHOLD` | - |  | Number of log entries before snapshot |
 
 ### Example
 
@@ -264,29 +264,29 @@ Administrative interface and monitoring settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `true` | ✅ | `RS_ADMIN_ENABLED` | `.with_admin_panel(bool)` | ✅ | Enable admin panel |
-| `path` | `"/admin"` | ✅ | `RS_ADMIN_PATH` | `.with_admin_path(String)` | ✅ | Admin panel base path |
-| `auth_required` | `true` | ✅ | `RS_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)` | ✅ | Require authentication for admin panel |
-| `metrics_enabled` | `true` | ✅ | `RS_ADMIN_METRICS` | `.with_metrics(bool)` | ✅ | Enable Prometheus metrics endpoint |
-| `metrics_path` | `"/metrics"` | ✅ | `RS_ADMIN_METRICS_PATH` | - | ✅ | Prometheus metrics endpoint path |
+| `enabled` | `true` |  | `RS_ADMIN_ENABLED` | `.with_admin_panel(bool)` |  | Enable admin panel |
+| `path` | `"/admin"` |  | `RS_ADMIN_PATH` | `.with_admin_path(String)` |  | Admin panel base path |
+| `auth_required` | `true` |  | `RS_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)` |  | Require authentication for admin panel |
+| `metrics_enabled` | `true` |  | `RS_ADMIN_METRICS` | `.with_metrics(bool)` |  | Enable Prometheus metrics endpoint |
+| `metrics_path` | `"/metrics"` |  | `RS_ADMIN_METRICS_PATH` | - |  | Prometheus metrics endpoint path |
 
 ---
 
 ## Development Configuration
 
-⚠️ **DEVELOPMENT ONLY** - These settings should NEVER be used in production environments.
+ **DEVELOPMENT ONLY** - These settings should NEVER be used in production environments.
 
 **Security Note**: The variables in this section are **environment-variable-only** for security reasons. They will be **rejected** if found in `config.toml` to prevent accidental git commits of secrets.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `dev_reload_token` | `None` | 🚫 **BLOCKED** | ✅ **REQUIRED** | - | ✅ | Development bypass token for TOTP/MFA authentication + hot reload endpoint (⚠️ **DEV ONLY**) |
+| `dev_reload_token` | `None` |  **BLOCKED** |  **REQUIRED** | - |  | Development bypass token for TOTP/MFA authentication + hot reload endpoint ( **DEV ONLY**) |
 
 ### RS_DEV_RELOAD_TOKEN
 
 **Purpose**: Simplified development workflow - bypasses TOTP/MFA authentication and enables hot reload without full RBAC.
 
-**Security Warning**: ⚠️ **NEVER use in production!** The server displays a visible warning at startup when this token is enabled.
+**Security Warning**:  **NEVER use in production!** The server displays a visible warning at startup when this token is enabled.
 
 **Effects**:
 - **Login Bypass**: Admin login works with username/password only (no TOTP code required)
@@ -311,9 +311,9 @@ curl -X POST http://localhost:3007/admin/sites/reload \
   -H "X-Reload-Token: dev123"
 ```
 
-**Config File Validation** 🛡️:
+**Config File Validation** :
 ```toml
-# ❌ THIS WILL BE REJECTED AT STARTUP!
+#  THIS WILL BE REJECTED AT STARTUP!
 [development]
 dev_reload_token = "dev123"
 
@@ -323,7 +323,7 @@ dev_reload_token = "dev123"
 # to prevent accidental git commits of secrets.
 ```
 
-**Correct Usage - Environment Variable Only** ✅:
+**Correct Usage - Environment Variable Only** :
 ```bash
 # Use environment variable
 export RS_DEV_RELOAD_TOKEN=dev123
@@ -370,12 +370,12 @@ Application logging and observability settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `level` | `"info"` | ✅ | `RS_LOG_LEVEL` | `.with_log_level(String)` | ✅ | Log level (trace/debug/info/warn/error) |
-| `format` | `"json"` | ✅ | `RS_LOG_FORMAT` | `.with_log_format(String)` | ✅ | Log format (json/text/pretty) |
-| `file_enabled` | `false` | ✅ | `RS_LOG_FILE_ENABLED` | `.with_log_file(bool)` | ✅ | Enable logging to file |
-| `file_path` | `"./logs"` | ✅ | `RS_LOG_FILE_PATH` | - | ✅ | Log file directory path |
-| `file_rotation` | `"daily"` | ✅ | `RS_LOG_FILE_ROTATION` | - | ✅ | Log rotation policy (daily/hourly/size) |
-| `file_max_size` | `100` | ✅ | `RS_LOG_FILE_MAX_SIZE` | - | ✅ | Max log file size in MB |
+| `level` | `"info"` |  | `RS_LOG_LEVEL` | `.with_log_level(String)` |  | Log level (trace/debug/info/warn/error) |
+| `format` | `"json"` |  | `RS_LOG_FORMAT` | `.with_log_format(String)` |  | Log format (json/text/pretty) |
+| `file_enabled` | `false` |  | `RS_LOG_FILE_ENABLED` | `.with_log_file(bool)` |  | Enable logging to file |
+| `file_path` | `"./logs"` |  | `RS_LOG_FILE_PATH` | - |  | Log file directory path |
+| `file_rotation` | `"daily"` |  | `RS_LOG_FILE_ROTATION` | - |  | Log rotation policy (daily/hourly/size) |
+| `file_max_size` | `100` |  | `RS_LOG_FILE_MAX_SIZE` | - |  | Max log file size in MB |
 
 ### Example
 
@@ -416,13 +416,13 @@ Data persistence and storage settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `data_dir` | `"./data"` | ✅ | `RS_DATA_DIR` | `.with_data_dir(String)` | ❌ | Base directory for data storage |
-| `snapshot_interval` | `1000` | ✅ | `RS_SNAPSHOT_INTERVAL` | - | ✅ | Number of events before creating snapshot |
-| `compaction_enabled` | `true` | ✅ | `RS_COMPACTION_ENABLED` | - | ✅ | Enable automatic log compaction |
-| `compaction_threshold` | `10000` | ✅ | `RS_COMPACTION_THRESHOLD` | - | ✅ | Events threshold for compaction |
-| `backup_enabled` | `false` | ✅ | `RS_BACKUP_ENABLED` | `.with_backup(bool)` | ✅ | Enable automatic backups |
-| `backup_interval` | `86400` | ✅ | `RS_BACKUP_INTERVAL` | - | ✅ | Backup interval in seconds (24h default) |
-| `backup_path` | `"./backups"` | ✅ | `RS_BACKUP_PATH` | - | ✅ | Backup directory path |
+| `data_dir` | `"./data"` |  | `RS_DATA_DIR` | `.with_data_dir(String)` |  | Base directory for data storage |
+| `snapshot_interval` | `1000` |  | `RS_SNAPSHOT_INTERVAL` | - |  | Number of events before creating snapshot |
+| `compaction_enabled` | `true` |  | `RS_COMPACTION_ENABLED` | - |  | Enable automatic log compaction |
+| `compaction_threshold` | `10000` |  | `RS_COMPACTION_THRESHOLD` | - |  | Events threshold for compaction |
+| `backup_enabled` | `false` |  | `RS_BACKUP_ENABLED` | `.with_backup(bool)` |  | Enable automatic backups |
+| `backup_interval` | `86400` |  | `RS_BACKUP_INTERVAL` | - |  | Backup interval in seconds (24h default) |
+| `backup_path` | `"./backups"` |  | `RS_BACKUP_PATH` | - |  | Backup directory path |
 
 ### Example
 
@@ -464,12 +464,12 @@ Performance tuning and optimization settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `cache_enabled` | `true` | ✅ | `RS_CACHE_ENABLED` | `.with_cache(bool)` | ✅ | Enable in-memory caching |
-| `cache_size` | `1000` | ✅ | `RS_CACHE_SIZE` | - | ✅ | Maximum number of cached items |
-| `cache_ttl` | `300` | ✅ | `RS_CACHE_TTL` | - | ✅ | Cache TTL in seconds (5 min default) |
-| `connection_pool_size` | `10` | ✅ | `RS_POOL_SIZE` | - | ✅ | Connection pool size |
-| `batch_size` | `100` | ✅ | `RS_BATCH_SIZE` | - | ✅ | Default batch size for operations |
-| `compression_enabled` | `false` | ✅ | `RS_COMPRESSION_ENABLED` | - | ✅ | Enable response compression |
+| `cache_enabled` | `true` |  | `RS_CACHE_ENABLED` | `.with_cache(bool)` |  | Enable in-memory caching |
+| `cache_size` | `1000` |  | `RS_CACHE_SIZE` | - |  | Maximum number of cached items |
+| `cache_ttl` | `300` |  | `RS_CACHE_TTL` | - |  | Cache TTL in seconds (5 min default) |
+| `connection_pool_size` | `10` |  | `RS_POOL_SIZE` | - |  | Connection pool size |
+| `batch_size` | `100` |  | `RS_BATCH_SIZE` | - |  | Default batch size for operations |
+| `compression_enabled` | `false` |  | `RS_COMPRESSION_ENABLED` | - |  | Enable response compression |
 
 ### Example
 
@@ -504,7 +504,7 @@ LithairServer::new()
 
 ## Hot-Reload Support
 
-### ✅ Hot-Reloadable (No Restart Required)
+###  Hot-Reloadable (No Restart Required)
 
 These settings can be changed at runtime via the admin API:
 
@@ -517,7 +517,7 @@ These settings can be changed at runtime via the admin API:
 - **Storage:** `snapshot_interval`, `compaction_*`, `backup_*` settings
 - **Performance:** All settings
 
-### ❌ Requires Restart
+###  Requires Restart
 
 These settings require a server restart to take effect:
 
