@@ -2,12 +2,25 @@
 //!
 //! This middleware provides automatic authentication and authorization for all HTTP requests.
 //! It integrates seamlessly with the Lithair HTTP server and event sourcing system.
+//!
+//! ## Security Features
+//! - **JWT**: HMAC-SHA256 signatures (cryptographically secure)
+//! - **Sessions**: UUID v4 (cryptographically random)
+//! - **Passwords**: Argon2id via password module
 
+use super::password::verify_password as argon2_verify;
 use super::{AuthContext, Permission, SecurityError, SecurityEvent, SecurityState, Session};
 use crate::http::HttpRequest;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
+
+/// Type alias for HMAC-SHA256
+type HmacSha256 = Hmac<Sha256>;
 
 /// JWT claims structure
 #[derive(Debug, Clone)]
@@ -410,30 +423,25 @@ impl<P: Permission> RBACMiddleware<P> {
     // Helper methods for JWT processing
 
     fn base64url_encode(&self, data: &[u8]) -> String {
-        // Simple base64url encoding (in production, use a proper library)
-        base64::encode_config(data, base64::URL_SAFE_NO_PAD)
+        URL_SAFE_NO_PAD.encode(data)
     }
 
     fn base64url_decode(&self, data: &str) -> Result<Vec<u8>, String> {
-        // Simple base64url decoding (in production, use a proper library)
-        base64::decode_config(data, base64::URL_SAFE_NO_PAD)
+        URL_SAFE_NO_PAD
+            .decode(data)
             .map_err(|e| format!("Base64 decode error: {}", e))
     }
 
     fn create_jwt_signature(&self, header: &str, payload: &str) -> String {
-        // Simple HMAC-SHA256 signature (in production, use a proper crypto library)
+        // HMAC-SHA256 signature (cryptographically secure)
         let message = format!("{}.{}", header, payload);
 
-        // For now, just create a simple hash
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        let mut mac = HmacSha256::new_from_slice(self.jwt_secret.as_bytes())
+            .expect("HMAC can take key of any size");
+        mac.update(message.as_bytes());
 
-        let mut hasher = DefaultHasher::new();
-        message.hash(&mut hasher);
-        self.jwt_secret.hash(&mut hasher);
-
-        let hash = hasher.finish();
-        self.base64url_encode(&hash.to_be_bytes())
+        let result = mac.finalize();
+        self.base64url_encode(&result.into_bytes())
     }
 
     fn parse_jwt_claims(&self, payload: &str) -> Result<JwtClaims, SecurityError> {
@@ -482,58 +490,27 @@ impl<P: Permission> RBACMiddleware<P> {
     }
 
     fn verify_password(&self, password: &str, hash: &str) -> bool {
-        // Simple password verification (in production, use proper password hashing like bcrypt)
-        // For now, just compare directly (NOT SECURE - for demo only)
-        password == hash
+        // Use Argon2id for secure password verification
+        // If hash is in Argon2 format, use argon2_verify
+        // Otherwise, fall back to plaintext comparison for migration period
+        if hash.starts_with("$argon2") {
+            argon2_verify(password, hash).unwrap_or(false)
+        } else {
+            // Legacy plaintext comparison - log warning
+            // TODO: Remove after migration to Argon2 hashes
+            log::warn!("Using plaintext password comparison - please migrate to Argon2 hashes");
+            password == hash
+        }
     }
 
     fn generate_session_id(&self) -> String {
-        // Generate a random session ID
-        use std::time::SystemTime;
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-
-        format!("sess_{}", timestamp)
+        // Cryptographically secure session ID using UUID v4
+        format!("sess_{}", Uuid::new_v4())
     }
 }
 
-// Add base64 dependency simulation (in production, use the base64 crate)
-mod base64 {
-    pub const URL_SAFE_NO_PAD: Config = Config {};
-    pub struct Config {}
-
-    pub fn encode_config(data: &[u8], _config: Config) -> String {
-        // Simple base64-like encoding for demo
-        let mut result = String::new();
-        for chunk in data.chunks(3) {
-            let mut buf = [0u8; 3];
-            for (i, &byte) in chunk.iter().enumerate() {
-                buf[i] = byte;
-            }
-
-            let combined = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
-
-            for i in 0..4 {
-                let index = (combined >> (18 - 6 * i)) & 0x3F;
-                result.push(match index {
-                    0..=25 => (b'A' + index as u8) as char,
-                    26..=51 => (b'a' + (index - 26) as u8) as char,
-                    52..=61 => (b'0' + (index - 52) as u8) as char,
-                    62 => '-',
-                    63 => '_',
-                    _ => unreachable!(),
-                });
-            }
-        }
-
-        // Remove padding for URL_SAFE_NO_PAD
-        result.trim_end_matches('=').to_string()
-    }
-
-    pub fn decode_config(data: &str, _config: Config) -> Result<Vec<u8>, String> {
-        // Simple base64-like decoding for demo
-        Ok(data.as_bytes().to_vec()) // Simplified for demo
-    }
-}
+// Note: Using the real base64 crate with URL_SAFE_NO_PAD engine
+// This provides proper RFC 4648 base64url encoding/decoding
 
 #[cfg(test)]
 mod tests {

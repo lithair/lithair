@@ -3,10 +3,17 @@
 //! Core RBAC (Role-Based Access Control) implementation for Lithair.
 //! This module is non-optional and provides enterprise-grade security
 //! built into every Lithair application.
+//!
+//! ## Security Features
+//! - **Password Hashing**: Argon2id (OWASP recommended)
+//! - **JWT Tokens**: HMAC-SHA256 signatures
+//! - **Session IDs**: Cryptographically secure UUIDs
+//! - **Anti-DDoS**: Rate limiting and circuit breakers
 
 mod core;
 mod middleware;
 pub mod anti_ddos;
+pub mod password;
 
 // Re-export core security types
 pub use core::{
@@ -16,3 +23,6 @@ pub use core::{
 
 // Re-export middleware types
 pub use middleware::{JwtClaims, RBACMiddleware};
+
+// Re-export password utilities
+pub use password::{hash_password, verify_password, PasswordError, PasswordHasherService};

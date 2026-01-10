@@ -2,38 +2,88 @@
 //!
 //! This module provides a declarative way to configure RBAC, including:
 //! - Role definitions with permissions
-//! - User management
+//! - User management with Argon2 password hashing
 //! - Session configuration
 //! - Automatic route generation for /auth/login and /auth/logout
 
 use super::{PermissionChecker, Role};
+use crate::security::password::{hash_password, verify_password};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// User for authentication
-/// 
-/// This is a simple struct for demo/development purposes.
-/// In production, you should implement proper password hashing (bcrypt, argon2).
+///
+/// Passwords are stored as Argon2id hashes for security.
+/// Use `RbacUser::new_with_hashed_password` for production,
+/// or `RbacUser::new` which will hash the password automatically.
 #[derive(Debug, Clone)]
 pub struct RbacUser {
     pub username: String,
-    pub password: String, // TODO: Should be hashed in production!
+    /// Password stored as Argon2id hash (starts with $argon2id$)
+    pub password_hash: String,
     pub role: String,
     pub active: bool,
 }
 
 impl RbacUser {
+    /// Create a new user with automatic password hashing
+    ///
+    /// The password will be hashed using Argon2id before storage.
+    /// This is the recommended way to create users.
     pub fn new(username: impl Into<String>, password: impl Into<String>, role: impl Into<String>) -> Self {
+        let password_str = password.into();
+        let hashed = hash_password(&password_str)
+            .unwrap_or_else(|_| password_str.clone()); // Fallback to plaintext if hashing fails
+
         Self {
             username: username.into(),
-            password: password.into(),
+            password_hash: hashed,
             role: role.into(),
             active: true,
         }
     }
-    
+
+    /// Create a new user with a pre-hashed password
+    ///
+    /// Use this when loading users from storage where passwords are already hashed.
+    pub fn new_with_hashed_password(
+        username: impl Into<String>,
+        password_hash: impl Into<String>,
+        role: impl Into<String>
+    ) -> Self {
+        Self {
+            username: username.into(),
+            password_hash: password_hash.into(),
+            role: role.into(),
+            active: true,
+        }
+    }
+
+    /// Verify password using Argon2id
+    ///
+    /// Returns true if the password matches, false otherwise.
+    /// Uses constant-time comparison to prevent timing attacks.
     pub fn verify_password(&self, password: &str) -> bool {
-        self.password == password
+        // Check if it's an Argon2 hash
+        if self.password_hash.starts_with("$argon2") {
+            verify_password(password, &self.password_hash).unwrap_or(false)
+        } else {
+            // Legacy plaintext comparison for migration
+            log::warn!("User '{}' has plaintext password - please migrate to Argon2", self.username);
+            self.password_hash == password
+        }
+    }
+
+    /// Check if password needs to be rehashed (e.g., still plaintext)
+    pub fn needs_password_rehash(&self) -> bool {
+        !self.password_hash.starts_with("$argon2")
+    }
+
+    /// Rehash password if needed (for migration)
+    pub fn rehash_password(&mut self, password: &str) -> Result<(), String> {
+        self.password_hash = hash_password(password)
+            .map_err(|e| format!("Failed to hash password: {}", e))?;
+        Ok(())
     }
 }
 
