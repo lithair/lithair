@@ -1,0 +1,228 @@
+{
+  "model_name": "Product",
+  "version": 2,
+  "fields": {
+    "id": {
+      "primary_key": true,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "name": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": true,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "description": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "price_cents": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "stock": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "active": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "created_at": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    },
+    "priority": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": "0"
+    },
+    "category": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": "uncategorized"
+    },
+    "featured": {
+      "primary_key": false,
+      "unique": false,
+      "indexed": false,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": "false"
+    },
+    "legacy_sku": {
+      "primary_key": false,
+      "unique": true,
+      "indexed": true,
+      "foreign_key": null,
+      "nullable": false,
+      "immutable": false,
+      "audited": false,
+      "versioned": 0,
+      "retention": 18446744073709551615,
+      "snapshot_only": false,
+      "validation_rules": [],
+      "permissions": {
+        "read_permission": null,
+        "write_permission": null,
+        "owner_field": false
+      },
+      "default_value": null
+    }
+  },
+  "indexes": [
+    {
+      "name": "idx_product_name",
+      "fields": ["name"],
+      "unique": false
+    },
+    {
+      "name": "idx_product_legacy_sku",
+      "fields": ["legacy_sku"],
+      "unique": true
+    }
+  ],
+  "foreign_keys": []
+}

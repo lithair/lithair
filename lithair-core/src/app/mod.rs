@@ -33,6 +33,7 @@ use std::sync::Arc;
 pub mod builder;
 pub mod router;
 pub mod model_handler;
+mod schema_handlers;
 
 pub use builder::LithairServerBuilder;
 pub use model_handler::{ModelHandler, DeclarativeModelHandler};
@@ -43,6 +44,7 @@ pub struct ModelRegistration {
     pub base_path: String,
     pub data_path: String,
     pub handler: Arc<dyn ModelHandler>,
+    pub schema_extractor: Option<SchemaSpecExtractor>,
 }
 
 /// Lithair multi-model server
@@ -100,6 +102,9 @@ pub struct LithairServer {
 
     // Resync statistics for observability
     resync_stats: Arc<crate::cluster::ResyncStats>,
+
+    // Schema synchronization state for cluster-wide schema consensus
+    schema_sync_state: Arc<tokio::sync::RwLock<crate::schema::SchemaSyncState>>,
 }
 
 /// A CRUD operation to be submitted through Raft consensus
@@ -130,12 +135,17 @@ pub type ModelFactory = Arc<
     > + Send + Sync
 >;
 
+/// Type for schema spec extractor function
+pub type SchemaSpecExtractor = Arc<dyn Fn() -> crate::schema::ModelSpec + Send + Sync>;
+
 /// Model registration info with factory
 pub struct ModelRegistrationInfo {
     pub name: String,
     pub base_path: String,
     pub data_path: String,
     pub factory: ModelFactory,
+    /// Optional schema spec extractor for migration detection
+    pub schema_extractor: Option<SchemaSpecExtractor>,
 }
 
 impl LithairServer {
@@ -155,8 +165,261 @@ impl LithairServer {
         LithairServerBuilder::with_config(config)
     }
 
+    /// Validate schemas for all registered models with schema extractors
+    ///
+    /// This compares stored schema specs with current specs and handles
+    /// differences based on the configured migration mode.
+    async fn validate_schemas(&self) -> Result<()> {
+        use crate::config::SchemaMigrationMode;
+        use crate::schema::{load_schema_spec, save_schema_spec, SchemaChangeDetector, PendingSchemaChange, AppliedSchemaChange};
+        use std::path::Path;
+
+        let base_path = Path::new(&self.config.storage.data_dir);
+        let mode = self.config.storage.schema_migration_mode;
+        let is_cluster = !self.cluster_peers.is_empty();
+        let node_id = self.node_id.unwrap_or(0);
+
+        log::info!("🔍 Validating model schemas...");
+        if is_cluster {
+            log::info!("   🌐 Cluster mode: schema changes will be synchronized");
+        }
+
+        let mut has_breaking_changes = false;
+
+        for info in &self.model_infos {
+            // Skip models without schema extractors
+            let extractor = match &info.schema_extractor {
+                Some(e) => e,
+                None => {
+                    log::debug!("   {} - no schema extractor, skipping", info.name);
+                    continue;
+                }
+            };
+
+            // Extract current schema
+            let current_spec = extractor();
+
+            // Load stored schema (if exists)
+            let stored_spec = match load_schema_spec(&info.name, base_path) {
+                Ok(spec) => spec,
+                Err(e) => {
+                    log::warn!("   {} - failed to load stored schema: {}", info.name, e);
+                    None
+                }
+            };
+
+            match stored_spec {
+                Some(stored) => {
+                    // Compare schemas
+                    let changes = SchemaChangeDetector::detect_changes(&stored, &current_spec);
+
+                    if changes.is_empty() {
+                        log::info!("   ✅ {} - schema unchanged (v{})", info.name, current_spec.version);
+                        
+                        // In cluster mode, update local sync state
+                        if is_cluster {
+                            let mut state = self.schema_sync_state.write().await;
+                            state.schemas.insert(info.name.clone(), current_spec.clone());
+                        }
+                    } else {
+                        // Check if schema migrations are locked
+                        {
+                            let state = self.schema_sync_state.read().await;
+                            if state.lock_status.is_locked() {
+                                log::error!("   🔒 {} - schema changes BLOCKED (migrations locked)", info.name);
+                                log::error!("      Reason: {}", state.lock_status.reason.as_deref().unwrap_or("none"));
+                                log::error!("      Unlock via: POST /_admin/schema/unlock");
+                                has_breaking_changes = true; // Will cause failure in strict mode
+                                continue; // Skip this model, check next
+                            }
+                        }
+
+                        log::warn!("   ⚠️  {} - {} schema change(s) detected:", info.name, changes.len());
+
+                        for change in &changes {
+                            let field = change.field_name.as_deref().unwrap_or("model");
+                            log::warn!("      - {:?} on '{}' ({:?})",
+                                change.change_type, field, change.migration_strategy);
+
+                            if change.requires_consensus {
+                                has_breaking_changes = true;
+                            }
+                        }
+
+                        // Handle based on mode and cluster status
+                        if is_cluster {
+                            // In cluster mode: create pending change for consensus
+                            let pending = PendingSchemaChange::new(
+                                info.name.clone(),
+                                node_id,
+                                changes.clone(),
+                                current_spec.clone(),
+                                Some(stored.clone()),
+                            );
+
+                            let mut state = self.schema_sync_state.write().await;
+                            let policy = state.policy.clone();
+                            let strategy = policy.strategy_for(&pending.overall_strategy);
+
+                            match strategy {
+                                crate::schema::VoteStrategy::AutoAccept => {
+                                    log::info!("      🌐 Cluster: auto-accepting {:?} change", pending.overall_strategy);
+                                    state.schemas.insert(info.name.clone(), current_spec.clone());
+                                    // Record in history
+                                    let applied = AppliedSchemaChange {
+                                        id: uuid::Uuid::new_v4(),
+                                        model_name: info.name.clone(),
+                                        changes: changes.clone(),
+                                        applied_at: std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_millis() as u64,
+                                        applied_by_node: node_id,
+                                    };
+                                    state.change_history.push(applied.clone());
+                                    // Persist history to disk
+                                    if let Err(e) = crate::schema::append_schema_history(&applied, base_path) {
+                                        log::error!("      Failed to persist schema history: {}", e);
+                                    }
+                                    // Also save locally
+                                    if let Err(e) = save_schema_spec(&current_spec, base_path) {
+                                        log::error!("      Failed to save updated schema: {}", e);
+                                    }
+                                }
+                                crate::schema::VoteStrategy::Reject => {
+                                    log::error!("      🌐 Cluster: rejecting {:?} change (policy)", pending.overall_strategy);
+                                    has_breaking_changes = true;
+                                }
+                                _ => {
+                                    // Consensus or ManualApproval required
+                                    log::info!("      🌐 Cluster: change requires {:?}", strategy);
+                                    state.add_pending(pending);
+                                    // Node should wait or be blocked until approval
+                                    // For now, we'll just log and continue (TODO: implement blocking)
+                                    log::warn!("      ⏳ Schema change pending approval - check /_admin/schema/pending");
+                                }
+                            }
+                        } else {
+                            // Non-cluster mode: behavior depends on migration mode
+                            match mode {
+                                SchemaMigrationMode::Strict => {
+                                    // Will fail after logging all changes
+                                }
+                                SchemaMigrationMode::Auto => {
+                                    // Save new schema (actual data migration not implemented yet)
+                                    if let Err(e) = save_schema_spec(&current_spec, base_path) {
+                                        log::error!("      Failed to save updated schema: {}", e);
+                                    } else {
+                                        log::info!("      📝 Schema updated to v{}", current_spec.version);
+                                        // Record in history (non-cluster mode)
+                                        let applied = AppliedSchemaChange {
+                                            id: uuid::Uuid::new_v4(),
+                                            model_name: info.name.clone(),
+                                            changes: changes.clone(),
+                                            applied_at: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_millis() as u64,
+                                            applied_by_node: node_id,
+                                        };
+                                        let mut state = self.schema_sync_state.write().await;
+                                        state.change_history.push(applied.clone());
+                                        // Persist history to disk
+                                        if let Err(e) = crate::schema::append_schema_history(&applied, base_path) {
+                                            log::error!("      Failed to persist schema history: {}", e);
+                                        }
+                                    }
+                                }
+                                SchemaMigrationMode::Manual => {
+                                    // Create pending change requiring manual approval (even in standalone)
+                                    let pending = PendingSchemaChange::new(
+                                        info.name.clone(),
+                                        node_id,
+                                        changes.clone(),
+                                        current_spec.clone(),
+                                        Some(stored.clone()),
+                                    );
+                                    log::info!("      🔒 Manual mode: change pending approval (id: {})", pending.id);
+                                    log::warn!("      ⏳ Approve via: POST /_admin/schema/approve/{}", pending.id);
+                                    
+                                    let mut state = self.schema_sync_state.write().await;
+                                    state.add_pending(pending);
+                                }
+                                SchemaMigrationMode::Warn => {
+                                    // Just log, already done
+                                }
+                            }
+                        }
+                    }
+                }
+                None => {
+                    // First run - save initial schema
+                    log::info!("   📝 {} - first run, saving schema v{}", info.name, current_spec.version);
+                    if let Err(e) = save_schema_spec(&current_spec, base_path) {
+                        log::error!("      Failed to save initial schema: {}", e);
+                    }
+                    
+                    // In cluster mode, update local sync state
+                    if is_cluster {
+                        let mut state = self.schema_sync_state.write().await;
+                        state.schemas.insert(info.name.clone(), current_spec.clone());
+                    }
+                }
+            }
+        }
+
+        // Fail in strict mode if breaking changes detected
+        if mode == SchemaMigrationMode::Strict && has_breaking_changes {
+            anyhow::bail!("Schema validation failed: breaking changes detected in strict mode");
+        }
+
+        log::info!("✅ Schema validation complete");
+        Ok(())
+    }
+
     /// Start the server
     pub async fn serve(mut self) -> Result<()> {
+        // Load persisted schema history and lock status
+        {
+            use crate::schema::{load_schema_history, load_lock_status};
+            use std::path::Path;
+
+            let base_path = Path::new(&self.config.storage.data_dir);
+
+            // Load history
+            match load_schema_history(base_path) {
+                Ok(history) => {
+                    let mut state = self.schema_sync_state.write().await;
+                    state.change_history = history.changes;
+                    if !state.change_history.is_empty() {
+                        log::info!("📜 Loaded {} schema change(s) from history", state.change_history.len());
+                    }
+                }
+                Err(e) => {
+                    log::warn!("⚠️  Failed to load schema history: {}", e);
+                }
+            }
+
+            // Load lock status
+            match load_lock_status(base_path) {
+                Ok(lock) => {
+                    let mut state = self.schema_sync_state.write().await;
+                    state.lock_status = lock;
+                    if state.lock_status.is_locked() {
+                        log::warn!("🔒 Schema migrations are LOCKED (persisted state)");
+                    }
+                }
+                Err(e) => {
+                    log::warn!("⚠️  Failed to load schema lock status: {}", e);
+                }
+            }
+        }
+
+        // Schema validation for models with schema extractors
+        if self.config.storage.schema_validation_enabled {
+            self.validate_schemas().await?;
+        }
+
         // Create model handlers from factories
         for info in &self.model_infos {
             log::info!("📦 Creating handler for model: {}", info.name);
@@ -168,6 +431,7 @@ impl LithairServer {
                         base_path: info.base_path.clone(),
                         data_path: info.data_path.clone(),
                         handler,
+                        schema_extractor: info.schema_extractor.clone(),
                     });
                     log::info!("✅ Handler created for {}", info.name);
                 }
@@ -921,6 +1185,57 @@ impl LithairServer {
         // 🔄 Force resync endpoint (manually trigger snapshot resync)
         if path.starts_with("/_raft/force-resync") && method == hyper::Method::POST {
             return self.handle_force_resync(req).await;
+        }
+
+        // 📋 Schema sync endpoints (cluster-internal)
+        if path == "/_raft/schema/propose" && method == hyper::Method::POST {
+            return self.handle_schema_propose(req).await;
+        }
+        if path == "/_raft/schema/vote" && method == hyper::Method::POST {
+            return self.handle_schema_vote(req).await;
+        }
+        if path == "/_raft/schema/current" && method == hyper::Method::GET {
+            return self.handle_schema_current(req).await;
+        }
+
+        // 📋 Schema admin endpoints (external management)
+        if path == "/_admin/schema" && method == hyper::Method::GET {
+            return self.handle_admin_schema_list().await;
+        }
+        if path == "/_admin/schema/pending" && method == hyper::Method::GET {
+            return self.handle_admin_schema_pending().await;
+        }
+        if path.starts_with("/_admin/schema/approve/") && method == hyper::Method::POST {
+            return self.handle_admin_schema_approve(req, &path).await;
+        }
+        if path.starts_with("/_admin/schema/reject/") && method == hyper::Method::POST {
+            return self.handle_admin_schema_reject(req, &path).await;
+        }
+        // Phase 3: Schema management operations
+        if path == "/_admin/schema/sync" && method == hyper::Method::POST {
+            return self.handle_admin_schema_sync().await;
+        }
+        if path == "/_admin/schema/diff" && method == hyper::Method::GET {
+            return self.handle_admin_schema_diff().await;
+        }
+        if path == "/_admin/schema/history" && method == hyper::Method::GET {
+            return self.handle_admin_schema_history().await;
+        }
+        if path == "/_admin/schema/revalidate" && method == hyper::Method::POST {
+            return self.handle_admin_schema_revalidate().await;
+        }
+        if path.starts_with("/_admin/schema/rollback/") && method == hyper::Method::POST {
+            return self.handle_admin_schema_rollback(req, &path).await;
+        }
+        // Schema lock/unlock endpoints
+        if path == "/_admin/schema/lock/status" && method == hyper::Method::GET {
+            return self.handle_admin_schema_lock_status().await;
+        }
+        if path == "/_admin/schema/lock" && method == hyper::Method::POST {
+            return self.handle_admin_schema_lock(req).await;
+        }
+        if path == "/_admin/schema/unlock" && method == hyper::Method::POST {
+            return self.handle_admin_schema_unlock(req).await;
         }
 
         // 🛡️ Route Guards - Declarative protection (authentication, authorization, etc.)
@@ -1769,8 +2084,10 @@ impl LithairServer {
             .unwrap_or(0);
 
         // Read body bytes
-        let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
-            Ok(bytes) => bytes,
+        // IMPORTANT: Convert to Vec<u8> for proper alignment - rkyv 0.8's bytecheck
+        // validation requires aligned data, and bytes::Bytes may not provide this
+        let body_bytes: Vec<u8> = match req.into_body().collect().await.map(|c| c.to_bytes()) {
+            Ok(bytes) => bytes.to_vec(),
             Err(e) => {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
@@ -3656,6 +3973,7 @@ impl Default for LithairServer {
             snapshot_manager: None,
             migration_manager: None,
             resync_stats: Arc::new(crate::cluster::ResyncStats::new()),
+            schema_sync_state: Arc::new(tokio::sync::RwLock::new(crate::schema::SchemaSyncState::default())),
         }
     }
 }

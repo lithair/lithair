@@ -1,8 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 
 // Module pour les relations et foreign keys
 pub mod relations;
+
+// Module pour la synchronisation de schéma en cluster
+pub mod sync;
+pub use sync::{
+    AppliedSchemaChange, HumanApproval, PendingSchemaChange, SchemaApproval,
+    SchemaChangeStatus, SchemaLockStatus, SchemaRejection, SchemaSyncMessage,
+    SchemaSyncState, SchemaVotePolicy, VoteStrategy,
+};
 pub use relations::{
     CascadeStrategy, ModelRelationSpec, RelationRegistry, RelationSpec, RelationSpecExtractor,
     RelationType,
@@ -68,6 +77,10 @@ pub struct FieldConstraints {
     pub snapshot_only: bool,
     pub validation_rules: Vec<String>,
     pub permissions: FieldPermissions,
+    /// Default value for migration (from #[db(default = X)])
+    /// When present, adding this field is safe (non-breaking)
+    #[serde(default)]
+    pub default_value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +124,18 @@ pub trait DeclarativeSpecExtractor {
 
     /// Obtenir les contraintes pour un champ spécifique
     fn field_constraints(&self, field_name: &str) -> Option<FieldConstraints>;
+}
+
+/// Trait for static schema extraction (no instance required)
+///
+/// This is automatically implemented by the DeclarativeModel macro.
+/// Used for schema migration detection at server startup.
+pub trait HasSchemaSpec {
+    /// Extract the model's schema specification (static method)
+    fn schema_spec() -> ModelSpec;
+
+    /// Get the model name for storage/lookup
+    fn model_name() -> &'static str;
 }
 
 /// Détecteur de changements de schéma robuste
@@ -367,20 +392,33 @@ impl SchemaChangeDetector {
 
     // Fonctions utilitaires
     fn determine_migration_strategy_for_add(constraints: &FieldConstraints) -> MigrationStrategy {
-        if constraints.primary_key || constraints.unique {
+        // If a default value is specified, the migration is safe (Additive)
+        // because serde will use the default for old events missing this field
+        if constraints.default_value.is_some() {
+            MigrationStrategy::Additive
+        } else if constraints.primary_key || constraints.unique {
             MigrationStrategy::Breaking
         } else if constraints.nullable {
             MigrationStrategy::Additive
         } else {
+            // Non-nullable without default = Breaking change
             MigrationStrategy::Versioned
         }
     }
 
     fn requires_consensus_for_add(constraints: &FieldConstraints) -> bool {
+        // If default_value is present, no consensus needed (safe migration)
+        if constraints.default_value.is_some() {
+            return false;
+        }
         constraints.primary_key || constraints.unique || !constraints.nullable
     }
 
     fn generate_default_value(constraints: &FieldConstraints) -> Option<String> {
+        // Use the explicitly defined default if present
+        if let Some(ref default) = constraints.default_value {
+            return Some(default.clone());
+        }
         if constraints.nullable {
             Some("NULL".to_string())
         } else {
@@ -413,3 +451,341 @@ impl SchemaChangeDetector {
 
 // Note: DeclarativeSpecExtractor est maintenant implémenté automatiquement
 // par la macro DeclarativeModel pour éviter les conflits d'implémentation
+
+// ============================================================================
+// Schema Persistence
+// ============================================================================
+
+/// Directory name for storing schema specifications
+const SCHEMA_DIR: &str = ".schema";
+
+/// Save a ModelSpec to disk as JSON
+///
+/// The spec is saved to `{base_path}/.schema/{model_name}.json`
+///
+/// # Example
+/// ```rust,ignore
+/// let spec = Product::extract_schema_spec();
+/// save_schema_spec(&spec, Path::new("./data"))?;
+/// ```
+pub fn save_schema_spec(spec: &ModelSpec, base_path: &Path) -> std::io::Result<()> {
+    let schema_dir = base_path.join(SCHEMA_DIR);
+    std::fs::create_dir_all(&schema_dir)?;
+
+    let file_path = schema_dir.join(format!("{}.json", spec.model_name));
+    let json = serde_json::to_string_pretty(spec)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    std::fs::write(&file_path, json)?;
+    log::debug!("Schema spec saved: {}", file_path.display());
+    Ok(())
+}
+
+/// Load a ModelSpec from disk
+///
+/// Looks for `{base_path}/.schema/{model_name}.json`
+///
+/// Returns `Ok(None)` if no stored spec exists (first run)
+///
+/// # Example
+/// ```rust,ignore
+/// if let Some(stored) = load_schema_spec("Product", Path::new("./data"))? {
+///     let current = Product::extract_schema_spec();
+///     let changes = SchemaChangeDetector::detect_changes(&stored, &current);
+/// }
+/// ```
+pub fn load_schema_spec(model_name: &str, base_path: &Path) -> std::io::Result<Option<ModelSpec>> {
+    let file_path = base_path.join(SCHEMA_DIR).join(format!("{}.json", model_name));
+
+    if !file_path.exists() {
+        log::debug!("No stored schema for {}, first run", model_name);
+        return Ok(None);
+    }
+
+    let json = std::fs::read_to_string(&file_path)?;
+    let spec: ModelSpec = serde_json::from_str(&json)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    log::debug!("Schema spec loaded: {} v{}", spec.model_name, spec.version);
+    Ok(Some(spec))
+}
+
+/// List all stored schema specs in the given directory
+pub fn list_stored_schemas(base_path: &Path) -> std::io::Result<Vec<String>> {
+    let schema_dir = base_path.join(SCHEMA_DIR);
+
+    if !schema_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut schemas = Vec::new();
+    for entry in std::fs::read_dir(&schema_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "json").unwrap_or(false) {
+            if let Some(stem) = path.file_stem() {
+                schemas.push(stem.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    Ok(schemas)
+}
+
+/// Delete a stored schema spec
+pub fn delete_schema_spec(model_name: &str, base_path: &Path) -> std::io::Result<()> {
+    let file_path = base_path.join(SCHEMA_DIR).join(format!("{}.json", model_name));
+
+    if file_path.exists() {
+        std::fs::remove_file(&file_path)?;
+        log::debug!("Schema spec deleted: {}", model_name);
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// SCHEMA HISTORY PERSISTENCE
+// =============================================================================
+
+const HISTORY_FILE: &str = "schema_history.json";
+const LOCK_FILE: &str = "schema_lock.json";
+
+/// Schema history data structure for persistence
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SchemaHistoryData {
+    /// Applied changes history
+    pub changes: Vec<AppliedSchemaChange>,
+    /// Lock status
+    pub lock_status: SchemaLockStatus,
+}
+
+/// Save schema history to disk
+///
+/// Saves to `{base_path}/.schema/schema_history.json`
+pub fn save_schema_history(history: &SchemaHistoryData, base_path: &Path) -> std::io::Result<()> {
+    let schema_dir = base_path.join(SCHEMA_DIR);
+    std::fs::create_dir_all(&schema_dir)?;
+
+    let file_path = schema_dir.join(HISTORY_FILE);
+    let json = serde_json::to_string_pretty(history)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    std::fs::write(&file_path, json)?;
+    log::debug!("Schema history saved: {}", file_path.display());
+    Ok(())
+}
+
+/// Load schema history from disk
+///
+/// Returns default (empty) history if file doesn't exist
+pub fn load_schema_history(base_path: &Path) -> std::io::Result<SchemaHistoryData> {
+    let file_path = base_path.join(SCHEMA_DIR).join(HISTORY_FILE);
+
+    if !file_path.exists() {
+        log::debug!("No schema history file found, starting fresh");
+        return Ok(SchemaHistoryData::default());
+    }
+
+    let json = std::fs::read_to_string(&file_path)?;
+    let history: SchemaHistoryData = serde_json::from_str(&json)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    log::debug!("Schema history loaded: {} changes", history.changes.len());
+    Ok(history)
+}
+
+/// Append a single change to history (atomic operation)
+///
+/// Loads existing history, appends change, saves back
+pub fn append_schema_history(change: &AppliedSchemaChange, base_path: &Path) -> std::io::Result<()> {
+    let mut history = load_schema_history(base_path)?;
+    history.changes.push(change.clone());
+    save_schema_history(&history, base_path)
+}
+
+/// Save lock status to disk (separate file for quick access)
+pub fn save_lock_status(lock: &SchemaLockStatus, base_path: &Path) -> std::io::Result<()> {
+    let schema_dir = base_path.join(SCHEMA_DIR);
+    std::fs::create_dir_all(&schema_dir)?;
+
+    let file_path = schema_dir.join(LOCK_FILE);
+    let json = serde_json::to_string_pretty(lock)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    std::fs::write(&file_path, json)?;
+    log::debug!("Schema lock status saved");
+    Ok(())
+}
+
+/// Load lock status from disk
+pub fn load_lock_status(base_path: &Path) -> std::io::Result<SchemaLockStatus> {
+    let file_path = base_path.join(SCHEMA_DIR).join(LOCK_FILE);
+
+    if !file_path.exists() {
+        return Ok(SchemaLockStatus::default());
+    }
+
+    let json = std::fs::read_to_string(&file_path)?;
+    let lock: SchemaLockStatus = serde_json::from_str(&json)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    Ok(lock)
+}
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn sample_spec() -> ModelSpec {
+        let mut fields = HashMap::new();
+        fields.insert(
+            "id".to_string(),
+            FieldConstraints {
+                primary_key: true,
+                unique: true,
+                indexed: true,
+                foreign_key: None,
+                nullable: false,
+                immutable: true,
+                audited: false,
+                versioned: 0,
+                retention: 0,
+                snapshot_only: false,
+                validation_rules: vec![],
+                permissions: FieldPermissions {
+                    read_permission: Some("Public".to_string()),
+                    write_permission: None,
+                    owner_field: false,
+                },
+                default_value: None,
+            },
+        );
+        fields.insert(
+            "name".to_string(),
+            FieldConstraints {
+                primary_key: false,
+                unique: false,
+                indexed: true,
+                foreign_key: None,
+                nullable: false,
+                immutable: false,
+                audited: false,
+                versioned: 0,
+                retention: 0,
+                snapshot_only: false,
+                validation_rules: vec!["min_length:1".to_string()],
+                permissions: FieldPermissions {
+                    read_permission: Some("Public".to_string()),
+                    write_permission: Some("Admin".to_string()),
+                    owner_field: false,
+                },
+                default_value: None,
+            },
+        );
+
+        ModelSpec {
+            model_name: "Product".to_string(),
+            version: 1,
+            fields,
+            indexes: vec![IndexSpec {
+                name: "idx_name".to_string(),
+                fields: vec!["name".to_string()],
+                unique: false,
+            }],
+            foreign_keys: vec![],
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_schema_spec() {
+        let temp_dir = TempDir::new().unwrap();
+        let spec = sample_spec();
+
+        // Save
+        save_schema_spec(&spec, temp_dir.path()).unwrap();
+
+        // Verify file exists
+        let file_path = temp_dir.path().join(".schema/Product.json");
+        assert!(file_path.exists());
+
+        // Load
+        let loaded = load_schema_spec("Product", temp_dir.path()).unwrap();
+        assert!(loaded.is_some());
+
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.model_name, "Product");
+        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.fields.len(), 2);
+        assert!(loaded.fields.contains_key("id"));
+        assert!(loaded.fields.contains_key("name"));
+    }
+
+    #[test]
+    fn test_load_nonexistent_returns_none() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = load_schema_spec("NonExistent", temp_dir.path()).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_list_stored_schemas() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Initially empty
+        let schemas = list_stored_schemas(temp_dir.path()).unwrap();
+        assert!(schemas.is_empty());
+
+        // Save two specs
+        let mut spec1 = sample_spec();
+        spec1.model_name = "Product".to_string();
+        save_schema_spec(&spec1, temp_dir.path()).unwrap();
+
+        let mut spec2 = sample_spec();
+        spec2.model_name = "Category".to_string();
+        save_schema_spec(&spec2, temp_dir.path()).unwrap();
+
+        // List
+        let schemas = list_stored_schemas(temp_dir.path()).unwrap();
+        assert_eq!(schemas.len(), 2);
+        assert!(schemas.contains(&"Product".to_string()));
+        assert!(schemas.contains(&"Category".to_string()));
+    }
+
+    #[test]
+    fn test_delete_schema_spec() {
+        let temp_dir = TempDir::new().unwrap();
+        let spec = sample_spec();
+
+        // Save
+        save_schema_spec(&spec, temp_dir.path()).unwrap();
+        assert!(load_schema_spec("Product", temp_dir.path()).unwrap().is_some());
+
+        // Delete
+        delete_schema_spec("Product", temp_dir.path()).unwrap();
+        assert!(load_schema_spec("Product", temp_dir.path()).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_schema_roundtrip_preserves_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = sample_spec();
+
+        save_schema_spec(&original, temp_dir.path()).unwrap();
+        let loaded = load_schema_spec("Product", temp_dir.path()).unwrap().unwrap();
+
+        // Compare all fields
+        assert_eq!(original.model_name, loaded.model_name);
+        assert_eq!(original.version, loaded.version);
+        assert_eq!(original.indexes.len(), loaded.indexes.len());
+        assert_eq!(original.foreign_keys.len(), loaded.foreign_keys.len());
+
+        // Compare field constraints
+        for (name, constraints) in &original.fields {
+            let loaded_constraints = loaded.fields.get(name).unwrap();
+            assert_eq!(constraints, loaded_constraints);
+        }
+    }
+}
