@@ -401,7 +401,6 @@ _Real numbers from production codebases_
 ### 🎯 **Examples & Applications**
 
 > **Philosophy:** Examples demonstrate features. Applications demonstrate possibilities.
-> See [EXAMPLES_PHILOSOPHY.md](EXAMPLES_PHILOSOPHY.md) for our approach.
 
 #### 📦 Technical Examples (Feature Demos)
 
