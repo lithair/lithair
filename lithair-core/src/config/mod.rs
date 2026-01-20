@@ -48,7 +48,7 @@ pub use rbac::RbacConfig;
 pub use replication::ReplicationConfig;
 pub use admin::AdminConfig;
 pub use logging::LoggingConfig;
-pub use storage::StorageConfig;
+pub use storage::{StorageConfig, SchemaMigrationMode};
 pub use performance::PerformanceConfig;
 pub use frontend::FrontendConfig;
 pub use raft::RaftConfig;

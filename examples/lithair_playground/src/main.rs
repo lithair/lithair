@@ -111,6 +111,12 @@ async fn main() -> Result<()> {
         "../lithair_playground/frontend",
     ];
 
+    // Website public assets (includes /docs from mdBook)
+    let website_paths = [
+        "../lithair-website/public",
+        "../../lithair-website/public",
+    ];
+
     let mut loaded = false;
     for path in &frontend_paths {
         if std::path::Path::new(path).exists() {
@@ -126,6 +132,19 @@ async fn main() -> Result<()> {
     }
     if !loaded {
         log::warn!("Could not load frontend assets - UI may not work");
+    }
+
+    // Load website assets (vitrine + docs)
+    for path in &website_paths {
+        if std::path::Path::new(path).exists() {
+            match frontend_engine.load_directory(path).await {
+                Ok(count) => {
+                    log::info!("Loaded {} website assets from {}", count, path);
+                    break;
+                }
+                Err(e) => log::debug!("Could not load website from {}: {}", path, e),
+            }
+        }
     }
 
     let frontend_server = Arc::new(FrontendServer::new_scc2(frontend_engine.clone()));

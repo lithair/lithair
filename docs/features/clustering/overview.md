@@ -50,26 +50,34 @@ When a follower falls too far behind (marked as "desynced"):
 ### Enable Clustering
 
 ```rust
-use lithair_core::app::LithairServerBuilder;
+use lithair_core::app::LithairServer;
 
-let server = LithairServerBuilder::new()
-    .port(8080)
-    .with_raft_cluster(
-        0,                                          // node_id
-        vec!["127.0.0.1:8081", "127.0.0.1:8082"],   // peers
-        true,                                       // is_leader
-    )
-    .build()
+// Leader node (node_id = 0 is always the leader)
+LithairServer::new()
+    .with_port(8080)
+    .with_raft_cluster(0, vec!["127.0.0.1:8081", "127.0.0.1:8082"])
+    .with_model::<Product>("./data/products", "/api/products")
+    .serve()
+    .await?;
+
+// Follower node
+LithairServer::new()
+    .with_port(8081)
+    .with_raft_cluster(1, vec!["127.0.0.1:8080", "127.0.0.1:8082"])
+    .with_model::<Product>("./data/products", "/api/products")
+    .serve()
     .await?;
 ```
 
 ### Cluster Configuration
 
-| Node | Port | node_id | is_leader | Peers |
-|------|------|---------|-----------|-------|
-| Leader | 8080 | 0 | true | 8081, 8082 |
-| Follower 1 | 8081 | 1 | false | 8080, 8082 |
-| Follower 2 | 8082 | 2 | false | 8080, 8081 |
+| Node | Port | node_id | Role | Peers |
+|------|------|---------|------|-------|
+| Leader | 8080 | 0 | Leader (static) | 8081, 8082 |
+| Follower 1 | 8081 | 1 | Follower | 8080, 8082 |
+| Follower 2 | 8082 | 2 | Follower | 8080, 8081 |
+
+> **Note**: Node 0 is always the leader. This is a static assignment—no automatic election.
 
 ## Monitoring Endpoints
 
@@ -188,13 +196,25 @@ Response:
 
 ## Configuration Options
 
-### Environment Variables
+### CLI Arguments
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LITHAIR_NODE_ID` | 0 | Node identifier |
-| `LITHAIR_RAFT_PEERS` | - | Comma-separated peer addresses |
-| `LITHAIR_IS_LEADER` | false | Whether this node is the leader |
+When using `LithairServer::from_cli()` or the built-in CLI:
+
+| Argument | Description |
+|----------|-------------|
+| `--node-id <N>` | Node identifier (0 = leader) |
+| `--peers <PORTS>` | Comma-separated peer ports (e.g., `8081,8082`) |
+| `--port <PORT>` | HTTP port for this node |
+
+Example:
+
+```bash
+# Start leader
+cargo run -- --node-id 0 --port 8080 --peers 8081,8082
+
+# Start follower
+cargo run -- --node-id 1 --port 8081 --peers 8080,8082
+```
 
 ### Replication Tuning
 

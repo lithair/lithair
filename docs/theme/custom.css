@@ -1,0 +1,228 @@
+/* Lithair Custom Theme - Match site vitrine (Emerald/Green) */
+
+/* Root variables override for dark slate theme */
+:root {
+    --bg: #020617;           /* slate-950 */
+    --fg: #e2e8f0;           /* slate-200 */
+    --sidebar-bg: #0f172a;   /* slate-900 */
+    --sidebar-fg: #94a3b8;   /* slate-400 */
+    --sidebar-active: #2dd4bf; /* teal-400 */
+    --links: #2dd4bf;        /* teal-400 */
+    --inline-code-color: #f1f5f9; /* slate-100 */
+    --theme-popup-bg: #1e293b; /* slate-800 */
+    --theme-popup-border: #334155; /* slate-700 */
+    --quote-bg: #1e293b;     /* slate-800 */
+    --quote-border: #14b8a6; /* teal-500 */
+    --table-border-color: #334155; /* slate-700 */
+    --table-header-bg: #1e293b; /* slate-800 */
+    --table-alternate-bg: #0f172a; /* slate-900 */
+    --searchbar-border-color: #334155;
+    --searchbar-bg: #1e293b;
+    --searchbar-fg: #e2e8f0;
+    --searchresults-header-fg: #2dd4bf; /* teal-400 */
+    --searchresults-border-color: #334155;
+    --code-bg: #1e293b;      /* slate-800 */
+}
+
+/* Navy theme overrides (default) */
+.navy {
+    --bg: #020617;
+    --fg: #e2e8f0;
+    --sidebar-bg: #0f172a;
+    --sidebar-fg: #94a3b8;
+    --sidebar-active: #2dd4bf; /* teal-400 */
+    --links: #2dd4bf;          /* teal-400 */
+}
+
+/* Body background */
+html {
+    background-color: #020617 !important;
+}
+
+body {
+    background-color: #020617 !important;
+    color: #e2e8f0 !important;
+}
+
+/* Sidebar */
+.sidebar {
+    background-color: #0f172a !important;
+    border-right: 1px solid #1e293b !important;
+}
+
+.sidebar .sidebar-scrollbox {
+    background-color: #0f172a !important;
+}
+
+.sidebar a {
+    color: #94a3b8 !important;
+}
+
+.sidebar a:hover,
+.sidebar a.active {
+    color: #2dd4bf !important;
+}
+
+/* Chapter titles in sidebar */
+.sidebar .chapter li a {
+    color: #94a3b8 !important;
+}
+
+.sidebar .chapter li.active > a {
+    color: #2dd4bf !important;
+    font-weight: 600;
+}
+
+/* Main content area */
+.content {
+    background-color: #020617 !important;
+}
+
+.content main {
+    background-color: #020617 !important;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+    color: #f1f5f9 !important;
+    border-bottom-color: #334155 !important;
+}
+
+h1 {
+    border-bottom: 2px solid #14b8a6 !important;
+    padding-bottom: 0.5rem;
+}
+
+/* Links */
+a {
+    color: #2dd4bf !important;
+}
+
+a:hover {
+    color: #5eead4 !important;
+}
+
+/* Code blocks */
+pre {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+}
+
+code {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border-radius: 4px !important;
+    padding: 0.1em 0.3em !important;
+}
+
+pre > code {
+    background-color: transparent !important;
+    padding: 0 !important;
+}
+
+/* Tables */
+table {
+    border-color: #334155 !important;
+}
+
+table th {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+    border-color: #334155 !important;
+}
+
+table td {
+    border-color: #334155 !important;
+}
+
+table tr:nth-child(even) {
+    background-color: #0f172a !important;
+}
+
+/* Blockquotes */
+blockquote {
+    background-color: #1e293b !important;
+    border-left: 4px solid #14b8a6 !important;
+    color: #94a3b8 !important;
+}
+
+/* Nav buttons */
+.nav-chapters {
+    color: #2dd4bf !important;
+}
+
+.nav-chapters:hover {
+    color: #5eead4 !important;
+    background-color: #1e293b !important;
+}
+
+/* Menu bar */
+#menu-bar {
+    background-color: #0f172a !important;
+    border-bottom: 1px solid #1e293b !important;
+}
+
+#menu-bar i {
+    color: #94a3b8 !important;
+}
+
+#menu-bar i:hover {
+    color: #2dd4bf !important;
+}
+
+/* Search */
+#searchbar {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #e2e8f0 !important;
+}
+
+.search-results {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
+}
+
+.search-results a {
+    border-bottom-color: #334155 !important;
+}
+
+.search-results a:hover {
+    background-color: #1e293b !important;
+}
+
+/* Theme picker popup */
+#theme-list {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+#theme-list li {
+    color: #94a3b8 !important;
+}
+
+#theme-list li:hover {
+    background-color: #334155 !important;
+    color: #2dd4bf !important;
+}
+
+/* Mermaid diagrams - dark theme */
+.mermaid {
+    background-color: #1e293b !important;
+    border-radius: 8px !important;
+    padding: 1rem !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    background-color: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #334155;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: #475569;
+}

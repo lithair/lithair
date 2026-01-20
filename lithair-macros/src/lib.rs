@@ -9,6 +9,7 @@ use proc_macro::TokenStream;
 mod declarative_simple;
 mod declarative_types;
 mod lifecycle;
+mod lithair_model;
 mod page;
 mod rbac_role;
 use quote::quote;
@@ -309,6 +310,52 @@ pub fn derive_rbac_role(input: TokenStream) -> TokenStream {
     rbac_role::derive_rbac_role(input.into())
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
+}
+
+/// Attribute macro for Lithair models with automatic migration support
+///
+/// This macro transforms `#[db(default = X)]` into `#[serde(default = "...")]`,
+/// enabling seamless schema migration for new mandatory fields.
+///
+/// Unlike `#[derive(DeclarativeModel)]`, this attribute macro can modify the struct
+/// to add serde attributes, making migrations automatic.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use lithair_macros::lithair_model;
+///
+/// #[lithair_model]
+/// #[derive(Debug, Clone)]
+/// pub struct Product {
+///     #[db(primary_key)]
+///     pub id: Uuid,
+///
+///     pub name: String,
+///
+///     // New mandatory field with default - migration safe!
+///     #[db(default = 0)]
+///     pub stock: i32,
+///
+///     // String default
+///     #[db(default = "unknown")]
+///     pub category: String,
+///
+///     // Boolean default
+///     #[db(default = true)]
+///     pub active: bool,
+/// }
+/// ```
+///
+/// The macro automatically:
+/// 1. Adds `#[derive(Serialize, Deserialize, DeclarativeModel)]` if not present
+/// 2. Generates default functions for fields with `#[db(default = X)]`
+/// 3. Adds `#[serde(default = "...")]` to those fields
+///
+/// This enables old events (without the field) to deserialize with the default value.
+#[proc_macro_attribute]
+pub fn lithair_model(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    lithair_model::lithair_model_impl(item.into()).into()
 }
 
 // TODO: Add more helper macros as needed

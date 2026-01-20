@@ -34,6 +34,9 @@ pub struct LithairServerBuilder {
     // Cluster/Raft configuration
     cluster_peers: Vec<String>,
     node_id: Option<u64>,
+
+    // Schema sync policy (for cluster consensus)
+    schema_vote_policy: Option<crate::schema::SchemaVotePolicy>,
 }
 
 impl LithairServerBuilder {
@@ -65,6 +68,7 @@ impl LithairServerBuilder {
             frontend_configs: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
+            schema_vote_policy: None,
         }
     }
 
@@ -91,6 +95,7 @@ impl LithairServerBuilder {
             frontend_configs: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
+            schema_vote_policy: None,
         }
     }
 
@@ -276,6 +281,32 @@ impl LithairServerBuilder {
     pub fn with_raft_auth(mut self, token: impl Into<String>) -> Self {
         self.config.raft.auth_required = true;
         self.config.raft.auth_token = Some(token.into());
+        self
+    }
+
+    /// Set schema vote policy for cluster-wide schema consensus
+    ///
+    /// Controls how schema changes are handled in a cluster:
+    /// - `additive`: Policy for safe changes (nullable fields, fields with defaults)
+    /// - `breaking`: Policy for dangerous changes (removing fields, adding required fields)
+    /// - `versioned`: Policy for structural changes (type changes, renames)
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use lithair_core::schema::{SchemaVotePolicy, VoteStrategy};
+    ///
+    /// LithairServer::new()
+    ///     .with_raft_cluster(1, vec!["127.0.0.1:8081"])
+    ///     .with_schema_policy(SchemaVotePolicy {
+    ///         additive: VoteStrategy::AutoAccept,      // Safe changes auto-accepted
+    ///         breaking: VoteStrategy::Reject,          // Dangerous changes rejected
+    ///         versioned: VoteStrategy::Consensus,      // Structural changes need vote
+    ///     })
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_schema_policy(mut self, policy: crate::schema::SchemaVotePolicy) -> Self {
+        self.schema_vote_policy = Some(policy);
         self
     }
 
@@ -1056,12 +1087,15 @@ impl LithairServerBuilder {
             base_path: base_path_str,
             data_path: data_path_str,
             factory,
+            schema_extractor: None,
         });
 
         self
     }
 
     /// Register a model with automatic CRUD generation (simple version without RBAC)
+    ///
+    /// For schema migration support, use `with_declarative_model` instead.
     pub fn with_model<T>(mut self, data_path: impl Into<String>, base_path: impl Into<String>) -> Self
     where
         T: crate::http::HttpExposable + crate::lifecycle::LifecycleAware + crate::consensus::ReplicatedModel + 'static,
@@ -1087,6 +1121,59 @@ impl LithairServerBuilder {
             base_path: base_path_str,
             data_path: data_path_str,
             factory,
+            schema_extractor: None,
+        });
+
+        self
+    }
+
+    /// Register a DeclarativeModel with schema migration support
+    ///
+    /// This method enables automatic schema change detection at startup.
+    /// If the model's schema has changed since last run, changes are logged
+    /// and optionally auto-migrated based on configuration.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// LithairServer::new()
+    ///     .with_port(8080)
+    ///     .with_declarative_model::<Product>("./data/products", "/api/products")
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_declarative_model<T>(mut self, data_path: impl Into<String>, base_path: impl Into<String>) -> Self
+    where
+        T: crate::http::HttpExposable
+            + crate::lifecycle::LifecycleAware
+            + crate::consensus::ReplicatedModel
+            + crate::schema::HasSchemaSpec
+            + 'static,
+    {
+        use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo, SchemaSpecExtractor};
+        use std::sync::Arc;
+
+        let name = <T as crate::schema::HasSchemaSpec>::model_name();
+        let data_path_str = data_path.into();
+        let base_path_str = base_path.into();
+
+        // Create factory that will create the handler async in serve()
+        let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
+            Box::pin(async move {
+                let handler = DeclarativeModelHandler::<T>::new(data_path).await
+                    .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
+                Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
+            })
+        });
+
+        // Create schema extractor for migration detection
+        let schema_extractor: SchemaSpecExtractor = Arc::new(|| T::schema_spec());
+
+        self.model_infos.push(ModelRegistrationInfo {
+            name: name.to_string(),
+            base_path: base_path_str,
+            data_path: data_path_str,
+            factory,
+            schema_extractor: Some(schema_extractor),
         });
 
         self
@@ -1310,6 +1397,12 @@ impl LithairServerBuilder {
             },
             // Resync stats for observability
             resync_stats: Arc::new(crate::cluster::ResyncStats::new()),
+            // Schema sync state for cluster-wide schema consensus
+            schema_sync_state: Arc::new(tokio::sync::RwLock::new(
+                self.schema_vote_policy
+                    .map(|p| crate::schema::SchemaSyncState::with_policy(p))
+                    .unwrap_or_default()
+            )),
         })
     }
 

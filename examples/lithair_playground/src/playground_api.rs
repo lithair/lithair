@@ -259,8 +259,18 @@ impl PlaygroundState {
                     Ok(resp) if resp.status().is_success() => {
                         if let Ok(data) = resp.json::<serde_json::Value>().await {
                             let count = data.as_array().map(|a| a.len()).unwrap_or(0);
-                            // Create a hash of the data for comparison
-                            let hash = format!("{:x}", md5_hash(&data.to_string()));
+                            // Sort items by ID before hashing to ensure consistent comparison
+                            // regardless of return order from different nodes
+                            let hash = if let Some(arr) = data.as_array() {
+                                let mut ids: Vec<String> = arr.iter()
+                                    .filter_map(|item| item.get("id").and_then(|v| v.as_str()))
+                                    .map(|s| s.to_string())
+                                    .collect();
+                                ids.sort();
+                                format!("{:x}", md5_hash(&ids.join(",")))
+                            } else {
+                                format!("{:x}", md5_hash(&data.to_string()))
+                            };
                             node_data.get_mut(*name).unwrap().push((*port, count, hash));
                         }
                     }

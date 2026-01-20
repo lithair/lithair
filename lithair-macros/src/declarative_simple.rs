@@ -84,6 +84,9 @@ struct FieldAttributes {
     cache: bool,
     compact_after: Option<u64>, // Compact after N events (enables compaction)
     snapshot_every: Option<u64>, // Snapshot every N events (enables snapshots)
+
+    // Migration attributes
+    default_value: Option<String>, // Default value for schema migration (e.g., "0", "\"\"", "false")
 }
 
 /// Struct-level firewall attributes parsed from #[firewall(...)]
@@ -248,6 +251,9 @@ fn parse_field_attributes(field: &Field) -> FieldAttributes {
 fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
+        // Get the full token string for more complex parsing
+        let full_tokens = meta_list.tokens.to_string();
+
         for nested in meta_list.tokens.clone().into_iter() {
             let nested_str = nested.to_string();
             match nested_str.as_str() {
@@ -262,6 +268,21 @@ fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // Parse default = X (can be number, string, or boolean)
+        // Handles: default = 0, default = "", default = false, default = "some_fn"
+        if let Some(default_start) = full_tokens.find("default") {
+            let remaining = &full_tokens[default_start..];
+            if let Some(eq_pos) = remaining.find('=') {
+                let after_eq = remaining[eq_pos + 1..].trim();
+                // Find the end of the value (comma or end of string)
+                let value_end = after_eq.find(',').unwrap_or(after_eq.len());
+                let value = after_eq[..value_end].trim().trim_matches('"');
+                if !value.is_empty() {
+                    attrs.default_value = Some(value.to_string());
+                }
             }
         }
     }
@@ -753,6 +774,15 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             None => quote! { None },
         };
 
+        // Migration attributes
+        let default_value = match &attrs.default_value {
+            Some(v) => {
+                let lit = syn::LitStr::new(v.as_str(), Span::call_site());
+                quote! { Some(#lit.to_string()) }
+            }
+            None => quote! { None },
+        };
+
         let field_name_lit = syn::LitStr::new(field_name.as_str(), Span::call_site());
         quote! {
             fields.insert(#field_name_lit.to_string(), #attrs_name {
@@ -787,6 +817,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                 cache: #cache,
                 compact_after: #compact_after,
                 snapshot_every: #snapshot_every,
+
+                // Migration attributes
+                default_value: #default_value,
             });
         }
     });
@@ -898,6 +931,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             pub cache: bool,
             pub compact_after: Option<u64>,
             pub snapshot_every: Option<u64>,
+
+            // Migration attributes
+            pub default_value: Option<String>,
         }
 
         #[derive(Debug, Clone)]
@@ -953,6 +989,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                             write_permission: attrs.write_permission.clone(),
                             owner_field: attrs.owner_field,
                         },
+                        default_value: attrs.default_value.clone(),
                     };
 
                     schema_fields.insert(field_name.clone(), constraints);
@@ -998,6 +1035,17 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
             fn field_constraints(&self, field_name: &str) -> Option<lithair_core::schema::FieldConstraints> {
                 self.extract_model_spec().fields.get(field_name).cloned()
+            }
+        }
+
+        // Implémentation du trait HasSchemaSpec pour l'extraction statique
+        impl lithair_core::schema::HasSchemaSpec for #name {
+            fn schema_spec() -> lithair_core::schema::ModelSpec {
+                Self::extract_schema_spec()
+            }
+
+            fn model_name() -> &'static str {
+                #name_lit
             }
         }
 

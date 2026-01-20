@@ -181,13 +181,22 @@ impl SnapshotManager {
         if checksum != meta.checksum {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Snapshot checksum mismatch",
+                format!("Snapshot checksum mismatch: expected {}, got {}", meta.checksum, checksum),
             ));
         }
 
-        // Parse data
+        // Parse data with rkyv zero-copy deserialization
         let data = rkyv::from_bytes::<SnapshotData, RkyvError>(bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+            .map_err(|e| {
+                log::error!(
+                    "Snapshot deserialization failed: {:?}, bytes_len={}",
+                    e, bytes.len()
+                );
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("rkyv deserialization failed: {:?}", e),
+                )
+            })?;
 
         // Write to disk
         let data_path = self
