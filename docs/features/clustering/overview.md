@@ -189,10 +189,10 @@ Response:
 
 | State | Icon | Meaning | Action |
 |-------|------|---------|--------|
-| healthy | 🟢 | In sync, replication working | None |
-| lagging | 🟡 | Behind but catching up | Monitor |
-| desynced | 🔴 | Too far behind, needs snapshot | Auto/manual resync |
-| unknown | ⚪ | No replication activity yet | Wait or investigate |
+| healthy |  | In sync, replication working | None |
+| lagging |  | Behind but catching up | Monitor |
+| desynced |  | Too far behind, needs snapshot | Auto/manual resync |
+| unknown |  | No replication activity yet | Wait or investigate |
 
 ## Configuration Options
 

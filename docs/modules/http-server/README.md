@@ -1,56 +1,56 @@
-# Module Serveur HTTP
+# HTTP Server Module
 
-Le module serveur HTTP de Lithair fournit un serveur web haute performance basé sur Hyper, avec génération automatique d'API REST à partir des modèles déclaratifs.
+The Lithair HTTP server module provides a high-performance web server based on Hyper, with automatic REST API generation from declarative models.
 
-## 🚀 Vue d'Ensemble
+## Overview
 
-Le serveur HTTP Lithair transforme automatiquement vos modèles déclaratifs en API REST complètes, avec validation, authentification et documentation intégrées.
+The Lithair HTTP server automatically transforms your declarative models into complete REST APIs, with built-in validation, authentication, and documentation.
 
 ```mermaid
 flowchart TD
-    A[Modèle Déclaratif] --> B[Analyse des Attributs]
-    B --> C[Génération Routes]
-    B --> D[Génération Validation]
-    B --> E[Génération Middleware]
-    
-    C --> F[Serveur Hyper]
+    A[Declarative Model] --> B[Attribute Analysis]
+    B --> C[Route Generation]
+    B --> D[Validation Generation]
+    B --> E[Middleware Generation]
+
+    C --> F[Hyper Server]
     D --> F
     E --> F
-    
-    F --> G[API REST Complète]
-    
-    subgraph "Flux de Requête HTTP"
-        H[Requête] --> I[Firewall]
+
+    F --> G[Complete REST API]
+
+    subgraph "HTTP Request Flow"
+        H[Request] --> I[Firewall]
         I --> J[Router]
         J --> K[Validation]
         K --> L[Permissions]
         L --> M[Handler]
-        M --> N[Réponse JSON]
+        M --> N[JSON Response]
     end
 ```
 
-## ⚡ Fonctionnalités Principales
+## Main Features
 
-### 🔄 Génération Automatique d'API
-- **CRUD complet** : GET, POST, PUT, DELETE auto-générés
-- **Routes RESTful** : `/api/users`, `/api/users/{id}`, etc.
-- **Validation intégrée** : Validation des données via attributs
-- **Sérialisation JSON** : Serde automatique
+### Automatic API Generation
+- **Full CRUD**: Auto-generated GET, POST, PUT, DELETE
+- **RESTful Routes**: `/api/users`, `/api/users/{id}`, etc.
+- **Built-in Validation**: Data validation via attributes
+- **JSON Serialization**: Automatic Serde
 
-### 🛡️ Sécurité Intégrée
-- **RBAC** : Permissions basées sur les rôles
-- **Firewall** : Protection IP et rate limiting
-- **CORS** : Support CORS complet
-- **Headers sécurisés** : Headers de sécurité automatiques
+### Built-in Security
+- **RBAC**: Role-based permissions
+- **Firewall**: IP protection and rate limiting
+- **CORS**: Full CORS support
+- **Secure Headers**: Automatic security headers
 
-### 📊 Monitoring
-- **Métriques** : Endpoints de monitoring intégrés
-- **Health checks** : `/health`, `/status`, `/metrics`
-- **Logging** : Logs structurés avec tracing
+### Monitoring
+- **Metrics**: Built-in monitoring endpoints
+- **Health checks**: `/health`, `/status`, `/metrics`
+- **Logging**: Structured logs with tracing
 
-## 🏗️ Architecture
+## Architecture
 
-### Composants Principaux
+### Main Components
 
 ```mermaid
 classDiagram
@@ -60,36 +60,36 @@ classDiagram
         +with_cors_config(config)
         +run()
     }
-    
+
     class HttpRouter {
         +register_model<T: DeclarativeModel>()
         +route(request)
     }
-    
+
     class ValidationMiddleware {
         +validate_request(request)
         +validate_response(response)
     }
-    
+
     class PermissionMiddleware {
         +check_permissions(user, action)
     }
-    
+
     DeclarativeServer --> HttpRouter
     HttpRouter --> ValidationMiddleware
     HttpRouter --> PermissionMiddleware
 ```
 
-### Stack Technologique
-- **Hyper** : Serveur HTTP async haute performance
-- **Tokio** : Runtime async
-- **Serde** : Sérialisation/désérialisation JSON
-- **Tower** : Middleware et services
-- **OpenTelemetry** : Observabilité
+### Technology Stack
+- **Hyper**: High-performance async HTTP server
+- **Tokio**: Async runtime
+- **Serde**: JSON serialization/deserialization
+- **Tower**: Middleware and services
+- **OpenTelemetry**: Observability
 
-## 🔧 Configuration
+## Configuration
 
-### Serveur Basique
+### Basic Server
 
 ```rust
 use lithair_core::http::declarative_server::DeclarativeServer;
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### Configuration Avancée
+### Advanced Configuration
 
 ```rust
 use lithair_core::http::{DeclarativeServer, FirewallConfig, CorsConfig};
@@ -130,9 +130,9 @@ let server = DeclarativeServer::new("127.0.0.1:8080")
 server.run().await?;
 ```
 
-## 📝 Modèles et Routes
+## Models and Routes
 
-### Exemple de Modèle
+### Model Example
 
 ```rust
 #[derive(DeclarativeModel)]
@@ -141,16 +141,16 @@ pub struct Product {
     #[http(expose)]
     #[permission(read = "Public")]
     pub id: Uuid,
-    
+
     #[http(expose, validate = "non_empty")]
     #[permission(read = "Public", write = "ProductManager")]
     pub name: String,
-    
+
     #[http(expose, validate = "min_value(0.01)")]
     #[lifecycle(audited)]
     #[permission(read = "Public", write = "ProductManager")]
     pub price: f64,
-    
+
     #[db(indexed)]
     #[http(expose, validate = "min_value(0)")]
     #[permission(read = "StockManager", write = "StockManager")]
@@ -158,21 +158,21 @@ pub struct Product {
 }
 ```
 
-### Routes Auto-Générées
+### Auto-Generated Routes
 
 ```
-GET    /api/products          # Liste tous les produits
-GET    /api/products/{id}     # Récupère un produit
-POST   /api/products          # Crée un nouveau produit
-PUT    /api/products/{id}     # Met à jour un produit
-DELETE /api/products/{id}     # Supprime un produit
+GET    /api/products          # List all products
+GET    /api/products/{id}     # Get a product
+POST   /api/products          # Create a new product
+PUT    /api/products/{id}     # Update a product
+DELETE /api/products/{id}     # Delete a product
 
 GET    /health               # Health check
-GET    /metrics             # Métriques Prometheus
-GET    /status              # Statut du serveur
+GET    /metrics             # Prometheus metrics
+GET    /status              # Server status
 ```
 
-## 🔄 Cycle de Vie d'une Requête
+## Request Lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -187,14 +187,14 @@ sequenceDiagram
 
     Client->>Server: HTTP Request
     Server->>Firewall: Check IP/Rate
-    
+
     alt Firewall OK
         Firewall->>Router: Route Request
         Router->>Validator: Validate Data
-        
+
         alt Validation OK
             Validator->>Permissions: Check RBAC
-            
+
             alt Permissions OK
                 Permissions->>Handler: Process Request
                 Handler->>Storage: CRUD Operation
@@ -211,22 +211,22 @@ sequenceDiagram
     end
 ```
 
-## 📊 Performance
+## Performance
 
 ### Benchmarks
 
-| Métrique | Valeur | Contexte |
-|----------|--------|----------|
-| **Débit** | 15,000 req/s | Sans firewall, GET simple |
-| **Latence P50** | 0.8ms | Requêtes CRUD |
-| **Latence P99** | 2.5ms | Requêtes complexes |
-| **Mémoire** | 25MB | Serveur au repos |
-| **Startup** | 150ms | Temps de démarrage |
+| Metric | Value | Context |
+|--------|-------|---------|
+| **Throughput** | 15,000 req/s | Without firewall, simple GET |
+| **Latency P50** | 0.8ms | CRUD requests |
+| **Latency P99** | 2.5ms | Complex requests |
+| **Memory** | 25MB | Server at rest |
+| **Startup** | 150ms | Startup time |
 
-### Optimisations
+### Optimizations
 
 ```rust
-// Configuration haute performance
+// High-performance configuration
 let server = DeclarativeServer::new("0.0.0.0:8080")
     .with_worker_threads(num_cpus::get())
     .with_connection_pool_size(1000)
@@ -234,16 +234,16 @@ let server = DeclarativeServer::new("0.0.0.0:8080")
     .with_keep_alive_timeout(Duration::from_secs(90));
 ```
 
-## 🔍 Monitoring et Observabilité
+## Monitoring and Observability
 
-### Métriques Prometheus
+### Prometheus Metrics
 
 ```
-# Requêtes HTTP
+# HTTP Requests
 http_requests_total{method="GET", status="200"} 1500
 http_request_duration_seconds{method="POST", quantile="0.95"} 0.002
 
-# Performance serveur
+# Server Performance
 http_connections_active 45
 http_request_size_bytes{quantile="0.5"} 1024
 http_response_size_bytes{quantile="0.95"} 2048
@@ -272,60 +272,60 @@ curl http://localhost:8080/health
 }
 ```
 
-## 🧪 Tests et Développement
+## Testing and Development
 
-### Tests Unitaires
+### Unit Tests
 
 ```rust
 #[tokio::test]
 async fn test_product_crud() {
     let server = test_server().await;
-    
+
     // Test POST
     let product = json!({
         "name": "Test Product",
         "price": 19.99,
         "stock": 100
     });
-    
+
     let response = server
         .post("/api/products")
         .json(&product)
         .send()
         .await?;
-    
+
     assert_eq!(response.status(), 201);
-    
+
     // Test GET
     let id = response.json::<Product>().await?.id;
     let response = server
         .get(&format!("/api/products/{}", id))
         .send()
         .await?;
-    
+
     assert_eq!(response.status(), 200);
 }
 ```
 
-### Tests d'Intégration
+### Integration Tests
 
 ```bash
-# Démarrer le serveur de test
+# Start test server
 cargo run --bin test_server &
 
-# Tests d'intégration
+# Integration tests
 cargo test --test http_integration
 
-# Tests de charge
+# Load tests
 wrk -t12 -c400 -d30s http://127.0.0.1:8080/api/products
 ```
 
-## 🔗 Intégrations
+## Integrations
 
-### Avec Frontend React
+### With React Frontend
 
 ```typescript
-// Auto-génération des types TypeScript (roadmap)
+// Auto-generated TypeScript types (roadmap)
 interface Product {
     id: string;
     name: string;
@@ -337,7 +337,7 @@ const api = {
     products: {
         list: () => fetch('/api/products'),
         get: (id: string) => fetch(`/api/products/${id}`),
-        create: (product: Omit<Product, 'id'>) => 
+        create: (product: Omit<Product, 'id'>) =>
             fetch('/api/products', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -348,42 +348,42 @@ const api = {
 };
 ```
 
-### Avec OpenAPI/Swagger
+### With OpenAPI/Swagger
 
 ```rust
-// Documentation API auto-générée (roadmap)
+// Auto-generated API documentation (roadmap)
 #[derive(DeclarativeModel)]
 #[openapi(
     title = "Products API",
     version = "1.0.0",
-    description = "API de gestion des produits"
+    description = "Product management API"
 )]
 pub struct Product {
-    /// ID unique du produit
+    /// Unique product ID
     #[openapi(example = "123e4567-e89b-12d3-a456-426614174000")]
     pub id: Uuid,
-    
-    /// Nom du produit
+
+    /// Product name
     #[openapi(example = "iPhone 15 Pro")]
     #[http(validate = "min_length(3)")]
     pub name: String,
 }
 ```
 
-## 🗺️ Roadmap
+## Roadmap
 
 ### v1.1
-- ✅ Support WebSocket
-- ✅ GraphQL auto-généré
-- ✅ Streaming responses
-- ✅ File upload support
+- WebSocket support
+- Auto-generated GraphQL
+- Streaming responses
+- File upload support
 
 ### v1.2
-- 🔄 Auto-génération TypeScript
-- 🔄 OpenAPI/Swagger docs
-- 🔄 API versioning
-- 🔄 Cache HTTP intégré
+- TypeScript auto-generation
+- OpenAPI/Swagger docs
+- API versioning
+- Built-in HTTP cache
 
 ---
 
-**💡 Note :** Le serveur HTTP Lithair est conçu pour être zero-configuration tout en restant hautement configurable pour les cas d'usage avancés.
+**Note:** The Lithair HTTP server is designed to be zero-configuration while remaining highly configurable for advanced use cases.

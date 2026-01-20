@@ -2,13 +2,13 @@
 
 > If you come from a pure SQL background and want a mental map and daily workflow guidance, read the companion guide: [SQL vs Lithair](sql-vs-lithair.md).
 
-## 🎯 Database Philosophy
+##  Database Philosophy
 
 Lithair's database is built on a simple but revolutionary principle: **"We ARE the database."**
 
 Instead of connecting to an external database server, Lithair embeds a high-performance event-sourced database directly into your application process. This eliminates network latency, connection pools, and serialization overhead while providing enterprise-grade performance and reliability.
 
-## 📊 Performance Comparison
+##  Performance Comparison
 
 ### Traditional SQL Database
 
@@ -57,7 +57,7 @@ println!("Orders: {}, Spent: ${}, Avg: ${}",
 | **Full-text Search** | 100-500ms       | 1μs       | **100,000-500,000x**           |
 | **Analytics Query**  | 1-10s           | 5ns       | **200,000,000-2,000,000,000x** |
 
-## 🔄 Event Sourcing Implementation
+##  Event Sourcing Implementation
 
 ### Core Principles
 
@@ -155,16 +155,16 @@ pub fn replay_events(&mut self) -> Result<(), String> {
         event_count += 1;
 
         if event_count % 1000 == 0 {
-            println!("📖 Replayed {} events...", event_count);
+            println!(" Replayed {} events...", event_count);
         }
     }
 
-    println!("✅ Event replay completed: {} events processed", event_count);
+    println!(" Event replay completed: {} events processed", event_count);
     Ok(())
 }
 ```
 
-## 🗜️ Intelligent Event Log Compaction
+##  Intelligent Event Log Compaction
 
 ### The Compaction Challenge
 
@@ -235,7 +235,7 @@ fn compact_event_log(&self) -> Result<(), String> {
     let events_kept = events_to_keep.len();
     let events_removed = total_events - events_kept;
 
-    println!("✅ Smart compaction completed:");
+    println!(" Smart compaction completed:");
     println!("   • Critical events preserved: {}", critical_events.len());
     println!("   • Recent events kept: {}", Self::KEEP_RECENT_EVENTS);
     println!("   • Total events after compaction: {}", events_kept);
@@ -253,7 +253,7 @@ fn compact_event_log(&self) -> Result<(), String> {
 | **File Size**      | 25+ MB            | 22 KB            | **99.9% reduction** |
 | **Startup Time**   | 2-5 seconds       | 50ms             | **40-100x faster**  |
 | **Memory Usage**   | 50+ MB            | 2 MB             | **25x reduction**   |
-| **Data Integrity** | ✅ Complete       | ✅ Complete      | **No data loss**    |
+| **Data Integrity** |  Complete       |  Complete      | **No data loss**    |
 
 ### Compaction Triggers
 
@@ -264,16 +264,16 @@ const KEEP_RECENT_EVENTS: usize = 1_000;     // Keep last 1K events
 
 // Compaction is triggered automatically after each event persistence
 if event_count >= Self::COMPACTION_THRESHOLD {
-    println!("🗜️ Event log has {} events, starting compaction...", event_count);
+    println!(" Event log has {} events, starting compaction...", event_count);
     if let Err(e) = self.compact_event_log() {
-        println!("⚠️ Compaction failed: {}", e);
+        println!(" Compaction failed: {}", e);
     } else {
-        println!("✅ Event log compacted successfully");
+        println!(" Event log compacted successfully");
     }
 }
 ```
 
-## 🏗️ Database Architecture
+##  Database Architecture
 
 ### File Structure
 
@@ -342,7 +342,7 @@ data/
 }
 ```
 
-## 🔄 Event Sourcing Model
+##  Event Sourcing Model
 
 ### Event Definition
 
@@ -393,7 +393,7 @@ impl Event for UserCreated {
         // 3. Update global metrics
         state.total_users += 1;
 
-        println!("👤 User created: {} ({})", self.name, self.email);
+        println!(" User created: {} ({})", self.name, self.email);
     }
 
     fn to_json(&self) -> String {
@@ -469,13 +469,13 @@ impl Event for OrderCreated {
             product_sales.revenue += item.price * item.quantity as f64;
         }
 
-        println!("🛒 Order created: #{} for user {} (${:.2})",
+        println!(" Order created: #{} for user {} (${:.2})",
                 self.order_id, self.user_id, self.total);
     }
 }
 ```
 
-## 🚀 In-Memory State Management
+##  In-Memory State Management
 
 ### State Structure
 
@@ -574,7 +574,7 @@ pub struct SalesMetrics {
 }
 ```
 
-## 📈 Scaling Strategies
+##  Scaling Strategies
 
 ### Memory Management for Large Datasets
 
@@ -691,7 +691,7 @@ impl ShardedState {
 }
 ```
 
-## 🔍 Query Performance
+##  Query Performance
 
 ### Simple Queries (O(1))
 
@@ -752,7 +752,7 @@ println!("Today: {} orders, ${:.2} revenue, {} customers",
 
 // Product performance - 5ns
 let product_analytics = state.product_analytics.get(&product_id)?;
-println!("Product {}: {} sold, ${:.2} revenue, {:.1}★ rating",
+println!("Product {}: {} sold, ${:.2} revenue, {:.1} rating",
          product_id,
          product_analytics.total_sales,
          product_analytics.total_revenue,
@@ -785,7 +785,7 @@ let category_performance: Vec<_> = state.daily_sales
     .collect();
 ```
 
-## 💾 Persistence and Recovery
+##  Persistence and Recovery
 
 ### Automatic Snapshotting
 
@@ -801,7 +801,7 @@ impl Lithair {
                 if let Err(e) = self.create_snapshot().await {
                     eprintln!("Failed to create snapshot: {}", e);
                 } else {
-                    println!("✅ Snapshot created successfully");
+                    println!(" Snapshot created successfully");
                 }
             }
         }
@@ -824,14 +824,14 @@ impl Lithair {
 ```rust
 impl Lithair {
     pub async fn recover_from_crash() -> Result<Self> {
-        println!("🔄 Recovering from crash...");
+        println!(" Recovering from crash...");
 
         // 1. Load latest snapshot
         let snapshot_path = "data/state.raftsnap";
         let mut state = if Path::new(snapshot_path).exists() {
             let snapshot_data = fs::read(snapshot_path)?;
             let snapshot: StateSnapshot = bincode::deserialize(&snapshot_data)?;
-            println!("📂 Loaded snapshot from event #{}", snapshot.last_event_id);
+            println!(" Loaded snapshot from event #{}", snapshot.last_event_id);
             snapshot.state
         } else {
             println!("🆕 No snapshot found, starting with empty state");
@@ -854,7 +854,7 @@ impl Lithair {
                 }
             }
 
-            println!("🔄 Replayed {} events", replayed_events);
+            println!(" Replayed {} events", replayed_events);
         }
 
         // 3. Verify state consistency
@@ -863,7 +863,7 @@ impl Lithair {
             return Err(format!("State consistency check failed: {:?}", consistency_check.errors).into());
         }
 
-        println!("✅ Recovery completed successfully");
+        println!(" Recovery completed successfully");
         println!("   • Users: {}", state.users.len());
         println!("   • Products: {}", state.products.len());
         println!("   • Orders: {}", state.orders.len());
@@ -873,7 +873,7 @@ impl Lithair {
 }
 ```
 
-## 🎯 Database Benefits Summary
+##  Database Benefits Summary
 
 ### Performance Benefits
 

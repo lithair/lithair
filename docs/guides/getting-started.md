@@ -97,12 +97,12 @@ curl -X DELETE http://localhost:3000/api/products/1
 
 From **10 lines of code**, Lithair automatically provided:
 
-✅ **5 REST endpoints** (GET, GET/:id, POST, PUT, DELETE)
-✅ **Event sourcing** - All changes persisted in `.raftlog` files
-✅ **JSON serialization** - Automatic conversion
-✅ **HTTP routing** - Path matching and request handling
-✅ **Error handling** - Proper status codes (400, 404, 500)
-✅ **State reconstruction** - Events replayed on server restart
+ **5 REST endpoints** (GET, GET/:id, POST, PUT, DELETE)
+ **Event sourcing** - All changes persisted in `.raftlog` files
+ **JSON serialization** - Automatic conversion
+ **HTTP routing** - Path matching and request handling
+ **Error handling** - Proper status codes (400, 404, 500)
+ **State reconstruction** - Events replayed on server restart
 
 You wrote **zero** lines for any of this infrastructure!
 
@@ -190,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
 ### Traditional (Imperative) Approach
 
 ```rust
-// ❌ 200+ lines of boilerplate code
+//  200+ lines of boilerplate code
 
 // Define routes
 app.post("/api/products", create_product);
@@ -224,7 +224,7 @@ async fn create_product(req: Request) -> Response {
 ### Lithair (Declarative) Approach
 
 ```rust
-// ✅ 10 lines, all endpoints + auth + validation
+//  10 lines, all endpoints + auth + validation
 
 #[derive(DeclarativeModel, Serialize, Deserialize)]
 struct Product {
@@ -302,17 +302,17 @@ LithairServer::new()
 ### Zero Boilerplate
 
 You **never write**:
-- ❌ Route definitions
-- ❌ Request parsing
-- ❌ JSON serialization
-- ❌ Database queries
-- ❌ Permission checks in handlers
-- ❌ Error handling
+-  Route definitions
+-  Request parsing
+-  JSON serialization
+-  Database queries
+-  Permission checks in handlers
+-  Error handling
 
 You **only write**:
-- ✅ Data structures (`struct Product`)
-- ✅ Business rules (`PermissionChecker`)
-- ✅ Configuration (`.with_X()`)
+-  Data structures (`struct Product`)
+-  Business rules (`PermissionChecker`)
+-  Configuration (`.with_X()`)
 
 ## Troubleshooting
 

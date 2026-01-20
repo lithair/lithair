@@ -356,7 +356,7 @@ Lithair is data-first: the right configuration depends on your workload. A ticke
 
 We welcome proposals and contributions: both to Lithair itself and to configuration recipes for specific domains.
 
-## 🛡️ **Secure CRUD API Endpoints**
+##  **Secure CRUD API Endpoints**
 
 ### Authentication & Authorization
 
@@ -545,10 +545,10 @@ Returns HTML interface for product CRUD operations with role-based UI adaptation
 
 | Role | ProductCreateAny | ProductReadAny | ProductUpdateAny | ProductDeleteAny | AdminDashboard |
 |------|------------------|----------------|------------------|------------------|----------------|
-| **Administrator** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Manager** | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Employee** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Customer** | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Administrator** |  |  |  |  |  |
+| **Manager** |  |  |  |  |  |
+| **Employee** |  |  |  |  |  |
+| **Customer** |  |  |  |  |  |
 
 #### Test Accounts
 
@@ -737,7 +737,7 @@ curl -X DELETE http://127.0.0.1:3002/api/products \
   -d '{"id":0}'
 ```
 
-### 🔦 Declarative Demo – Lightweight Endpoints
+###  Declarative Demo – Lightweight Endpoints
 
 These endpoints are available in the pure declarative demo server to support lightweight benchmarking and operational checks:
 

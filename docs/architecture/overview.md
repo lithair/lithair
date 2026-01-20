@@ -403,10 +403,10 @@ graph LR
     I <--> G
 
     subgraph "Lithair Choices"
-        J[Strong Consistency ✓]
-        K[High Availability ✓]
-        L[Fast Development ✓]
-        M[Type Safety ✓]
+        J[Strong Consistency ]
+        K[High Availability ]
+        L[Fast Development ]
+        M[Type Safety ]
     end
 ```
 

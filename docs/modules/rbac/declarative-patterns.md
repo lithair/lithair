@@ -1,10 +1,10 @@
-# 🔐 Lithair Declarative RBAC System
+#  Lithair Declarative RBAC System
 
-## ✅ IMPLÉMENTATION COMPLÈTE
+##  IMPLÉMENTATION COMPLÈTE
 
 Le système RBAC déclaratif a été implémenté dans `lithair-core` !
 
-### 📦 Composants
+###  Composants
 
 #### 1. **ServerRbacConfig** (`lithair-core/src/rbac/config.rs`)
 Configuration déclarative pour RBAC server-wide :
@@ -39,12 +39,12 @@ Méthode `.with_rbac_config()` qui génère automatiquement :
 
 ---
 
-## 🚀 Utilisation
+##  Utilisation
 
 ### Avant (Manuel - 60+ lignes)
 
 ```rust
-// ❌ Trop de boilerplate !
+//  Trop de boilerplate !
 let users = vec![...];
 let session_store = Arc::new(PersistentSessionStore::new(...)?);
 let session_middleware = Arc::new(SessionMiddleware::new(...));
@@ -71,13 +71,13 @@ LithairServer::new()
 ### Après (Déclaratif - 15 lignes)
 
 ```rust
-// ✅ Simple, déclaratif, cohérent !
+//  Simple, déclaratif, cohérent !
 use lithair_core::rbac::{ServerRbacConfig, RbacUser};
 
 LithairServer::new()
     .with_port(3007)
     
-    // 🔐 RBAC déclaratif - génère TOUT automatiquement
+    //  RBAC déclaratif - génère TOUT automatiquement
     .with_rbac_config(ServerRbacConfig::new()
         .with_roles(vec![
             ("Admin".to_string(), vec!["*".to_string()]),
@@ -93,7 +93,7 @@ LithairServer::new()
         .with_session_duration(28800) // 8 heures
     )
     
-    // 📦 Article avec RBAC automatique
+    //  Article avec RBAC automatique
     .with_model_full::<Article>(
         "./data/articles",
         "/api/articles",
@@ -107,11 +107,11 @@ LithairServer::new()
 
 ---
 
-## 🎯 Ce que `.with_rbac_config()` génère AUTOMATIQUEMENT
+##  Ce que `.with_rbac_config()` génère AUTOMATIQUEMENT
 
 ### Routes créées
 
-✅ **POST /auth/login**
+ **POST /auth/login**
 ```json
 // Request
 {
@@ -127,7 +127,7 @@ LithairServer::new()
 }
 ```
 
-✅ **POST /auth/logout**
+ **POST /auth/logout**
 ```
 Authorization: Bearer <session_token>
 
@@ -139,26 +139,26 @@ Authorization: Bearer <session_token>
 
 ### Infrastructure créée
 
-✅ **PersistentSessionStore**
+ **PersistentSessionStore**
 - Event-sourced sessions
 - Automatiquement persistées dans `./data/sessions` (ou path configuré)
 - Expiration automatique
 
-✅ **DeclarativePermissionChecker**
+ **DeclarativePermissionChecker**
 - Généré depuis les définitions de rôles
 - Wildcard `*` pour rôles admin
 - Vérification granulaire
 
-✅ **Logs automatiques**
+ **Logs automatiques**
 ```
-✅ RBAC configured with 3 roles and 3 users
-   🔐 POST /auth/login - Authentication endpoint
-   👋 POST /auth/logout - Logout endpoint
+ RBAC configured with 3 roles and 3 users
+    POST /auth/login - Authentication endpoint
+    POST /auth/logout - Logout endpoint
 ```
 
 ---
 
-## 📊 Exemple Complet
+##  Exemple Complet
 
 ```rust
 use anyhow::Result;
@@ -224,7 +224,7 @@ async fn main() -> Result<()> {
 
 ---
 
-## 🧪 Tests
+##  Tests
 
 ```bash
 # Login Admin
@@ -250,7 +250,7 @@ curl -X POST http://localhost:3007/auth/logout \
 
 ---
 
-## 📁 Fichiers Modifiés
+##  Fichiers Modifiés
 
 ```
 lithair-core/src/rbac/
@@ -264,39 +264,39 @@ lithair-core/src/app/
 
 ---
 
-## ✨ Avantages
+##  Avantages
 
-### ✅ Déclaratif
+###  Déclaratif
 - Une seule configuration pour tout le RBAC
 - Pas de code manuel pour login/logout
 - Cohérent avec `.with_model_full()`
 
-### ✅ Event-Sourced
+###  Event-Sourced
 - Sessions persistées automatiquement
 - Audit trail complet
 - Rechargement après crash
 
-### ✅ Type-Safe
+###  Type-Safe
 - RbacUser typé
 - ServerRbacConfig typé
 - Compile-time safety
 
-### ✅ Extensible
+###  Extensible
 - Facile d'ajouter des rôles
 - Facile d'ajouter des permissions
 - Facile d'ajouter des users
 
-### ✅ Production-Ready
+###  Production-Ready
 - Session expiration automatique
 - Logs automatiques
 - Error handling robuste
 
 ---
 
-## 🎉 Résultat Final
+##  Résultat Final
 
 **Avant** : 60+ lignes de boilerplate pour RBAC  
 **Après** : 15 lignes déclaratives  
 **Gain** : 75% de code en moins !
 
-**Philosophie Lithair respectée** : *"Déclarer uniquement ce dont on a besoin"* ✨
+**Philosophie Lithair respectée** : *"Déclarer uniquement ce dont on a besoin"* 

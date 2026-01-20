@@ -2,7 +2,7 @@
 
 _Created by Yoan Roblet - Disruptive application framework with AI assistance_
 
-## 🎯 The Lithair Philosophy
+## The Lithair Philosophy
 
 Lithair emerged from a simple frustration: **why create a complex 3-tier architecture for just 3 simple tables?**
 
@@ -28,7 +28,7 @@ struct ProductCreated {
 
 **Key Philosophy**: Think about each data point's lifecycle from day one. You can change it later, but this integrated vision eliminates the need for developers to add their own historization systems afterward.
 
-## 🏗️ System Architecture
+## System Architecture
 
 Lithair **embeds everything into a single binary**, eliminating traditional 3-tier complexity:
 
@@ -48,7 +48,7 @@ graph TB
     end
 
     subgraph "Lithair (Simple)"
-        SINGLE["Single Binary\n• HTTP Server\n• Business Logic\n• Event Store\n• Declarative Lifecycle"]
+        SINGLE["Single Binary\n- HTTP Server\n- Business Logic\n- Event Store\n- Declarative Lifecycle"]
     end
 ```
 
@@ -87,7 +87,7 @@ graph TB
     end
 ```
 
-## 🔄 Event Flow (Event Sourcing)
+## Event Flow (Event Sourcing)
 
 ### Event Lifecycle
 
@@ -149,7 +149,7 @@ graph LR
     ID --> HASH
 ```
 
-## 🚀 Startup and Recovery
+## Startup and Recovery
 
 ### Startup Process
 
@@ -170,7 +170,7 @@ flowchart TD
     REPLAY_ALL --> BUILD_DEDUP
 
     BUILD_DEDUP --> INIT_HTTP[Initialize HTTP server]
-    INIT_HTTP --> READY[🚀 Application Ready]
+    INIT_HTTP --> READY[Application Ready]
 
     style START fill:#e8f5e8
     style READY fill:#c8e6c9
@@ -215,25 +215,25 @@ graph TB
     style MEMORY fill:#fff3e0
 ```
 
-## 📊 Architecture de Performance
+## Performance Architecture
 
-### Accès aux Données
+### Data Access
 
 ```mermaid
 graph LR
-    subgraph "Approche Traditionnelle"
+    subgraph "Traditional Approach"
         CLIENT1[Client] --> API1[API Server]
         API1 --> DB1[(Database)]
-        DB1 --> NETWORK1[Réseau 1-10ms]
-        NETWORK1 --> QUERY1[Parsing SQL]
-        QUERY1 --> DISK1[Accès Disque]
-        DISK1 --> SERIALIZE1[Sérialisation]
+        DB1 --> NETWORK1[Network 1-10ms]
+        NETWORK1 --> QUERY1[SQL Parsing]
+        QUERY1 --> DISK1[Disk Access]
+        DISK1 --> SERIALIZE1[Serialization]
     end
 
-    subgraph "Approche Lithair"
+    subgraph "Lithair Approach"
         CLIENT2[Client] --> API2[Lithair]
-        API2 --> MEMORY2[HashMap en Mémoire]
-        MEMORY2 --> DIRECT2[Accès Direct 5ns]
+        API2 --> MEMORY2[In-Memory HashMap]
+        MEMORY2 --> DIRECT2[Direct Access 5ns]
     end
 
     style NETWORK1 fill:#ffcdd2
@@ -243,15 +243,15 @@ graph LR
     style DIRECT2 fill:#c8e6c9
 ```
 
-### Indexes Pré-calculés
+### Pre-calculated Indexes
 
 ```mermaid
 graph TB
-    subgraph "Événement OrderCreated"
+    subgraph "OrderCreated Event"
         ORDER_EVENT[OrderCreated Event]
     end
 
-    subgraph "Mises à Jour Atomiques"
+    subgraph "Atomic Updates"
         PRIMARY[orders: HashMap]
         BY_USER[orders_by_user: HashMap]
         BY_STATUS[orders_by_status: HashMap]
@@ -259,11 +259,11 @@ graph TB
         ANALYTICS[user_analytics: HashMap]
     end
 
-    subgraph "Requêtes O(1)"
-        QUERY1[Commandes d'un utilisateur]
-        QUERY2[Commandes par statut]
-        QUERY3[Commandes par date]
-        QUERY4[Analytics utilisateur]
+    subgraph "O(1) Queries"
+        QUERY1[Orders by user]
+        QUERY2[Orders by status]
+        QUERY3[Orders by date]
+        QUERY4[User analytics]
     end
 
     ORDER_EVENT --> PRIMARY
@@ -282,28 +282,28 @@ graph TB
     style QUERY1 fill:#e8f5e8
 ```
 
-## 🔧 Optimisations de Performance
+## Performance Optimizations
 
-### Logging et Snapshots
+### Logging and Snapshots
 
 ```mermaid
 graph TD
-    subgraph "Configuration Standard"
+    subgraph "Standard Configuration"
         LOG_ON[log_verbose: true]
         SNAP_10[snapshot_every: 10]
         PERF_SLOW[Performance: ~500 events/sec]
     end
 
-    subgraph "Configuration Optimisée"
+    subgraph "Optimized Configuration"
         LOG_OFF[log_verbose: false]
         SNAP_1000[snapshot_every: 1000]
         PERF_FAST[Performance: ~2000 events/sec]
     end
 
-    subgraph "Impact des Optimisations"
-        LESS_IO[Moins d'I/O disque]
-        LESS_LOGS[Moins de logs console]
-        FASTER[4x plus rapide]
+    subgraph "Optimization Impact"
+        LESS_IO[Less disk I/O]
+        LESS_LOGS[Fewer console logs]
+        FASTER[4x faster]
     end
 
     LOG_ON --> LOG_OFF
@@ -318,63 +318,63 @@ graph TD
     style FASTER fill:#4caf50
 ```
 
-### Benchmark Asynchrone
+### Async Benchmark
 
 ```mermaid
 sequenceDiagram
     participant Bench as Benchmark
     participant Dispatch as Event Dispatcher
-    participant Queue as Queue Async
+    participant Queue as Async Queue
     participant Worker as Worker Thread
     participant Store as Event Store
 
-    Bench->>Dispatch: Envoyer 10K événements
-    Note over Dispatch: Dispatch ultra-rapide (7ms)
+    Bench->>Dispatch: Send 10K events
+    Note over Dispatch: Ultra-fast dispatch (7ms)
 
-    loop 10,000 événements
-        Dispatch->>Queue: Ajouter à la queue
+    loop 10,000 events
+        Dispatch->>Queue: Add to queue
     end
 
-    Bench->>Bench: Attendre traitement (5s)
+    Bench->>Bench: Wait for processing (5s)
 
-    par Traitement Asynchrone
-        Worker->>Queue: Récupérer événement
-        Worker->>Store: Persister événement
-        Store->>Store: Écrire sur disque
+    par Async Processing
+        Worker->>Queue: Fetch event
+        Worker->>Store: Persist event
+        Store->>Store: Write to disk
     end
 
-    Bench->>Store: Compter événements persistés
-    Store-->>Bench: 10,000 événements confirmés
+    Bench->>Store: Count persisted events
+    Store-->>Bench: 10,000 events confirmed
 
-    Note over Bench: Total: 5053ms (4x plus rapide)
+    Note over Bench: Total: 5053ms (4x faster)
 ```
 
-## 🏗️ Architecture des Exemples
+## Example Architectures
 
 ### Product App (E-commerce)
 
 ```mermaid
 graph TB
     subgraph "Product App"
-        subgraph "Routes HTTP"
+        subgraph "HTTP Routes"
             AUTH_ROUTE[/auth/login]
             PRODUCTS_ROUTE[/api/products]
             BENCHMARK_ROUTE[/api/admin/benchmark-engine]
         end
 
-        subgraph "Événements Métier"
+        subgraph "Business Events"
             PRODUCT_CREATED[ProductCreated]
             PRODUCT_UPDATED[ProductUpdated]
             USER_REGISTERED[UserRegistered]
         end
 
-        subgraph "État Application"
+        subgraph "Application State"
             PRODUCTS_STATE[products: HashMap]
             USERS_STATE[users: HashMap]
             SECURITY_STATE[security: RBAC]
         end
 
-        subgraph "Persistance"
+        subgraph "Persistence"
             EVENTS_LOG[events.raftlog]
             STATE_SNAP[state.raftsnap]
         end
@@ -397,24 +397,24 @@ graph TB
 ```mermaid
 graph TB
     subgraph "IoT Timeseries"
-        subgraph "Routes HTTP"
+        subgraph "HTTP Routes"
             STATS_ROUTE[/api/stats]
             GENERATE_ROUTE[/api/generate-fresh]
             DUPLICATES_ROUTE[/api/test-duplicates]
         end
 
-        subgraph "Événements IoT"
+        subgraph "IoT Events"
             BATCH_READINGS[BatchReadingsAdded]
             SENSOR_READING[SensorReading]
         end
 
-        subgraph "État IoT"
+        subgraph "IoT State"
             SENSORS_STATE[sensors: HashMap]
             READINGS_STATE[recent_readings: Vec]
             LOCATION_INDEX[location_index: HashMap]
         end
 
-        subgraph "Mode Adaptatif"
+        subgraph "Adaptive Mode"
             EAGER_LOADING[EagerLoading Mode]
             MEMORY_USAGE[Memory Usage Tracking]
         end
@@ -431,28 +431,28 @@ graph TB
     STATS_ROUTE --> MEMORY_USAGE
 ```
 
-## 🎯 Flux de Données Complet
+## Complete Data Flow
 
-### Injection de Données Massive
+### Massive Data Injection
 
 ```mermaid
 flowchart LR
-    subgraph "Injection Massive"
-        SCRIPT[Script d'injection]
-        BATCHES[Batches de données]
-        TEMP_FILES[Fichiers temporaires]
+    subgraph "Massive Injection"
+        SCRIPT[Injection Script]
+        BATCHES[Data Batches]
+        TEMP_FILES[Temporary Files]
     end
 
-    subgraph "Serveur Lithair"
-        HTTP_SERVER[Serveur HTTP]
-        EVENT_QUEUE[Queue d'événements]
+    subgraph "Lithair Server"
+        HTTP_SERVER[HTTP Server]
+        EVENT_QUEUE[Event Queue]
         WORKER[Worker Thread]
     end
 
-    subgraph "Persistance"
+    subgraph "Persistence"
         EVENT_LOG[Event Log]
         SNAPSHOTS[Snapshots]
-        DEDUP_INDEX[Index Dédup]
+        DEDUP_INDEX[Dedup Index]
     end
 
     SCRIPT --> BATCHES
@@ -469,57 +469,53 @@ flowchart LR
     style EVENT_LOG fill:#fff3e0
 ```
 
-## 📈 Métriques de Performance
+## Performance Metrics
 
-### Comparaison Avant/Après Optimisations
+### Before/After Optimization Comparison
 
 ```mermaid
 xychart-beta
-    title "Performance Benchmark (événements/sec)"
-    x-axis [Avant, Après]
-    y-axis "Événements par seconde" 0 --> 2500
+    title "Performance Benchmark (events/sec)"
+    x-axis [Before, After]
+    y-axis "Events per second" 0 --> 2500
     bar [500, 2000]
 ```
 
-### Utilisation Mémoire par Taille de Dataset
+### Memory Usage by Dataset Size
 
 ```mermaid
 xychart-beta
-    title "Utilisation Mémoire"
+    title "Memory Usage"
     x-axis ["10MB", "100MB", "500MB", "1GB"]
-    y-axis "Mémoire (MB)" 0 --> 1200
+    y-axis "Memory (MB)" 0 --> 1200
     line [12, 120, 600, 1200]
 ```
 
-## 🔍 Points Clés à Retenir
+## Key Takeaways
 
-### Avantages Architecturaux
+### Architectural Advantages
 
-1. **Un seul binaire** - Pas de base de données externe
-2. **Accès mémoire direct** - 1,000,000x plus rapide que SQL
-3. **Event sourcing natif** - Audit trail complet
-4. **Indexes pré-calculés** - Requêtes O(1)
-5. **Déduplication automatique** - Idempotence garantie
+1. **Single binary** - No external database
+2. **Direct memory access** - 1,000,000x faster than SQL
+3. **Native event sourcing** - Complete audit trail
+4. **Pre-calculated indexes** - O(1) queries
+5. **Automatic deduplication** - Guaranteed idempotence
 
-### Optimisations Appliquées
+### Applied Optimizations
 
-1. **Logging désactivé** - 4x amélioration des performances
-2. **Snapshots moins fréquents** - Réduction I/O disque
-3. **Timeout adaptatif** - Attente optimisée pour l'asynchrone
-4. **Persistance binaire** - Option pour performances extrêmes
+1. **Logging disabled** - 4x performance improvement
+2. **Less frequent snapshots** - Reduced disk I/O
+3. **Adaptive timeout** - Optimized async waiting
+4. **Binary persistence** - Option for extreme performance
 
-### Cas d'Usage Optimaux
+### Optimal Use Cases
 
-- **Applications web** avec données < 500MB
-- **SaaS multi-tenant** avec isolation
-- **Dashboards temps réel** nécessitant latence ultra-faible
-- **Prototypage rapide** sans configuration base de données
+- **Web applications** with data < 500MB
+- **Multi-tenant SaaS** with isolation
+- **Real-time dashboards** requiring ultra-low latency
+- **Rapid prototyping** without database configuration
 
-Cette architecture disruptif permet à Lithair de livrer des performances exceptionnelles tout en maintenant la simplicité d'un déploiement mono-binaire mais qui est aussi compatible avec des applications plus complexes.
-
-Ce binaire n'est pas pour autant "dans son coin", puisque que, comme son nom l'indique, il peut créer plusieurs instances afin d'avoir un cluster géré grâce au protocole Raft.
-
-## 🎯 Key Benefits of the Lithair Approach
+## Key Benefits of the Lithair Approach
 
 ### Eliminates Architecture Complexity
 
@@ -548,7 +544,7 @@ Ce binaire n'est pas pour autant "dans son coin", puisque que, comme son nom l'i
 - **Eliminating over-engineering** - Right-sized for most use cases
 - **Faster development** - Focus on business logic, not infrastructure
 - **Easier maintenance** - Single binary, declarative rules
-- **Dashboards temps réel** nécessitant latence ultra-faible
-- **Prototypage rapide** sans configuration base de données
 
-Cette architecture disruptif permet à Lithair de livrer des performances exceptionnelles tout en maintenant la simplicité d'un déploiement mono-binaire.
+This disruptive architecture allows Lithair to deliver exceptional performance while maintaining the simplicity of a single-binary deployment.
+
+The binary is not isolated - as the name suggests, it can create multiple instances to form a cluster managed via the Raft consensus protocol.
