@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::features::world::LithairWorld;
 
-// Structures pour les métriques
+// Structures for metrics
 #[derive(Debug, Clone)]
 pub struct PerformanceMetrics {
     pub total_requests: usize,
@@ -67,19 +67,19 @@ impl PerformanceMetrics {
 }
 
 // Background Steps
-#[given(expr = "un serveur Lithair démarre sur le port {string}")]
+#[given(expr = "a Lithair server starts on port {string}")]
 async fn start_server_on_port(world: &mut LithairWorld, port: String) {
-    // TODO: Démarrer le vrai serveur Lithair avec HttpServer
-    // Pour l'instant, on utilise test_server
+    // TODO: Start the real Lithair server with HttpServer
+    // For now, we use test_server
     let persist_path = {
         let metrics = world.metrics.lock().await;
         metrics.persist_path.clone()
     };
-    
-    // Créer le répertoire de persistence
+
+    // Create the persistence directory
     std::fs::create_dir_all(&persist_path).ok();
-    
-    // Lancer le serveur
+
+    // Start the server
     let _binary = "./target/release/test_server";
     let _args = vec![
         "--port".to_string(),
@@ -87,48 +87,48 @@ async fn start_server_on_port(world: &mut LithairWorld, port: String) {
         "--persist".to_string(),
         persist_path.clone(),
     ];
-    
-    // TODO: Utiliser Process pour démarrer le serveur
-    // Pour l'instant, on suppose qu'il est déjà lancé
-    
+
+    // TODO: Use Process to start the server
+    // For now, we assume it's already running
+
     let base_url = format!("http://localhost:{}", port);
     let server_port = port.parse().unwrap_or(21500);
-    
+
     {
         let mut metrics = world.metrics.lock().await;
         metrics.base_url = base_url.clone();
         metrics.server_port = server_port;
     }
-    
-    // Attendre que le serveur soit prêt
+
+    // Wait for the server to be ready
     tokio::time::sleep(Duration::from_secs(2)).await;
-    
-    println!("✅ Serveur démarré sur {}", base_url);
+
+    println!("✅ Server started on {}", base_url);
 }
 
-#[given(expr = "le serveur utilise la persistence dans {string}")]
+#[given(expr = "the server uses persistence in {string}")]
 async fn set_persistence_path(world: &mut LithairWorld, path: String) {
     {
         let mut metrics = world.metrics.lock().await;
         metrics.persist_path = path.clone();
     }
     std::fs::create_dir_all(&path).ok();
-    println!("✅ Persistence configurée: {}", path);
+    println!("✅ Persistence configured: {}", path);
 }
 
-#[given("le serveur est prêt à recevoir des requêtes")]
+#[given("the server is ready to receive requests")]
 async fn server_ready(world: &mut LithairWorld) {
     let client = reqwest::Client::new();
     let health_url = {
         let metrics = world.metrics.lock().await;
         format!("{}/health", metrics.base_url)
     };
-    
-    // Attendre que le serveur réponde
+
+    // Wait for the server to respond
     for _ in 0..10 {
         match client.get(&health_url).send().await {
             Ok(resp) if resp.status().is_success() => {
-                println!("✅ Serveur prêt");
+                println!("✅ Server ready");
                 return;
             }
             _ => {
@@ -136,12 +136,12 @@ async fn server_ready(world: &mut LithairWorld) {
             }
         }
     }
-    
-    panic!("❌ Serveur non prêt après 5 secondes");
+
+    panic!("❌ Server not ready after 5 seconds");
 }
 
-// Throughput écriture
-#[when(expr = "je crée {int} articles en parallèle avec {int} workers")]
+// Write throughput
+#[when(expr = "I create {int} articles in parallel with {int} workers")]
 async fn create_articles_parallel(world: &mut LithairWorld, count: usize, workers: usize) {
     let start = Instant::now();
     let base_url = {
@@ -201,13 +201,13 @@ async fn create_articles_parallel(world: &mut LithairWorld, count: usize, worker
         handles.push(handle);
     }
     
-    // Attendre tous les workers
+    // Wait for all workers
     for handle in handles {
         handle.join().unwrap();
     }
-    
+
     let duration = start.elapsed();
-    
+
     let m = metrics.lock().unwrap();
     let throughput = m.total_requests as f64 / duration.as_secs_f64();
     let error_count = m.failed_requests;
@@ -215,8 +215,8 @@ async fn create_articles_parallel(world: &mut LithairWorld, count: usize, worker
     let latency_p99 = m.p99();
     let successful = m.successful_requests;
     drop(m);
-    
-    // Sauvegarder dans world
+
+    // Save in world
     {
         let mut world_metrics = world.metrics.lock().await;
         world_metrics.throughput = throughput;
@@ -225,101 +225,101 @@ async fn create_articles_parallel(world: &mut LithairWorld, count: usize, worker
         world_metrics.latency_p95 = latency_p95;
         world_metrics.latency_p99 = latency_p99;
     }
-    
-    println!("📊 {} articles créés en {:?}", successful, duration);
+
+    println!("📊 {} articles created in {:?}", successful, duration);
     println!("📈 Throughput: {:.2} req/s", throughput);
 }
 
-#[then(expr = "le temps total doit être inférieur à {int} seconde(s)")]
+#[then(expr = "the total time must be less than {int} second(s)")]
 async fn check_total_time(world: &mut LithairWorld, max_seconds: u64) {
     let duration_secs = {
         let metrics = world.metrics.lock().await;
         metrics.total_duration.as_secs_f64()
     };
-    
-    println!("⏱️  Temps total: {:.2}s (max: {}s)", duration_secs, max_seconds);
-    
+
+    println!("⏱️  Total time: {:.2}s (max: {}s)", duration_secs, max_seconds);
+
     assert!(
         duration_secs < max_seconds as f64,
-        "❌ Temps trop long: {:.2}s > {}s",
+        "❌ Time too long: {:.2}s > {}s",
         duration_secs,
         max_seconds
     );
 }
 
-#[then(expr = "le throughput doit être supérieur à {int} requêtes par seconde")]
+#[then(expr = "the throughput must be greater than {int} requests per second")]
 async fn check_throughput(world: &mut LithairWorld, min_throughput: usize) {
     let throughput = {
         let metrics = world.metrics.lock().await;
         metrics.throughput
     };
-    
+
     println!(
         "📈 Throughput: {:.2} req/s (min: {} req/s)",
         throughput, min_throughput
     );
-    
+
     assert!(
         throughput > min_throughput as f64,
-        "❌ Throughput insuffisant: {:.2} < {}",
+        "❌ Insufficient throughput: {:.2} < {}",
         throughput,
         min_throughput
     );
 }
 
-#[then("tous les articles doivent être persistés")]
+#[then("all articles must be persisted")]
 async fn check_all_persisted(world: &mut LithairWorld) {
-    // Vérifier le fichier events.raftlog
+    // Check the events.raftlog file
     let log_file = {
         let metrics = world.metrics.lock().await;
         format!("{}/events.raftlog", metrics.persist_path)
     };
-    
+
     if let Ok(content) = std::fs::read_to_string(&log_file) {
         let line_count = content.lines().count();
-        println!("✅ {} événements persistés dans {}", line_count, log_file);
+        println!("✅ {} events persisted in {}", line_count, log_file);
     } else {
-        println!("⚠️  Fichier de persistence non trouvé: {}", log_file);
+        println!("⚠️  Persistence file not found: {}", log_file);
     }
 }
 
-#[then("aucune erreur ne doit être enregistrée")]
+#[then("no error must be recorded")]
 async fn no_errors(world: &mut LithairWorld) {
     let error_count = {
         let metrics = world.metrics.lock().await;
         metrics.error_count
     };
-    
+
     assert_eq!(
         error_count, 0,
-        "❌ {} erreurs enregistrées",
+        "❌ {} errors recorded",
         error_count
     );
-    println!("✅ Aucune erreur");
+    println!("✅ No errors");
 }
 
-// Throughput lecture
-#[given(expr = "le serveur contient {int} articles pré-créés")]
+// Read throughput
+#[given(expr = "the server contains {int} pre-created articles")]
 async fn precreate_articles(world: &mut LithairWorld, count: usize) {
     let client = reqwest::Client::new();
     let url = {
         let metrics = world.metrics.lock().await;
         format!("{}/api/articles", metrics.base_url)
     };
-    
+
     for i in 0..count {
         let article = json!({
             "title": format!("Pre-created Article {}", i),
             "content": format!("Content {}", i),
         });
-        
+
         client.post(&url).json(&article).send().await.ok();
     }
-    
-    println!("✅ {} articles pré-créés", count);
+
+    println!("✅ {} articles pre-created", count);
 }
 
-#[when(expr = "je lis {int} fois la liste des articles avec {int} workers")]
+#[when(expr = "I read the article list {int} times with {int} workers")]
 async fn read_articles_parallel(world: &mut LithairWorld, count: usize, workers: usize) {
     let start = Instant::now();
     let base_url = {
@@ -375,7 +375,7 @@ async fn read_articles_parallel(world: &mut LithairWorld, count: usize, workers:
     for handle in handles {
         handle.join().unwrap();
     }
-    
+
     let duration = start.elapsed();
     let m = metrics.lock().unwrap();
     let throughput = m.total_requests as f64 / duration.as_secs_f64();
@@ -383,7 +383,7 @@ async fn read_articles_parallel(world: &mut LithairWorld, count: usize, workers:
     let latency_p95 = m.p95();
     let successful = m.successful_requests;
     drop(m);
-    
+
     {
         let mut world_metrics = world.metrics.lock().await;
         world_metrics.throughput = throughput;
@@ -391,41 +391,41 @@ async fn read_articles_parallel(world: &mut LithairWorld, count: usize, workers:
         world_metrics.error_count = error_count;
         world_metrics.latency_p95 = latency_p95;
     }
-    
-    println!("📊 {} lectures en {:?}", successful, duration);
+
+    println!("📊 {} reads in {:?}", successful, duration);
     println!("📈 Throughput: {:.2} req/s", throughput);
 }
 
-#[then(expr = "la latence p95 doit être inférieure à {int} millisecondes")]
+#[then(expr = "the p95 latency must be less than {int} milliseconds")]
 async fn check_p95_latency(world: &mut LithairWorld, max_ms: u64) {
     let p95_ms = {
         let metrics = world.metrics.lock().await;
         metrics.latency_p95.as_millis()
     };
-    
-    println!("📊 Latence p95: {}ms (max: {}ms)", p95_ms, max_ms);
-    
+
+    println!("📊 p95 latency: {}ms (max: {}ms)", p95_ms, max_ms);
+
     assert!(
         p95_ms < max_ms as u128,
-        "❌ Latence p95 trop élevée: {}ms > {}ms",
+        "❌ p95 latency too high: {}ms > {}ms",
         p95_ms,
         max_ms
     );
 }
 
-#[then("aucune erreur de connexion ne doit survenir")]
+#[then("no connection error must occur")]
 async fn no_connection_errors(world: &mut LithairWorld) {
     let error_count = {
         let metrics = world.metrics.lock().await;
         metrics.error_count
     };
-    
+
     assert_eq!(
         error_count, 0,
-        "❌ {} erreurs de connexion",
+        "❌ {} connection errors",
         error_count
     );
-    println!("✅ Aucune erreur de connexion");
+    println!("✅ No connection errors");
 }
 
-// TODO: Implémenter les autres steps pour charge mixte, keep-alive, etc.
+// TODO: Implement other steps for mixed load, keep-alive, etc.
