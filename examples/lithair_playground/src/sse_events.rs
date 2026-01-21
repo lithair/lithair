@@ -5,8 +5,9 @@
 //! - Cluster state changes
 //! - Benchmark progress
 
+#![allow(dead_code)]
+
 use bytes::Bytes;
-use futures::stream::StreamExt;
 use http::{Response, StatusCode};
 use http_body_util::StreamBody;
 use std::collections::HashMap;

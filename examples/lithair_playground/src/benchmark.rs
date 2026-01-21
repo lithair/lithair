@@ -6,6 +6,8 @@
 //! - Per-operation and per-table statistics
 //! - Real-time progress reporting
 
+#![allow(dead_code)]
+
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

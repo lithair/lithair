@@ -2,6 +2,8 @@
 //!
 //! Simple models to demonstrate CRUD + replication capabilities.
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
