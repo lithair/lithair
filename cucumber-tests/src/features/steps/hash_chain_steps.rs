@@ -7,9 +7,7 @@ use crate::features::world::LithairWorld;
 use cucumber::{given, then, when};
 use lithair_core::engine::{EventEnvelope, EventStore};
 use std::fs;
-use std::sync::Arc;
 use tempfile::TempDir;
-use tokio::sync::Mutex;
 
 // ==================== SETUP STEPS ====================
 

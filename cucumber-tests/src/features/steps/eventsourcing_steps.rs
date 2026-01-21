@@ -983,7 +983,7 @@ async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld
     config.event_log_path = base_path.clone();
 
     // Run 1: appliquer l'événement une première fois
-    let mut engine = Engine::<TestEngineApp>::new(config.clone())
+    let engine = Engine::<TestEngineApp>::new(config.clone())
         .expect("Échec d'initialisation du moteur pour la déduplication persistante");
 
     let event = TestEvent::ArticleCreated {
@@ -1002,7 +1002,7 @@ async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld
     drop(engine);
 
     // Run 2: redémarrer le moteur et ré-appliquer le même événement
-    let mut engine2 = Engine::<TestEngineApp>::new(config)
+    let engine2 = Engine::<TestEngineApp>::new(config)
         .expect("Échec de réinitialisation du moteur pour la déduplication persistante");
 
     let result_second = engine2.apply_event(key, event);
@@ -1100,7 +1100,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
     config.use_multi_file_store = true;
 
     // Run 1: appliquer l'événement une première fois en mode multi-fichiers
-    let mut engine = Engine::<TestEngineApp>::new(config.clone()).expect(
+    let engine = Engine::<TestEngineApp>::new(config.clone()).expect(
         "Échec d'initialisation du moteur en mode multi-fichiers pour la déduplication persistante",
     );
 
@@ -1120,7 +1120,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
     drop(engine);
 
     // Run 2: redémarrer le moteur et ré-appliquer le même événement
-    let mut engine2 = Engine::<TestEngineApp>::new(config).expect(
+    let engine2 = Engine::<TestEngineApp>::new(config).expect(
         "Échec de réinitialisation du moteur pour la déduplication persistante en multi-fichiers",
     );
 
@@ -1240,7 +1240,7 @@ async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld
     config.event_log_path = base_path.clone();
     config.use_multi_file_store = true;
 
-    let mut engine = Engine::<TestEngineApp>::new(config)
+    let engine = Engine::<TestEngineApp>::new(config)
         .expect("Échec d'initialisation du moteur en mode multi-fichiers");
 
     // Deux structures / tables logiques distinctes: articles et users
@@ -1416,7 +1416,7 @@ async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     config.event_log_path = base_path.clone();
     config.use_multi_file_store = true;
 
-    let mut engine = Engine::<TestEngineApp>::new(config)
+    let engine = Engine::<TestEngineApp>::new(config)
         .expect("Échec d'initialisation du moteur en mode multi-fichiers pour la rotation");
 
     // Table ciblée pour la rotation: articles (aggregate_id = "articles")
@@ -1571,7 +1571,7 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     config.event_log_path = base_path.clone();
     config.use_multi_file_store = true;
 
-    let mut engine = Engine::<TestEngineApp>::new(config).expect(
+    let engine = Engine::<TestEngineApp>::new(config).expect(
         "Échec d'initialisation du moteur en mode multi-fichiers pour les relations dynamiques",
     );
 

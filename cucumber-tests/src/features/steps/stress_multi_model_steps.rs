@@ -1,8 +1,7 @@
 use crate::features::world::LithairWorld;
 use cucumber::{given, then, when};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -336,7 +335,7 @@ async fn when_execute_more_crud_remaining(world: &mut LithairWorld, operation_co
         operation_count
     );
 
-    let ports = world.get_real_cluster_ports().await;
+    let _ports = world.get_real_cluster_ports().await;
 
     // Filter to only alive nodes
     let alive_ports: Vec<u16> = {

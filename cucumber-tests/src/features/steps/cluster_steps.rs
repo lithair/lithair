@@ -63,7 +63,7 @@ async fn when_cluster_starts(world: &mut LithairWorld, node_count: u32) {
 }
 
 #[then("a leader must be elected automatically")]
-async fn then_leader_elected(world: &mut LithairWorld) {
+async fn then_leader_elected(_world: &mut LithairWorld) {
     // In current implementation, node 0 is the leader
     println!("✅ Leader elected automatically (node 0)");
 }
@@ -415,7 +415,7 @@ async fn when_create_articles_on_leader_en(world: &mut LithairWorld, count: u32)
 }
 
 #[when("data is replicated to all followers")]
-async fn when_data_replicated(world: &mut LithairWorld) {
+async fn when_data_replicated(_world: &mut LithairWorld) {
     sleep(Duration::from_millis(500)).await; // Wait for replication
     println!("✅ Data replicated to followers");
 }
@@ -452,7 +452,7 @@ async fn given_cluster_nodes(world: &mut LithairWorld, node_count: u32) {
     let ports = world.start_cluster(node_count as usize).await.expect("Failed to start cluster");
 
     // ✅ Vérifier que tous les nœuds répondent
-    for (i, port) in ports.iter().enumerate() {
+    for (i, _port) in ports.iter().enumerate() {
         world
             .make_cluster_request(i, "GET", "/health", None)
             .await

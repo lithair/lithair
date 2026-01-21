@@ -1,9 +1,7 @@
 use cucumber::{given, then, when};
-use std::path::Path;
 use std::time::Instant;
 
 use crate::features::world::LithairWorld;
-use lithair_core::engine::events::EventEnvelope;
 use lithair_core::engine::MultiFileEventStore;
 
 // ==================== SETUP ====================
@@ -251,7 +249,7 @@ async fn then_total_events_must_be(
 }
 
 #[then("tous ces événements doivent avoir un CRC32 valide")]
-async fn then_all_events_must_have_valid_crc32(world: &mut LithairWorld) {
+async fn then_all_events_must_have_valid_crc32(_world: &mut LithairWorld) {
     // Déjà validé lors de la lecture
     println!("✅ Tous les événements ont un CRC32 valide");
 }

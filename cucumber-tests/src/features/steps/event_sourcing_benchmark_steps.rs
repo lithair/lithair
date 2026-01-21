@@ -1,6 +1,5 @@
 use crate::features::world::{LithairWorld, TestArticle};
 use cucumber::{given, then, when};
-use std::sync::Arc;
 use std::time::Instant;
 
 // ==================== CONTEXT STEPS ====================

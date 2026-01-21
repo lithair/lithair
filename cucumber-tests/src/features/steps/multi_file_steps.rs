@@ -1,8 +1,6 @@
 use cucumber::{given, then, when};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::Mutex;
 
 use crate::features::world::LithairWorld;
 use lithair_core::engine::events::EventEnvelope;
@@ -440,7 +438,7 @@ async fn then_detect_corrupted_events(
 }
 
 #[then("les autres fichiers ne doivent pas être affectés")]
-async fn then_other_files_not_affected(world: &mut LithairWorld) {
+async fn then_other_files_not_affected(_world: &mut LithairWorld) {
     // Les autres fichiers n'existent pas dans ce scénario, donc OK
     println!("✅ Autres fichiers non affectés");
 }
@@ -797,7 +795,7 @@ async fn then_must_get_exactly_events(world: &mut LithairWorld, expected_count: 
 }
 
 #[then(expr = "tous doivent être de type {string}")]
-async fn then_all_must_be_type(world: &mut LithairWorld, expected_type: String) {
+async fn then_all_must_be_type(_world: &mut LithairWorld, expected_type: String) {
     // Déjà vérifié par la lecture sélective
     println!("✅ Tous les événements sont de type '{}'", expected_type);
 }

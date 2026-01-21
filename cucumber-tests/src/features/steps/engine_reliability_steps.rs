@@ -595,7 +595,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
             let mut duplicates = 0usize;
 
             for _ in 0..repeats {
-                let mut engine_guard = engine_clone.lock().await;
+                let engine_guard = engine_clone.lock().await;
                 let key = event_clone.aggregate_id().unwrap_or("global".to_string());
                 match engine_guard.apply_event(key, event_clone.clone()) {
                     Ok(_) => applied += 1,
@@ -627,7 +627,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
 
     // Forcer un flush des événements persistés
     {
-        let mut engine_guard = engine.lock().await;
+        let engine_guard = engine.lock().await;
         engine_guard.flush().expect("Échec flush moteur dédup concurrente");
     }
 
