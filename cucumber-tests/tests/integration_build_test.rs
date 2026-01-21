@@ -1,7 +1,11 @@
-/// # Tests d'Intégration Build - Organisation Propre
-///
-/// Ce fichier contient les tests du binaire final, organisés en modules.
-/// Les helpers réutilisables sont dans `tests/helpers/mod.rs`
+//! # Tests d'Intégration Build - Organisation Propre
+//!
+//! Ce fichier contient les tests du binaire final, organisés en modules.
+//! Les helpers réutilisables sont dans `tests/helpers/mod.rs`
+
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 mod helpers;
 
 use helpers::{CliTester, LoadTester, PersistenceChecker, TestServer};

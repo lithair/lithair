@@ -6,11 +6,12 @@
 //! - Verifies consistency across all nodes
 //! - Reports detailed results
 
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

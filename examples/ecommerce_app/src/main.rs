@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use lithair_core::model::{FieldPolicy, ModelSpec};
 use lithair_core::{
     engine::{AutoJoiner, DataSource, RaftstoneApplication, RelationRegistry},

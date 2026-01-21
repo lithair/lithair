@@ -63,6 +63,9 @@
 //! - Add `pub sku: String` → Breaking change (rejected in strict mode)
 //! - Add `#[db(default = 0)] pub rating: i32` → Safe migration
 
+#![allow(dead_code)]
+#![allow(unused_assignments)]
+
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use lithair_core::app::LithairServer;

@@ -4,6 +4,7 @@ use cucumber::World;
 
 mod features {
     pub mod steps {
+        #[allow(unused_imports)]
         pub use cucumber_tests::features::steps::serialization_steps::*;
     }
     pub mod world {

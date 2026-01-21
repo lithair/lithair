@@ -7,6 +7,9 @@
 //!
 //! Stack: DeclarativeModel + LithairServer + Scc2Engine + Event Sourcing
 
+#![allow(dead_code)]
+#![allow(unused_must_use)]
+
 use anyhow::Result;
 use bytes::Bytes;
 use clap::Parser;

@@ -7,7 +7,7 @@ use lithair_core::model_inspect::Inspectable;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 
 // --- Global Config for Tests (to simulate dynamic ModelSpec) ---
@@ -525,7 +525,7 @@ async fn when_expand_relations(w: &mut DeclarativeWorld, id: String) {
     // Need to read spec from global config because the instance in engine
     // might be a default one, but we want the one we configured.
     // Actually, TestState uses the global config in its ModelSpec impl, so using engine state is correct.
-    let spec_wrapper = TEST_SPEC_CONFIG.read().unwrap();
+    let _spec_wrapper = TEST_SPEC_CONFIG.read().unwrap();
     // We need a struct implementing ModelSpec to pass to expand.
     // Since TestState implements ModelSpec using the global config, we can use an instance of TestState.
     // BUT, we are in an async function and reading state from engine returns a value, not a ref to state that we can pass as ModelSpec.
