@@ -455,12 +455,12 @@ tasks:
   docs:lint:
     desc: Lint Markdown files with markdownlint-cli (via npx)
     cmds:
-      - npx -y markdownlint-cli@0.38.0 "docs/**/*.md" "README.md"
+      - npx -y markdownlint-cli@0.38.0 --config .markdownlint.json "docs/**/*.md" "README.md"
 
   docs:lint:fix:
     desc: Auto-fix Markdown files with markdownlint-cli (via npx)
     cmds:
-      - npx -y markdownlint-cli@0.38.0 --fix "docs/**/*.md" "README.md"
+      - npx -y markdownlint-cli@0.38.0 --config .markdownlint.json --fix "docs/**/*.md" "README.md"
 
   docs:build:
     desc: Build documentation with mdBook (outputs to lithair-website/public/docs)
