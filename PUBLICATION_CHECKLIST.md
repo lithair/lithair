@@ -29,10 +29,10 @@ task docs:build
 ## Manual Checklist
 
 ### Documentation
-- [ ] All documentation in English
-- [ ] mdBook structure complete (`docs/`)
+- [x] All documentation in English
+- [x] mdBook structure complete (`docs/`)
 - [ ] README.md accurate and up-to-date
-- [ ] CLAUDE.md contains correct project guidelines
+- [x] CLAUDE.md contains correct project guidelines
 - [ ] API documentation generated (`cargo doc`)
 
 ### Code Quality
@@ -52,12 +52,12 @@ task docs:build
 ### Tests
 - [ ] Unit tests pass
 - [ ] Integration tests pass
-- [ ] BDD tests pass (all scenarios)
+- [x] BDD tests pass (all scenarios)
 - [ ] Performance benchmarks meet targets
 - [ ] Edge cases covered
 
 ### Dependencies
-- [ ] All dependencies up-to-date
+- [x] All dependencies up-to-date
 - [ ] No deprecated dependencies
 - [ ] License compatibility verified (MIT/Apache-2.0)
 - [ ] Minimal dependency footprint
@@ -83,10 +83,14 @@ echo "[1/7] Running CI full..."
 task ci:full
 
 echo "[2/7] Running security audit..."
-cargo audit || echo "Warning: cargo audit not installed or failed"
+if ! command -v cargo-audit &> /dev/null; then
+    echo "Warning: cargo-audit not installed, skipping security audit..."
+else
+    cargo audit
+fi
 
 echo "[3/7] Checking for secrets..."
-if grep -rE "(password|secret|api_key|token)\s*=" --include="*.rs" --include="*.toml" | grep -v "test" | grep -v "example"; then
+if grep -rE --exclude-dir="target" --exclude-dir="examples" --exclude-dir="cucumber-tests" --include="*.rs" --include="*.toml" "(password|secret|api_key|token)\s*=" . ; then
     echo "ERROR: Potential secrets found!"
     exit 1
 fi
@@ -95,10 +99,14 @@ echo "[4/7] Building release..."
 task build:release
 
 echo "[5/7] Building documentation..."
-task docs:build || cargo doc --no-deps
+task docs:build
 
 echo "[6/7] Running BDD tests..."
-task bdd:all || echo "Warning: Some BDD tests may be skipped"
+if task --list 2>/dev/null | grep -q "bdd:all"; then
+    task bdd:all
+else
+    echo "Warning: BDD task not found, skipping..."
+fi
 
 echo "[7/7] Building examples..."
 cargo build --examples
@@ -119,7 +127,7 @@ This PR can be merged when:
 
 After merging:
 
-1. Tag the release: `git tag -a v0.1.0 -m "Initial public release"`
+1. Tag the release: `git tag -a vX.Y.Z -m "Release description"`
 2. Push tags: `git push --tags`
 3. Publish to crates.io (if applicable)
 4. Update documentation site
