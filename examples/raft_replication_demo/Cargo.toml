@@ -2,6 +2,7 @@
 name = "raft_replication_demo"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Lithair Distributed Replication Demo - Simple multi-node example"
 authors = ["Yoan Roblet (Arcker)"]
 

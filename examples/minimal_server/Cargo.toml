@@ -2,6 +2,7 @@
 name = "minimal_server"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 
 [[bin]]
 name = "minimal_server"

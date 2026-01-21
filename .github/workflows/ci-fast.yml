@@ -9,11 +9,25 @@ jobs:
   build-test-fast:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     container: rust:1-alpine
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show disk space
+        run: df -h /
 
       - name: Install system deps
         run: |
