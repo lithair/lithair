@@ -5,9 +5,7 @@
 //! - Admin endpoints (/_admin/schema/*) for human/CI management
 
 use super::LithairServer;
-use crate::schema::{
-    PendingSchemaChange, SchemaChangeStatus, SchemaSyncMessage, VoteStrategy,
-};
+use crate::schema::{PendingSchemaChange, SchemaChangeStatus, SchemaSyncMessage, VoteStrategy};
 use anyhow::Result;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -104,11 +102,7 @@ impl LithairServer {
                 let mut pending = pending_change;
 
                 // Set timeout if ManualApproval with timeout
-                if let VoteStrategy::ManualApproval {
-                    timeout: Some(timeout),
-                    ..
-                } = strategy
-                {
+                if let VoteStrategy::ManualApproval { timeout: Some(timeout), .. } = strategy {
                     pending = pending.with_timeout(*timeout);
                 }
 
@@ -167,15 +161,13 @@ impl LithairServer {
 
         // Check if change exists and is pending
         let change_status = state.pending_changes.get(&vote.change_id).map(|p| p.status.clone());
-        
+
         match change_status {
             None => {
                 return Ok(Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Schema change not found"}"#,
-                    )))
+                    .body(Full::new(Bytes::from(r#"{"error":"Schema change not found"}"#)))
                     .unwrap());
             }
             Some(status) if status != SchemaChangeStatus::Pending => {
@@ -196,18 +188,10 @@ impl LithairServer {
 
         if vote.approve {
             pending.add_approval(vote.node_id);
-            log::info!(
-                "👍 Node {} approved schema change {}",
-                vote.node_id,
-                vote.change_id
-            );
+            log::info!("👍 Node {} approved schema change {}", vote.node_id, vote.change_id);
         } else {
             pending.add_rejection(vote.node_id, vote.reason);
-            log::info!(
-                "👎 Node {} rejected schema change {}",
-                vote.node_id,
-                vote.change_id
-            );
+            log::info!("👎 Node {} rejected schema change {}", vote.node_id, vote.change_id);
         }
 
         // Check if we have consensus
@@ -259,18 +243,15 @@ impl LithairServer {
         req: Request<hyper::body::Incoming>,
     ) -> Result<Response<Full<Bytes>>> {
         // Optional: filter by model name from query string
-        let model_name: Option<String> = req
-            .uri()
-            .query()
-            .and_then(|q| {
-                // Simple query parsing: model=SomeName
-                for pair in q.split('&') {
-                    if let Some(value) = pair.strip_prefix("model=") {
-                        return Some(value.to_string());
-                    }
+        let model_name: Option<String> = req.uri().query().and_then(|q| {
+            // Simple query parsing: model=SomeName
+            for pair in q.split('&') {
+                if let Some(value) = pair.strip_prefix("model=") {
+                    return Some(value.to_string());
                 }
-                None
-            });
+            }
+            None
+        });
 
         let state = self.schema_sync_state.read().await;
 
@@ -334,9 +315,7 @@ impl LithairServer {
         Ok(Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
-                serde_json::to_string_pretty(&response)?,
-            )))
+            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -378,9 +357,7 @@ impl LithairServer {
         Ok(Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
-                serde_json::to_string_pretty(&response)?,
-            )))
+            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -391,9 +368,7 @@ impl LithairServer {
         path: &str,
     ) -> Result<Response<Full<Bytes>>> {
         // Extract change_id from path
-        let change_id_str = path
-            .strip_prefix("/_admin/schema/approve/")
-            .unwrap_or_default();
+        let change_id_str = path.strip_prefix("/_admin/schema/approve/").unwrap_or_default();
 
         let change_id: uuid::Uuid = match change_id_str.parse() {
             Ok(id) => id,
@@ -401,9 +376,7 @@ impl LithairServer {
                 return Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Invalid change_id format"}"#,
-                    )))
+                    .body(Full::new(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
                     .unwrap());
             }
         };
@@ -417,15 +390,13 @@ impl LithairServer {
 
         // Check if change exists and is pending
         let change_status = state.pending_changes.get(&change_id).map(|p| p.status.clone());
-        
+
         match change_status {
             None => {
                 return Ok(Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Schema change not found"}"#,
-                    )))
+                    .body(Full::new(Bytes::from(r#"{"error":"Schema change not found"}"#)))
                     .unwrap());
             }
             Some(status) if status != SchemaChangeStatus::Pending => {
@@ -520,9 +491,7 @@ impl LithairServer {
         use http_body_util::BodyExt;
 
         // Extract change_id from path
-        let change_id_str = path
-            .strip_prefix("/_admin/schema/reject/")
-            .unwrap_or_default();
+        let change_id_str = path.strip_prefix("/_admin/schema/reject/").unwrap_or_default();
 
         let change_id: uuid::Uuid = match change_id_str.parse() {
             Ok(id) => id,
@@ -530,9 +499,7 @@ impl LithairServer {
                 return Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Invalid change_id format"}"#,
-                    )))
+                    .body(Full::new(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
                     .unwrap());
             }
         };
@@ -584,9 +551,7 @@ impl LithairServer {
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
-                    r#"{"error":"Schema change not found"}"#,
-                )))
+                .body(Full::new(Bytes::from(r#"{"error":"Schema change not found"}"#)))
                 .unwrap())
         }
     }
@@ -597,11 +562,7 @@ impl LithairServer {
         req: &Request<hyper::body::Incoming>,
     ) -> (String, Option<String>) {
         // Try to get from X-User-Id header
-        if let Some(user_id) = req
-            .headers()
-            .get("X-User-Id")
-            .and_then(|v| v.to_str().ok())
-        {
+        if let Some(user_id) = req.headers().get("X-User-Id").and_then(|v| v.to_str().ok()) {
             let user_name = req
                 .headers()
                 .get("X-User-Name")
@@ -646,8 +607,11 @@ impl LithairServer {
         let schema_count = state.schemas.len();
         let pending_count = state.pending_changes.len();
 
-        log::info!("🔄 Schema sync requested - current state: {} schemas, {} pending", 
-            schema_count, pending_count);
+        log::info!(
+            "🔄 Schema sync requested - current state: {} schemas, {} pending",
+            schema_count,
+            pending_count
+        );
 
         // TODO: Implement actual leader communication
         // For now, return current state as acknowledgment
@@ -681,10 +645,9 @@ impl LithairServer {
         // Collect model info first, then release lock
         let model_data: Vec<_> = {
             let models = self.models.read().await;
-            models.iter()
-                .filter_map(|m| {
-                    m.schema_extractor.as_ref().map(|e| (m.name.clone(), e.clone()))
-                })
+            models
+                .iter()
+                .filter_map(|m| m.schema_extractor.as_ref().map(|e| (m.name.clone(), e.clone())))
                 .collect()
         };
 
@@ -732,9 +695,9 @@ impl LithairServer {
             diffs.push(model_diff);
         }
 
-        let has_changes = diffs.iter().any(|d| {
-            d.get("status").and_then(|s| s.as_str()) != Some("in_sync")
-        });
+        let has_changes = diffs
+            .iter()
+            .any(|d| d.get("status").and_then(|s| s.as_str()) != Some("in_sync"));
 
         let response = serde_json::json!({
             "overall_status": if has_changes { "changes_detected" } else { "all_in_sync" },
@@ -758,21 +721,25 @@ impl LithairServer {
     pub(crate) async fn handle_admin_schema_history(&self) -> Result<Response<Full<Bytes>>> {
         let state = self.schema_sync_state.read().await;
 
-        let history: Vec<_> = state.change_history.iter().map(|change| {
-            serde_json::json!({
-                "id": change.id,
-                "model": change.model_name,
-                "applied_at": change.applied_at,
-                "applied_by_node": change.applied_by_node,
-                "changes": change.changes.iter().map(|c| {
-                    serde_json::json!({
-                        "type": format!("{:?}", c.change_type),
-                        "field": c.field_name,
-                        "strategy": format!("{:?}", c.migration_strategy),
-                    })
-                }).collect::<Vec<_>>(),
+        let history: Vec<_> = state
+            .change_history
+            .iter()
+            .map(|change| {
+                serde_json::json!({
+                    "id": change.id,
+                    "model": change.model_name,
+                    "applied_at": change.applied_at,
+                    "applied_by_node": change.applied_by_node,
+                    "changes": change.changes.iter().map(|c| {
+                        serde_json::json!({
+                            "type": format!("{:?}", c.change_type),
+                            "field": c.field_name,
+                            "strategy": format!("{:?}", c.migration_strategy),
+                        })
+                    }).collect::<Vec<_>>(),
+                })
             })
-        }).collect();
+            .collect();
 
         let response = serde_json::json!({
             "history": history,
@@ -786,7 +753,6 @@ impl LithairServer {
             .unwrap())
     }
 
-
     /// POST /_admin/schema/revalidate - Re-run schema validation
     ///
     /// Triggers schema validation against stored schemas. Useful for testing
@@ -794,8 +760,10 @@ impl LithairServer {
     ///
     /// Returns the validation results including any detected changes.
     pub(crate) async fn handle_admin_schema_revalidate(&self) -> Result<Response<Full<Bytes>>> {
-        use crate::schema::{load_schema_spec, save_schema_spec, SchemaChangeDetector, AppliedSchemaChange};
         use crate::config::SchemaMigrationMode;
+        use crate::schema::{
+            load_schema_spec, save_schema_spec, AppliedSchemaChange, SchemaChangeDetector,
+        };
         use std::path::Path;
 
         let base_path = Path::new(&self.config.storage.data_dir);
@@ -822,10 +790,9 @@ impl LithairServer {
         // Collect model info first, then release lock
         let model_data: Vec<_> = {
             let models = self.models.read().await;
-            models.iter()
-                .filter_map(|m| {
-                    m.schema_extractor.as_ref().map(|e| (m.name.clone(), e.clone()))
-                })
+            models
+                .iter()
+                .filter_map(|m| m.schema_extractor.as_ref().map(|e| (m.name.clone(), e.clone())))
                 .collect()
         };
 
@@ -833,12 +800,12 @@ impl LithairServer {
         for (model_name, extractor) in model_data {
             // Extract current schema
             let current_spec = extractor();
-            
+
             let stored = load_schema_spec(&model_name, base_path)?;
-            
+
             let model_result = if let Some(stored_spec) = stored {
                 let changes = SchemaChangeDetector::detect_changes(&stored_spec, &current_spec);
-                
+
                 if changes.is_empty() {
                     serde_json::json!({
                         "model": model_name,
@@ -847,7 +814,7 @@ impl LithairServer {
                     })
                 } else {
                     total_changes += changes.len();
-                    
+
                     // Record changes in history
                     let applied = AppliedSchemaChange {
                         id: uuid::Uuid::new_v4(),
@@ -872,22 +839,26 @@ impl LithairServer {
                     }
 
                     // Save updated schema if auto mode
-                    let new_version = if self.config.storage.schema_migration_mode == SchemaMigrationMode::Auto {
-                        let mut new_spec = current_spec.clone();
-                        new_spec.version = stored_spec.version + 1;
-                        save_schema_spec(&new_spec, base_path)?;
-                        new_spec.version
-                    } else {
-                        stored_spec.version
-                    };
+                    let new_version =
+                        if self.config.storage.schema_migration_mode == SchemaMigrationMode::Auto {
+                            let mut new_spec = current_spec.clone();
+                            new_spec.version = stored_spec.version + 1;
+                            save_schema_spec(&new_spec, base_path)?;
+                            new_spec.version
+                        } else {
+                            stored_spec.version
+                        };
 
-                    let change_details: Vec<_> = changes.iter().map(|c| {
-                        serde_json::json!({
-                            "type": format!("{:?}", c.change_type),
-                            "field": c.field_name,
-                            "strategy": format!("{:?}", c.migration_strategy),
+                    let change_details: Vec<_> = changes
+                        .iter()
+                        .map(|c| {
+                            serde_json::json!({
+                                "type": format!("{:?}", c.change_type),
+                                "field": c.field_name,
+                                "strategy": format!("{:?}", c.migration_strategy),
+                            })
                         })
-                    }).collect();
+                        .collect();
 
                     serde_json::json!({
                         "model": model_name,
@@ -936,9 +907,7 @@ impl LithairServer {
         use std::path::Path;
 
         // Extract change_id from path
-        let change_id_str = path
-            .strip_prefix("/_admin/schema/rollback/")
-            .unwrap_or_default();
+        let change_id_str = path.strip_prefix("/_admin/schema/rollback/").unwrap_or_default();
 
         let change_id: uuid::Uuid = match change_id_str.parse() {
             Ok(id) => id,
@@ -946,9 +915,7 @@ impl LithairServer {
                 return Ok(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Invalid change_id format"}"#,
-                    )))
+                    .body(Full::new(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
                     .unwrap());
             }
         };
@@ -964,8 +931,8 @@ impl LithairServer {
                 let model_name = change.model_name.clone();
 
                 // Find the change in pending_changes to get the old_spec
-                let old_spec = state.pending_changes.get(&change_id)
-                    .and_then(|p| p.old_spec.clone());
+                let old_spec =
+                    state.pending_changes.get(&change_id).and_then(|p| p.old_spec.clone());
 
                 match old_spec {
                     Some(previous_spec) => {
@@ -1005,26 +972,20 @@ impl LithairServer {
                             .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
                             .unwrap())
                     }
-                    None => {
-                        Ok(Response::builder()
-                            .status(StatusCode::UNPROCESSABLE_ENTITY)
-                            .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(
-                                r#"{"error":"Previous schema not available for rollback"}"#,
-                            )))
-                            .unwrap())
-                    }
+                    None => Ok(Response::builder()
+                        .status(StatusCode::UNPROCESSABLE_ENTITY)
+                        .header("Content-Type", "application/json")
+                        .body(Full::new(Bytes::from(
+                            r#"{"error":"Previous schema not available for rollback"}"#,
+                        )))
+                        .unwrap()),
                 }
             }
-            None => {
-                Ok(Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Change not found in history"}"#,
-                    )))
-                    .unwrap())
-            }
+            None => Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error":"Change not found in history"}"#)))
+                .unwrap()),
         }
     }
 
@@ -1090,8 +1051,10 @@ impl LithairServer {
             log::error!("Failed to persist lock status: {}", e);
         }
 
-        log::info!("🔒 Schema migrations LOCKED{}",
-            reason.as_ref().map(|r| format!(": {}", r)).unwrap_or_default());
+        log::info!(
+            "🔒 Schema migrations LOCKED{}",
+            reason.as_ref().map(|r| format!(": {}", r)).unwrap_or_default()
+        );
 
         let response = serde_json::json!({
             "status": "locked",
@@ -1148,9 +1111,11 @@ impl LithairServer {
 
         let auto_relock_msg = duration_secs.map(|d| format!(" (auto-relock in {}s)", d));
 
-        log::info!("🔓 Schema migrations UNLOCKED{}{}",
+        log::info!(
+            "🔓 Schema migrations UNLOCKED{}{}",
             reason.as_ref().map(|r| format!(": {}", r)).unwrap_or_default(),
-            auto_relock_msg.as_deref().unwrap_or(""));
+            auto_relock_msg.as_deref().unwrap_or("")
+        );
 
         let response = serde_json::json!({
             "status": "unlocked",

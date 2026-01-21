@@ -3,16 +3,19 @@
 //! Provides reusable patterns for proxying requests to backend handlers,
 //! particularly useful for DeclarativeHttpHandler routing and API management.
 
+use crate::http::{
+    internal_server_error_response, not_found_response, parse_api_path_segments, Req, Resp,
+};
 #[allow(unused_imports)]
 use http_body_util::BodyExt;
-use crate::http::{internal_server_error_response, not_found_response, parse_api_path_segments, Req, Resp};
-use std::future::Future;
-use std::pin::Pin;
 #[cfg(test)]
 use hyper::StatusCode;
+use std::future::Future;
+use std::pin::Pin;
 
 /// Future type for backend handler functions
-pub type BackendHandlerFuture = Pin<Box<dyn Future<Output = Result<Resp, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
+pub type BackendHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<Resp, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
 
 /// Generic backend API router
 pub struct BackendRouter {
@@ -38,18 +41,11 @@ pub struct BackendRoute {
 impl BackendRouter {
     /// Create a new backend router
     pub fn new(api_prefix: impl Into<String>) -> Self {
-        Self {
-            api_prefix: api_prefix.into(),
-        }
+        Self { api_prefix: api_prefix.into() }
     }
 
     /// Route a request to the appropriate backend handler
-    pub async fn route_to_handler<H>(
-        &self,
-        req: Req,
-        route: &BackendRoute,
-        handler: &H,
-    ) -> Resp
+    pub async fn route_to_handler<H>(&self, req: Req, route: &BackendRoute, handler: &H) -> Resp
     where
         H: BackendHandler,
     {
@@ -75,11 +71,7 @@ impl BackendRouter {
     }
 
     /// Route with multiple backend handlers based on path prefixes
-    pub async fn route_multi<H>(
-        &self,
-        req: Req,
-        routes: &[(BackendRoute, H)],
-    ) -> Resp
+    pub async fn route_multi<H>(&self, req: Req, routes: &[(BackendRoute, H)]) -> Resp
     where
         H: BackendHandler,
     {
@@ -147,7 +139,11 @@ pub async fn proxy_to_declarative_handler<T>(
     handler: &crate::http::DeclarativeHttpHandler<T>,
 ) -> Resp
 where
-    T: crate::http::HttpExposable + crate::lifecycle::LifecycleAware + crate::consensus::ReplicatedModel + Send + Sync,
+    T: crate::http::HttpExposable
+        + crate::lifecycle::LifecycleAware
+        + crate::consensus::ReplicatedModel
+        + Send
+        + Sync,
 {
     // Check if this request should be handled by this endpoint
     if !path.starts_with(prefix) {
@@ -161,7 +157,7 @@ where
     // Call the declarative handler
     match handler.handle_request(req, &segments).await {
         Ok(response) => response,
-        Err(_) => internal_server_error_response(&format!("{} handler failed", handler_name))
+        Err(_) => internal_server_error_response(&format!("{} handler failed", handler_name)),
     }
 }
 

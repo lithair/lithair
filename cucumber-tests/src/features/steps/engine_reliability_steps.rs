@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
 use crate::features::world::{LithairWorld, TestArticle};
-use lithair_core::engine::{AsyncWriter, Engine, EngineConfig, EngineError, EventStore, FileStorage, Event};
+use lithair_core::engine::{
+    AsyncWriter, Engine, EngineConfig, EngineError, Event, EventStore, FileStorage,
+};
 
 // ==================== TEST RECOVERY ====================
 
@@ -33,11 +35,12 @@ async fn restart_engine(world: &mut LithairWorld, persist_path: String) {
     println!("🔄 Redémarrage du moteur depuis: {}", persist_path);
 
     // Créer un nouveau EventStore + AsyncWriter
-    let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
-    let _async_writer = Arc::new(tokio::sync::Mutex::new(Some(AsyncWriter::new(event_store.clone(), 1000))));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
+    let _async_writer =
+        Arc::new(tokio::sync::Mutex::new(Some(AsyncWriter::new(event_store.clone(), 1000))));
 
-    *world.async_writer.lock().await =
-        Some(AsyncWriter::new(event_store, 1000));
+    *world.async_writer.lock().await = Some(AsyncWriter::new(event_store, 1000));
 
     println!("✅ Moteur redémarré");
 }

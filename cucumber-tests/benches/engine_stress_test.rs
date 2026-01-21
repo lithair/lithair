@@ -46,21 +46,25 @@ async fn main() {
     std::fs::create_dir_all(persist_path).ok();
 
     // Créer EventStore + AsyncWriter
-    let event_store = Arc::new(RwLock::new(EventStore::new(persist_path).expect("EventStore init failed")));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(persist_path).expect("EventStore init failed")));
     let async_writer = Arc::new(Mutex::new(Some(AsyncWriter::new(event_store.clone(), 1000))));
 
     // Créer SCC2
-    let scc2: Arc<Scc2Engine<Article>> = Arc::new(Scc2Engine::new(
-        event_store,
-        Scc2EngineConfig {
-            verbose_logging: false,
-            enable_snapshots: false,
-            snapshot_interval: 1000,
-            enable_deduplication: false,
-            auto_persist_writes: false,
-            force_immediate_persistence: false,
-        }
-    ).unwrap());
+    let scc2: Arc<Scc2Engine<Article>> = Arc::new(
+        Scc2Engine::new(
+            event_store,
+            Scc2EngineConfig {
+                verbose_logging: false,
+                enable_snapshots: false,
+                snapshot_interval: 1000,
+                enable_deduplication: false,
+                auto_persist_writes: false,
+                force_immediate_persistence: false,
+            },
+        )
+        .unwrap(),
+    );
 
     println!("✅ Moteur initialisé");
     println!("  - AsyncWriter batch_size: 1000");

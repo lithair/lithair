@@ -48,8 +48,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use clap::Parser;
-use lithair_core::cluster::ClusterArgs;
 use lithair_core::app::LithairServer;
+use lithair_core::cluster::ClusterArgs;
 use lithair_macros::DeclarativeModel;
 
 // ============================================================================
@@ -221,10 +221,7 @@ async fn main() -> Result<()> {
 
     let args = ClusterArgs::parse();
     let peer_ports = args.peers.clone().unwrap_or_default();
-    let peers: Vec<String> = peer_ports
-        .iter()
-        .map(|p| format!("127.0.0.1:{}", p))
-        .collect();
+    let peers: Vec<String> = peer_ports.iter().map(|p| format!("127.0.0.1:{}", p)).collect();
 
     // Auto-configure data directories (honor EXPERIMENT_DATA_BASE when provided)
     let base_dir = std::env::var("EXPERIMENT_DATA_BASE").unwrap_or_else(|_| "data".to_string());

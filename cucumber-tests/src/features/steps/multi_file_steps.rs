@@ -163,11 +163,7 @@ async fn then_file_must_exist(world: &mut LithairWorld, relative_path: String) {
     let metrics = world.metrics.lock().await;
     let full_path = format!("{}/{}", metrics.persist_path, relative_path);
 
-    assert!(
-        Path::new(&full_path).exists(),
-        "❌ Fichier manquant: {}",
-        full_path
-    );
+    assert!(Path::new(&full_path).exists(), "❌ Fichier manquant: {}", full_path);
 
     println!("✅ Fichier existe: {}", relative_path);
 }
@@ -212,11 +208,8 @@ async fn then_file_contains_only_type(
         }
 
         // Extraire le JSON (après le CRC32 si présent)
-        let json_part = if line.len() > 9 && line.chars().nth(8) == Some(':') {
-            &line[9..]
-        } else {
-            line
-        };
+        let json_part =
+            if line.len() > 9 && line.chars().nth(8) == Some(':') { &line[9..] } else { line };
 
         // Vérifier que l'aggregate_id correspond
         let parsed: serde_json::Value = serde_json::from_str(json_part)
@@ -224,7 +217,8 @@ async fn then_file_contains_only_type(
 
         if let Some(agg_id) = parsed.get("aggregate_id").and_then(|v| v.as_str()) {
             assert_eq!(
-                agg_id, expected_type,
+                agg_id,
+                expected_type,
                 "❌ Ligne {} contient aggregate_id '{}' au lieu de '{}'",
                 line_num + 1,
                 agg_id,
@@ -253,11 +247,8 @@ async fn then_no_event_type_in_file(
         }
 
         // Extraire le JSON
-        let json_part = if line.len() > 9 && line.chars().nth(8) == Some(':') {
-            &line[9..]
-        } else {
-            line
-        };
+        let json_part =
+            if line.len() > 9 && line.chars().nth(8) == Some(':') { &line[9..] } else { line };
 
         assert!(
             !json_part.contains(&format!("\"aggregate_id\":\"{}\"", forbidden_type)),
@@ -377,7 +368,8 @@ async fn then_all_crc32_validated(world: &mut LithairWorld) {
     }
 
     assert_eq!(
-        total_invalid, 0,
+        total_invalid,
+        0,
         "❌ {} événements corrompus sur {}",
         total_invalid,
         total_valid + total_invalid
@@ -588,7 +580,8 @@ async fn then_each_structure_has_approx(world: &mut LithairWorld, expected_per_s
     if let Ok(entries) = std::fs::read_dir(base_path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() && path.file_name().unwrap().to_str().unwrap().starts_with("structure_")
+            if path.is_dir()
+                && path.file_name().unwrap().to_str().unwrap().starts_with("structure_")
             {
                 let events_file = path.join("events.raftlog");
                 if events_file.exists() {
@@ -596,8 +589,7 @@ async fn then_each_structure_has_approx(world: &mut LithairWorld, expected_per_s
                     let count = content.lines().filter(|l| !l.trim().is_empty()).count();
 
                     assert!(
-                        (count as i64 - expected_per_structure as i64).abs()
-                            <= tolerance as i64,
+                        (count as i64 - expected_per_structure as i64).abs() <= tolerance as i64,
                         "❌ Structure {:?} a {} événements (attendu: ~{})",
                         path.file_name(),
                         count,
@@ -649,7 +641,9 @@ async fn then_all_files_exist_with_valid_crc32(world: &mut LithairWorld) {
 
 // ==================== CONCURRENT ====================
 
-#[when(expr = "je lance {int} tâches concurrentes écrivant chacune {int} événements sur une structure différente")]
+#[when(
+    expr = "je lance {int} tâches concurrentes écrivant chacune {int} événements sur une structure différente"
+)]
 async fn when_launch_concurrent_tasks(
     world: &mut LithairWorld,
     num_tasks: usize,

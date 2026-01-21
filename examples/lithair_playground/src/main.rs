@@ -27,9 +27,9 @@
 //!
 //! Then open http://localhost:8080 for the Playground UI
 
+mod benchmark;
 mod models;
 mod playground_api;
-mod benchmark;
 mod sse_events;
 
 use anyhow::Result;
@@ -42,7 +42,7 @@ use lithair_core::cluster::ClusterArgs;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
 use std::sync::Arc;
 
-use crate::models::{PlaygroundItem, Order, AuditLog};
+use crate::models::{AuditLog, Order, PlaygroundItem};
 use crate::playground_api::PlaygroundState;
 use crate::sse_events::SseEventBroadcaster;
 
@@ -63,10 +63,7 @@ async fn main() -> Result<()> {
 
     let args = ClusterArgs::parse();
     let peer_ports = args.peers.clone().unwrap_or_default();
-    let peers: Vec<String> = peer_ports
-        .iter()
-        .map(|p| format!("127.0.0.1:{}", p))
-        .collect();
+    let peers: Vec<String> = peer_ports.iter().map(|p| format!("127.0.0.1:{}", p)).collect();
 
     // Data directories
     let base_dir = std::env::var("PLAYGROUND_DATA_BASE").unwrap_or_else(|_| "data".to_string());
@@ -100,8 +97,9 @@ async fn main() -> Result<()> {
 
     // Frontend engine (SCC2-based, memory-first)
     let frontend_engine = Arc::new(
-        FrontendEngine::new("playground", &format!("{}/frontend", data_dir)).await
-            .expect("Failed to create frontend engine")
+        FrontendEngine::new("playground", &format!("{}/frontend", data_dir))
+            .await
+            .expect("Failed to create frontend engine"),
     );
 
     // Load frontend assets - try multiple paths
@@ -112,10 +110,7 @@ async fn main() -> Result<()> {
     ];
 
     // Website public assets (includes /docs from mdBook)
-    let website_paths = [
-        "../lithair-website/public",
-        "../../lithair-website/public",
-    ];
+    let website_paths = ["../lithair-website/public", "../../lithair-website/public"];
 
     let mut loaded = false;
     for path in &frontend_paths {

@@ -25,20 +25,20 @@
 //!     .await?;
 //! ```
 
-mod totp;
+pub mod event_log;
+pub mod events;
+pub mod handlers;
+pub mod migration;
 mod qrcode_gen;
 mod storage;
-pub mod handlers;
-pub mod events;
-pub mod event_log;
-pub mod migration;
+mod totp;
 
-pub use totp::{TotpSecret, TotpValidator};
+pub use event_log::MfaEventLog;
+pub use events::{MfaEvent, MfaState, UserMfaState};
+pub use migration::{migrate_json_to_events, MigrationStats};
 pub use qrcode_gen::generate_qr_code;
 pub use storage::{MfaStorage, UserMfaData};
-pub use events::{MfaEvent, MfaState, UserMfaState};
-pub use event_log::MfaEventLog;
-pub use migration::{migrate_json_to_events, MigrationStats};
+pub use totp::{TotpSecret, TotpValidator};
 
 use serde::{Deserialize, Serialize};
 
@@ -47,27 +47,27 @@ use serde::{Deserialize, Serialize};
 pub struct MfaConfig {
     /// Issuer name displayed in authenticator apps (e.g., "Lithair Blog")
     pub issuer: String,
-    
+
     /// Roles that MUST use MFA (enforced at login)
     #[serde(default)]
     pub enforce_for_roles: Vec<String>,
-    
+
     /// Roles that CAN enable MFA (optional)
     #[serde(default)]
     pub optional_for_roles: Vec<String>,
-    
+
     /// TOTP algorithm (default: SHA256, secure and widely supported)
     #[serde(default = "default_algorithm")]
     pub algorithm: TotpAlgorithm,
-    
+
     /// Number of digits in TOTP code (default: 6)
     #[serde(default = "default_digits")]
     pub digits: u32,
-    
+
     /// Time step in seconds (default: 30)
     #[serde(default = "default_step")]
     pub step: u64,
-    
+
     /// Storage path for MFA secrets (default: "./mfa_secrets")
     #[serde(default = "default_storage_path")]
     pub storage_path: String,
@@ -105,7 +105,7 @@ impl Default for TotpAlgorithm {
 }
 
 fn default_algorithm() -> TotpAlgorithm {
-    TotpAlgorithm::SHA256  // SHA256 is more secure than SHA1 and widely supported
+    TotpAlgorithm::SHA256 // SHA256 is more secure than SHA1 and widely supported
 }
 
 fn default_digits() -> u32 {
@@ -125,20 +125,16 @@ fn default_storage_path() -> String {
 pub struct MfaStatus {
     /// Whether MFA is enabled for this user
     pub enabled: bool,
-    
+
     /// Whether MFA is required for this user's role
     pub required: bool,
-    
+
     /// When MFA was enabled (if enabled)
     pub enabled_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl Default for MfaStatus {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            required: false,
-            enabled_at: None,
-        }
+        Self { enabled: false, required: false, enabled_at: None }
     }
 }

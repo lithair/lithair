@@ -67,7 +67,9 @@ struct TestItem {
     status: String,
 }
 
-fn default_item_status() -> String { "Draft".to_string() }
+fn default_item_status() -> String {
+    "Draft".to_string()
+}
 
 /// Order - matches the server's model exactly
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,7 +87,9 @@ struct TestOrder {
     notes: String,
 }
 
-fn default_order_status() -> String { "Pending".to_string() }
+fn default_order_status() -> String {
+    "Pending".to_string()
+}
 
 /// AuditLog - matches the server's model exactly
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,8 +107,12 @@ struct TestLog {
     source_node: u64,
 }
 
-fn default_log_level() -> String { "Info".to_string() }
-fn default_details() -> serde_json::Value { serde_json::json!({}) }
+fn default_log_level() -> String {
+    "Info".to_string()
+}
+fn default_details() -> serde_json::Value {
+    serde_json::json!({})
+}
 
 #[derive(Debug, Default)]
 struct BenchmarkStats {
@@ -137,8 +145,7 @@ impl NodeManager {
         println!("Launching 3 nodes...");
 
         // Find the playground_node binary
-        let binary = std::env::current_dir()?
-            .join("target/debug/playground_node");
+        let binary = std::env::current_dir()?.join("target/debug/playground_node");
 
         if !binary.exists() {
             anyhow::bail!(
@@ -150,9 +157,12 @@ impl NodeManager {
         // Node 1: Leader (node-id 0 = initial leader)
         let node1 = Command::new(&binary)
             .args([
-                "--port", &LEADER_PORT.to_string(),
-                "--node-id", "0",
-                "--peers", &format!("{},{}", FOLLOWER1_PORT, FOLLOWER2_PORT),
+                "--port",
+                &LEADER_PORT.to_string(),
+                "--node-id",
+                "0",
+                "--peers",
+                &format!("{},{}", FOLLOWER1_PORT, FOLLOWER2_PORT),
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -163,9 +173,12 @@ impl NodeManager {
         // Node 2: Follower 1
         let node2 = Command::new(&binary)
             .args([
-                "--port", &FOLLOWER1_PORT.to_string(),
-                "--node-id", "1",
-                "--peers", &format!("{},{}", LEADER_PORT, FOLLOWER2_PORT),
+                "--port",
+                &FOLLOWER1_PORT.to_string(),
+                "--node-id",
+                "1",
+                "--peers",
+                &format!("{},{}", LEADER_PORT, FOLLOWER2_PORT),
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -176,9 +189,12 @@ impl NodeManager {
         // Node 3: Follower 2
         let node3 = Command::new(&binary)
             .args([
-                "--port", &FOLLOWER2_PORT.to_string(),
-                "--node-id", "2",
-                "--peers", &format!("{},{}", LEADER_PORT, FOLLOWER1_PORT),
+                "--port",
+                &FOLLOWER2_PORT.to_string(),
+                "--node-id",
+                "2",
+                "--peers",
+                &format!("{},{}", LEADER_PORT, FOLLOWER1_PORT),
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -205,9 +221,7 @@ impl Drop for NodeManager {
 }
 
 async fn wait_for_nodes_ready() -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()?;
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(2)).build()?;
 
     let ports = [LEADER_PORT, FOLLOWER1_PORT, FOLLOWER2_PORT];
 
@@ -241,10 +255,7 @@ struct KnownIds {
 
 impl KnownIds {
     fn new() -> Self {
-        Self {
-            items: RwLock::new(Vec::new()),
-            orders: RwLock::new(Vec::new()),
-        }
+        Self { items: RwLock::new(Vec::new()), orders: RwLock::new(Vec::new()) }
     }
 }
 
@@ -261,10 +272,10 @@ impl CrudOp {
     fn random() -> Self {
         let r = fastrand::u8(0..100);
         match r {
-            0..=39 => CrudOp::Create,   // 40%
-            40..=69 => CrudOp::Read,    // 30%
-            70..=89 => CrudOp::Update,  // 20%
-            _ => CrudOp::Delete,        // 10%
+            0..=39 => CrudOp::Create,  // 40%
+            40..=69 => CrudOp::Read,   // 30%
+            70..=89 => CrudOp::Update, // 20%
+            _ => CrudOp::Delete,       // 10%
         }
     }
 }
@@ -296,9 +307,7 @@ impl TableType {
 }
 
 async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()?;
 
     let leader_url = format!("http://127.0.0.1:{}", LEADER_PORT);
     let known_ids = Arc::new(KnownIds::new());
@@ -344,14 +353,19 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                                 if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
                                     if let Ok(uuid) = uuid::Uuid::parse_str(id) {
                                         let mut ids = known.items.write().await;
-                                        if ids.len() < 500 { ids.push(uuid); }
+                                        if ids.len() < 500 {
+                                            ids.push(uuid);
+                                        }
                                     }
                                 }
                             }
                             stats.creates.fetch_add(1, Ordering::Relaxed);
                             true
                         }
-                        _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                        _ => {
+                            stats.errors.fetch_add(1, Ordering::Relaxed);
+                            false
+                        }
                     }
                 }
                 (CrudOp::Create, TableType::Orders) => {
@@ -370,14 +384,19 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                                 if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
                                     if let Ok(uuid) = uuid::Uuid::parse_str(id) {
                                         let mut ids = known.orders.write().await;
-                                        if ids.len() < 500 { ids.push(uuid); }
+                                        if ids.len() < 500 {
+                                            ids.push(uuid);
+                                        }
                                     }
                                 }
                             }
                             stats.creates.fetch_add(1, Ordering::Relaxed);
                             true
                         }
-                        _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                        _ => {
+                            stats.errors.fetch_add(1, Ordering::Relaxed);
+                            false
+                        }
                     }
                 }
                 (CrudOp::Create, TableType::Logs) => {
@@ -396,7 +415,10 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                             stats.creates.fetch_add(1, Ordering::Relaxed);
                             true
                         }
-                        _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                        _ => {
+                            stats.errors.fetch_add(1, Ordering::Relaxed);
+                            false
+                        }
                     }
                 }
 
@@ -405,7 +427,7 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                     let url = format!("{}{}", base_url, table.endpoint());
                     match client.get(&url).send().await {
                         Ok(resp) if resp.status().is_success() => true,
-                        _ => false
+                        _ => false,
                     }
                 }
 
@@ -413,7 +435,11 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                 (CrudOp::Update, TableType::Items) => {
                     let id = {
                         let ids = known.items.read().await;
-                        if ids.is_empty() { None } else { Some(ids[fastrand::usize(..ids.len())]) }
+                        if ids.is_empty() {
+                            None
+                        } else {
+                            Some(ids[fastrand::usize(..ids.len())])
+                        }
                     };
                     if let Some(id) = id {
                         let statuses = ["Draft", "Active", "Archived"];
@@ -428,7 +454,10 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                                 stats.updates.fetch_add(1, Ordering::Relaxed);
                                 true
                             }
-                            _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                            _ => {
+                                stats.errors.fetch_add(1, Ordering::Relaxed);
+                                false
+                            }
                         }
                     } else {
                         // No items to update, do a create instead
@@ -438,7 +467,11 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                 (CrudOp::Update, TableType::Orders) => {
                     let id = {
                         let ids = known.orders.read().await;
-                        if ids.is_empty() { None } else { Some(ids[fastrand::usize(..ids.len())]) }
+                        if ids.is_empty() {
+                            None
+                        } else {
+                            Some(ids[fastrand::usize(..ids.len())])
+                        }
                     };
                     if let Some(id) = id {
                         let statuses = ["Pending", "Confirmed", "Processing", "Shipped"];
@@ -452,7 +485,10 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                                 stats.updates.fetch_add(1, Ordering::Relaxed);
                                 true
                             }
-                            _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                            _ => {
+                                stats.errors.fetch_add(1, Ordering::Relaxed);
+                                false
+                            }
                         }
                     } else {
                         false
@@ -467,7 +503,11 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                 (CrudOp::Delete, TableType::Items) => {
                     let id = {
                         let mut ids = known.items.write().await;
-                        if ids.is_empty() { None } else { Some(ids.pop().unwrap()) }
+                        if ids.is_empty() {
+                            None
+                        } else {
+                            Some(ids.pop().unwrap())
+                        }
                     };
                     if let Some(id) = id {
                         let url = format!("{}/api/items/{}", base_url, id);
@@ -476,7 +516,10 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                                 stats.deletes.fetch_add(1, Ordering::Relaxed);
                                 true
                             }
-                            _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                            _ => {
+                                stats.errors.fetch_add(1, Ordering::Relaxed);
+                                false
+                            }
                         }
                     } else {
                         false
@@ -485,7 +528,11 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                 (CrudOp::Delete, TableType::Orders) => {
                     let id = {
                         let mut ids = known.orders.write().await;
-                        if ids.is_empty() { None } else { Some(ids.pop().unwrap()) }
+                        if ids.is_empty() {
+                            None
+                        } else {
+                            Some(ids.pop().unwrap())
+                        }
                     };
                     if let Some(id) = id {
                         let url = format!("{}/api/orders/{}", base_url, id);
@@ -494,7 +541,10 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                                 stats.deletes.fetch_add(1, Ordering::Relaxed);
                                 true
                             }
-                            _ => { stats.errors.fetch_add(1, Ordering::Relaxed); false }
+                            _ => {
+                                stats.errors.fetch_add(1, Ordering::Relaxed);
+                                false
+                            }
                         }
                     } else {
                         false
@@ -507,7 +557,9 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
             };
 
             if success {
-                stats.total_latency_ms.fetch_add(op_start.elapsed().as_millis() as usize, Ordering::Relaxed);
+                stats
+                    .total_latency_ms
+                    .fetch_add(op_start.elapsed().as_millis() as usize, Ordering::Relaxed);
             }
         }));
     }
@@ -543,9 +595,7 @@ async fn check_consistency(settle_time: u64) -> Result<Vec<ConsistencyResult>> {
 
     println!("Checking consistency across nodes...");
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()?;
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
 
     let mut results = Vec::new();
 

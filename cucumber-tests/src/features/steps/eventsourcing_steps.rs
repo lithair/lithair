@@ -6,9 +6,7 @@ use lithair_core::engine::{Engine, EngineConfig, EngineError, Event};
 #[given(expr = "a Lithair engine with event sourcing enabled")]
 async fn given_event_sourcing_enabled(_world: &mut LithairWorld) {
     // Initialization done at first CRUD operation to avoid fragile dependencies
-    println!(
-        "Event sourcing context enabled (initialization done at first CRUD operation)"
-    );
+    println!("Event sourcing context enabled (initialization done at first CRUD operation)");
 }
 
 // Helper interne: s'assurer que le moteur + storage event sourcing sont initialisés
@@ -1081,9 +1079,7 @@ async fn then_engine_rejects_duplicate_after_restart(world: &mut LithairWorld) {
     );
 }
 
-#[when(
-    expr = "an idempotent event is applied before and after engine restart in multi-file mode"
-)]
+#[when(expr = "an idempotent event is applied before and after engine restart in multi-file mode")]
 async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
@@ -1853,7 +1849,8 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
         .expect("Échec d'initialisation du moteur pour versioning");
 
     let (v1_slug, v1_version, v2_slug, v2_version) = {
-        engine.read_state("articles", |state| {
+        engine
+            .read_state("articles", |state| {
                 let v1 = state
                     .data
                     .articles

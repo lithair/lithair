@@ -10,6 +10,7 @@
 use anyhow::Result;
 use bytes::Bytes;
 use clap::Parser;
+use futures::future;
 use http::{Method, Response, StatusCode};
 use http_body_util::Full;
 use lithair_core::app::LithairServer;
@@ -22,7 +23,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
-use futures::future;
 
 // ============================================================================
 // MODELS
@@ -90,15 +90,15 @@ struct Order {
     #[http(expose)]
     id: String,
     #[http(expose)]
-    consumer_id: String,        // FK -> Consumer
+    consumer_id: String, // FK -> Consumer
     #[http(expose)]
-    product_ids: Vec<String>,   // FK[] -> Products
+    product_ids: Vec<String>, // FK[] -> Products
     #[http(expose)]
-    quantities: Vec<u32>,       // Quantity per product
+    quantities: Vec<u32>, // Quantity per product
     #[http(expose)]
     total_amount: f64,
     #[http(expose)]
-    status: String,             // pending, confirmed, shipped, delivered, cancelled
+    status: String, // pending, confirmed, shipped, delivered, cancelled
     #[http(expose)]
     created_at: String,
     #[http(expose)]
@@ -114,50 +114,94 @@ struct Order {
 // ============================================================================
 
 const CATEGORIES: &[&str] = &[
-    "Electronics", "Clothing", "Home & Garden", "Sports", "Books",
-    "Toys", "Automotive", "Health", "Beauty", "Food",
+    "Electronics",
+    "Clothing",
+    "Home & Garden",
+    "Sports",
+    "Books",
+    "Toys",
+    "Automotive",
+    "Health",
+    "Beauty",
+    "Food",
 ];
 
 const BRANDS: &[&str] = &[
-    "TechCorp", "StyleMax", "HomeFirst", "SportPro", "BookWorld",
-    "PlayTime", "AutoParts", "HealthPlus", "BeautyGlow", "FoodFresh",
+    "TechCorp",
+    "StyleMax",
+    "HomeFirst",
+    "SportPro",
+    "BookWorld",
+    "PlayTime",
+    "AutoParts",
+    "HealthPlus",
+    "BeautyGlow",
+    "FoodFresh",
 ];
 
 const ADJECTIVES: &[&str] = &[
-    "Premium", "Professional", "Ultra", "Smart", "Classic",
-    "Modern", "Compact", "Wireless", "Digital", "Advanced",
+    "Premium",
+    "Professional",
+    "Ultra",
+    "Smart",
+    "Classic",
+    "Modern",
+    "Compact",
+    "Wireless",
+    "Digital",
+    "Advanced",
 ];
 
 const NOUNS: &[&str] = &[
-    "Widget", "Device", "Tool", "Gadget", "System",
-    "Kit", "Set", "Pack", "Bundle", "Collection",
+    "Widget",
+    "Device",
+    "Tool",
+    "Gadget",
+    "System",
+    "Kit",
+    "Set",
+    "Pack",
+    "Bundle",
+    "Collection",
 ];
 
 const FIRST_NAMES: &[&str] = &[
-    "Alice", "Bob", "Charlie", "Diana", "Edward",
-    "Fiona", "George", "Hannah", "Ivan", "Julia",
+    "Alice", "Bob", "Charlie", "Diana", "Edward", "Fiona", "George", "Hannah", "Ivan", "Julia",
     "Kevin", "Laura", "Michael", "Nina", "Oscar",
 ];
 
 const LAST_NAMES: &[&str] = &[
-    "Smith", "Johnson", "Williams", "Brown", "Jones",
-    "Garcia", "Miller", "Davis", "Martinez", "Anderson",
-    "Taylor", "Thomas", "Moore", "Jackson", "Martin",
+    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Martinez",
+    "Anderson", "Taylor", "Thomas", "Moore", "Jackson", "Martin",
 ];
 
 const CITIES: &[&str] = &[
-    "Paris", "London", "Berlin", "Madrid", "Rome",
-    "Amsterdam", "Brussels", "Vienna", "Prague", "Lisbon",
+    "Paris",
+    "London",
+    "Berlin",
+    "Madrid",
+    "Rome",
+    "Amsterdam",
+    "Brussels",
+    "Vienna",
+    "Prague",
+    "Lisbon",
 ];
 
 const COUNTRIES: &[&str] = &[
-    "France", "UK", "Germany", "Spain", "Italy",
-    "Netherlands", "Belgium", "Austria", "Czech Republic", "Portugal",
+    "France",
+    "UK",
+    "Germany",
+    "Spain",
+    "Italy",
+    "Netherlands",
+    "Belgium",
+    "Austria",
+    "Czech Republic",
+    "Portugal",
 ];
 
-const ORDER_STATUSES: &[&str] = &[
-    "pending", "confirmed", "shipped", "delivered", "cancelled",
-];
+const ORDER_STATUSES: &[&str] = &["pending", "confirmed", "shipped", "delivered", "cancelled"];
 
 fn generate_product(rng: &mut impl Rng) -> Product {
     let adj = ADJECTIVES[rng.gen_range(0..ADJECTIVES.len())];
@@ -170,12 +214,20 @@ fn generate_product(rng: &mut impl Rng) -> Product {
         name: format!("{} {} {}", brand, adj, noun),
         description: format!(
             "High-quality {} {} from {}. Perfect for your {} needs.",
-            adj.to_lowercase(), noun.to_lowercase(), brand, category.to_lowercase()
+            adj.to_lowercase(),
+            noun.to_lowercase(),
+            brand,
+            category.to_lowercase()
         ),
         category: category.to_string(),
         price: (rng.gen_range(10..10000) as f64) + (rng.gen_range(0..100) as f64) / 100.0,
         stock: rng.gen_range(0..1000),
-        sku: format!("{}-{}-{:06}", &brand[0..3].to_uppercase(), &category[0..2].to_uppercase(), rng.gen_range(0..999999)),
+        sku: format!(
+            "{}-{}-{:06}",
+            &brand[0..3].to_uppercase(),
+            &category[0..2].to_uppercase(),
+            rng.gen_range(0..999999)
+        ),
         brand: brand.to_string(),
         rating: (rng.gen_range(30..50) as f32) / 10.0,
         reviews_count: rng.gen_range(0..5000),
@@ -193,10 +245,18 @@ fn generate_consumer(rng: &mut impl Rng) -> Consumer {
         email: format!("{}.{}@example.com", first.to_lowercase(), last.to_lowercase()),
         first_name: first.to_string(),
         last_name: last.to_string(),
-        phone: format!("+33 6 {:02} {:02} {:02} {:02}",
-            rng.gen_range(10..99), rng.gen_range(10..99),
-            rng.gen_range(10..99), rng.gen_range(10..99)),
-        address: format!("{} Rue de la {}", rng.gen_range(1..200), NOUNS[rng.gen_range(0..NOUNS.len())]),
+        phone: format!(
+            "+33 6 {:02} {:02} {:02} {:02}",
+            rng.gen_range(10..99),
+            rng.gen_range(10..99),
+            rng.gen_range(10..99),
+            rng.gen_range(10..99)
+        ),
+        address: format!(
+            "{} Rue de la {}",
+            rng.gen_range(1..200),
+            NOUNS[rng.gen_range(0..NOUNS.len())]
+        ),
         city: CITIES[city_idx].to_string(),
         country: COUNTRIES[city_idx].to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -206,7 +266,11 @@ fn generate_consumer(rng: &mut impl Rng) -> Consumer {
     }
 }
 
-fn generate_order(rng: &mut impl Rng, consumer_ids: &[String], product_ids: &[String]) -> Option<Order> {
+fn generate_order(
+    rng: &mut impl Rng,
+    consumer_ids: &[String],
+    product_ids: &[String],
+) -> Option<Order> {
     if consumer_ids.is_empty() || product_ids.is_empty() {
         return None;
     }
@@ -236,8 +300,16 @@ fn generate_order(rng: &mut impl Rng, consumer_ids: &[String], product_ids: &[St
         status: ORDER_STATUSES[rng.gen_range(0..ORDER_STATUSES.len())].to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: chrono::Utc::now().to_rfc3339(),
-        shipping_address: format!("{} {}", rng.gen_range(1..200), CITIES[rng.gen_range(0..CITIES.len())]),
-        notes: if rng.gen_bool(0.3) { "Gift wrapping requested".to_string() } else { String::new() },
+        shipping_address: format!(
+            "{} {}",
+            rng.gen_range(1..200),
+            CITIES[rng.gen_range(0..CITIES.len())]
+        ),
+        notes: if rng.gen_bool(0.3) {
+            "Gift wrapping requested".to_string()
+        } else {
+            String::new()
+        },
     })
 }
 
@@ -295,28 +367,37 @@ async fn main() -> Result<()> {
 
     // Create handlers for each table with separate data paths
     let product_handler = Arc::new(
-        DeclarativeHttpHandler::<Product>::new_with_replay(
-            &format!("{}/products", args.data_dir.display())
-        ).await.expect("Failed to create product handler")
+        DeclarativeHttpHandler::<Product>::new_with_replay(&format!(
+            "{}/products",
+            args.data_dir.display()
+        ))
+        .await
+        .expect("Failed to create product handler"),
     );
 
     let consumer_handler = Arc::new(
-        DeclarativeHttpHandler::<Consumer>::new_with_replay(
-            &format!("{}/consumers", args.data_dir.display())
-        ).await.expect("Failed to create consumer handler")
+        DeclarativeHttpHandler::<Consumer>::new_with_replay(&format!(
+            "{}/consumers",
+            args.data_dir.display()
+        ))
+        .await
+        .expect("Failed to create consumer handler"),
     );
 
     let order_handler = Arc::new(
-        DeclarativeHttpHandler::<Order>::new_with_replay(
-            &format!("{}/orders", args.data_dir.display())
-        ).await.expect("Failed to create order handler")
+        DeclarativeHttpHandler::<Order>::new_with_replay(&format!(
+            "{}/orders",
+            args.data_dir.display()
+        ))
+        .await
+        .expect("Failed to create order handler"),
     );
 
     // Create frontend engine
     let frontend_engine = Arc::new(
         FrontendEngine::new("frontend", &format!("{}/frontend", args.data_dir.display()))
             .await
-            .expect("Failed to create frontend engine")
+            .expect("Failed to create frontend engine"),
     );
 
     match frontend_engine.load_directory("examples/datatable_demo/frontend").await {
@@ -559,19 +640,24 @@ async fn get_order_expanded(
     // Get the order
     let order = match order_handler.get_by_id(&order_id).await {
         Some(o) => o,
-        None => return json_response(&serde_json::json!({
-            "error": "Order not found",
-            "order_id": order_id
-        })),
+        None => {
+            return json_response(&serde_json::json!({
+                "error": "Order not found",
+                "order_id": order_id
+            }))
+        }
     };
 
     // Get related consumer
     let consumer = consumer_handler.get_by_id(&order.consumer_id).await;
 
     // Get related products
-    let products: Vec<_> = future::join_all(
-        order.product_ids.iter().map(|pid| product_handler.get_by_id(pid))
-    ).await.into_iter().flatten().collect();
+    let products: Vec<_> =
+        future::join_all(order.product_ids.iter().map(|pid| product_handler.get_by_id(pid)))
+            .await
+            .into_iter()
+            .flatten()
+            .collect();
 
     json_response(&serde_json::json!({
         "order": order,
@@ -605,7 +691,9 @@ async fn handle_stats(
 // ============================================================================
 
 fn parse_count(req: &http::Request<hyper::body::Incoming>, default: usize) -> usize {
-    req.uri().query().unwrap_or("")
+    req.uri()
+        .query()
+        .unwrap_or("")
         .split('&')
         .find(|p| p.starts_with("count="))
         .and_then(|p| p.strip_prefix("count="))
@@ -616,7 +704,11 @@ fn parse_count(req: &http::Request<hyper::body::Incoming>, default: usize) -> us
 
 fn throughput(count: usize, duration: std::time::Duration) -> u64 {
     let ms = duration.as_millis() as u64;
-    if ms > 0 { (count as u64 * 1000) / ms } else { count as u64 }
+    if ms > 0 {
+        (count as u64 * 1000) / ms
+    } else {
+        count as u64
+    }
 }
 
 fn json_response(value: &serde_json::Value) -> Result<Response<Full<Bytes>>> {

@@ -1,5 +1,5 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
+use cucumber::{given, then, when};
 use tokio::time::{sleep, Duration};
 
 // ==================== BACKGROUND ====================
@@ -10,7 +10,10 @@ async fn given_declarative_models_enabled(world: &mut LithairWorld) {
     world.init_temp_storage().await.expect("Init storage failed");
 
     // Start server with random port (not 8082 to avoid conflicts)
-    world.start_server(0, "declarative_demo").await.expect("Failed to start declarative server");
+    world
+        .start_server(0, "declarative_demo")
+        .await
+        .expect("Failed to start declarative server");
     sleep(Duration::from_millis(300)).await;
 
     // Verify server responds
@@ -33,7 +36,9 @@ async fn given_crud_routes_generated(_world: &mut LithairWorld) {
 #[given(expr = "an Article model with permissions {string}")]
 async fn given_article_model_with_permissions(world: &mut LithairWorld, permissions: String) {
     let mut test_data = world.test_data.lock().await;
-    test_data.articles.insert("permissions".to_string(), serde_json::json!(permissions));
+    test_data
+        .articles
+        .insert("permissions".to_string(), serde_json::json!(permissions));
     println!("Article model configured with permissions: {}", permissions);
 }
 
@@ -44,21 +49,32 @@ async fn when_define_article_model(_world: &mut LithairWorld) {
     println!("Article model defined");
 }
 
-#[then(expr = "routes GET \\/articles, POST \\/articles, PUT \\/articles\\/\\{id\\}, DELETE \\/articles\\/\\{id\\} must be created")]
+#[then(
+    expr = "routes GET \\/articles, POST \\/articles, PUT \\/articles\\/\\{id\\}, DELETE \\/articles\\/\\{id\\} must be created"
+)]
 async fn then_crud_routes_generated(world: &mut LithairWorld) {
     // Verify GET with real assertion
     world.make_request("GET", "/api/articles", None).await.expect("GET failed");
     assert!(world.last_response.is_some(), "No response for GET");
     let response = world.last_response.as_ref().unwrap();
-    assert!(response.contains("200") || response.contains("articles"), "Invalid GET response");
+    assert!(
+        response.contains("200") || response.contains("articles"),
+        "Invalid GET response"
+    );
     println!("GET /api/articles available");
 
     // Verify POST with real assertion
     let data = serde_json::json!({"title": "Test", "content": "Content"});
-    world.make_request("POST", "/api/articles", Some(data)).await.expect("POST failed");
+    world
+        .make_request("POST", "/api/articles", Some(data))
+        .await
+        .expect("POST failed");
     assert!(world.last_response.is_some(), "No response for POST");
     let response = world.last_response.as_ref().unwrap();
-    assert!(response.contains("201") || response.contains("created"), "Invalid POST response");
+    assert!(
+        response.contains("201") || response.contains("created"),
+        "Invalid POST response"
+    );
     println!("POST /api/articles available");
 }
 
@@ -141,7 +157,9 @@ async fn then_article_persisted(world: &mut LithairWorld) {
     assert!(count > 0, "No articles in memory");
 
     // Verify persistence file exists and is not empty
-    let is_consistent = world.verify_memory_file_consistency().await
+    let is_consistent = world
+        .verify_memory_file_consistency()
+        .await
         .expect("Failed to verify consistency");
     assert!(is_consistent, "Memory/File inconsistency");
 
@@ -253,7 +271,9 @@ async fn then_reference_consistency(_world: &mut LithairWorld) {
 #[when(expr = "I perform {int} GET \\/articles requests in parallel")]
 async fn when_perform_parallel_requests(world: &mut LithairWorld, count: u32) {
     for i in 0..count {
-        let _ = world.make_request("GET", &format!("/api/articles/{}?include=comments", i), None).await;
+        let _ = world
+            .make_request("GET", &format!("/api/articles/{}?include=comments", i), None)
+            .await;
     }
     println!("{} articles retrieved", count);
 }

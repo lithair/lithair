@@ -60,21 +60,21 @@ pub mod frontend; // Revolutionary memory-first asset serving
 pub mod http;
 pub mod lifecycle;
 pub mod logging; // Declarative logging system with standard log crate integration
+pub mod mfa; // Multi-Factor Authentication (TOTP)
 pub mod model; // Declarative model specifications
 pub mod model_inspect; // Internal field inspection and optimization
 pub mod raft; // Page-centric development support
 pub mod rbac; // Role-Based Access Control system
-pub mod mfa;  // Multi-Factor Authentication (TOTP)
 pub mod schema;
 pub mod security; // Core RBAC security - non-optional
 pub mod serialization; // Declarative cluster management - PURE Lithair experience
 pub mod session; // Session management with event sourcing
 
 // Proxy and gateway functionality
-pub mod proxy; // Generic proxy primitives (forward, reverse, transparent)
+pub mod cache;
 pub mod integrations; // External source integration (blacklists, configs, etc.)
 pub mod patterns; // Pattern matching utilities (wildcards, CIDR, domains)
-pub mod cache; // Caching strategies (LRU, etc.)
+pub mod proxy; // Generic proxy primitives (forward, reverse, transparent) // Caching strategies (LRU, etc.)
 
 // Application server (unified multi-model server)
 pub mod app;
@@ -94,11 +94,11 @@ mod macros;
 // Re-exports of main types and traits
 pub use engine::{RaftstoneApplication, StateEngine};
 pub use http::{HttpServer, Route};
+pub use model_inspect::Inspectable;
 pub use security::{
     AuthContext, Permission, RBACMiddleware, Role, SecurityError, SecurityEvent, SecurityState,
     User,
 };
-pub use model_inspect::Inspectable;
 
 // Re-exports from lithair-macros crate (when available)
 // TODO: Uncomment when lithair-macros is implemented
@@ -375,10 +375,11 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
         // 2. Call application startup hook
         {
             // Use write_state to support both RwLock and Scc2 modes
-            engine.write_state("global", |state| {
-                A::on_startup(state).map_err(|e| crate::Error::EngineError(e.to_string()))
-            })
-            .map_err(|e| crate::Error::EngineError(e.to_string()))??;
+            engine
+                .write_state("global", |state| {
+                    A::on_startup(state).map_err(|e| crate::Error::EngineError(e.to_string()))
+                })
+                .map_err(|e| crate::Error::EngineError(e.to_string()))??;
         }
 
         // 3. Create HTTP router with application routes
@@ -1129,7 +1130,7 @@ fn create_stateless_router_with_shared_engine<A: crate::engine::RaftstoneApplica
             println!("🔓 HTTP Handler: About to release read-lock");
             // Map EngineResult to what the router expects (HttpResponse)
             result.unwrap_or_else(|| {
-                 crate::http::HttpResponse::internal_server_error().text("State access error")
+                crate::http::HttpResponse::internal_server_error().text("State access error")
             })
         }; // READ LOCK IS RELEASED HERE!
         println!("✅ HTTP Handler: Read-lock released");

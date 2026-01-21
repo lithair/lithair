@@ -58,12 +58,7 @@ impl GoogleProvider {
         redirect_uri: String,
         default_role: String,
     ) -> Self {
-        Self {
-            client_id,
-            client_secret,
-            redirect_uri,
-            default_role,
-        }
+        Self { client_id, client_secret, redirect_uri, default_role }
     }
 
     /// Get the OAuth2 authorization URL
@@ -129,10 +124,8 @@ impl GoogleProvider {
             return Err(anyhow!("User info request failed: {}", error_text));
         }
 
-        let user_info: GoogleUserInfo = response
-            .json()
-            .await
-            .map_err(|e| anyhow!("Failed to parse user info: {}", e))?;
+        let user_info: GoogleUserInfo =
+            response.json().await.map_err(|e| anyhow!("Failed to parse user info: {}", e))?;
 
         Ok(user_info)
     }

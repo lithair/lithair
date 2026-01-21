@@ -11,10 +11,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use tempfile::TempDir;
 
 // --- Global Config for Tests (to simulate dynamic ModelSpec) ---
-static TEST_SPEC_CONFIG: RwLock<TestModelSpecConfig> = RwLock::new(TestModelSpecConfig {
-    product_name_unique: false,
-    category_relation: None,
-});
+static TEST_SPEC_CONFIG: RwLock<TestModelSpecConfig> =
+    RwLock::new(TestModelSpecConfig { product_name_unique: false, category_relation: None });
 
 #[derive(Debug, Clone)]
 struct TestModelSpecConfig {
@@ -258,21 +256,23 @@ async fn when_create_product_named(w: &mut DeclarativeWorld, id: String, name: S
         // not necessarily the Engine's internal enforcement yet, although Scc2 now has it).
         // We check against the TestState which now implements ModelSpec using TEST_SPEC_CONFIG.
 
-        let unique_violation = engine.read_state("global", |state| {
-            if let Some(policy) = state.get_policy("Product.name") {
-                 if policy.unique {
-                    return state.products.values().any(|p| p.name == name);
-                 }
-            }
-            false
-        }).unwrap_or(false);
+        let unique_violation = engine
+            .read_state("global", |state| {
+                if let Some(policy) = state.get_policy("Product.name") {
+                    if policy.unique {
+                        return state.products.values().any(|p| p.name == name);
+                    }
+                }
+                false
+            })
+            .unwrap_or(false);
 
         if unique_violation {
             w.last_result = Some(Err("Unique constraint violation".to_string()));
         } else {
             let res = engine.apply_event("global".to_string(), event).map_err(|e| e.to_string());
             if res.is_ok() {
-                 engine.flush().unwrap();
+                engine.flush().unwrap();
             }
             w.last_result = Some(res);
         }
@@ -318,7 +318,6 @@ async fn when_create_product_stock(w: &mut DeclarativeWorld, id: String, stock: 
     w.engine.as_mut().unwrap().apply_event("global".to_string(), event).unwrap();
     w.engine.as_mut().unwrap().flush().unwrap();
 }
-
 
 #[when(expr = "je crée une commande {string} pour le produit {string} \\(qte: {int})")]
 async fn when_create_order(w: &mut DeclarativeWorld, id: String, product_id: String, qty: i32) {

@@ -1,5 +1,5 @@
 //! Pattern matching utilities
-//! 
+//!
 //! Supports wildcards, CIDR notation, regex, and exact matches.
 
 use std::net::IpAddr;
@@ -16,7 +16,7 @@ pub struct PatternMatcher;
 
 impl PatternMatcher {
     /// Match a value against a pattern
-    /// 
+    ///
     /// Supports:
     /// - Exact match: "example.com"
     /// - Wildcard: "*.example.com", "/api/*"
@@ -45,7 +45,7 @@ impl PatternMatcher {
     }
 
     /// Match wildcard patterns
-    /// 
+    ///
     /// Examples:
     /// - "*.example.com" matches "api.example.com"
     /// - "/api/*" matches "/api/users"
@@ -55,7 +55,7 @@ impl PatternMatcher {
         }
 
         let parts: Vec<&str> = pattern.split('*').collect();
-        
+
         match parts.len() {
             2 => {
                 let prefix = parts[0];
@@ -71,7 +71,7 @@ impl PatternMatcher {
     }
 
     /// Match CIDR notation against IP address
-    /// 
+    ///
     /// Example: "192.168.1.0/24" matches "192.168.1.100"
     fn matches_cidr(pattern: &str, ip: IpAddr) -> bool {
         if !pattern.contains('/') {
@@ -96,7 +96,7 @@ impl PatternMatcher {
     }
 
     /// Match domain pattern
-    /// 
+    ///
     /// Supports subdomain wildcards: "*.example.com"
     pub fn matches_domain(pattern: &str, domain: &str) -> bool {
         if pattern.starts_with("*.") {
@@ -108,7 +108,7 @@ impl PatternMatcher {
     }
 
     /// Match path pattern
-    /// 
+    ///
     /// Supports wildcards: "/api/*"
     pub fn matches_path(pattern: &str, path: &str) -> bool {
         Self::matches_wildcard(pattern, path)
@@ -149,7 +149,7 @@ mod tests {
     fn test_cidr_match() {
         let ip: IpAddr = "192.168.1.100".parse().unwrap();
         assert!(PatternMatcher::matches_cidr("192.168.1.0/24", ip));
-        
+
         let ip2: IpAddr = "192.168.2.100".parse().unwrap();
         assert!(!PatternMatcher::matches_cidr("192.168.1.0/24", ip2));
     }

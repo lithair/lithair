@@ -116,8 +116,8 @@ fn find_json_files(dir: &Path) -> Result<Vec<PathBuf>> {
 
     let mut files = Vec::new();
 
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("Failed to read directory: {:?}", dir))?
+    for entry in
+        fs::read_dir(dir).with_context(|| format!("Failed to read directory: {:?}", dir))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -151,10 +151,7 @@ async fn migrate_file(
         match serde_json::from_str::<UserMfaData>(&json_content) {
             Ok(user_data) => {
                 // Extract username from filename (e.g., "admin.json" → "admin")
-                let username = json_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
+                let username = json_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
 
                 migrate_user(username, &user_data, event_log, stats).await?;
             }
@@ -292,9 +289,7 @@ mod tests {
 
         // Run actual migration
         let event_log_path = temp_dir.path().join("events.log");
-        let stats = migrate_json_to_events(&json_dir, &event_log_path, false)
-            .await
-            .unwrap();
+        let stats = migrate_json_to_events(&json_dir, &event_log_path, false).await.unwrap();
 
         assert_eq!(stats.users_migrated, 1);
         assert_eq!(stats.events_generated, 2); // Setup + Enabled

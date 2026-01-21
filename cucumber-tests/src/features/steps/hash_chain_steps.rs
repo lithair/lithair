@@ -3,12 +3,12 @@
 //! These steps test the SHA256 hash chain implementation for tamper-evident
 //! event storage in Lithair.
 
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
-use lithair_core::engine::{EventStore, EventEnvelope};
+use cucumber::{given, then, when};
+use lithair_core::engine::{EventEnvelope, EventStore};
 use std::fs;
-use tempfile::TempDir;
 use std::sync::Arc;
+use tempfile::TempDir;
 use tokio::sync::Mutex;
 
 // ==================== SETUP STEPS ====================
@@ -37,8 +37,8 @@ async fn given_persistence_configured(world: &mut LithairWorld) {
 async fn given_genesis_event(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelope = EventEnvelope::new(
         "ArticleCreated".to_string(),
@@ -64,8 +64,8 @@ async fn when_create_article(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     // Get last hash for chain linking
     let last_hash = event_store.get_last_event_hash().cloned();
@@ -93,8 +93,8 @@ async fn when_create_second_article(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let last_hash = event_store.get_last_event_hash().cloned();
 
@@ -120,8 +120,8 @@ async fn when_create_n_articles(world: &mut LithairWorld, count: u32) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     for i in 0..count {
         let last_hash = event_store.get_last_event_hash().cloned();
@@ -148,8 +148,8 @@ async fn when_verify_chain(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let result = event_store.verify_chain().expect("Failed to verify chain");
 
@@ -195,7 +195,10 @@ async fn when_tamper_event_payload(world: &mut LithairWorld) {
         let tampered_lines: Vec<String> = content
             .lines()
             .map(|line| {
-                if line.contains("Original Title") && line.len() > 9 && line.chars().nth(8) == Some(':') {
+                if line.contains("Original Title")
+                    && line.len() > 9
+                    && line.chars().nth(8) == Some(':')
+                {
                     // Extract JSON part after CRC32 prefix
                     let json_data = &line[9..];
                     // Tamper the payload
@@ -245,8 +248,8 @@ async fn when_create_article_with_title(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let last_hash = event_store.get_last_event_hash().cloned();
 
@@ -271,8 +274,8 @@ async fn given_create_article_with_title(world: &mut LithairWorld, title: String
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let last_hash = event_store.get_last_event_hash().cloned();
 
@@ -304,8 +307,8 @@ async fn then_event_has_hash(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     assert!(!envelopes.is_empty(), "Should have at least one envelope");
@@ -320,8 +323,8 @@ async fn then_hash_is_valid_sha256(world: &mut LithairWorld, expected_len: usize
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     let last = envelopes.last().unwrap();
@@ -337,8 +340,8 @@ async fn then_hash_from_content(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     let last = envelopes.last().unwrap();
@@ -353,8 +356,8 @@ async fn then_second_has_previous_hash(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     assert!(envelopes.len() >= 2, "Should have at least 2 events");
@@ -369,8 +372,8 @@ async fn then_previous_matches_genesis(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     let genesis = &envelopes[0];
@@ -389,8 +392,8 @@ async fn then_valid_chain(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let result = event_store.verify_chain().expect("Failed to verify chain");
     assert!(result.is_valid, "Chain should be valid");
@@ -402,8 +405,8 @@ async fn then_each_references_previous(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
 
@@ -411,10 +414,7 @@ async fn then_each_references_previous(world: &mut LithairWorld) {
         let current = &envelopes[i];
         let previous = &envelopes[i - 1];
 
-        assert!(
-            current.links_to(previous),
-            "Event {} should link to event {}", i, i - 1
-        );
+        assert!(current.links_to(previous), "Event {} should link to event {}", i, i - 1);
     }
     println!("✅ All events reference the hash of the previous event");
 }
@@ -424,8 +424,8 @@ async fn then_first_no_previous(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     let first = &envelopes[0];
@@ -439,8 +439,8 @@ async fn then_chain_verifiable(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let result = event_store.verify_chain().expect("Failed to verify chain");
     let events_created = get_events_created_from_response(&world.last_response);
@@ -467,7 +467,10 @@ async fn then_tampered_event_identified(world: &mut LithairWorld) {
 
     assert!(!result.invalid_hashes.is_empty(), "Should have identified tampered event");
     let error = &result.invalid_hashes[0];
-    println!("✅ Tampered event identified: index={}, event_id={}", error.event_index, error.event_id);
+    println!(
+        "✅ Tampered event identified: index={}, event_id={}",
+        error.event_index, error.event_id
+    );
 }
 
 #[then("the chain should be marked as INVALID")]
@@ -513,8 +516,8 @@ async fn then_legacy_loaded(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let envelopes = event_store.get_all_envelopes().expect("Failed to get envelopes");
     assert!(!envelopes.is_empty(), "Legacy events should be loaded");
@@ -526,8 +529,8 @@ async fn then_legacy_reported(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     let result = event_store.verify_chain().expect("Failed to verify chain");
     assert!(result.legacy_events > 0, "Should report legacy events");
@@ -539,8 +542,8 @@ async fn then_fresh_chain(world: &mut LithairWorld) {
     let temp_guard = world.temp_dir.lock().await;
     let temp_path = temp_guard.as_ref().expect("Temp dir required").path();
 
-    let mut event_store = EventStore::new(temp_path.to_str().unwrap())
-        .expect("Failed to create event store");
+    let mut event_store =
+        EventStore::new(temp_path.to_str().unwrap()).expect("Failed to create event store");
 
     // Get last hash (may be None if all legacy)
     let last_hash = event_store.get_last_event_hash().cloned();
@@ -568,7 +571,8 @@ async fn then_fresh_chain(world: &mut LithairWorld) {
 // ==================== HELPER FUNCTIONS ====================
 
 fn get_events_created_from_response(response: &Option<String>) -> usize {
-    response.as_ref()
+    response
+        .as_ref()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
         .and_then(|v| v.get("events_created").and_then(|e| e.as_u64()))
         .unwrap_or(0) as usize
@@ -588,12 +592,12 @@ struct ChainErrorInfo {
 }
 
 fn get_verification_result_from_response(response: &Option<String>) -> Option<VerificationResult> {
-    let json: serde_json::Value = response.as_ref()
-        .and_then(|s| serde_json::from_str(s).ok())?;
+    let json: serde_json::Value = response.as_ref().and_then(|s| serde_json::from_str(s).ok())?;
 
     let is_valid = json.get("is_valid")?.as_bool()?;
 
-    let invalid_hashes = json.get("invalid_hashes")?
+    let invalid_hashes = json
+        .get("invalid_hashes")?
         .as_array()?
         .iter()
         .filter_map(|v| {
@@ -604,7 +608,8 @@ fn get_verification_result_from_response(response: &Option<String>) -> Option<Ve
         })
         .collect();
 
-    let broken_links = json.get("broken_links")?
+    let broken_links = json
+        .get("broken_links")?
         .as_array()?
         .iter()
         .filter_map(|v| {
@@ -615,9 +620,5 @@ fn get_verification_result_from_response(response: &Option<String>) -> Option<Ve
         })
         .collect();
 
-    Some(VerificationResult {
-        is_valid,
-        invalid_hashes,
-        broken_links,
-    })
+    Some(VerificationResult { is_valid, invalid_hashes, broken_links })
 }

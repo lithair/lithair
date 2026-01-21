@@ -80,12 +80,24 @@ pub struct BenchmarkConfig {
     pub crud_ratios: [u8; 4],
 }
 
-fn default_benchmark_type() -> String { "crud".to_string() }
-fn default_concurrency() -> usize { 10 }
-fn default_duration() -> u64 { 10 }
-fn default_payload_size() -> usize { 256 }
-fn default_multi_table() -> bool { true }
-fn default_crud_ratios() -> [u8; 4] { [40, 30, 20, 10] } // 40% create, 30% read, 20% update, 10% delete
+fn default_benchmark_type() -> String {
+    "crud".to_string()
+}
+fn default_concurrency() -> usize {
+    10
+}
+fn default_duration() -> u64 {
+    10
+}
+fn default_payload_size() -> usize {
+    256
+}
+fn default_multi_table() -> bool {
+    true
+}
+fn default_crud_ratios() -> [u8; 4] {
+    [40, 30, 20, 10]
+} // 40% create, 30% read, 20% update, 10% delete
 
 impl Default for BenchmarkConfig {
     fn default() -> Self {
@@ -234,13 +246,7 @@ impl AtomicTableStats {
         let updates = self.updates.to_stats().await;
         let deletes = self.deletes.to_stats().await;
         let total_ops = creates.total + reads.total + updates.total + deletes.total;
-        TableStats {
-            creates,
-            reads,
-            updates,
-            deletes,
-            total_ops,
-        }
+        TableStats { creates, reads, updates, deletes, total_ops }
     }
 }
 
@@ -344,7 +350,8 @@ impl BenchmarkEngine {
         reporter_handle.abort();
 
         // Calculate final stats
-        self.calculate_status(started_at.to_rfc3339(), Some(Utc::now().to_rfc3339())).await
+        self.calculate_status(started_at.to_rfc3339(), Some(Utc::now().to_rfc3339()))
+            .await
     }
 
     /// Worker loop - performs benchmark operations
@@ -393,7 +400,7 @@ impl BenchmarkEngine {
             // Rate limiting if configured
             if self.config.target_ops_per_sec > 0 {
                 let target_interval = Duration::from_secs_f64(
-                    1.0 / (self.config.target_ops_per_sec as f64 / self.config.concurrency as f64)
+                    1.0 / (self.config.target_ops_per_sec as f64 / self.config.concurrency as f64),
                 );
                 let elapsed = start.elapsed();
                 if elapsed < target_interval {
@@ -465,7 +472,7 @@ impl BenchmarkEngine {
                     "details": {"benchmark": true, "worker": fastrand::u32(0..100)},
                     "source_node": self.port as u64
                 })
-            },
+            }
         };
 
         let url = format!("{}{}", base_url, table.endpoint());
@@ -502,10 +509,7 @@ impl BenchmarkEngine {
         // Get a known ID for this table
         let id = {
             let known_ids = self.known_ids.read().await;
-            known_ids.iter()
-                .filter(|(t, _)| *t == table)
-                .map(|(_, id)| *id)
-                .next()
+            known_ids.iter().filter(|(t, _)| *t == table).map(|(_, id)| *id).next()
         };
 
         let Some(id) = id else {
@@ -522,7 +526,7 @@ impl BenchmarkEngine {
                     "priority": rand_priority(),
                     "status": status
                 })
-            },
+            }
             TableType::Orders => {
                 let statuses = ["Pending", "Confirmed", "Processing", "Shipped"];
                 let status = statuses[fastrand::usize(0..4)];
@@ -530,7 +534,7 @@ impl BenchmarkEngine {
                     "status": status,
                     "notes": generate_payload(32)
                 })
-            },
+            }
             TableType::Logs => {
                 // Logs are typically append-only, do a create instead
                 return self.do_create(client, base_url, table).await;
@@ -583,18 +587,24 @@ impl BenchmarkEngine {
             let status = self.calculate_status(started_at.clone(), None).await;
 
             // Broadcast progress via SSE
-            self.event_broadcaster.broadcast(
-                "benchmark",
-                serde_json::json!({
-                    "type": "progress",
-                    "data": status
-                }),
-            ).await;
+            self.event_broadcaster
+                .broadcast(
+                    "benchmark",
+                    serde_json::json!({
+                        "type": "progress",
+                        "data": status
+                    }),
+                )
+                .await;
         }
     }
 
     /// Calculate current status
-    async fn calculate_status(&self, started_at: String, completed_at: Option<String>) -> BenchmarkStatus {
+    async fn calculate_status(
+        &self,
+        started_at: String,
+        completed_at: Option<String>,
+    ) -> BenchmarkStatus {
         let elapsed = self.started_at.elapsed().as_secs_f64();
 
         // Get per-operation stats
@@ -610,14 +620,11 @@ impl BenchmarkEngine {
 
         // Calculate totals
         let total = creates.total + reads.total + updates.total + deletes.total;
-        let successful = creates.successful + reads.successful + updates.successful + deletes.successful;
+        let successful =
+            creates.successful + reads.successful + updates.successful + deletes.successful;
         let failed = creates.failed + reads.failed + updates.failed + deletes.failed;
 
-        let ops_per_sec = if elapsed > 0.0 {
-            total as f64 / elapsed
-        } else {
-            0.0
-        };
+        let ops_per_sec = if elapsed > 0.0 { total as f64 / elapsed } else { 0.0 };
 
         let progress = if self.config.duration_secs > 0 {
             (elapsed / self.config.duration_secs as f64 * 100.0).min(100.0)
@@ -694,9 +701,7 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
 /// Generate random payload of given size
 fn generate_payload(size: usize) -> String {
     use std::iter::repeat_with;
-    repeat_with(|| fastrand::alphanumeric())
-        .take(size)
-        .collect()
+    repeat_with(|| fastrand::alphanumeric()).take(size).collect()
 }
 
 /// Random priority (0-10)

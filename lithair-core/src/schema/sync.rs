@@ -76,10 +76,7 @@ fn default_additive_policy() -> VoteStrategy {
 }
 
 fn default_breaking_policy() -> VoteStrategy {
-    VoteStrategy::ManualApproval {
-        timeout: None,
-        min_approvers: 1,
-    }
+    VoteStrategy::ManualApproval { timeout: None, min_approvers: 1 }
 }
 
 fn default_versioned_policy() -> VoteStrategy {
@@ -118,18 +115,9 @@ impl SchemaVotePolicy {
     /// Create a policy requiring manual approval for all changes
     pub fn manual() -> Self {
         Self {
-            additive: VoteStrategy::ManualApproval {
-                timeout: None,
-                min_approvers: 1,
-            },
-            breaking: VoteStrategy::ManualApproval {
-                timeout: None,
-                min_approvers: 1,
-            },
-            versioned: VoteStrategy::ManualApproval {
-                timeout: None,
-                min_approvers: 1,
-            },
+            additive: VoteStrategy::ManualApproval { timeout: None, min_approvers: 1 },
+            breaking: VoteStrategy::ManualApproval { timeout: None, min_approvers: 1 },
+            versioned: VoteStrategy::ManualApproval { timeout: None, min_approvers: 1 },
         }
     }
 
@@ -218,18 +206,16 @@ impl PendingSchemaChange {
         old_spec: Option<ModelSpec>,
     ) -> Self {
         // Determine overall strategy (most restrictive wins)
-        let overall_strategy = changes
-            .iter()
-            .map(|c| &c.migration_strategy)
-            .fold(MigrationStrategy::Additive, |acc, s| {
-                match (&acc, s) {
-                    (MigrationStrategy::Breaking, _) => MigrationStrategy::Breaking,
-                    (_, MigrationStrategy::Breaking) => MigrationStrategy::Breaking,
-                    (MigrationStrategy::Versioned, _) => MigrationStrategy::Versioned,
-                    (_, MigrationStrategy::Versioned) => MigrationStrategy::Versioned,
-                    _ => MigrationStrategy::Additive,
-                }
-            });
+        let overall_strategy = changes.iter().map(|c| &c.migration_strategy).fold(
+            MigrationStrategy::Additive,
+            |acc, s| match (&acc, s) {
+                (MigrationStrategy::Breaking, _) => MigrationStrategy::Breaking,
+                (_, MigrationStrategy::Breaking) => MigrationStrategy::Breaking,
+                (MigrationStrategy::Versioned, _) => MigrationStrategy::Versioned,
+                (_, MigrationStrategy::Versioned) => MigrationStrategy::Versioned,
+                _ => MigrationStrategy::Additive,
+            },
+        );
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -280,10 +266,7 @@ impl PendingSchemaChange {
     /// Add a node approval
     pub fn add_approval(&mut self, node_id: u64) {
         if !self.approvals.iter().any(|a| a.node_id == node_id) {
-            self.approvals.push(SchemaApproval {
-                node_id,
-                timestamp: current_timestamp(),
-            });
+            self.approvals.push(SchemaApproval { node_id, timestamp: current_timestamp() });
         }
     }
 
@@ -385,36 +368,19 @@ pub enum SchemaSyncMessage {
     ProposeChange(PendingSchemaChange),
 
     /// Vote to approve a pending change
-    ApproveChange {
-        change_id: Uuid,
-        node_id: u64,
-    },
+    ApproveChange { change_id: Uuid, node_id: u64 },
 
     /// Vote to reject a pending change
-    RejectChange {
-        change_id: Uuid,
-        node_id: u64,
-        reason: Option<String>,
-    },
+    RejectChange { change_id: Uuid, node_id: u64, reason: Option<String> },
 
     /// Human approval via admin API
-    HumanApprove {
-        change_id: Uuid,
-        user_id: String,
-        user_name: Option<String>,
-    },
+    HumanApprove { change_id: Uuid, user_id: String, user_name: Option<String> },
 
     /// Finalize and apply a change (leader broadcasts after consensus)
-    ApplyChange {
-        change_id: Uuid,
-        new_spec: ModelSpec,
-    },
+    ApplyChange { change_id: Uuid, new_spec: ModelSpec },
 
     /// Request current schema from leader (for new nodes)
-    RequestSchema {
-        model_name: String,
-        requesting_node_id: u64,
-    },
+    RequestSchema { model_name: String, requesting_node_id: u64 },
 
     /// Response with current schema
     SchemaResponse {
@@ -489,7 +455,12 @@ impl SchemaLockStatus {
     }
 
     /// Unlock schema migrations with optional timeout
-    pub fn unlock(&mut self, reason: Option<String>, duration_secs: Option<u64>, unlocked_by: Option<String>) {
+    pub fn unlock(
+        &mut self,
+        reason: Option<String>,
+        duration_secs: Option<u64>,
+        unlocked_by: Option<String>,
+    ) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -560,10 +531,7 @@ pub struct AppliedSchemaChange {
 impl SchemaSyncState {
     /// Create new state with a policy
     pub fn with_policy(policy: SchemaVotePolicy) -> Self {
-        Self {
-            policy,
-            ..Default::default()
-        }
+        Self { policy, ..Default::default() }
     }
 
     /// Get pending changes for a model

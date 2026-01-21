@@ -35,7 +35,7 @@ fn body_from<T: Into<Bytes>>(data: T) -> RespBody {
     Full::new(data.into()).boxed()
 }
 use crate::lifecycle::LifecycleAware;
-use crate::security::anti_ddos::{AntiDDoSProtection, AntiDDoSConfig};
+use crate::security::anti_ddos::{AntiDDoSConfig, AntiDDoSProtection};
 
 /// Pure Declarative Server - The ideal Lithair experience
 ///
@@ -511,7 +511,7 @@ where
         // Migration settings
         let legacy_endpoints = self.legacy_endpoints;
         let deprecation_warnings = self.deprecation_warnings;
-        
+
         // Initialize anti-DDoS protection if configured
         let anti_ddos = if let Some(ref cfg) = self.anti_ddos_config {
             Some(Arc::new(AntiDDoSProtection::new(cfg.clone())))
@@ -525,10 +525,7 @@ where
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
-        println!(
-            "🌐 Pure Lithair Declarative Server listening on http://127.0.0.1:{}",
-            self.port
-        );
+        println!("🌐 Pure Lithair Declarative Server listening on http://127.0.0.1:{}", self.port);
 
         let listener = TcpListener::bind(addr).await?;
         loop {
@@ -597,8 +594,8 @@ where
                 // Configure HTTP/1.1 for production robustness (without timer for now)
                 builder.http1()
                     .keep_alive(true)                                           // Enable keep-alive
-                    .max_buf_size(64 * 1024);                                   // Limit header size (64KB)
-                    // NOTE: header_read_timeout requires timer configuration, disabled for now
+                    .max_buf_size(64 * 1024); // Limit header size (64KB)
+                                              // NOTE: header_read_timeout requires timer configuration, disabled for now
 
                 let conn = builder.serve_connection(TokioIo::new(stream), service);
 
@@ -606,7 +603,10 @@ where
                 let connection_timeout = std::time::Duration::from_secs(300); // 5 minutes max per connection
                 match tokio::time::timeout(connection_timeout, conn).await {
                     Err(_) => {
-                        eprintln!("Connection timeout after {} seconds", connection_timeout.as_secs());
+                        eprintln!(
+                            "Connection timeout after {} seconds",
+                            connection_timeout.as_secs()
+                        );
                     }
                     Ok(Err(e)) => {
                         eprintln!("Server connection error: {}", e);
@@ -827,7 +827,7 @@ where
         self.logging_config = Some(config);
         self
     }
-    
+
     /// Configure RBAC (Role-Based Access Control)
     ///
     /// # Example
@@ -845,8 +845,12 @@ where
     ///     .with_rbac(rbac_config);
     /// ```
     pub fn with_rbac(mut self, config: RbacConfig) -> Self {
-        log::info!("🔐 Configuring RBAC: enabled={}, provider={:?}", config.enabled, config.provider);
-        
+        log::info!(
+            "🔐 Configuring RBAC: enabled={}, provider={:?}",
+            config.enabled,
+            config.provider
+        );
+
         // Create middleware if provider is configured
         if let Some(provider) = config.provider.create_provider() {
             log::info!("🔐 RBAC middleware created with provider: {}", provider.name());
@@ -949,7 +953,7 @@ where
     // ========================================================================
     // RBAC AUTHENTICATION
     // ========================================================================
-    
+
     // Authenticate request if RBAC is enabled
     // Note: We need to convert Incoming to Full<Bytes> for authentication
     // For now, we'll authenticate after body collection in the handler
@@ -1041,13 +1045,15 @@ where
         let anti_ddos_enabled = std::env::var("RS_ANTI_DDOS")
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
-        let max_connections = std::env::var("RS_MAX_CONNECTIONS").unwrap_or_else(|_| "not set".to_string());
+        let max_connections =
+            std::env::var("RS_MAX_CONNECTIONS").unwrap_or_else(|_| "not set".to_string());
         let rate_limit = std::env::var("RS_RATE_LIMIT").unwrap_or_else(|_| "not set".to_string());
 
         // Determine firewall status from environment or presence of firewall config
         let firewall_status = if std::env::var("RS_FIREWALL_ENABLED")
             .map(|v| v == "1" || v.to_lowercase() == "true")
-            .unwrap_or(false) {
+            .unwrap_or(false)
+        {
             "enabled"
         } else {
             "disabled"
@@ -1426,45 +1432,37 @@ where
         // RBAC Authorization Check
         if let Some(ref middleware) = config.rbac_middleware {
             log::info!("🔐 RBAC: Checking authorization for {} {}", method, uri);
-            
+
             // Extract auth headers
-            let password = req.headers()
-                .get("x-auth-password")
-                .and_then(|v| v.to_str().ok());
-            
-            let role = req.headers()
-                .get("x-auth-role")
-                .and_then(|v| v.to_str().ok());
-            
+            let password = req.headers().get("x-auth-password").and_then(|v| v.to_str().ok());
+
+            let role = req.headers().get("x-auth-role").and_then(|v| v.to_str().ok());
+
             log::info!("🔐 RBAC: password={:?}, role={:?}", password.is_some(), role);
-            
+
             // Create a simple request for authentication
-            let auth_req = Request::builder()
-                .method(method.clone())
-                .uri(uri.clone());
-            
+            let auth_req = Request::builder().method(method.clone()).uri(uri.clone());
+
             let auth_req = if let Some(pwd) = password {
                 auth_req.header("x-auth-password", pwd)
             } else {
                 auth_req
             };
-            
-            let auth_req = if let Some(r) = role {
-                auth_req.header("x-auth-role", r)
-            } else {
-                auth_req
-            };
-            
+
+            let auth_req =
+                if let Some(r) = role { auth_req.header("x-auth-role", r) } else { auth_req };
+
             let auth_req = auth_req.body(http_body_util::Full::new(bytes::Bytes::new())).unwrap();
-            
+
             // Authenticate
             let auth_result = middleware.authenticate(&auth_req);
-            
+
             // Check if operation is allowed based on method
             let requires_auth = matches!(method, Method::POST | Method::PUT | Method::DELETE);
-            
-            let is_authenticated = auth_result.as_ref().map(|ctx| ctx.authenticated).unwrap_or(false);
-            
+
+            let is_authenticated =
+                auth_result.as_ref().map(|ctx| ctx.authenticated).unwrap_or(false);
+
             if requires_auth && !is_authenticated {
                 log::warn!("🔐 RBAC: Unauthenticated request to {} {}", method, uri);
                 let resp = Response::builder()
@@ -1474,7 +1472,7 @@ where
                     .unwrap();
                 return Ok(resp);
             }
-            
+
             // For DELETE, check if user has admin/delete permissions
             if method == Method::DELETE && is_authenticated {
                 // Simple role-based check: only Administrator can delete
@@ -1484,7 +1482,9 @@ where
                         let resp = Response::builder()
                             .status(StatusCode::FORBIDDEN)
                             .header("content-type", "application/json")
-                            .body(body_from(r#"{"error":"Insufficient permissions for DELETE operation"}"#))
+                            .body(body_from(
+                                r#"{"error":"Insufficient permissions for DELETE operation"}"#,
+                            ))
                             .unwrap();
                         return Ok(resp);
                     }

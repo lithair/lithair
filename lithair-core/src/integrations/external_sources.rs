@@ -1,5 +1,5 @@
 //! External source fetching and parsing
-//! 
+//!
 //! Fetches data from external URLs and parses various formats (CSV, JSON, plain text).
 //! Used for automatic blacklist integration, external configuration, etc.
 
@@ -50,26 +50,20 @@ pub struct ExternalSourceFetcher {
 impl ExternalSourceFetcher {
     /// Create a new fetcher with default settings
     pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            headers: HashMap::new(),
-        }
+        Self { client: reqwest::Client::new(), headers: HashMap::new() }
     }
 
     /// Create a new fetcher with custom headers
     pub fn with_headers(headers: HashMap<String, String>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            headers,
-        }
+        Self { client: reqwest::Client::new(), headers }
     }
 
     /// Fetch and parse data from a URL
-    /// 
+    ///
     /// # Arguments
     /// * `url` - The URL to fetch from
     /// * `format` - The format of the data
-    /// 
+    ///
     /// # Returns
     /// A vector of parsed entries
     pub async fn fetch_and_parse(
@@ -84,15 +78,9 @@ impl ExternalSourceFetcher {
         }
 
         // Fetch data
-        let response = request
-            .send()
-            .await
-            .map_err(|e| FetchError::HttpError(e.to_string()))?;
+        let response = request.send().await.map_err(|e| FetchError::HttpError(e.to_string()))?;
 
-        let text = response
-            .text()
-            .await
-            .map_err(|e| FetchError::HttpError(e.to_string()))?;
+        let text = response.text().await.map_err(|e| FetchError::HttpError(e.to_string()))?;
 
         // Parse based on format
         self.parse(&text, format)
@@ -119,9 +107,7 @@ impl ExternalSourceFetcher {
 
     /// Parse CSV and extract specified column
     fn parse_csv(&self, text: &str, column: usize) -> Result<Vec<String>, FetchError> {
-        let mut reader = csv::ReaderBuilder::new()
-            .has_headers(false)
-            .from_reader(text.as_bytes());
+        let mut reader = csv::ReaderBuilder::new().has_headers(false).from_reader(text.as_bytes());
 
         let mut results = Vec::new();
         for result in reader.records() {
@@ -141,19 +127,13 @@ impl ExternalSourceFetcher {
     fn parse_json(&self, text: &str, path: &str) -> Result<Vec<String>, FetchError> {
         // TODO: Implement JSONPath parsing
         // For now, simple implementation
-        let value: serde_json::Value = serde_json::from_str(text)
-            .map_err(|e| FetchError::ParseError(e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(text).map_err(|e| FetchError::ParseError(e.to_string()))?;
 
         if let Some(array) = value.as_array() {
-            Ok(array
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect())
+            Ok(array.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         } else {
-            Err(FetchError::InvalidFormat(format!(
-                "Expected array at path: {}",
-                path
-            )))
+            Err(FetchError::InvalidFormat(format!("Expected array at path: {}", path)))
         }
     }
 }

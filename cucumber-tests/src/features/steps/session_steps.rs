@@ -1,12 +1,15 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
+use cucumber::{given, then, when};
 use tokio::time::{sleep, Duration};
 
 // ==================== BACKGROUND ====================
 
 #[given(expr = "a Lithair server with persistent sessions enabled")]
 async fn given_sessions_enabled(world: &mut LithairWorld) {
-    world.start_server(8083, "session_demo").await.expect("Failed to start session server");
+    world
+        .start_server(8083, "session_demo")
+        .await
+        .expect("Failed to start session server");
     sleep(Duration::from_millis(300)).await;
     println!("Server with persistent sessions started");
 }

@@ -1,6 +1,4 @@
-use lithair_core::security::anti_ddos::AntiDDoSConfig;
 /// Minimal full declarative HTTP server to exercise HTTP hardening features
-
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::Parser;
@@ -9,10 +7,11 @@ use lithair_core::http::declarative_server::{
 };
 use lithair_core::http::FirewallConfig;
 use lithair_core::logging::{FileRotation, LoggingConfig};
-use std::time::Duration;
+use lithair_core::security::anti_ddos::AntiDDoSConfig;
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Parser, Debug, Clone)]
@@ -152,10 +151,8 @@ async fn main() -> Result<()> {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1000);
-        let rate_limit = std::env::var("RS_RATE_LIMIT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(100);
+        let rate_limit =
+            std::env::var("RS_RATE_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
 
         let anti_ddos_config = AntiDDoSConfig {
             max_connections_per_ip: max_connections / 10, // 10% per IP

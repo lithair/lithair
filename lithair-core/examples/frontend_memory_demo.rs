@@ -10,9 +10,7 @@
 //! - Automatic MIME type detection
 //! - HTTP headers optimization
 
-use lithair_core::frontend::{
-    AssetAdminHandler, FrontendServer, FrontendState, StaticAsset,
-};
+use lithair_core::frontend::{AssetAdminHandler, FrontendServer, FrontendState, StaticAsset};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -177,7 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let host_id = "main".to_string();
     let location = state_guard.virtual_hosts.entry(host_id.clone()).or_insert_with(|| {
         lithair_core::frontend::VirtualHostLocation {
-            host_id: host_id,
+            host_id,
             base_path: "/".to_string(),
             assets: std::collections::HashMap::new(),
             path_index: std::collections::HashMap::new(),
@@ -198,7 +196,9 @@ document.addEventListener('DOMContentLoaded', function() {
     println!("   ✅ {} assets loaded into memory", assets_count);
 }
 
-async fn display_stats(admin_handler: &AssetAdminHandler) -> Result<(), Box<dyn std::error::Error>> {
+async fn display_stats(
+    admin_handler: &AssetAdminHandler,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📊 Asset Statistics:");
 
     let _stats_response = admin_handler.get_stats().await?;

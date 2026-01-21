@@ -53,10 +53,7 @@ struct RateLimitBucket {
 
 impl RateLimitBucket {
     fn new() -> Self {
-        Self {
-            count: AtomicU64::new(0),
-            window_start: std::sync::Mutex::new(Instant::now()),
-        }
+        Self { count: AtomicU64::new(0), window_start: std::sync::Mutex::new(Instant::now()) }
     }
 
     fn is_allowed(&self, limit: u32, window_duration: Duration) -> bool {
@@ -84,10 +81,7 @@ struct ConnectionTracker {
 
 impl ConnectionTracker {
     fn new() -> Self {
-        Self {
-            count: AtomicUsize::new(0),
-            last_activity: std::sync::Mutex::new(Instant::now()),
-        }
+        Self { count: AtomicUsize::new(0), last_activity: std::sync::Mutex::new(Instant::now()) }
     }
 
     fn add_connection(&self) -> usize {
@@ -130,7 +124,8 @@ impl CircuitBreaker {
 
         match state {
             0 => true, // Closed - allow all
-            1 => {     // Open - check if we should transition to half-open
+            1 => {
+                // Open - check if we should transition to half-open
                 if let Ok(last_failure) = self.last_failure_time.try_lock() {
                     if let Some(last_time) = *last_failure {
                         if last_time.elapsed() > Duration::from_secs(60) {
@@ -315,11 +310,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limiting() {
-        let config = AntiDDoSConfig {
-            rate_limit_per_ip: 2,
-            rate_window_seconds: 1,
-            ..Default::default()
-        };
+        let config =
+            AntiDDoSConfig { rate_limit_per_ip: 2, rate_window_seconds: 1, ..Default::default() };
 
         let protection = AntiDDoSProtection::new(config);
         let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));

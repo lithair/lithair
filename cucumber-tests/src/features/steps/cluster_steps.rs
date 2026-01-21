@@ -1,5 +1,5 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
+use cucumber::{given, then, when};
 use tokio::time::{sleep, Duration};
 
 // ==================== ENGLISH STEPS ====================
@@ -8,11 +8,12 @@ use tokio::time::{sleep, Duration};
 #[given(regex = r"a (?:Raft|Lithair) cluster of (\d+) nodes")]
 async fn given_lithair_cluster_en(world: &mut LithairWorld, node_count: u32) {
     println!("Starting cluster with {} nodes...", node_count);
-    let ports = world.start_cluster(node_count as usize).await
-        .expect("Failed to start cluster");
+    let ports = world.start_cluster(node_count as usize).await.expect("Failed to start cluster");
 
     for (i, _port) in ports.iter().enumerate() {
-        world.make_cluster_request(i, "GET", "/health", None).await
+        world
+            .make_cluster_request(i, "GET", "/health", None)
+            .await
             .expect(&format!("Node {} health check failed", i));
     }
     println!("Cluster of {} nodes started (ports: {:?})", node_count, ports);
@@ -71,7 +72,12 @@ async fn then_leader_elected(world: &mut LithairWorld) {
 async fn then_nodes_become_followers(world: &mut LithairWorld, follower_count: u32) {
     let cluster_size = world.cluster_size().await;
     let followers = cluster_size.saturating_sub(1); // leader excluded
-    assert!(followers >= follower_count as usize, "Expected {} followers, got {}", follower_count, followers);
+    assert!(
+        followers >= follower_count as usize,
+        "Expected {} followers, got {}",
+        follower_count,
+        followers
+    );
     println!("✅ {} followers in cluster", followers);
 }
 
@@ -82,7 +88,9 @@ async fn then_leader_accepts_writes(world: &mut LithairWorld) {
         "content": "Testing leader write capability"
     });
 
-    world.make_cluster_request(0, "POST", "/api/articles", Some(data)).await
+    world
+        .make_cluster_request(0, "POST", "/api/articles", Some(data))
+        .await
         .expect("Leader should accept writes");
     println!("✅ Leader accepts writes");
 }
@@ -130,7 +138,9 @@ async fn when_write_data_on_leader(world: &mut LithairWorld) {
         "content": "This will be replicated"
     });
 
-    world.make_cluster_request(0, "POST", "/api/articles", Some(data)).await
+    world
+        .make_cluster_request(0, "POST", "/api/articles", Some(data))
+        .await
         .expect("Write to leader failed");
     println!("Data written on leader");
 }
@@ -141,7 +151,9 @@ async fn then_data_replicated_on_followers(world: &mut LithairWorld) {
 
     let cluster_size = world.cluster_size().await;
     for i in 1..cluster_size {
-        world.make_cluster_request(i, "GET", "/api/articles", None).await
+        world
+            .make_cluster_request(i, "GET", "/api/articles", None)
+            .await
             .expect(&format!("Read from follower {} failed", i));
     }
     println!("Data replicated to all followers");
@@ -256,7 +268,9 @@ async fn when_write_on_leader(world: &mut LithairWorld) {
         "content": "This article will be replicated"
     });
 
-    world.make_cluster_request(0, "POST", "/api/articles", Some(data)).await
+    world
+        .make_cluster_request(0, "POST", "/api/articles", Some(data))
+        .await
         .expect("Write to leader failed");
     println!("✅ Write performed on leader");
 }
@@ -267,7 +281,9 @@ async fn then_replicated_on_followers(world: &mut LithairWorld) {
 
     let cluster_size = world.cluster_size().await;
     for i in 1..cluster_size {
-        world.make_cluster_request(i, "GET", "/api/articles", None).await
+        world
+            .make_cluster_request(i, "GET", "/api/articles", None)
+            .await
             .expect(&format!("Read from follower {} failed", i));
     }
     println!("✅ Data replicated to all followers");
@@ -289,7 +305,9 @@ async fn then_same_data_on_followers(world: &mut LithairWorld) {
     let mut responses = Vec::new();
 
     for i in 0..cluster_size {
-        world.make_cluster_request(i, "GET", "/api/articles", None).await
+        world
+            .make_cluster_request(i, "GET", "/api/articles", None)
+            .await
             .expect(&format!("Read from node {} failed", i));
         responses.push(world.last_response.clone());
     }
@@ -323,7 +341,9 @@ async fn then_unauthorized_rejected(_world: &mut LithairWorld) {
 
 #[when(regex = r"I call GET /status on any node")]
 async fn when_call_status(world: &mut LithairWorld) {
-    world.make_cluster_request(0, "GET", "/status", None).await
+    world
+        .make_cluster_request(0, "GET", "/status", None)
+        .await
         .expect("Status request failed");
     println!("✅ Called GET /status");
 }
@@ -331,14 +351,18 @@ async fn when_call_status(world: &mut LithairWorld) {
 #[then("I should receive cluster information including:")]
 async fn then_receive_cluster_info(world: &mut LithairWorld) {
     let response = world.last_response.as_ref().expect("No response");
-    assert!(response.contains("status") || response.contains("raft"),
-            "Response should contain status info");
+    assert!(
+        response.contains("status") || response.contains("raft"),
+        "Response should contain status info"
+    );
     println!("✅ Received cluster information");
 }
 
 #[when(regex = r"I call GET /raft/leader on any node")]
 async fn when_call_raft_leader(world: &mut LithairWorld) {
-    world.make_cluster_request(0, "GET", "/raft/leader", None).await
+    world
+        .make_cluster_request(0, "GET", "/raft/leader", None)
+        .await
         .expect("Raft leader request failed");
     println!("✅ Called GET /raft/leader");
 }
@@ -346,8 +370,10 @@ async fn when_call_raft_leader(world: &mut LithairWorld) {
 #[then("I should receive the current leader's address")]
 async fn then_receive_leader_address(world: &mut LithairWorld) {
     let response = world.last_response.as_ref().expect("No response");
-    assert!(response.contains("leader") || response.contains("port"),
-            "Response should contain leader info");
+    assert!(
+        response.contains("leader") || response.contains("port"),
+        "Response should contain leader info"
+    );
     println!("✅ Received leader address");
 }
 
@@ -378,7 +404,9 @@ async fn when_create_articles_on_leader_en(world: &mut LithairWorld, count: u32)
             "content": format!("Content for article {}", i)
         });
 
-        world.make_cluster_request(0, "POST", "/api/articles", Some(data)).await
+        world
+            .make_cluster_request(0, "POST", "/api/articles", Some(data))
+            .await
             .expect(&format!("Failed to create article {}", i));
     }
 
@@ -408,7 +436,7 @@ async fn then_local_hash_computation(_world: &mut LithairWorld) {
 }
 
 /// # Steps pour Tests de Cluster Distribué
-/// 
+///
 /// Ces steps testent VRAIMENT un cluster multi-nœuds Lithair avec:
 /// - Plusieurs serveurs HTTP indépendants
 /// - Persistance isolée par nœud
@@ -419,22 +447,26 @@ async fn then_local_hash_computation(_world: &mut LithairWorld) {
 #[given(expr = "{int} nœuds Lithair en cluster")]
 async fn given_cluster_nodes(world: &mut LithairWorld, node_count: u32) {
     println!("🚀 Démarrage cluster avec {} nœuds...", node_count);
-    
+
     // ✅ Démarrer un vrai cluster
-    let ports = world.start_cluster(node_count as usize).await
-        .expect("Failed to start cluster");
-    
+    let ports = world.start_cluster(node_count as usize).await.expect("Failed to start cluster");
+
     // ✅ Vérifier que tous les nœuds répondent
     for (i, port) in ports.iter().enumerate() {
-        world.make_cluster_request(i, "GET", "/health", None).await
+        world
+            .make_cluster_request(i, "GET", "/health", None)
+            .await
             .expect(&format!("Node {} health check failed", i));
-        
+
         assert!(world.last_response.is_some(), "Node {} not responding", i);
         let response = world.last_response.as_ref().unwrap();
-        assert!(response.contains("200") || response.contains("ok"), 
-                "Node {} invalid health response", i);
+        assert!(
+            response.contains("200") || response.contains("ok"),
+            "Node {} invalid health response",
+            i
+        );
     }
-    
+
     println!("✅ Cluster de {} nœuds démarré (ports: {:?})", node_count, ports);
 }
 
@@ -453,35 +485,42 @@ async fn when_write_article_to_node(world: &mut LithairWorld, node_id: u32) {
         "content": "Test content",
         "node": node_id
     });
-    
+
     println!("📝 Écriture article sur nœud {}...", node_id);
-    
+
     // ✅ Écrire VRAIMENT sur un nœud spécifique
-    world.make_cluster_request(node_id as usize, "POST", "/api/articles", Some(data)).await
+    world
+        .make_cluster_request(node_id as usize, "POST", "/api/articles", Some(data))
+        .await
         .expect(&format!("Failed to write to node {}", node_id));
-    
+
     assert!(world.last_response.is_some(), "No response from node {}", node_id);
     let response = world.last_response.as_ref().unwrap();
-    assert!(response.contains("201") || response.contains("created"), 
-            "Invalid write response from node {}", node_id);
-    
+    assert!(
+        response.contains("201") || response.contains("created"),
+        "Invalid write response from node {}",
+        node_id
+    );
+
     println!("✅ Article écrit sur nœud {}", node_id);
 }
 
 #[when(expr = "je crée {int} articles sur le nœud leader")]
 async fn when_create_articles_on_leader(world: &mut LithairWorld, count: u32) {
     println!("📝 Création de {} articles sur le leader (nœud 0)...", count);
-    
+
     for i in 0..count {
         let data = serde_json::json!({
             "title": format!("Article {}", i),
             "content": format!("Content {}", i)
         });
-        
-        world.make_cluster_request(0, "POST", "/api/articles", Some(data)).await
+
+        world
+            .make_cluster_request(0, "POST", "/api/articles", Some(data))
+            .await
             .expect(&format!("Failed to create article {}", i));
     }
-    
+
     println!("✅ {} articles créés sur le leader", count);
 }
 
@@ -490,13 +529,15 @@ async fn when_create_articles_on_leader(world: &mut LithairWorld, count: u32) {
 #[when(expr = "je lis les données depuis le nœud {int}")]
 async fn when_read_from_node(world: &mut LithairWorld, node_id: u32) {
     println!("📖 Lecture depuis nœud {}...", node_id);
-    
+
     // ✅ Lire VRAIMENT depuis un nœud spécifique
-    world.make_cluster_request(node_id as usize, "GET", "/api/articles", None).await
+    world
+        .make_cluster_request(node_id as usize, "GET", "/api/articles", None)
+        .await
         .expect(&format!("Failed to read from node {}", node_id));
-    
+
     assert!(world.last_response.is_some(), "No response from node {}", node_id);
-    
+
     println!("✅ Données lues depuis nœud {}", node_id);
 }
 
@@ -504,26 +545,28 @@ async fn when_read_from_node(world: &mut LithairWorld, node_id: u32) {
 async fn then_all_nodes_have_same_data(world: &mut LithairWorld) {
     let cluster_size = world.cluster_size().await;
     println!("🔍 Vérification cohérence sur {} nœuds...", cluster_size);
-    
+
     let mut responses = Vec::new();
-    
+
     // Lire depuis chaque nœud
     for i in 0..cluster_size {
-        world.make_cluster_request(i, "GET", "/api/articles", None).await
+        world
+            .make_cluster_request(i, "GET", "/api/articles", None)
+            .await
             .expect(&format!("Failed to read from node {}", i));
-        
+
         responses.push(world.last_response.clone());
     }
-    
+
     // ⚠️ Note: Dans l'implémentation actuelle, les nœuds sont indépendants
     // Pour un vrai consensus Raft, ils devraient avoir les mêmes données
     // Pour l'instant, on vérifie juste que chaque nœud répond
-    
+
     for (i, response) in responses.iter().enumerate() {
         assert!(response.is_some(), "Node {} has no data", i);
         println!("✅ Node {} responded", i);
     }
-    
+
     println!("⚠️ Note: Réplication Raft non implémentée - chaque nœud est indépendant");
     println!("✅ Tous les nœuds répondent (cohérence à implémenter)");
 }
@@ -534,17 +577,19 @@ async fn then_all_nodes_have_same_data(world: &mut LithairWorld) {
 async fn then_data_replicated_on_all_nodes(world: &mut LithairWorld) {
     // ⚠️ Cette fonctionnalité nécessite un vrai protocole Raft
     // Pour l'instant, c'est un test partiel
-    
+
     let cluster_size = world.cluster_size().await;
     println!("🔄 Vérification réplication sur {} nœuds...", cluster_size);
-    
+
     for i in 0..cluster_size {
-        world.make_cluster_request(i, "GET", "/api/articles", None).await
+        world
+            .make_cluster_request(i, "GET", "/api/articles", None)
+            .await
             .expect(&format!("Node {} read failed", i));
-        
+
         assert!(world.last_response.is_some(), "Node {} no response", i);
     }
-    
+
     println!("⚠️ Réplication Raft à implémenter - actuellement nœuds indépendants");
     println!("✅ Infrastructure cluster prête pour réplication");
 }
@@ -560,13 +605,15 @@ async fn then_consensus_reached(_world: &mut LithairWorld) {
 #[when(expr = "le nœud {int} tombe en panne")]
 async fn when_node_fails(world: &mut LithairWorld, node_id: u32) {
     println!("💥 Simulation panne nœud {}...", node_id);
-    
+
     // ✅ Arrêter le nœud (TODO: implémenter stop_node individuel)
     // Pour l'instant, on log l'action
-    
+
     let mut test_data = world.test_data.lock().await;
-    test_data.users.insert(format!("node_{}_failed", node_id), serde_json::json!(true));
-    
+    test_data
+        .users
+        .insert(format!("node_{}_failed", node_id), serde_json::json!(true));
+
     println!("✅ Nœud {} marqué comme en panne", node_id);
 }
 
@@ -574,18 +621,18 @@ async fn when_node_fails(world: &mut LithairWorld, node_id: u32) {
 async fn then_cluster_continues(world: &mut LithairWorld) {
     let cluster_size = world.cluster_size().await;
     println!("🔍 Vérification continuité cluster ({} nœuds)...", cluster_size);
-    
+
     // ✅ Vérifier que les autres nœuds répondent toujours
     let test_data = world.test_data.lock().await;
     let mut working_nodes = 0;
     drop(test_data);
-    
+
     for i in 0..cluster_size {
         if let Ok(_) = world.make_cluster_request(i, "GET", "/health", None).await {
             working_nodes += 1;
         }
     }
-    
+
     assert!(working_nodes > 0, "No nodes responding");
     println!("✅ {} nœuds fonctionnels sur {}", working_nodes, cluster_size);
 }
@@ -601,7 +648,10 @@ async fn then_new_leader_elected_fr(_world: &mut LithairWorld) {
 #[when(expr = "je fais {int} requêtes concurrentes sur le cluster")]
 async fn when_concurrent_requests(world: &mut LithairWorld, request_count: u32) {
     let cluster_size = world.cluster_size().await;
-    println!("⚡ Envoi de {} requêtes concurrentes sur {} nœuds...", request_count, cluster_size);
+    println!(
+        "⚡ Envoi de {} requêtes concurrentes sur {} nœuds...",
+        request_count, cluster_size
+    );
 
     // ✅ Faire de vraies requêtes concurrentes
     // Note: Pour de vraies requêtes concurrentes, il faudrait cloner world
@@ -613,9 +663,12 @@ async fn when_concurrent_requests(world: &mut LithairWorld, request_count: u32) 
             "request_id": i
         });
 
-        world.make_cluster_request(node_id, "POST", "/api/articles", Some(data)).await.ok();
+        world
+            .make_cluster_request(node_id, "POST", "/api/articles", Some(data))
+            .await
+            .ok();
     }
-    
+
     println!("✅ {} requêtes envoyées", request_count);
 }
 
@@ -629,9 +682,9 @@ async fn then_latency_below(world: &mut LithairWorld, max_latency: u32) {
     let metrics = world.metrics.lock().await;
     let avg_latency = metrics.response_time_ms;
     drop(metrics);
-    
+
     println!("📊 Latence moyenne: {:.2}ms (max: {}ms)", avg_latency, max_latency);
-    
+
     // ⚠️ Pour l'instant, on log juste la métrique
     println!("✅ Métriques de performance collectées");
 }
@@ -656,7 +709,9 @@ async fn then_stop_cluster_cleanly(world: &mut LithairWorld) {
 #[given(regex = r"^a real LithairServer cluster of (\d+) nodes$")]
 async fn given_real_cluster_en(world: &mut LithairWorld, node_count: u32) {
     println!("🚀 Starting REAL LithairServer cluster with {} nodes...", node_count);
-    let ports = world.start_real_cluster(node_count as usize).await
+    let ports = world
+        .start_real_cluster(node_count as usize)
+        .await
         .expect("Failed to start real cluster");
 
     println!("✅ Real cluster of {} nodes started (ports: {:?})", node_count, ports);
@@ -706,7 +761,9 @@ async fn when_create_products_on_leader(world: &mut LithairWorld, count: u32) {
             "category": "Test"
         });
 
-        world.make_real_cluster_request(0, "POST", "/api/products", Some(data)).await
+        world
+            .make_real_cluster_request(0, "POST", "/api/products", Some(data))
+            .await
             .expect(&format!("Failed to create product {}", i));
     }
 
@@ -728,7 +785,7 @@ async fn when_update_product_on_leader(world: &mut LithairWorld) {
                 None
             }
         }
-        Err(_) => None
+        Err(_) => None,
     };
 
     let id = product_id.expect("No product found to update");
@@ -736,7 +793,9 @@ async fn when_update_product_on_leader(world: &mut LithairWorld) {
     // Store the ID for later verification
     {
         let mut test_data = world.test_data.lock().await;
-        test_data.users.insert("last_product_id".to_string(), serde_json::json!(id.clone()));
+        test_data
+            .users
+            .insert("last_product_id".to_string(), serde_json::json!(id.clone()));
     }
 
     let update_data = serde_json::json!({
@@ -746,7 +805,9 @@ async fn when_update_product_on_leader(world: &mut LithairWorld) {
         "category": "Updated"
     });
 
-    let result = world.make_real_cluster_request(0, "PUT", &format!("/api/products/{}", id), Some(update_data)).await;
+    let result = world
+        .make_real_cluster_request(0, "PUT", &format!("/api/products/{}", id), Some(update_data))
+        .await;
 
     match result {
         Ok(response) => {
@@ -775,7 +836,7 @@ async fn when_delete_product_on_leader(world: &mut LithairWorld) {
                 None
             }
         }
-        Err(_) => None
+        Err(_) => None,
     };
 
     let id = product_id.expect("No product found to delete");
@@ -783,10 +844,14 @@ async fn when_delete_product_on_leader(world: &mut LithairWorld) {
     // Store the ID for later verification
     {
         let mut test_data = world.test_data.lock().await;
-        test_data.users.insert("last_product_id".to_string(), serde_json::json!(id.clone()));
+        test_data
+            .users
+            .insert("last_product_id".to_string(), serde_json::json!(id.clone()));
     }
 
-    let result = world.make_real_cluster_request(0, "DELETE", &format!("/api/products/{}", id), None).await;
+    let result = world
+        .make_real_cluster_request(0, "DELETE", &format!("/api/products/{}", id), None)
+        .await;
 
     match result {
         Ok(response) => {
@@ -811,7 +876,9 @@ async fn then_updated_product_visible_on_all_nodes(world: &mut LithairWorld) {
     // Get the stored product ID
     let product_id = {
         let test_data = world.test_data.lock().await;
-        test_data.users.get("last_product_id")
+        test_data
+            .users
+            .get("last_product_id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
     };
@@ -821,7 +888,9 @@ async fn then_updated_product_visible_on_all_nodes(world: &mut LithairWorld) {
     let mut node_products = Vec::new();
 
     for i in 0..cluster_size {
-        let result = world.make_real_cluster_request(i, "GET", &format!("/api/products/{}", id), None).await;
+        let result = world
+            .make_real_cluster_request(i, "GET", &format!("/api/products/{}", id), None)
+            .await;
         match result {
             Ok(response) => {
                 println!("Node {} product {}: {:?}", i, id, response);
@@ -856,7 +925,9 @@ async fn then_product_deleted_on_all_nodes(world: &mut LithairWorld) {
     // Get the stored product ID
     let product_id = {
         let test_data = world.test_data.lock().await;
-        test_data.users.get("last_product_id")
+        test_data
+            .users
+            .get("last_product_id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
     };
@@ -866,7 +937,9 @@ async fn then_product_deleted_on_all_nodes(world: &mut LithairWorld) {
     let mut deleted_count = 0;
 
     for i in 0..cluster_size {
-        let result = world.make_real_cluster_request(i, "GET", &format!("/api/products/{}", id), None).await;
+        let result = world
+            .make_real_cluster_request(i, "GET", &format!("/api/products/{}", id), None)
+            .await;
         match result {
             Ok(response) => {
                 // Product found - might be a 404 response wrapped in JSON
@@ -905,7 +978,10 @@ async fn then_product_deleted_on_all_nodes(world: &mut LithairWorld) {
     }
 
     assert!(deleted_count > 0, "At least some nodes should report deletion");
-    println!("✅ Product deletion verified ({}/{} nodes confirmed)", deleted_count, cluster_size);
+    println!(
+        "✅ Product deletion verified ({}/{} nodes confirmed)",
+        deleted_count, cluster_size
+    );
 }
 
 #[then("the product should be visible on all nodes")]
@@ -949,9 +1025,9 @@ async fn then_see_raft_leader_info(world: &mut LithairWorld) {
         Ok(response) => {
             println!("📊 Leader status: {:?}", response);
             assert!(
-                response.get("raft").is_some() ||
-                response.get("is_leader").is_some() ||
-                response.to_string().contains("leader"),
+                response.get("raft").is_some()
+                    || response.get("is_leader").is_some()
+                    || response.to_string().contains("leader"),
                 "Response should contain Raft leader info"
             );
             world.last_response = Some(serde_json::to_string(&response).unwrap_or_default());
@@ -966,11 +1042,14 @@ async fn then_see_raft_leader_info(world: &mut LithairWorld) {
 
 #[then(regex = r"le nœud (\d+) doit être le leader")]
 async fn then_node_is_leader(world: &mut LithairWorld, expected_leader: u32) {
-    let result = world.make_real_cluster_request(expected_leader as usize, "GET", "/status", None).await;
+    let result = world
+        .make_real_cluster_request(expected_leader as usize, "GET", "/status", None)
+        .await;
 
     match result {
         Ok(response) => {
-            let is_leader = response.get("raft")
+            let is_leader = response
+                .get("raft")
                 .and_then(|r| r.get("is_leader"))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
@@ -997,7 +1076,9 @@ async fn when_write_to_follower(world: &mut LithairWorld, node_id: u32) {
 
     println!("📝 Writing to follower node {}...", node_id);
 
-    let result = world.make_real_cluster_request(node_id as usize, "POST", "/api/products", Some(data)).await;
+    let result = world
+        .make_real_cluster_request(node_id as usize, "POST", "/api/products", Some(data))
+        .await;
 
     match result {
         Ok(response) => {
@@ -1053,7 +1134,8 @@ async fn then_real_nodes_have_hash_chains(world: &mut LithairWorld) {
         let node = nodes.iter().find(|n| n.node_id == i as u64);
 
         if let Some(node) = node {
-            let event_log_path = node.data_dir.join(format!("pure_node_{}/products_events/events.raftlog", i));
+            let event_log_path =
+                node.data_dir.join(format!("pure_node_{}/products_events/events.raftlog", i));
             drop(nodes);
 
             if event_log_path.exists() {
@@ -1092,7 +1174,8 @@ async fn then_hash_chain_valid_on_all_real_nodes(world: &mut LithairWorld) {
         let node = nodes.iter().find(|n| n.node_id == i as u64);
 
         if let Some(node) = node {
-            let event_log_path = node.data_dir.join(format!("pure_node_{}/products_events/events.raftlog", i));
+            let event_log_path =
+                node.data_dir.join(format!("pure_node_{}/products_events/events.raftlog", i));
             drop(nodes);
 
             if event_log_path.exists() {
@@ -1107,7 +1190,8 @@ async fn then_hash_chain_valid_on_all_real_nodes(world: &mut LithairWorld) {
                     if let Some(json_start) = line.find('{') {
                         let json_str = &line[json_start..];
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(json_str) {
-                            let event_prev_hash = event.get("previous_hash")
+                            let event_prev_hash = event
+                                .get("previous_hash")
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
 
@@ -1119,7 +1203,8 @@ async fn then_hash_chain_valid_on_all_real_nodes(world: &mut LithairWorld) {
                                 }
                             }
 
-                            previous_hash = event.get("event_hash")
+                            previous_hash = event
+                                .get("event_hash")
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
                         }
@@ -1155,7 +1240,10 @@ async fn then_leader_discovery_works(world: &mut LithairWorld) {
 
     assert!(body.get("leader_id").is_some(), "Response should have leader_id");
     assert!(body.get("leader_port").is_some(), "Response should have leader_port");
-    assert!(body.get("is_current_node_leader").is_some(), "Response should have is_current_node_leader");
+    assert!(
+        body.get("is_current_node_leader").is_some(),
+        "Response should have is_current_node_leader"
+    );
 
     let is_leader = body.get("is_current_node_leader").and_then(|v| v.as_bool()).unwrap_or(false);
     assert!(is_leader, "Leader node should report itself as leader");
@@ -1170,10 +1258,12 @@ async fn then_leader_discovery_works(world: &mut LithairWorld) {
         let resp = client.get(&url).send().await.expect("Follower leader discovery failed");
         let body: serde_json::Value = resp.json().await.expect("Invalid JSON");
 
-        let is_leader = body.get("is_current_node_leader").and_then(|v| v.as_bool()).unwrap_or(true);
+        let is_leader =
+            body.get("is_current_node_leader").and_then(|v| v.as_bool()).unwrap_or(true);
         assert!(!is_leader, "Follower should not report itself as leader");
 
-        let reported_leader_port = body.get("leader_port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+        let reported_leader_port =
+            body.get("leader_port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
         assert_eq!(reported_leader_port, leader_port, "Follower should report correct leader port");
 
         println!("✅ Leader discovery endpoint works correctly on all nodes");
@@ -1205,9 +1295,13 @@ async fn then_followers_received_heartbeats(world: &mut LithairWorld) {
                 Ok(resp) if resp.status().is_success() => {
                     let body: serde_json::Value = resp.json().await.unwrap_or_default();
                     if let Some(raft) = body.get("raft") {
-                        let is_leader = raft.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(true);
+                        let is_leader =
+                            raft.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(true);
                         assert!(!is_leader, "Node {} should still be a follower", node.node_id);
-                        println!("✅ Node {} is still a follower (heartbeats working)", node.node_id);
+                        println!(
+                            "✅ Node {} is still a follower (heartbeats working)",
+                            node.node_id
+                        );
                     }
                 }
                 _ => {
@@ -1260,11 +1354,15 @@ async fn then_new_leader_elected_real_cluster(world: &mut LithairWorld) {
             Ok(resp) if resp.status().is_success() => {
                 let body: serde_json::Value = resp.json().await.unwrap_or_default();
                 if let Some(raft) = body.get("raft") {
-                    let is_leader = raft.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let is_leader =
+                        raft.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(false);
                     if is_leader {
                         new_leader_id = node.node_id;
                         new_leader_found = true;
-                        println!("👑 New leader elected: node {} (port {})", node.node_id, node.port);
+                        println!(
+                            "👑 New leader elected: node {} (port {})",
+                            node.node_id, node.port
+                        );
                         break;
                     }
                 }
@@ -1301,7 +1399,8 @@ async fn then_cluster_operational(world: &mut LithairWorld) {
             Ok(resp) if resp.status().is_success() => {
                 let body: serde_json::Value = resp.json().await.unwrap_or_default();
                 if let Some(raft) = body.get("raft") {
-                    let is_leader = raft.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let is_leader =
+                        raft.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(false);
                     if is_leader {
                         // Try to create a product on the new leader
                         let create_url = format!("http://127.0.0.1:{}/api/products", node.port);

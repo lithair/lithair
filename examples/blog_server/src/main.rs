@@ -16,7 +16,9 @@ use http::{Method, Request, Response, StatusCode};
 use http_body_util::Full;
 use lithair_core::app::LithairServer;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
-use lithair_core::session::{PersistentSessionStore, Session, SessionConfig, SessionMiddleware, SessionStore};
+use lithair_core::session::{
+    PersistentSessionStore, Session, SessionConfig, SessionMiddleware, SessionStore,
+};
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -59,7 +61,7 @@ struct Article {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Role {
     #[allow(dead_code)]
-    Anonymous,   // Can read published articles only
+    Anonymous, // Can read published articles only
     Contributor, // Can create + update own articles
     Reporter,    // Can publish articles
     Admin,       // Full access
@@ -123,12 +125,9 @@ async fn main() -> Result<()> {
     let session_store = Arc::new(PersistentSessionStore::new(args.sessions_dir.clone())?);
 
     // Create session middleware
-    let session_config = SessionConfig::hybrid()
-        .with_max_age(std::time::Duration::from_secs(3600));
-    let session_middleware = Arc::new(SessionMiddleware::new(
-        session_store.clone(),
-        session_config,
-    ));
+    let session_config = SessionConfig::hybrid().with_max_age(std::time::Duration::from_secs(3600));
+    let session_middleware =
+        Arc::new(SessionMiddleware::new(session_store.clone(), session_config));
 
     // Clone for handlers
     let sm_login = session_middleware.clone();
@@ -171,12 +170,16 @@ async fn main() -> Result<()> {
 
     // ✨ Lithair Frontend (SCC2): Load static assets with event sourcing
     let frontend_engine = Arc::new(
-        FrontendEngine::new("blog_demo", "./data/blog/frontend").await
-            .expect("Failed to create frontend engine")
+        FrontendEngine::new("blog_demo", "./data/blog/frontend")
+            .await
+            .expect("Failed to create frontend engine"),
     );
 
     match frontend_engine.load_directory("examples/blog_server/frontend").await {
-        Ok(count) => println!("✅ Loaded {} frontend assets into SCC2 memory (lock-free + event sourcing)\n", count),
+        Ok(count) => println!(
+            "✅ Loaded {} frontend assets into SCC2 memory (lock-free + event sourcing)\n",
+            count
+        ),
         Err(e) => println!("⚠️  Warning: Could not load frontend assets: {}\n", e),
     }
 
@@ -234,7 +237,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-
 /// Login endpoint - creates a session
 async fn login(
     mut req: Request<hyper::body::Incoming>,
@@ -253,9 +255,12 @@ async fn login(
         ("reporter", "password123") => Role::Reporter,
         ("contributor", "password123") => Role::Contributor,
         _ => {
-            return Ok(json_response(StatusCode::UNAUTHORIZED, serde_json::json!({
-                "error": "Invalid credentials"
-            })));
+            return Ok(json_response(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({
+                    "error": "Invalid credentials"
+                }),
+            ));
         }
     };
 
@@ -273,11 +278,14 @@ async fn login(
     log::info!("✅ User logged in: {} as {:?}", login_req.username, role);
 
     // Return session token
-    Ok(json_response(StatusCode::OK, serde_json::json!({
-        "session_token": session_id,
-        "role": format!("{:?}", role),
-        "expires_in": 3600
-    })))
+    Ok(json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "session_token": session_id,
+            "role": format!("{:?}", role),
+            "expires_in": 3600
+        }),
+    ))
 }
 
 /// Logout endpoint - destroys the session
@@ -289,9 +297,12 @@ async fn logout(
     let session = match session_middleware.extract_session(&req).await? {
         Some(s) => s,
         None => {
-            return Ok(json_response(StatusCode::UNAUTHORIZED, serde_json::json!({
-                "error": "No active session"
-            })));
+            return Ok(json_response(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({
+                    "error": "No active session"
+                }),
+            ));
         }
     };
 
@@ -304,9 +315,12 @@ async fn logout(
 
     log::info!("👋 User logged out: {} (session: {})", user_id, session_id);
 
-    Ok(json_response(StatusCode::OK, serde_json::json!({
-        "message": "Logged out successfully"
-    })))
+    Ok(json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "message": "Logged out successfully"
+        }),
+    ))
 }
 
 /// Helper to create JSON response

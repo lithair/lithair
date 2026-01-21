@@ -77,16 +77,23 @@ pub fn extract_method_str<T>(req: &Request<T>) -> &str {
 }
 
 /// Create a JSON error response with given status code
-pub fn json_error_response(status: hyper::StatusCode, error: &str, message: &str) -> Response<RespBody> {
+pub fn json_error_response(
+    status: hyper::StatusCode,
+    error: &str,
+    message: &str,
+) -> Response<RespBody> {
     use serde_json::json;
 
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
-        .body(body_from(json!({
-            "error": error,
-            "message": message
-        }).to_string()))
+        .body(body_from(
+            json!({
+                "error": error,
+                "message": message
+            })
+            .to_string(),
+        ))
         .unwrap()
 }
 
@@ -95,7 +102,7 @@ pub fn not_found_response(resource: &str) -> Response<RespBody> {
     json_error_response(
         hyper::StatusCode::NOT_FOUND,
         "not_found",
-        &format!("{} not found", resource)
+        &format!("{} not found", resource),
     )
 }
 
@@ -104,7 +111,7 @@ pub fn method_not_allowed_response() -> Response<RespBody> {
     json_error_response(
         hyper::StatusCode::METHOD_NOT_ALLOWED,
         "method_not_allowed",
-        "HTTP method not allowed for this endpoint"
+        "HTTP method not allowed for this endpoint",
     )
 }
 
@@ -113,7 +120,7 @@ pub fn internal_server_error_response(context: &str) -> Response<RespBody> {
     json_error_response(
         hyper::StatusCode::INTERNAL_SERVER_ERROR,
         "internal_server_error",
-        &format!("Internal server error: {}", context)
+        &format!("Internal server error: {}", context),
     )
 }
 
@@ -122,15 +129,13 @@ pub fn internal_server_error_response(context: &str) -> Response<RespBody> {
 /// Example: `/api/articles/123/comments` with prefix `/api/articles`
 /// returns `vec!["123", "comments"]`
 pub fn parse_api_path_segments<'a>(path: &'a str, prefix: &str) -> Vec<&'a str> {
-    path
-        .strip_prefix(prefix)
+    path.strip_prefix(prefix)
         .unwrap_or("")
         .trim_start_matches('/')
         .split('/')
         .filter(|s| !s.is_empty())
         .collect()
 }
-
 
 /// Serve static assets from disk for development mode (hot-reload)
 ///
@@ -146,19 +151,13 @@ pub fn parse_api_path_segments<'a>(path: &'a str, prefix: &str) -> Vec<&'a str> 
 /// HTTP response with the requested asset or 404 if not found
 pub async fn serve_dev_asset(path: &str, public_dir: &str, default_file: &str) -> Resp {
     // Clean path and handle root
-    let clean_path = if path == "/" {
-        format!("/{}", default_file)
-    } else {
-        path.to_string()
-    };
+    let clean_path = if path == "/" { format!("/{}", default_file) } else { path.to_string() };
 
     let file_path = format!("{}{}", public_dir, clean_path);
 
     match tokio::fs::read(&file_path).await {
         Ok(content) => {
-            let mime_type = mime_guess::from_path(&file_path)
-                .first_or_octet_stream()
-                .to_string();
+            let mime_type = mime_guess::from_path(&file_path).first_or_octet_stream().to_string();
 
             log::debug!("📄 [DEV] Serving {} from disk ({} bytes)", path, content.len());
 
@@ -170,7 +169,7 @@ pub async fn serve_dev_asset(path: &str, public_dir: &str, default_file: &str) -
                 .body(body_from(content))
                 .unwrap()
         }
-        Err(_) => not_found_response("asset")
+        Err(_) => not_found_response("asset"),
     }
 }
 
@@ -220,10 +219,17 @@ pub async fn load_assets_with_logging(
         frontend_state,
         virtual_host_id,
         base_path,
-        public_dir
-    ).await {
+        public_dir,
+    )
+    .await
+    {
         Ok(count) => {
-            log::info!("✅ [{}] {} assets loaded from {} directory", virtual_host_id, count, public_dir);
+            log::info!(
+                "✅ [{}] {} assets loaded from {} directory",
+                virtual_host_id,
+                count,
+                public_dir
+            );
             Ok(count)
         }
         Err(e) => {
@@ -250,19 +256,14 @@ mod tests {
 
     #[test]
     fn test_extract_client_ip_from_x_real_ip() {
-        let req = Request::builder()
-            .header("x-real-ip", "203.0.113.42")
-            .body(())
-            .unwrap();
+        let req = Request::builder().header("x-real-ip", "203.0.113.42").body(()).unwrap();
 
         assert_eq!(extract_client_ip(&req), Some("203.0.113.42".to_string()));
     }
 
     #[test]
     fn test_extract_client_ip_fallback() {
-        let req = Request::builder()
-            .body(())
-            .unwrap();
+        let req = Request::builder().body(()).unwrap();
 
         assert_eq!(extract_client_ip(&req), Some("127.0.0.1".to_string()));
     }

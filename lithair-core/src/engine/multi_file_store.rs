@@ -10,9 +10,9 @@
 //! └── aggregate_id: null                 → data/global/events.raftlog
 //! ```
 
-use crate::engine::events::EventEnvelope;
-use super::snapshot::{Snapshot, SnapshotStore, RecoveryContext, DEFAULT_SNAPSHOT_THRESHOLD};
+use super::snapshot::{RecoveryContext, Snapshot, SnapshotStore, DEFAULT_SNAPSHOT_THRESHOLD};
 use super::{EngineError, EngineResult, EventStore};
+use crate::engine::events::EventEnvelope;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -85,7 +85,10 @@ impl MultiFileEventStore {
     }
 
     /// Create with custom snapshot threshold
-    pub fn with_snapshot_threshold(base_dir: impl AsRef<Path>, threshold: usize) -> EngineResult<Self> {
+    pub fn with_snapshot_threshold(
+        base_dir: impl AsRef<Path>,
+        threshold: usize,
+    ) -> EngineResult<Self> {
         let mut store = Self::new(base_dir)?;
         store.snapshot_threshold = threshold;
         store.snapshot_store.set_threshold(threshold);
@@ -277,20 +280,13 @@ impl MultiFileEventStore {
             None => self.global_event_count,
         };
 
-        let snapshot = Snapshot::new(
-            aggregate_id.map(|s| s.to_string()),
-            event_count,
-            last_event_id,
-            state,
-        );
+        let snapshot =
+            Snapshot::new(aggregate_id.map(|s| s.to_string()), event_count, last_event_id, state);
 
         self.snapshot_store.save_snapshot(&snapshot)?;
 
         if self.log_verbose {
-            println!(
-                "📸 Snapshot created for {:?}: {} events",
-                aggregate_id, event_count
-            );
+            println!("📸 Snapshot created for {:?}: {} events", aggregate_id, event_count);
         }
 
         Ok(())
@@ -312,7 +308,8 @@ impl MultiFileEventStore {
     /// Check if a snapshot should be created for an aggregate
     pub fn should_create_snapshot(&self, aggregate_id: Option<&str>) -> EngineResult<bool> {
         let current_count = self.get_event_count(aggregate_id);
-        let snapshot_count = self.snapshot_store
+        let snapshot_count = self
+            .snapshot_store
             .load_snapshot(aggregate_id)?
             .map(|s| s.metadata.event_count)
             .unwrap_or(0);
@@ -330,7 +327,10 @@ impl MultiFileEventStore {
     /// Read events after snapshot for recovery
     ///
     /// Returns only events that are not included in the snapshot
-    pub fn read_events_after_snapshot(&self, aggregate_id: Option<&str>) -> EngineResult<Vec<EventEnvelope>> {
+    pub fn read_events_after_snapshot(
+        &self,
+        aggregate_id: Option<&str>,
+    ) -> EngineResult<Vec<EventEnvelope>> {
         let ctx = self.recovery_context(aggregate_id)?;
         let all_events = match aggregate_id {
             Some(id) => self.read_aggregate_envelopes(id)?,
@@ -345,7 +345,10 @@ impl MultiFileEventStore {
     }
 
     /// Get snapshot statistics for an aggregate
-    pub fn get_snapshot_stats(&self, aggregate_id: Option<&str>) -> EngineResult<Option<super::snapshot::SnapshotStats>> {
+    pub fn get_snapshot_stats(
+        &self,
+        aggregate_id: Option<&str>,
+    ) -> EngineResult<Option<super::snapshot::SnapshotStats>> {
         self.snapshot_store.get_stats(aggregate_id)
     }
 

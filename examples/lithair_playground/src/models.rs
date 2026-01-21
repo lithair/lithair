@@ -74,7 +74,6 @@ pub struct PlaygroundItem {
     // ========================================================================
     // SCHEMA V2 FIELDS - Added via rolling upgrade
     // ========================================================================
-    
     /// Category (added in schema v2)
     /// This field demonstrates adding a new field via rolling upgrade
     #[cfg(feature = "schema-v2")]
@@ -87,7 +86,6 @@ pub struct PlaygroundItem {
     // ========================================================================
     // SCHEMA V3 FIELDS - Added via rolling upgrade
     // ========================================================================
-    
     /// Rating (added in schema v3)
     /// This field demonstrates adding a numeric field via rolling upgrade
     #[cfg(feature = "schema-v3")]
@@ -167,10 +165,10 @@ impl PlaygroundItem {
 pub fn get_schema_version() -> &'static str {
     #[cfg(feature = "schema-v3")]
     return "v3";
-    
+
     #[cfg(all(feature = "schema-v2", not(feature = "schema-v3")))]
     return "v2";
-    
+
     #[cfg(not(feature = "schema-v2"))]
     return "v1";
 }

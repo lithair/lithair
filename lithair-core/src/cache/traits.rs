@@ -26,12 +26,7 @@ impl<V> CacheEntry<V> {
             .unwrap_or_default()
             .as_secs();
 
-        Self {
-            value,
-            created_at: now,
-            last_accessed: now,
-            access_count: 1,
-        }
+        Self { value, created_at: now, last_accessed: now, access_count: 1 }
     }
 
     /// Mark this entry as accessed

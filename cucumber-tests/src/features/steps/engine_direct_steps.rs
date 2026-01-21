@@ -22,7 +22,8 @@ async fn init_engine_with_persistence(world: &mut LithairWorld, persist_path: St
 
     // Create EventStore + AsyncWriter
     // Note: AsyncWriter requires Arc<RwLock<EventStore>>
-    let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
     let async_writer = AsyncWriter::new(event_store, 1000); // batch_size = 1000
 
     // Store in world
@@ -190,7 +191,9 @@ async fn wait_for_engine_flush(world: &mut LithairWorld) {
             writer.shutdown().await;
 
             // Recreate an AsyncWriter to allow further writes
-            let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore failed after flush")));
+            let event_store = Arc::new(RwLock::new(
+                EventStore::new(&persist_path).expect("EventStore failed after flush"),
+            ));
             *guard = Some(AsyncWriter::new(event_store, 1000));
         }
     }
@@ -284,10 +287,7 @@ async fn check_event_count_exact(world: &mut LithairWorld, expected: usize) {
 
     let events_file = format!("{}/events.raftlog", persist_path);
 
-    assert!(
-        std::path::Path::new(&events_file).exists(),
-        "❌ events.raftlog file missing"
-    );
+    assert!(std::path::Path::new(&events_file).exists(), "❌ events.raftlog file missing");
 
     let content = std::fs::read_to_string(&events_file).expect("Unable to read events.raftlog");
 
@@ -407,7 +407,6 @@ async fn check_final_active_articles_scc2(world: &mut LithairWorld, expected: us
 }
 
 // Note: step "the events.raftlog file must exist" defined in database_performance_steps.rs
-
 
 #[then("all events must be persisted")]
 async fn check_all_events_persisted(_world: &mut LithairWorld) {

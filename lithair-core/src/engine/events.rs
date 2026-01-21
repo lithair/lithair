@@ -112,7 +112,7 @@ impl EventEnvelope {
     /// Compute SHA256 hash of this event's content
     /// The hash covers all fields except event_hash itself
     pub fn compute_hash(&self) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
 
         // Include all fields that should be protected
@@ -283,7 +283,10 @@ impl EventStore {
     }
 
     /// Load the last event hash from existing events (for chain continuity)
-    fn load_last_event_hash(backend: &EventStoreBackend, binary_mode: bool) -> EngineResult<Option<String>> {
+    fn load_last_event_hash(
+        backend: &EventStoreBackend,
+        binary_mode: bool,
+    ) -> EngineResult<Option<String>> {
         let events = match backend {
             EventStoreBackend::Single(s) => {
                 if binary_mode {
@@ -294,7 +297,9 @@ impl EventStore {
                         if line.is_empty() {
                             continue;
                         }
-                        if let Ok((env, _)) = decode_from_slice::<EventEnvelope, _>(&line, standard()) {
+                        if let Ok((env, _)) =
+                            decode_from_slice::<EventEnvelope, _>(&line, standard())
+                        {
                             envelopes.push(env);
                         }
                     }
@@ -331,7 +336,8 @@ impl EventStore {
             EventStoreBackend::Single(storage) => storage.append_event(&event_json)?,
             EventStoreBackend::Multi(_) => {
                 return Err(EngineError::InvalidOperation(
-                    "append_event not supported in multi-file mode, use append_envelope".to_string()
+                    "append_event not supported in multi-file mode, use append_envelope"
+                        .to_string(),
                 ));
             }
         }
@@ -354,7 +360,8 @@ impl EventStore {
                     return self.append_envelope(&envelope);
                 }
                 return Err(EngineError::InvalidOperation(
-                    "append_raw_line with non-envelope data not supported in multi-file mode".to_string()
+                    "append_raw_line with non-envelope data not supported in multi-file mode"
+                        .to_string(),
                 ));
             }
         }
@@ -398,7 +405,10 @@ impl EventStore {
                     storage.append_binary_event_bytes(&bytes)?;
                 } else {
                     let json = serde_json::to_string(&envelope_to_persist).map_err(|e| {
-                        EngineError::SerializationError(format!("Failed to serialize envelope: {}", e))
+                        EngineError::SerializationError(format!(
+                            "Failed to serialize envelope: {}",
+                            e
+                        ))
                     })?;
                     storage.append_event(&json)?;
                 }
@@ -450,7 +460,9 @@ impl EventStore {
     /// Configure batch settings for optimal performance
     pub fn configure_batching(&mut self, max_batch_size: usize, fsync_on_append: bool) {
         match &mut self.backend {
-            EventStoreBackend::Single(storage) => storage.configure_batching(max_batch_size, fsync_on_append),
+            EventStoreBackend::Single(storage) => {
+                storage.configure_batching(max_batch_size, fsync_on_append)
+            }
             EventStoreBackend::Multi(_) => {
                 // TODO: Multi-file mode doesn't support configure_batching yet
             }
@@ -526,11 +538,9 @@ impl EventStore {
     pub fn save_snapshot(&self, state_json: &str) -> EngineResult<()> {
         match &self.backend {
             EventStoreBackend::Single(storage) => storage.save_snapshot(state_json),
-            EventStoreBackend::Multi(_) => {
-                Err(EngineError::InvalidOperation(
-                    "save_snapshot not supported in multi-file mode".to_string()
-                ))
-            }
+            EventStoreBackend::Multi(_) => Err(EngineError::InvalidOperation(
+                "save_snapshot not supported in multi-file mode".to_string(),
+            )),
         }
     }
 
@@ -567,7 +577,7 @@ impl EventStore {
             EventStoreBackend::Single(storage) => storage.truncate_events()?,
             EventStoreBackend::Multi(_) => {
                 return Err(EngineError::InvalidOperation(
-                    "truncate_events not supported in multi-file mode".to_string()
+                    "truncate_events not supported in multi-file mode".to_string(),
                 ));
             }
         }
@@ -580,11 +590,9 @@ impl EventStore {
     pub fn load_snapshot(&self) -> EngineResult<Option<String>> {
         match &self.backend {
             EventStoreBackend::Single(storage) => storage.load_snapshot(),
-            EventStoreBackend::Multi(_) => {
-                Err(EngineError::InvalidOperation(
-                    "load_snapshot not supported in multi-file mode".to_string()
-                ))
-            }
+            EventStoreBackend::Multi(_) => Err(EngineError::InvalidOperation(
+                "load_snapshot not supported in multi-file mode".to_string(),
+            )),
         }
     }
 
@@ -599,7 +607,9 @@ impl EventStore {
                         if line.is_empty() {
                             continue;
                         }
-                        if let Ok((env, _)) = decode_from_slice::<EventEnvelope, _>(&line, standard()) {
+                        if let Ok((env, _)) =
+                            decode_from_slice::<EventEnvelope, _>(&line, standard())
+                        {
                             envelopes.push(env);
                         }
                     }

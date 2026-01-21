@@ -26,7 +26,11 @@ impl FilterListManager {
     }
 
     /// Add entries to a legacy list (no metadata)
-    pub async fn add_legacy_entries(&self, category: &str, values: impl IntoIterator<Item = String>) {
+    pub async fn add_legacy_entries(
+        &self,
+        category: &str,
+        values: impl IntoIterator<Item = String>,
+    ) {
         let mut lists = self.legacy_lists.write().await;
         let list = lists.entry(category.to_string()).or_insert_with(HashSet::new);
         for value in values {
@@ -35,7 +39,11 @@ impl FilterListManager {
     }
 
     /// Add entries with metadata to an enhanced list
-    pub async fn add_entries(&self, category: &str, entries: impl IntoIterator<Item = FilterEntry>) {
+    pub async fn add_entries(
+        &self,
+        category: &str,
+        entries: impl IntoIterator<Item = FilterEntry>,
+    ) {
         let mut lists = self.enhanced_lists.write().await;
         let list = lists.entry(category.to_string()).or_insert_with(HashMap::new);
         for entry in entries {
@@ -157,10 +165,8 @@ impl FilterListManager {
     /// Replace all entries in an enhanced category with metadata
     pub async fn replace_category_enhanced(&self, category: &str, entries: Vec<FilterEntry>) {
         let mut lists = self.enhanced_lists.write().await;
-        let map: HashMap<String, FilterEntry> = entries
-            .into_iter()
-            .map(|e| (e.value.clone(), e))
-            .collect();
+        let map: HashMap<String, FilterEntry> =
+            entries.into_iter().map(|e| (e.value.clone(), e)).collect();
         lists.insert(category.to_string(), map);
     }
 }
@@ -179,14 +185,12 @@ mod tests {
     async fn test_add_and_check_enhanced_entries() {
         let manager = FilterListManager::new();
 
-        let entries = vec![
-            FilterEntry::from_source(
-                "192.168.1.1".to_string(),
-                "TestSource".to_string(),
-                Some("malware".to_string()),
-                "https://test.com".to_string(),
-            ),
-        ];
+        let entries = vec![FilterEntry::from_source(
+            "192.168.1.1".to_string(),
+            "TestSource".to_string(),
+            Some("malware".to_string()),
+            "https://test.com".to_string(),
+        )];
 
         manager.add_entries("block_ips", entries).await;
 
@@ -227,10 +231,9 @@ mod tests {
         let manager = FilterListManager::new();
 
         manager.add_legacy_entries("cat1", vec!["a".to_string(), "b".to_string()]).await;
-        manager.add_entries(
-            "cat2",
-            vec![FilterEntry::manual("c".to_string(), None)],
-        ).await;
+        manager
+            .add_entries("cat2", vec![FilterEntry::manual("c".to_string(), None)])
+            .await;
 
         let stats = manager.get_stats().await;
         assert_eq!(*stats.get("cat1").unwrap(), 2);

@@ -10,9 +10,9 @@
 //! - **Session IDs**: Cryptographically secure UUIDs
 //! - **Anti-DDoS**: Rate limiting and circuit breakers
 
+pub mod anti_ddos;
 mod core;
 mod middleware;
-pub mod anti_ddos;
 pub mod password;
 
 // Re-export core security types

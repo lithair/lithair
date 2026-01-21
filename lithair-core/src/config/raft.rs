@@ -127,7 +127,7 @@ impl RaftConfig {
 
         match (&self.auth_token, token) {
             (Some(expected), Some(provided)) => expected == provided,
-            (None, _) => true, // No token configured, allow
+            (None, _) => true,        // No token configured, allow
             (Some(_), None) => false, // Token required but not provided
         }
     }
@@ -163,9 +163,7 @@ mod tests {
 
     #[test]
     fn test_with_auth() {
-        let config = RaftConfig::new()
-            .with_path("/_internal/raft")
-            .with_auth("secret-token-123");
+        let config = RaftConfig::new().with_path("/_internal/raft").with_auth("secret-token-123");
 
         assert_eq!(config.path, "/_internal/raft");
         assert!(config.auth_required);
@@ -215,9 +213,7 @@ mod tests {
 
     #[test]
     fn test_validate_heartbeat_ge_election() {
-        let config = RaftConfig::new()
-            .with_heartbeat_interval(5)
-            .with_election_timeout(3);
+        let config = RaftConfig::new().with_heartbeat_interval(5).with_election_timeout(3);
         assert!(config.validate().is_err());
     }
 

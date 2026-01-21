@@ -132,7 +132,11 @@ enum Commands {
     /// Verify data consistency across nodes
     Verify {
         /// Node URLs to verify (comma-separated)
-        #[arg(short, long, default_value = "http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:8082")]
+        #[arg(
+            short,
+            long,
+            default_value = "http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:8082"
+        )]
         nodes: String,
     },
     /// Watch cluster health in real-time
@@ -234,7 +238,11 @@ enum ClusterAction {
     /// Show cluster status
     Status {
         /// Node URLs to check
-        #[arg(short, long, default_value = "http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:8082")]
+        #[arg(
+            short,
+            long,
+            default_value = "http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:8082"
+        )]
         nodes: String,
     },
     /// Show detailed sync status for each follower (ops diagnostic)
@@ -412,11 +420,8 @@ async fn start_cluster(base_port: u16) -> Result<()> {
     std::fs::create_dir_all(&base_dir)?;
 
     for (idx, &port) in ports.iter().enumerate() {
-        let peers: Vec<String> = ports
-            .iter()
-            .filter(|&&p| p != port)
-            .map(|p| p.to_string())
-            .collect();
+        let peers: Vec<String> =
+            ports.iter().filter(|&&p| p != port).map(|p| p.to_string()).collect();
 
         let peers_arg = peers.join(",");
 
@@ -606,10 +611,15 @@ async fn show_sync_status(leader_url: &str) -> Result<()> {
                         for f in followers {
                             let addr = f.get("address").and_then(|v| v.as_str()).unwrap_or("?");
                             let health = f.get("health").and_then(|v| v.as_str()).unwrap_or("?");
-                            let last_idx = f.get("last_replicated_index").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let last_idx = f
+                                .get("last_replicated_index")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
                             let lag = f.get("lag").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let latency = f.get("last_latency_ms").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let failures = f.get("consecutive_failures").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let latency =
+                                f.get("last_latency_ms").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let failures =
+                                f.get("consecutive_failures").and_then(|v| v.as_u64()).unwrap_or(0);
 
                             let health_icon = match health {
                                 "healthy" => "🟢",
@@ -657,7 +667,8 @@ async fn force_resync(leader_url: &str, target: &str) -> Result<()> {
             let status_code = resp.status();
             if let Ok(result) = resp.json::<serde_json::Value>().await {
                 let success = result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
-                let message = result.get("message").and_then(|v| v.as_str()).unwrap_or("No message");
+                let message =
+                    result.get("message").and_then(|v| v.as_str()).unwrap_or("No message");
 
                 if success {
                     println!("  ✅ {}", message);
@@ -753,12 +764,7 @@ async fn flood_test(target: &str, count: u64, concurrency: usize) -> Result<()> 
             if done >= count {
                 break;
             }
-            print!(
-                "\r  Progress: {}/{} ({:.1}%)",
-                done,
-                count,
-                done as f64 / count as f64 * 100.0
-            );
+            print!("\r  Progress: {}/{} ({:.1}%)", done, count, done as f64 / count as f64 * 100.0);
             sleep(Duration::from_millis(100)).await;
         }
         println!();
@@ -774,12 +780,18 @@ async fn flood_test(target: &str, count: u64, concurrency: usize) -> Result<()> 
 
 /// Storm test - random operations on random nodes
 /// This is the real chaos test that distributes load across all nodes
-async fn storm_test(count: u64, concurrency: usize, base_port: u16, read_pct: u8, chaos: bool, kill_interval: u64) -> Result<()> {
+async fn storm_test(
+    count: u64,
+    concurrency: usize,
+    base_port: u16,
+    read_pct: u8,
+    chaos: bool,
+    kill_interval: u64,
+) -> Result<()> {
     use rand::{Rng, SeedableRng};
 
-    let nodes: Vec<String> = (0..3)
-        .map(|i| format!("http://127.0.0.1:{}", base_port + i))
-        .collect();
+    let nodes: Vec<String> =
+        (0..3).map(|i| format!("http://127.0.0.1:{}", base_port + i)).collect();
 
     println!("═══════════════════════════════════════════════════════════════");
     if chaos {
@@ -811,32 +823,34 @@ async fn storm_test(count: u64, concurrency: usize, base_port: u16, read_pct: u8
             use rand::seq::SliceRandom;
             let mut rng = rand::rngs::StdRng::from_entropy();
             let ports: Vec<u16> = vec![base_port, base_port + 1, base_port + 2];
-            
+
             loop {
                 tokio::time::sleep(Duration::from_secs(kill_interval)).await;
-                
+
                 // Pick a random non-leader node to kill (avoid killing leader for now)
-                let victim_ports: Vec<u16> = ports.iter().filter(|&&p| p != base_port).copied().collect();
+                let victim_ports: Vec<u16> =
+                    ports.iter().filter(|&&p| p != base_port).copied().collect();
                 if let Some(&victim_port) = victim_ports.choose(&mut rng) {
                     log::warn!("🔪 CHAOS: Killing node on port {}", victim_port);
-                    
+
                     // Kill the node
                     let _ = tokio::process::Command::new("pkill")
                         .args(["-f", &format!("--port {}", victim_port)])
                         .output()
                         .await;
-                    
+
                     // Wait a bit
                     tokio::time::sleep(Duration::from_secs(2)).await;
-                    
+
                     // Restart the node
                     log::warn!("🔄 CHAOS: Restarting node on port {}", victim_port);
                     let node_id = victim_port - base_port;
-                    let peers: Vec<String> = ports.iter()
+                    let peers: Vec<String> = ports
+                        .iter()
                         .filter(|&&p| p != victim_port)
                         .map(|p| p.to_string())
                         .collect();
-                    
+
                     let _ = tokio::process::Command::new("cargo")
                         .args(["run", "--bin", "stress_node", "--"])
                         .args(["--node-id", &node_id.to_string()])
@@ -856,7 +870,8 @@ async fn storm_test(count: u64, concurrency: usize, base_port: u16, read_pct: u8
     let metrics = Arc::new(StressMetrics::new(count));
     let seq = Arc::new(AtomicU64::new(0));
     // Track created IDs for update/delete operations
-    let created_ids: Arc<tokio::sync::RwLock<Vec<Uuid>>> = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    let created_ids: Arc<tokio::sync::RwLock<Vec<Uuid>>> =
+        Arc::new(tokio::sync::RwLock::new(Vec::new()));
 
     // Metrics per operation type
     let reads = Arc::new(AtomicU64::new(0));
@@ -865,11 +880,8 @@ async fn storm_test(count: u64, concurrency: usize, base_port: u16, read_pct: u8
     let deletes = Arc::new(AtomicU64::new(0));
 
     // Metrics per node
-    let node_hits: Arc<[AtomicU64; 3]> = Arc::new([
-        AtomicU64::new(0),
-        AtomicU64::new(0),
-        AtomicU64::new(0),
-    ]);
+    let node_hits: Arc<[AtomicU64; 3]> =
+        Arc::new([AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)]);
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
     let mut handles = Vec::new();
@@ -1035,11 +1047,7 @@ async fn storm_test(count: u64, concurrency: usize, base_port: u16, read_pct: u8
             if done >= count {
                 break;
             }
-            print!(
-                "\r  Progress: {}/{} ({:.1}%)",
-                done, count,
-                done as f64 / count as f64 * 100.0
-            );
+            print!("\r  Progress: {}/{} ({:.1}%)", done, count, done as f64 / count as f64 * 100.0);
             sleep(Duration::from_millis(100)).await;
         }
         println!();
@@ -1055,20 +1063,37 @@ async fn storm_test(count: u64, concurrency: usize, base_port: u16, read_pct: u8
     // Additional storm-specific stats
     println!("───────────────────────────────────────────────────────────────");
     println!("  Operation Distribution:");
-    println!("    GET:    {} ({:.1}%)", reads.load(Ordering::Relaxed),
-        reads.load(Ordering::Relaxed) as f64 / count as f64 * 100.0);
-    println!("    POST:   {} ({:.1}%)", creates.load(Ordering::Relaxed),
-        creates.load(Ordering::Relaxed) as f64 / count as f64 * 100.0);
-    println!("    PUT:    {} ({:.1}%)", updates.load(Ordering::Relaxed),
-        updates.load(Ordering::Relaxed) as f64 / count as f64 * 100.0);
-    println!("    DELETE: {} ({:.1}%)", deletes.load(Ordering::Relaxed),
-        deletes.load(Ordering::Relaxed) as f64 / count as f64 * 100.0);
+    println!(
+        "    GET:    {} ({:.1}%)",
+        reads.load(Ordering::Relaxed),
+        reads.load(Ordering::Relaxed) as f64 / count as f64 * 100.0
+    );
+    println!(
+        "    POST:   {} ({:.1}%)",
+        creates.load(Ordering::Relaxed),
+        creates.load(Ordering::Relaxed) as f64 / count as f64 * 100.0
+    );
+    println!(
+        "    PUT:    {} ({:.1}%)",
+        updates.load(Ordering::Relaxed),
+        updates.load(Ordering::Relaxed) as f64 / count as f64 * 100.0
+    );
+    println!(
+        "    DELETE: {} ({:.1}%)",
+        deletes.load(Ordering::Relaxed),
+        deletes.load(Ordering::Relaxed) as f64 / count as f64 * 100.0
+    );
     println!("───────────────────────────────────────────────────────────────");
     println!("  Node Distribution:");
     for (i, hits) in node_hits.iter().enumerate() {
         let h = hits.load(Ordering::Relaxed);
-        println!("    Node {} (port {}): {} ({:.1}%)",
-            i, base_port + i as u16, h, h as f64 / count as f64 * 100.0);
+        println!(
+            "    Node {} (port {}): {} ({:.1}%)",
+            i,
+            base_port + i as u16,
+            h,
+            h as f64 / count as f64 * 100.0
+        );
     }
     println!("═══════════════════════════════════════════════════════════════");
 
@@ -1414,23 +1439,26 @@ async fn kill_node_by_port(port: u16) -> Result<()> {
 
 /// Helper to start a single node
 async fn start_node(node_id: u64, port: u16, peer_ports: &[u16]) -> Result<Child> {
-    let peers: Vec<String> = peer_ports
-        .iter()
-        .filter(|&&p| p != port)
-        .map(|p| p.to_string())
-        .collect();
+    let peers: Vec<String> =
+        peer_ports.iter().filter(|&&p| p != port).map(|p| p.to_string()).collect();
     let peers_arg = peers.join(",");
 
-    let base_dir = std::env::var("STRESS_TEST_DATA").unwrap_or_else(|_| "/tmp/chaos_test".to_string());
+    let base_dir =
+        std::env::var("STRESS_TEST_DATA").unwrap_or_else(|_| "/tmp/chaos_test".to_string());
 
     let child = Command::new("cargo")
         .args([
-            "run", "-q",
-            "--bin", "stress_node",
+            "run",
+            "-q",
+            "--bin",
+            "stress_node",
             "--",
-            "--node-id", &node_id.to_string(),
-            "--port", &port.to_string(),
-            "--peers", &peers_arg,
+            "--node-id",
+            &node_id.to_string(),
+            "--port",
+            &port.to_string(),
+            "--peers",
+            &peers_arg,
         ])
         .env("STRESS_TEST_DATA", &base_dir)
         .stdout(Stdio::null())
@@ -1446,7 +1474,8 @@ async fn wait_for_node(url: &str, timeout_secs: u64) -> bool {
     let client = Client::new();
     let start = Instant::now();
     while start.elapsed().as_secs() < timeout_secs {
-        if let Ok(resp) = client.get(format!("{}/status", url))
+        if let Ok(resp) = client
+            .get(format!("{}/status", url))
             .timeout(Duration::from_secs(1))
             .send()
             .await
@@ -1536,7 +1565,11 @@ async fn chaos_kill_one(count: u64, concurrency: usize, base_port: u16) -> Resul
             let done = metrics_clone.successful.load(Ordering::Relaxed)
                 + metrics_clone.failed.load(Ordering::Relaxed);
             if done >= threshold {
-                println!("\n  💀 KILLING follower on port {} (at {}% progress)", follower_port, (done * 100) / count);
+                println!(
+                    "\n  💀 KILLING follower on port {} (at {}% progress)",
+                    follower_port,
+                    (done * 100) / count
+                );
                 let _ = kill_node_by_port(follower_port).await;
                 killed_clone.store(true, Ordering::Relaxed);
                 break;
@@ -1555,10 +1588,12 @@ async fn chaos_kill_one(count: u64, concurrency: usize, base_port: u16) -> Resul
             if done >= count {
                 break;
             }
-            let killed_status = if killed_clone2.load(Ordering::Relaxed) { " [NODE KILLED]" } else { "" };
+            let killed_status =
+                if killed_clone2.load(Ordering::Relaxed) { " [NODE KILLED]" } else { "" };
             print!(
                 "\r  Progress: {}/{} ({:.1}%){}",
-                done, count,
+                done,
+                count,
                 done as f64 / count as f64 * 100.0,
                 killed_status
             );
@@ -1576,10 +1611,7 @@ async fn chaos_kill_one(count: u64, concurrency: usize, base_port: u16) -> Resul
 
     // Verify consistency on remaining nodes
     println!("\n  Verifying consistency on remaining nodes...");
-    let nodes_str = format!(
-        "http://127.0.0.1:{},http://127.0.0.1:{}",
-        ports[0], ports[2]
-    );
+    let nodes_str = format!("http://127.0.0.1:{},http://127.0.0.1:{}", ports[0], ports[2]);
     verify_consistency(&nodes_str).await?;
 
     Ok(())
@@ -1672,7 +1704,11 @@ async fn chaos_kill_leader(count: u64, concurrency: usize, base_port: u16) -> Re
             let done = metrics_clone.successful.load(Ordering::Relaxed)
                 + metrics_clone.failed.load(Ordering::Relaxed);
             if done >= threshold {
-                println!("\n  👑💀 KILLING LEADER on port {} (at {}% progress)", base_port, (done * 100) / count);
+                println!(
+                    "\n  👑💀 KILLING LEADER on port {} (at {}% progress)",
+                    base_port,
+                    (done * 100) / count
+                );
                 let _ = kill_node_by_port(base_port).await;
                 leader_killed_clone.store(true, Ordering::Relaxed);
 
@@ -1695,10 +1731,12 @@ async fn chaos_kill_leader(count: u64, concurrency: usize, base_port: u16) -> Re
             if done >= count {
                 break;
             }
-            let status = if leader_killed_clone2.load(Ordering::Relaxed) { " [LEADER KILLED]" } else { "" };
+            let status =
+                if leader_killed_clone2.load(Ordering::Relaxed) { " [LEADER KILLED]" } else { "" };
             print!(
                 "\r  Progress: {}/{} ({:.1}%){}",
-                done, count,
+                done,
+                count,
                 done as f64 / count as f64 * 100.0,
                 status
             );
@@ -1716,17 +1754,19 @@ async fn chaos_kill_leader(count: u64, concurrency: usize, base_port: u16) -> Re
 
     // Verify consistency on remaining nodes
     println!("\n  Verifying consistency on remaining nodes...");
-    let nodes_str = format!(
-        "http://127.0.0.1:{},http://127.0.0.1:{}",
-        ports[1], ports[2]
-    );
+    let nodes_str = format!("http://127.0.0.1:{},http://127.0.0.1:{}", ports[1], ports[2]);
     verify_consistency(&nodes_str).await?;
 
     Ok(())
 }
 
 /// Chaos test: Rolling restart during flood
-async fn chaos_rolling(count: u64, concurrency: usize, base_port: u16, restart_delay_ms: u64) -> Result<()> {
+async fn chaos_rolling(
+    count: u64,
+    concurrency: usize,
+    base_port: u16,
+    restart_delay_ms: u64,
+) -> Result<()> {
     let ports = [base_port, base_port + 1, base_port + 2];
     let leader_url = format!("http://127.0.0.1:{}", base_port);
 
@@ -1818,7 +1858,8 @@ async fn chaos_rolling(count: u64, concurrency: usize, base_port: u16, restart_d
             let _ = kill_node_by_port(port).await;
 
             // Wait before restart
-            *current_phase_clone.lock().await = format!("Node {} down, waiting {}ms", node_id, restart_delay_ms);
+            *current_phase_clone.lock().await =
+                format!("Node {} down, waiting {}ms", node_id, restart_delay_ms);
             sleep(Duration::from_millis(restart_delay_ms)).await;
 
             // Restart node
@@ -1857,7 +1898,8 @@ async fn chaos_rolling(count: u64, concurrency: usize, base_port: u16, restart_d
             let phase = current_phase_clone2.lock().await.clone();
             print!(
                 "\r  Progress: {}/{} ({:.1}%) [{}]        ",
-                done, count,
+                done,
+                count,
                 done as f64 / count as f64 * 100.0,
                 phase
             );
@@ -1896,7 +1938,12 @@ async fn chaos_rolling(count: u64, concurrency: usize, base_port: u16, restart_d
 /// 4. Restart the killed node
 /// 5. Wait for snapshot resync to complete
 /// 6. Verify ALL 3 nodes are consistent
-async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resync_wait_secs: u64) -> Result<()> {
+async fn chaos_resync_test(
+    count: u64,
+    concurrency: usize,
+    base_port: u16,
+    resync_wait_secs: u64,
+) -> Result<()> {
     let ports = [base_port, base_port + 1, base_port + 2];
     let leader_url = format!("http://127.0.0.1:{}", base_port);
     let killed_port = base_port + 1;
@@ -1981,8 +2028,11 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
             let done = metrics_clone.successful.load(Ordering::Relaxed)
                 + metrics_clone.failed.load(Ordering::Relaxed);
             if done >= kill_threshold {
-                println!("\n\n  💀 PHASE 1: Killing follower on port {} (at {}% progress)",
-                    killed_port, (done * 100) / count);
+                println!(
+                    "\n\n  💀 PHASE 1: Killing follower on port {} (at {}% progress)",
+                    killed_port,
+                    (done * 100) / count
+                );
                 let _ = kill_node_by_port(killed_port).await;
                 *phase_clone.lock().await = "node killed - continuing flood".to_string();
                 break;
@@ -2004,7 +2054,8 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
             let current_phase = phase_clone2.lock().await.clone();
             print!(
                 "\r  Progress: {}/{} ({:.1}%) [{}]          ",
-                done, count,
+                done,
+                count,
                 done as f64 / count as f64 * 100.0,
                 current_phase
             );
@@ -2022,7 +2073,10 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
     metrics.report().await;
 
     // Phase 2: Restart the killed node
-    println!("\n  🔄 PHASE 2: Restarting killed node {} on port {}...", killed_node_id, killed_port);
+    println!(
+        "\n  🔄 PHASE 2: Restarting killed node {} on port {}...",
+        killed_node_id, killed_port
+    );
     let peer_ports: Vec<u16> = ports.iter().cloned().filter(|&p| p != killed_port).collect();
     let _child = start_node(killed_node_id, killed_port, &peer_ports).await?;
 
@@ -2032,7 +2086,8 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
     let mut ready = false;
     for i in 0..30 {
         sleep(Duration::from_millis(500)).await;
-        if let Ok(resp) = ready_client.get(format!("{}/status", node_url))
+        if let Ok(resp) = ready_client
+            .get(format!("{}/status", node_url))
             .timeout(Duration::from_secs(2))
             .send()
             .await
@@ -2062,16 +2117,21 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
     let mut resync_observed = false;
 
     // Check leader's resync stats (should have sent snapshots)
-    if let Ok(resp) = ready_client.get(format!("http://127.0.0.1:{}/_raft/resync_stats", base_port))
+    if let Ok(resp) = ready_client
+        .get(format!("http://127.0.0.1:{}/_raft/resync_stats", base_port))
         .timeout(Duration::from_secs(5))
         .send()
         .await
     {
         if let Ok(stats) = resp.json::<serde_json::Value>().await {
-            let send_successes = stats["resync_stats"]["snapshot_send_successes"].as_u64().unwrap_or(0);
-            let send_attempts = stats["resync_stats"]["snapshot_send_attempts"].as_u64().unwrap_or(0);
-            println!("  Leader (port {}): {} send attempts, {} successes",
-                base_port, send_attempts, send_successes);
+            let send_successes =
+                stats["resync_stats"]["snapshot_send_successes"].as_u64().unwrap_or(0);
+            let send_attempts =
+                stats["resync_stats"]["snapshot_send_attempts"].as_u64().unwrap_or(0);
+            println!(
+                "  Leader (port {}): {} send attempts, {} successes",
+                base_port, send_attempts, send_successes
+            );
             if send_successes > 0 {
                 resync_observed = true;
             }
@@ -2079,7 +2139,8 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
     }
 
     // Check restarted follower's resync stats (should have received snapshot)
-    if let Ok(resp) = ready_client.get(format!("http://127.0.0.1:{}/_raft/resync_stats", killed_port))
+    if let Ok(resp) = ready_client
+        .get(format!("http://127.0.0.1:{}/_raft/resync_stats", killed_port))
         .timeout(Duration::from_secs(5))
         .send()
         .await
@@ -2087,8 +2148,10 @@ async fn chaos_resync_test(count: u64, concurrency: usize, base_port: u16, resyn
         if let Ok(stats) = resp.json::<serde_json::Value>().await {
             let received = stats["resync_stats"]["snapshots_received"].as_u64().unwrap_or(0);
             let applied = stats["resync_stats"]["snapshots_applied"].as_u64().unwrap_or(0);
-            println!("  Follower (port {}): {} received, {} applied",
-                killed_port, received, applied);
+            println!(
+                "  Follower (port {}): {} received, {} applied",
+                killed_port, received, applied
+            );
             if applied > 0 {
                 resync_observed = true;
             }
@@ -2209,7 +2272,8 @@ async fn verify_consistency(nodes_str: &str) -> Result<()> {
         }
     }
     let counter_hashes: Vec<&String> = counter_data.values().map(|(_, h)| h).collect();
-    let counter_consistent = counter_hashes.windows(2).all(|w| w[0] == w[1]) || counter_data.values().all(|(c, _)| *c == 0);
+    let counter_consistent = counter_hashes.windows(2).all(|w| w[0] == w[1])
+        || counter_data.values().all(|(c, _)| *c == 0);
 
     // Overall result
     println!("───────────────────────────────────────────────────────────────");
@@ -2238,7 +2302,11 @@ async fn watch_health(leader: &str, interval_secs: u64) -> Result<()> {
 
         println!("═══════════════════════════════════════════════════════════════");
         println!("  CLUSTER HEALTH MONITOR");
-        println!("  {} - refreshing every {}s", chrono::Utc::now().format("%H:%M:%S"), interval_secs);
+        println!(
+            "  {} - refreshing every {}s",
+            chrono::Utc::now().format("%H:%M:%S"),
+            interval_secs
+        );
         println!("═══════════════════════════════════════════════════════════════");
 
         let health_url = format!("{}/_raft/health", leader);

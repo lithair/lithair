@@ -50,8 +50,8 @@ pub mod utils;
 // Re-export main types for convenience
 pub use admin::{
     build_health_response, build_info_response, build_standard_status, build_status_response,
-    check_admin_firewall, forbidden_admin_response, format_uptime,
-    handle_admin_with_custom, handle_auto_admin_endpoints, handle_auto_admin_endpoints_with_reload,
+    check_admin_firewall, forbidden_admin_response, format_uptime, handle_admin_with_custom,
+    handle_auto_admin_endpoints, handle_auto_admin_endpoints_with_reload,
     handle_auto_reload_endpoint, handle_complete_admin_management, AutoAdminConfig,
     ReloadableServer, ServerMetrics,
 };

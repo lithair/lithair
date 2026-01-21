@@ -8,8 +8,8 @@
 //! - Compression ratio tracking
 //! - Performance metrics
 
+use serde::{de::DeserializeOwned, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Serialize, de::DeserializeOwned};
 
 /// Binary serialization errors
 #[derive(Debug, Clone)]

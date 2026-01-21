@@ -16,6 +16,9 @@ task ci:github
 # Security audit (required)
 cargo audit
 
+# License and advisory check (required)
+cargo deny check advisories licenses
+
 # BDD tests (required)
 task bdd:all
 
@@ -79,39 +82,46 @@ set -e
 
 echo "=== Lithair Publication Validation ==="
 
-echo "[1/8] Running CI full..."
+echo "[1/9] Running CI full..."
 task ci:full
 
-echo "[2/8] Running CI github (complete validation)..."
+echo "[2/9] Running CI github (complete validation)..."
 task ci:github
 
-echo "[3/8] Running security audit..."
+echo "[3/9] Running security audit..."
 if ! command -v cargo-audit &> /dev/null; then
     echo "Warning: cargo-audit not installed, skipping security audit..."
 else
     cargo audit
 fi
 
-echo "[4/8] Checking for secrets..."
+echo "[4/9] Running license and advisory check..."
+if ! command -v cargo-deny &> /dev/null; then
+    echo "Warning: cargo-deny not installed, skipping license check..."
+else
+    cargo deny check advisories licenses
+fi
+
+echo "[5/9] Checking for secrets..."
 if grep -rE --exclude-dir="target" --exclude-dir="examples" --exclude-dir="cucumber-tests" --include="*.rs" --include="*.toml" "(password|secret|api_key|token)\s*=" . ; then
     echo "ERROR: Potential secrets found!"
     exit 1
 fi
 
-echo "[5/8] Building release..."
+echo "[6/9] Building release..."
 task build:release
 
-echo "[6/8] Building documentation..."
+echo "[7/9] Building documentation..."
 task docs:build
 
-echo "[7/8] Running BDD tests..."
+echo "[8/9] Running BDD tests..."
 if task --list 2>/dev/null | grep -q "bdd:all"; then
     task bdd:all
 else
     echo "Warning: BDD task not found, skipping..."
 fi
 
-echo "[8/8] Building examples..."
+echo "[9/9] Building examples..."
 cargo build --examples
 
 echo "=== All validations passed ==="

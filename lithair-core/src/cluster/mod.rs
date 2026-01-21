@@ -8,18 +8,23 @@ use reqwest::Client as HttpClient;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-pub mod simple_replication;
 pub mod consensus_log;
-pub mod wal;
 pub mod replication_batcher;
+pub mod simple_replication;
 pub mod snapshot;
 pub mod upgrade;
+pub mod wal;
 
-pub use consensus_log::{ConsensusLog, CrudOperation, LogEntry, LogId, ApplyResult};
-pub use wal::{WriteAheadLog, GroupCommitConfig};
-pub use replication_batcher::{ReplicationBatcher, BatcherConfig, FollowerHealth, FollowerStats};
-pub use snapshot::{SnapshotManager, SnapshotData, SnapshotMeta, InstallSnapshotRequest, InstallSnapshotResponse};
-pub use upgrade::{Version, NodeMode, SchemaChange, FieldDefinition, FieldType, ModelSchema, MigrationContext, MigrationManager, MigrationStatus, RollbackOp};
+pub use consensus_log::{ApplyResult, ConsensusLog, CrudOperation, LogEntry, LogId};
+pub use replication_batcher::{BatcherConfig, FollowerHealth, FollowerStats, ReplicationBatcher};
+pub use snapshot::{
+    InstallSnapshotRequest, InstallSnapshotResponse, SnapshotData, SnapshotManager, SnapshotMeta,
+};
+pub use upgrade::{
+    FieldDefinition, FieldType, MigrationContext, MigrationManager, MigrationStatus, ModelSchema,
+    NodeMode, RollbackOp, SchemaChange, Version,
+};
+pub use wal::{GroupCommitConfig, WriteAheadLog};
 // Resync stats are defined in this file, no re-export needed
 
 /// Raft Node State for leader election and failover
@@ -179,10 +184,8 @@ impl RaftLeadershipState {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(status) = resp.json::<serde_json::Value>().await {
                         if let Some(raft) = status.get("raft") {
-                            let peer_id = raft
-                                .get("node_id")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(u64::MAX);
+                            let peer_id =
+                                raft.get("node_id").and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
                             let peer_port = peer
                                 .split(':')
                                 .nth(1)
@@ -207,10 +210,7 @@ impl RaftLeadershipState {
         let (winner_id, winner_port) = candidates[0];
         let should_become_leader = winner_id == self.node_id;
 
-        println!(
-            "🗳️ Election result: node {} wins (port {})",
-            winner_id, winner_port
-        );
+        println!("🗳️ Election result: node {} wins (port {})", winner_id, winner_port);
 
         (should_become_leader, winner_id, winner_port)
     }

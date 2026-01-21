@@ -31,12 +31,12 @@ use bytes::Bytes;
 use std::sync::Arc;
 
 pub mod builder;
-pub mod router;
 pub mod model_handler;
+pub mod router;
 mod schema_handlers;
 
 pub use builder::LithairServerBuilder;
-pub use model_handler::{ModelHandler, DeclarativeModelHandler};
+pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 
 /// Model registration with handler
 pub struct ModelRegistration {
@@ -116,8 +116,15 @@ pub struct RaftCrudOperation {
 
 /// Type alias for async route handlers
 pub type RouteHandler = Arc<
-    dyn Fn(hyper::Request<hyper::body::Incoming>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>> + Send>>
-        + Send
+    dyn Fn(
+            hyper::Request<hyper::body::Incoming>,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>,
+                    > + Send,
+            >,
+        > + Send
         + Sync,
 >;
 
@@ -130,9 +137,12 @@ pub struct CustomRoute {
 
 /// Type for async model handler factory
 pub type ModelFactory = Arc<
-    dyn Fn(String) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Arc<dyn ModelHandler>>> + Send>
-    > + Send + Sync
+    dyn Fn(
+            String,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<Arc<dyn ModelHandler>>> + Send>,
+        > + Send
+        + Sync,
 >;
 
 /// Type for schema spec extractor function
@@ -171,7 +181,10 @@ impl LithairServer {
     /// differences based on the configured migration mode.
     async fn validate_schemas(&self) -> Result<()> {
         use crate::config::SchemaMigrationMode;
-        use crate::schema::{load_schema_spec, save_schema_spec, SchemaChangeDetector, PendingSchemaChange, AppliedSchemaChange};
+        use crate::schema::{
+            load_schema_spec, save_schema_spec, AppliedSchemaChange, PendingSchemaChange,
+            SchemaChangeDetector,
+        };
         use std::path::Path;
 
         let base_path = Path::new(&self.config.storage.data_dir);
@@ -214,8 +227,12 @@ impl LithairServer {
                     let changes = SchemaChangeDetector::detect_changes(&stored, &current_spec);
 
                     if changes.is_empty() {
-                        log::info!("   ✅ {} - schema unchanged (v{})", info.name, current_spec.version);
-                        
+                        log::info!(
+                            "   ✅ {} - schema unchanged (v{})",
+                            info.name,
+                            current_spec.version
+                        );
+
                         // In cluster mode, update local sync state
                         if is_cluster {
                             let mut state = self.schema_sync_state.write().await;
@@ -226,20 +243,34 @@ impl LithairServer {
                         {
                             let state = self.schema_sync_state.read().await;
                             if state.lock_status.is_locked() {
-                                log::error!("   🔒 {} - schema changes BLOCKED (migrations locked)", info.name);
-                                log::error!("      Reason: {}", state.lock_status.reason.as_deref().unwrap_or("none"));
+                                log::error!(
+                                    "   🔒 {} - schema changes BLOCKED (migrations locked)",
+                                    info.name
+                                );
+                                log::error!(
+                                    "      Reason: {}",
+                                    state.lock_status.reason.as_deref().unwrap_or("none")
+                                );
                                 log::error!("      Unlock via: POST /_admin/schema/unlock");
                                 has_breaking_changes = true; // Will cause failure in strict mode
                                 continue; // Skip this model, check next
                             }
                         }
 
-                        log::warn!("   ⚠️  {} - {} schema change(s) detected:", info.name, changes.len());
+                        log::warn!(
+                            "   ⚠️  {} - {} schema change(s) detected:",
+                            info.name,
+                            changes.len()
+                        );
 
                         for change in &changes {
                             let field = change.field_name.as_deref().unwrap_or("model");
-                            log::warn!("      - {:?} on '{}' ({:?})",
-                                change.change_type, field, change.migration_strategy);
+                            log::warn!(
+                                "      - {:?} on '{}' ({:?})",
+                                change.change_type,
+                                field,
+                                change.migration_strategy
+                            );
 
                             if change.requires_consensus {
                                 has_breaking_changes = true;
@@ -263,7 +294,10 @@ impl LithairServer {
 
                             match strategy {
                                 crate::schema::VoteStrategy::AutoAccept => {
-                                    log::info!("      🌐 Cluster: auto-accepting {:?} change", pending.overall_strategy);
+                                    log::info!(
+                                        "      🌐 Cluster: auto-accepting {:?} change",
+                                        pending.overall_strategy
+                                    );
                                     state.schemas.insert(info.name.clone(), current_spec.clone());
                                     // Record in history
                                     let applied = AppliedSchemaChange {
@@ -273,13 +307,19 @@ impl LithairServer {
                                         applied_at: std::time::SystemTime::now()
                                             .duration_since(std::time::UNIX_EPOCH)
                                             .unwrap_or_default()
-                                            .as_millis() as u64,
+                                            .as_millis()
+                                            as u64,
                                         applied_by_node: node_id,
                                     };
                                     state.change_history.push(applied.clone());
                                     // Persist history to disk
-                                    if let Err(e) = crate::schema::append_schema_history(&applied, base_path) {
-                                        log::error!("      Failed to persist schema history: {}", e);
+                                    if let Err(e) =
+                                        crate::schema::append_schema_history(&applied, base_path)
+                                    {
+                                        log::error!(
+                                            "      Failed to persist schema history: {}",
+                                            e
+                                        );
                                     }
                                     // Also save locally
                                     if let Err(e) = save_schema_spec(&current_spec, base_path) {
@@ -287,7 +327,10 @@ impl LithairServer {
                                     }
                                 }
                                 crate::schema::VoteStrategy::Reject => {
-                                    log::error!("      🌐 Cluster: rejecting {:?} change (policy)", pending.overall_strategy);
+                                    log::error!(
+                                        "      🌐 Cluster: rejecting {:?} change (policy)",
+                                        pending.overall_strategy
+                                    );
                                     has_breaking_changes = true;
                                 }
                                 _ => {
@@ -310,7 +353,10 @@ impl LithairServer {
                                     if let Err(e) = save_schema_spec(&current_spec, base_path) {
                                         log::error!("      Failed to save updated schema: {}", e);
                                     } else {
-                                        log::info!("      📝 Schema updated to v{}", current_spec.version);
+                                        log::info!(
+                                            "      📝 Schema updated to v{}",
+                                            current_spec.version
+                                        );
                                         // Record in history (non-cluster mode)
                                         let applied = AppliedSchemaChange {
                                             id: uuid::Uuid::new_v4(),
@@ -319,14 +365,20 @@ impl LithairServer {
                                             applied_at: std::time::SystemTime::now()
                                                 .duration_since(std::time::UNIX_EPOCH)
                                                 .unwrap_or_default()
-                                                .as_millis() as u64,
+                                                .as_millis()
+                                                as u64,
                                             applied_by_node: node_id,
                                         };
                                         let mut state = self.schema_sync_state.write().await;
                                         state.change_history.push(applied.clone());
                                         // Persist history to disk
-                                        if let Err(e) = crate::schema::append_schema_history(&applied, base_path) {
-                                            log::error!("      Failed to persist schema history: {}", e);
+                                        if let Err(e) = crate::schema::append_schema_history(
+                                            &applied, base_path,
+                                        ) {
+                                            log::error!(
+                                                "      Failed to persist schema history: {}",
+                                                e
+                                            );
                                         }
                                     }
                                 }
@@ -339,9 +391,15 @@ impl LithairServer {
                                         current_spec.clone(),
                                         Some(stored.clone()),
                                     );
-                                    log::info!("      🔒 Manual mode: change pending approval (id: {})", pending.id);
-                                    log::warn!("      ⏳ Approve via: POST /_admin/schema/approve/{}", pending.id);
-                                    
+                                    log::info!(
+                                        "      🔒 Manual mode: change pending approval (id: {})",
+                                        pending.id
+                                    );
+                                    log::warn!(
+                                        "      ⏳ Approve via: POST /_admin/schema/approve/{}",
+                                        pending.id
+                                    );
+
                                     let mut state = self.schema_sync_state.write().await;
                                     state.add_pending(pending);
                                 }
@@ -354,11 +412,15 @@ impl LithairServer {
                 }
                 None => {
                     // First run - save initial schema
-                    log::info!("   📝 {} - first run, saving schema v{}", info.name, current_spec.version);
+                    log::info!(
+                        "   📝 {} - first run, saving schema v{}",
+                        info.name,
+                        current_spec.version
+                    );
                     if let Err(e) = save_schema_spec(&current_spec, base_path) {
                         log::error!("      Failed to save initial schema: {}", e);
                     }
-                    
+
                     // In cluster mode, update local sync state
                     if is_cluster {
                         let mut state = self.schema_sync_state.write().await;
@@ -381,7 +443,7 @@ impl LithairServer {
     pub async fn serve(mut self) -> Result<()> {
         // Load persisted schema history and lock status
         {
-            use crate::schema::{load_schema_history, load_lock_status};
+            use crate::schema::{load_lock_status, load_schema_history};
             use std::path::Path;
 
             let base_path = Path::new(&self.config.storage.data_dir);
@@ -392,7 +454,10 @@ impl LithairServer {
                     let mut state = self.schema_sync_state.write().await;
                     state.change_history = history.changes;
                     if !state.change_history.is_empty() {
-                        log::info!("📜 Loaded {} schema change(s) from history", state.change_history.len());
+                        log::info!(
+                            "📜 Loaded {} schema change(s) from history",
+                            state.change_history.len()
+                        );
                     }
                 }
                 Err(e) => {
@@ -442,7 +507,7 @@ impl LithairServer {
             }
         }
         self.model_infos.clear(); // Clear infos, we have the models now
-        // Initialize default logger if not already initialized
+                                  // Initialize default logger if not already initialized
         let _ = env_logger::Builder::from_default_env()
             .format_timestamp_millis()
             .format_module_path(false)
@@ -461,7 +526,10 @@ impl LithairServer {
         log::info!("🚀 Starting Lithair Server");
         log::info!("   Port: {}", self.config.server.port);
         log::info!("   Host: {}", self.config.server.host);
-        log::info!("   Sessions: {}", if self.config.sessions.enabled { "enabled" } else { "disabled" });
+        log::info!(
+            "   Sessions: {}",
+            if self.config.sessions.enabled { "enabled" } else { "disabled" }
+        );
         log::info!("   RBAC: {}", if self.config.rbac.enabled { "enabled" } else { "disabled" });
         log::info!("   Admin: {}", if self.config.admin.enabled { "enabled" } else { "disabled" });
         log::info!("   Models: {}", self.models.read().await.len());
@@ -551,14 +619,21 @@ impl LithairServer {
             log::info!("   Node ID: {}", node_id);
             log::info!("   Peers: {:?}", self.cluster_peers);
             log::info!("   Raft path: {}", self.config.raft.path);
-            log::info!("   Raft auth: {}", if self.config.raft.auth_required { "enabled" } else { "disabled" });
+            log::info!(
+                "   Raft auth: {}",
+                if self.config.raft.auth_required { "enabled" } else { "disabled" }
+            );
 
-            let raft_state = Arc::new(RaftLeadershipState::new(node_id, port, self.cluster_peers.clone()));
+            let raft_state =
+                Arc::new(RaftLeadershipState::new(node_id, port, self.cluster_peers.clone()));
 
             if raft_state.is_leader() {
                 log::info!("👑 THIS NODE IS THE LEADER");
             } else {
-                log::info!("👥 This node is a FOLLOWER (leader port: {})", raft_state.get_leader_port());
+                log::info!(
+                    "👥 This node is a FOLLOWER (leader port: {})",
+                    raft_state.get_leader_port()
+                );
             }
 
             self.raft_state = Some(raft_state);
@@ -566,7 +641,10 @@ impl LithairServer {
             // Initialize replication batcher with peers
             if let Some(ref batcher) = self.replication_batcher {
                 batcher.initialize(&self.cluster_peers).await;
-                log::info!("📊 Replication batcher initialized with {} peers", self.cluster_peers.len());
+                log::info!(
+                    "📊 Replication batcher initialized with {} peers",
+                    self.cluster_peers.len()
+                );
             }
 
             // Start WAL background flush task (group commit)
@@ -593,9 +671,9 @@ impl LithairServer {
                 let resync_stats = Arc::clone(&self.resync_stats);
 
                 tokio::spawn(async move {
+                    use std::collections::HashMap;
                     use std::time::Duration;
                     use tokio::time::interval;
-                    use std::collections::HashMap;
 
                     let mut ticker = interval(Duration::from_millis(100)); // Check every 100ms
                     let mut _catchup_counter = 0u64; // Reserved for future use
@@ -639,20 +717,26 @@ impl LithairServer {
 
                             if !desynced.is_empty() && snapshot_manager.is_some() {
                                 // Filter out followers that are in cooldown
-                                let cooldown_duration = Duration::from_secs(replication_config.resync_cooldown_secs);
+                                let cooldown_duration =
+                                    Duration::from_secs(replication_config.resync_cooldown_secs);
                                 let now = std::time::Instant::now();
                                 let eligible_for_resync: Vec<_> = desynced
                                     .into_iter()
                                     .filter(|peer| {
                                         match last_resync.get(peer) {
-                                            Some(last_time) => now.duration_since(*last_time) >= cooldown_duration,
+                                            Some(last_time) => {
+                                                now.duration_since(*last_time) >= cooldown_duration
+                                            }
                                             None => true, // Never resynced, eligible
                                         }
                                     })
                                     .collect();
 
                                 if !eligible_for_resync.is_empty() {
-                                    log::info!("🔄 Found {} desynced followers eligible for resync", eligible_for_resync.len());
+                                    log::info!(
+                                        "🔄 Found {} desynced followers eligible for resync",
+                                        eligible_for_resync.len()
+                                    );
 
                                     let snapshot_mgr = snapshot_manager.as_ref().unwrap().clone();
                                     let models_clone = Arc::clone(&models);
@@ -664,17 +748,23 @@ impl LithairServer {
                                         &snapshot_mgr,
                                         term,
                                         commit_index,
-                                    ).await {
+                                    )
+                                    .await
+                                    {
                                         log::warn!("Failed to create snapshot for resync: {}", e);
                                     } else {
                                         // Track snapshot creation
                                         resync_stats.record_snapshot_created();
 
                                         // Send snapshot to each desynced follower (in parallel, with configurable rate limit)
-                                        let max_concurrent = replication_config.max_concurrent_resyncs;
-                                        let snapshot_timeout_secs = replication_config.snapshot_send_timeout_secs;
+                                        let max_concurrent =
+                                            replication_config.max_concurrent_resyncs;
+                                        let snapshot_timeout_secs =
+                                            replication_config.snapshot_send_timeout_secs;
 
-                                        for peer in eligible_for_resync.into_iter().take(max_concurrent) {
+                                        for peer in
+                                            eligible_for_resync.into_iter().take(max_concurrent)
+                                        {
                                             // Mark as resyncing with current timestamp
                                             last_resync.insert(peer.clone(), now);
 
@@ -687,24 +777,40 @@ impl LithairServer {
                                             resync_stats.record_send_attempt(commit_index);
 
                                             tokio::spawn(async move {
-                                                log::info!("📸 Sending snapshot to desynced follower: {}", peer_clone);
+                                                log::info!(
+                                                    "📸 Sending snapshot to desynced follower: {}",
+                                                    peer_clone
+                                                );
 
                                                 match Self::send_snapshot_to_follower_with_timeout(
                                                     &peer_clone,
                                                     &snapshot_mgr_clone,
                                                     snapshot_timeout_secs,
-                                                ).await {
+                                                )
+                                                .await
+                                                {
                                                     Ok(()) => {
-                                                        log::info!("✅ Snapshot installed on {}", peer_clone);
+                                                        log::info!(
+                                                            "✅ Snapshot installed on {}",
+                                                            peer_clone
+                                                        );
                                                         // Track success
                                                         stats_clone.record_send_success();
                                                         // Reset follower health after successful resync
-                                                        if let Some(follower) = batcher_resync.get_follower(&peer_clone).await {
-                                                            follower.record_success(0, 0).await; // Reset to healthy
+                                                        if let Some(follower) = batcher_resync
+                                                            .get_follower(&peer_clone)
+                                                            .await
+                                                        {
+                                                            follower.record_success(0, 0).await;
+                                                            // Reset to healthy
                                                         }
                                                     }
                                                     Err(e) => {
-                                                        log::error!("❌ Snapshot send to {} failed: {}", peer_clone, e);
+                                                        log::error!(
+                                                            "❌ Snapshot send to {} failed: {}",
+                                                            peer_clone,
+                                                            e
+                                                        );
                                                         // Track failure
                                                         stats_clone.record_send_failure();
                                                     }
@@ -732,8 +838,12 @@ impl LithairServer {
                                 }
 
                                 // Get follower's last replicated index
-                                let follower_index = if let Some(follower) = batcher_clone.get_follower(peer).await {
-                                    follower.last_replicated_index.load(std::sync::atomic::Ordering::SeqCst)
+                                let follower_index = if let Some(follower) =
+                                    batcher_clone.get_follower(peer).await
+                                {
+                                    follower
+                                        .last_replicated_index
+                                        .load(std::sync::atomic::Ordering::SeqCst)
                                 } else {
                                     0
                                 };
@@ -744,7 +854,8 @@ impl LithairServer {
                                 }
 
                                 // Only get entries the follower is missing
-                                let missing_entries = consensus_log_ref.get_entries_from(follower_index + 1).await;
+                                let missing_entries =
+                                    consensus_log_ref.get_entries_from(follower_index + 1).await;
                                 if missing_entries.is_empty() {
                                     continue;
                                 }
@@ -760,14 +871,15 @@ impl LithairServer {
                                         .build()
                                         .unwrap_or_else(|_| reqwest::Client::new());
 
-                                    let request = crate::cluster::consensus_log::AppendEntriesRequest {
-                                        term,
-                                        leader_id: node_id,
-                                        prev_log_index: 0,
-                                        prev_log_term: 0,
-                                        entries: entries.clone(),
-                                        leader_commit: commit,
-                                    };
+                                    let request =
+                                        crate::cluster::consensus_log::AppendEntriesRequest {
+                                            term,
+                                            leader_id: node_id,
+                                            prev_log_index: 0,
+                                            prev_log_term: 0,
+                                            entries: entries.clone(),
+                                            leader_commit: commit,
+                                        };
 
                                     let start = std::time::Instant::now();
                                     let url = format!("http://{}/_raft/append", peer);
@@ -775,17 +887,32 @@ impl LithairServer {
                                     match client.post(&url).json(&request).send().await {
                                         Ok(resp) if resp.status().is_success() => {
                                             let latency = start.elapsed().as_millis() as u64;
-                                            let last_index = entries.last().map(|e| e.log_id.index).unwrap_or(0);
-                                            batcher.record_success(&peer, last_index, latency).await;
-                                            log::debug!("📤 Background catch-up: {} entries to {} ({}ms)",
-                                                entries.len(), peer, latency);
+                                            let last_index =
+                                                entries.last().map(|e| e.log_id.index).unwrap_or(0);
+                                            batcher
+                                                .record_success(&peer, last_index, latency)
+                                                .await;
+                                            log::debug!(
+                                                "📤 Background catch-up: {} entries to {} ({}ms)",
+                                                entries.len(),
+                                                peer,
+                                                latency
+                                            );
                                         }
                                         Ok(resp) => {
-                                            log::debug!("Background catch-up to {} failed: {}", peer, resp.status());
+                                            log::debug!(
+                                                "Background catch-up to {} failed: {}",
+                                                peer,
+                                                resp.status()
+                                            );
                                             batcher.record_failure(&peer).await;
                                         }
                                         Err(e) => {
-                                            log::debug!("Background catch-up to {} error: {}", peer, e);
+                                            log::debug!(
+                                                "Background catch-up to {} error: {}",
+                                                peer,
+                                                e
+                                            );
                                             batcher.record_failure(&peer).await;
                                         }
                                     }
@@ -798,55 +925,69 @@ impl LithairServer {
                             continue;
                         }
 
-                            let batch = batcher_clone.take_batch().await;
-                            if batch.is_empty() {
-                                continue;
-                            }
+                        let batch = batcher_clone.take_batch().await;
+                        if batch.is_empty() {
+                            continue;
+                        }
 
-                            // Send batch to all peers
-                            for peer in &peers {
-                                let peer = peer.clone();
-                                let entries = batch.clone();
-                                let batcher = Arc::clone(&batcher_clone);
-                                let max_entry_index = entries.iter().map(|e| e.log_id.index).max().unwrap_or(0);
+                        // Send batch to all peers
+                        for peer in &peers {
+                            let peer = peer.clone();
+                            let entries = batch.clone();
+                            let batcher = Arc::clone(&batcher_clone);
+                            let max_entry_index =
+                                entries.iter().map(|e| e.log_id.index).max().unwrap_or(0);
 
-                                tokio::spawn(async move {
-                                    let client = reqwest::Client::builder()
-                                        .timeout(Duration::from_secs(5))
-                                        .build()
-                                        .unwrap_or_else(|_| reqwest::Client::new());
+                            tokio::spawn(async move {
+                                let client = reqwest::Client::builder()
+                                    .timeout(Duration::from_secs(5))
+                                    .build()
+                                    .unwrap_or_else(|_| reqwest::Client::new());
 
-                                    let request = crate::cluster::consensus_log::AppendEntriesRequest {
-                                        term,
-                                        leader_id: node_id,
-                                        prev_log_index: 0,
-                                        prev_log_term: 0,
-                                        entries: entries.clone(),
-                                        leader_commit: max_entry_index,
-                                    };
+                                let request = crate::cluster::consensus_log::AppendEntriesRequest {
+                                    term,
+                                    leader_id: node_id,
+                                    prev_log_index: 0,
+                                    prev_log_term: 0,
+                                    entries: entries.clone(),
+                                    leader_commit: max_entry_index,
+                                };
 
-                                    let start = std::time::Instant::now();
-                                    let url = format!("http://{}/_raft/append", peer);
+                                let start = std::time::Instant::now();
+                                let url = format!("http://{}/_raft/append", peer);
 
-                                    match client.post(&url).json(&request).send().await {
-                                        Ok(resp) if resp.status().is_success() => {
-                                            let latency = start.elapsed().as_millis() as u64;
-                                            let last_index = entries.last().map(|e| e.log_id.index).unwrap_or(0);
-                                            batcher.record_success(&peer, last_index, latency).await;
-                                            log::debug!("📤 Background replicated {} entries to {} ({}ms)",
-                                                entries.len(), peer, latency);
-                                        }
-                                        Ok(resp) => {
-                                            log::warn!("Background replication to {} failed: {}", peer, resp.status());
-                                            batcher.record_failure(&peer).await;
-                                        }
-                                        Err(e) => {
-                                            log::warn!("Background replication to {} error: {}", peer, e);
-                                            batcher.record_failure(&peer).await;
-                                        }
+                                match client.post(&url).json(&request).send().await {
+                                    Ok(resp) if resp.status().is_success() => {
+                                        let latency = start.elapsed().as_millis() as u64;
+                                        let last_index =
+                                            entries.last().map(|e| e.log_id.index).unwrap_or(0);
+                                        batcher.record_success(&peer, last_index, latency).await;
+                                        log::debug!(
+                                            "📤 Background replicated {} entries to {} ({}ms)",
+                                            entries.len(),
+                                            peer,
+                                            latency
+                                        );
                                     }
-                                });
-                            }
+                                    Ok(resp) => {
+                                        log::warn!(
+                                            "Background replication to {} failed: {}",
+                                            peer,
+                                            resp.status()
+                                        );
+                                        batcher.record_failure(&peer).await;
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "Background replication to {} error: {}",
+                                            peer,
+                                            e
+                                        );
+                                        batcher.record_failure(&peer).await;
+                                    }
+                                }
+                            });
+                        }
                     }
                 });
                 log::info!("🔄 Background replication task started");
@@ -881,7 +1022,8 @@ impl LithairServer {
                         .build()
                         .unwrap_or_else(|_| HttpClient::new());
 
-                    let heartbeat_interval = Duration::from_secs(raft_config.heartbeat_interval_secs);
+                    let heartbeat_interval =
+                        Duration::from_secs(raft_config.heartbeat_interval_secs);
 
                     loop {
                         sleep(heartbeat_interval).await;
@@ -948,14 +1090,11 @@ impl LithairServer {
 
                 let service = hyper::service::service_fn(move |req| {
                     let server = server.clone();
-                    async move {
-                        server.handle_request(req).await
-                    }
+                    async move { server.handle_request(req).await }
                 });
 
-                if let Err(err) = hyper::server::conn::http1::Builder::new()
-                    .serve_connection(io, service)
-                    .await
+                if let Err(err) =
+                    hyper::server::conn::http1::Builder::new().serve_connection(io, service).await
                 {
                     log::error!("Connection error from {}: {}", remote_addr, err);
                 }
@@ -1027,8 +1166,8 @@ impl LithairServer {
         &self,
         req: hyper::Request<hyper::body::Incoming>,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
         use bytes::Bytes;
+        use http_body_util::Full;
 
         let method = req.method().clone();
         let path = req.uri().path().to_string();
@@ -1042,9 +1181,8 @@ impl LithairServer {
 
             // Raft heartbeat endpoint
             if path == heartbeat_path && method == hyper::Method::POST {
-                let provided_token = req.headers()
-                    .get("X-Raft-Token")
-                    .and_then(|v| v.to_str().ok());
+                let provided_token =
+                    req.headers().get("X-Raft-Token").and_then(|v| v.to_str().ok());
 
                 if !self.config.raft.validate_token(provided_token) {
                     return Ok(hyper::Response::builder()
@@ -1059,13 +1197,25 @@ impl LithairServer {
 
                 // Parse heartbeat to update leader info if needed
                 use http_body_util::BodyExt;
-                let body_bytes = req.into_body().collect().await.map(|c| c.to_bytes()).unwrap_or_default();
+                let body_bytes =
+                    req.into_body().collect().await.map(|c| c.to_bytes()).unwrap_or_default();
                 if let Ok(heartbeat) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
-                    let leader_id = heartbeat.get("leader_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let leader_port = heartbeat.get("leader_port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+                    let leader_id =
+                        heartbeat.get("leader_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let leader_port =
+                        heartbeat.get("leader_port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
 
-                    if !raft_state.is_leader() && leader_id != raft_state.current_leader_id.load(std::sync::atomic::Ordering::Relaxed) {
-                        log::info!("💓 Heartbeat: updating leader to node {} (port {})", leader_id, leader_port);
+                    if !raft_state.is_leader()
+                        && leader_id
+                            != raft_state
+                                .current_leader_id
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        log::info!(
+                            "💓 Heartbeat: updating leader to node {} (port {})",
+                            leader_id,
+                            leader_port
+                        );
                         raft_state.become_follower(leader_id, leader_port);
                     }
                 }
@@ -1079,9 +1229,8 @@ impl LithairServer {
 
             // Raft leader discovery endpoint
             if path == leader_path && method == hyper::Method::GET {
-                let provided_token = req.headers()
-                    .get("X-Raft-Token")
-                    .and_then(|v| v.to_str().ok());
+                let provided_token =
+                    req.headers().get("X-Raft-Token").and_then(|v| v.to_str().ok());
 
                 if !self.config.raft.validate_token(provided_token) {
                     return Ok(hyper::Response::builder()
@@ -1107,7 +1256,8 @@ impl LithairServer {
 
             // Redirect writes to leader if we're a follower
             // Exception: /internal/* and /_raft/* endpoints are internal cluster communication
-            let is_write = matches!(method, hyper::Method::POST | hyper::Method::PUT | hyper::Method::DELETE);
+            let is_write =
+                matches!(method, hyper::Method::POST | hyper::Method::PUT | hyper::Method::DELETE);
             let is_internal = path.starts_with("/internal/") || path.starts_with("/_raft/");
 
             if is_write && !raft_state.is_leader() && !is_internal {
@@ -1356,7 +1506,8 @@ impl LithairServer {
                 for prefix in prefixes {
                     if path.starts_with(prefix) {
                         if let Some(engine) = self.frontend_engines.get(prefix) {
-                            let frontend_server = crate::frontend::FrontendServer::new_scc2(engine.clone());
+                            let frontend_server =
+                                crate::frontend::FrontendServer::new_scc2(engine.clone());
 
                             // For non-root frontends, strip the prefix from the path
                             let asset_path = if prefix == "/" {
@@ -1379,7 +1530,8 @@ impl LithairServer {
                                     use http_body_util::BodyExt;
                                     let (parts, body) = response.into_parts();
                                     let bytes = body.collect().await.unwrap().to_bytes();
-                                    let full_response = hyper::Response::from_parts(parts, Full::new(bytes));
+                                    let full_response =
+                                        hyper::Response::from_parts(parts, Full::new(bytes));
                                     return Ok(full_response);
                                 }
                                 Err(_) => {} // Infallible, won't happen
@@ -1448,9 +1600,7 @@ impl LithairServer {
         };
 
         // Extract model base_path from the message if present, else try to match by data structure
-        let base_path = message.get("base_path")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let base_path = message.get("base_path").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         // Check for consensus-style operation (LithairAppData structure)
         let operation = message.get("operation");
@@ -1461,7 +1611,9 @@ impl LithairServer {
 
         // Try to match by base_path, model_type, or fallback to first
         let handler = if let Some(ref path) = base_path {
-            models.iter().find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
+            models
+                .iter()
+                .find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
         } else if let Some(mtype) = model_type {
             models.iter().find(|m| m.name == mtype || m.base_path.contains(mtype))
         } else {
@@ -1474,7 +1626,8 @@ impl LithairServer {
             if let Some(op) = operation {
                 // Parse CrudOperation: {"Create": {...}}, {"Update": {...}}, or {"Delete": {...}}
                 if let Some(create_data) = op.get("Create") {
-                    let item_data = create_data.get("item").cloned().unwrap_or(serde_json::Value::Null);
+                    let item_data =
+                        create_data.get("item").cloned().unwrap_or(serde_json::Value::Null);
                     match model.handler.apply_replicated_item_json(item_data).await {
                         Ok(()) => {
                             log::debug!("📥 CREATE replication applied for model {}", model.name);
@@ -1494,8 +1647,10 @@ impl LithairServer {
                         }
                     }
                 } else if let Some(update_data) = op.get("Update") {
-                    let item_data = update_data.get("item").cloned().unwrap_or(serde_json::Value::Null);
-                    let primary_key = update_data.get("primary_key").and_then(|v| v.as_str()).unwrap_or("");
+                    let item_data =
+                        update_data.get("item").cloned().unwrap_or(serde_json::Value::Null);
+                    let primary_key =
+                        update_data.get("primary_key").and_then(|v| v.as_str()).unwrap_or("");
                     match model.handler.apply_replicated_update_json(primary_key, item_data).await {
                         Ok(()) => {
                             log::debug!("📥 UPDATE replication applied for model {}", model.name);
@@ -1515,7 +1670,8 @@ impl LithairServer {
                         }
                     }
                 } else if let Some(delete_data) = op.get("Delete") {
-                    let primary_key = delete_data.get("primary_key").and_then(|v| v.as_str()).unwrap_or("");
+                    let primary_key =
+                        delete_data.get("primary_key").and_then(|v| v.as_str()).unwrap_or("");
                     match model.handler.apply_replicated_delete_json(primary_key).await {
                         Ok(_) => {
                             log::debug!("📥 DELETE replication applied for model {}", model.name);
@@ -1544,7 +1700,9 @@ impl LithairServer {
                     return Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::BAD_REQUEST)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(r#"{"error":"Missing 'data' or 'operation' field"}"#)))
+                        .body(Full::new(Bytes::from(
+                            r#"{"error":"Missing 'data' or 'operation' field"}"#,
+                        )))
                         .unwrap());
                 }
             };
@@ -1609,9 +1767,7 @@ impl LithairServer {
         };
 
         // Extract model base_path
-        let base_path = message.get("base_path")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let base_path = message.get("base_path").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         // Get the items array
         let items: Vec<serde_json::Value> = match message.get("items") {
@@ -1625,15 +1781,15 @@ impl LithairServer {
             }
         };
 
-        let batch_id = message.get("batch_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let batch_id = message.get("batch_id").and_then(|v| v.as_str()).unwrap_or("unknown");
 
         // Find the matching model handler
         let models = self.models.read().await;
 
         let handler = if let Some(ref path) = base_path {
-            models.iter().find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
+            models
+                .iter()
+                .find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
         } else {
             models.first()
         };
@@ -1641,11 +1797,19 @@ impl LithairServer {
         if let Some(model) = handler {
             match model.handler.apply_replicated_items_json(items).await {
                 Ok(count) => {
-                    log::debug!("📥 Bulk replication applied: {} items for model {} (batch: {})", count, model.name, batch_id);
+                    log::debug!(
+                        "📥 Bulk replication applied: {} items for model {} (batch: {})",
+                        count,
+                        model.name,
+                        batch_id
+                    );
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"status":"ok","count":{}}}"#, count))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"status":"ok","count":{}}}"#,
+                            count
+                        ))))
                         .unwrap())
                 }
                 Err(e) => {
@@ -1699,9 +1863,7 @@ impl LithairServer {
         };
 
         // Extract required fields
-        let base_path = message.get("base_path")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let base_path = message.get("base_path").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         let id = match message.get("id").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
@@ -1729,7 +1891,9 @@ impl LithairServer {
         let models = self.models.read().await;
 
         let handler = if let Some(ref path) = base_path {
-            models.iter().find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
+            models
+                .iter()
+                .find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
         } else {
             models.first()
         };
@@ -1795,9 +1959,7 @@ impl LithairServer {
         };
 
         // Extract required fields
-        let base_path = message.get("base_path")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let base_path = message.get("base_path").and_then(|v| v.as_str()).map(|s| s.to_string());
 
         let id = match message.get("id").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
@@ -1814,7 +1976,9 @@ impl LithairServer {
         let models = self.models.read().await;
 
         let handler = if let Some(ref path) = base_path {
-            models.iter().find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
+            models
+                .iter()
+                .find(|m| m.base_path == *path || m.base_path == format!("/api/{}", path))
         } else {
             models.first()
         };
@@ -1822,11 +1986,19 @@ impl LithairServer {
         if let Some(model) = handler {
             match model.handler.apply_replicated_delete_json(&id).await {
                 Ok(deleted) => {
-                    log::debug!("📥 Replication DELETE applied for {} in model {} (deleted: {})", id, model.name, deleted);
+                    log::debug!(
+                        "📥 Replication DELETE applied for {} in model {} (deleted: {})",
+                        id,
+                        model.name,
+                        deleted
+                    );
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"status":"ok","deleted":{}}}"#, deleted))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"status":"ok","deleted":{}}}"#,
+                            deleted
+                        ))))
                         .unwrap())
                 }
                 Err(e) => {
@@ -1860,8 +2032,8 @@ impl LithairServer {
         &self,
         req: hyper::Request<hyper::body::Incoming>,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
         use http_body_util::BodyExt;
+        use http_body_util::Full;
 
         // Parse request body
         let (_parts, body) = req.into_parts();
@@ -1874,7 +2046,10 @@ impl LithairServer {
                     return Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::BAD_REQUEST)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid request: {}"}}"#, e))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"Invalid request: {}"}}"#,
+                            e
+                        ))))
                         .unwrap());
                 }
             };
@@ -1917,10 +2092,16 @@ impl LithairServer {
 
         // Append entries to local log (can happen concurrently)
         let entries_count = request.entries.len();
-        consensus_log.append_entries(request.entries.clone(), request.leader_commit).await;
+        consensus_log
+            .append_entries(request.entries.clone(), request.leader_commit)
+            .await;
 
-        log::debug!("📥 Received {} entries from leader {}, commit_index={}",
-            entries_count, request.leader_id, request.leader_commit);
+        log::debug!(
+            "📥 Received {} entries from leader {}, commit_index={}",
+            entries_count,
+            request.leader_id,
+            request.leader_commit
+        );
 
         // CRITICAL: Acquire the apply lock BEFORE getting unapplied entries and applying them.
         // This prevents race conditions where multiple concurrent handlers could:
@@ -1954,7 +2135,11 @@ impl LithairServer {
                     // CRITICAL: Stop processing here! If we continue, we'd skip this entry
                     // because mark_applied on later entries would advance applied_index past it.
                     // Mark as NOT all successful so leader knows to retry
-                    log::error!("❌ Failed to apply entry index={}: {} - stopping to prevent skip", entry.log_id.index, e);
+                    log::error!(
+                        "❌ Failed to apply entry index={}: {} - stopping to prevent skip",
+                        entry.log_id.index,
+                        e
+                    );
                     all_applied_successfully = false;
                     break;
                 }
@@ -2032,7 +2217,10 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"Failed to read snapshot: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(format!(
+                        r#"{{"error":"Failed to read snapshot: {}"}}"#,
+                        e
+                    ))))
                     .unwrap())
             }
         }
@@ -2092,7 +2280,10 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"Failed to read body: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(format!(
+                        r#"{{"error":"Failed to read body: {}"}}"#,
+                        e
+                    ))))
                     .unwrap());
             }
         };
@@ -2125,7 +2316,8 @@ impl LithairServer {
                 let models = self.models.read().await;
                 for (model_path, json_data) in &snapshot_data.models {
                     if let Some(model) = models.iter().find(|m| m.base_path == *model_path) {
-                        let items: Vec<serde_json::Value> = serde_json::from_str(json_data).unwrap_or_default();
+                        let items: Vec<serde_json::Value> =
+                            serde_json::from_str(json_data).unwrap_or_default();
                         if let Err(e) = model.handler.apply_replicated_items_json(items).await {
                             log::error!("Failed to apply snapshot data for {}: {}", model_path, e);
                         }
@@ -2209,10 +2401,12 @@ impl LithairServer {
 
                 // Get detailed stats if available
                 if let Some(stats) = batcher.get_follower_stats(&addr).await {
-                    follower_info["last_replicated_index"] = serde_json::json!(stats.last_replicated_index);
+                    follower_info["last_replicated_index"] =
+                        serde_json::json!(stats.last_replicated_index);
                     follower_info["last_latency_ms"] = serde_json::json!(stats.last_latency_ms);
                     follower_info["pending_count"] = serde_json::json!(stats.pending_count);
-                    follower_info["consecutive_failures"] = serde_json::json!(stats.consecutive_failures);
+                    follower_info["consecutive_failures"] =
+                        serde_json::json!(stats.consecutive_failures);
                 }
 
                 followers.push(follower_info);
@@ -2256,7 +2450,9 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&health_data).unwrap_or_default())))
+            .body(Full::new(Bytes::from(
+                serde_json::to_string_pretty(&health_data).unwrap_or_default(),
+            )))
             .unwrap())
     }
 
@@ -2282,7 +2478,9 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response_data).unwrap_or_default())))
+            .body(Full::new(Bytes::from(
+                serde_json::to_string_pretty(&response_data).unwrap_or_default(),
+            )))
             .unwrap())
     }
 
@@ -2302,7 +2500,7 @@ impl LithairServer {
         use http_body_util::Full;
 
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
-        
+
         if !is_leader {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::OK)
@@ -2316,11 +2514,7 @@ impl LithairServer {
         }
 
         // Get commit index from consensus log
-        let commit_index = if let Some(log) = &self.consensus_log {
-            log.commit_index()
-        } else {
-            0
-        };
+        let commit_index = if let Some(log) = &self.consensus_log { log.commit_index() } else { 0 };
 
         // Get follower stats from batcher
         let followers_stats = if let Some(batcher) = &self.replication_batcher {
@@ -2330,23 +2524,26 @@ impl LithairServer {
         };
 
         // Build response with lag calculation
-        let followers_json: Vec<serde_json::Value> = followers_stats.iter().map(|f| {
-            let lag = if commit_index > f.last_replicated_index {
-                commit_index - f.last_replicated_index
-            } else {
-                0
-            };
+        let followers_json: Vec<serde_json::Value> = followers_stats
+            .iter()
+            .map(|f| {
+                let lag = if commit_index > f.last_replicated_index {
+                    commit_index - f.last_replicated_index
+                } else {
+                    0
+                };
 
-            serde_json::json!({
-                "address": f.address,
-                "health": f.health.to_string(),
-                "last_replicated_index": f.last_replicated_index,
-                "lag": lag,
-                "last_latency_ms": f.last_latency_ms,
-                "pending_count": f.pending_count,
-                "consecutive_failures": f.consecutive_failures,
+                serde_json::json!({
+                    "address": f.address,
+                    "health": f.health.to_string(),
+                    "last_replicated_index": f.last_replicated_index,
+                    "lag": lag,
+                    "last_latency_ms": f.last_latency_ms,
+                    "pending_count": f.pending_count,
+                    "consecutive_failures": f.consecutive_failures,
+                })
             })
-        }).collect();
+            .collect();
 
         let response_data = serde_json::json!({
             "node_id": self.node_id,
@@ -2358,7 +2555,9 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response_data).unwrap_or_default())))
+            .body(Full::new(Bytes::from(
+                serde_json::to_string_pretty(&response_data).unwrap_or_default(),
+            )))
             .unwrap())
     }
 
@@ -2376,7 +2575,7 @@ impl LithairServer {
         use http_body_util::Full;
 
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
-        
+
         if !is_leader {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::BAD_REQUEST)
@@ -2388,15 +2587,13 @@ impl LithairServer {
         // Parse target from query string
         let uri = req.uri();
         let query = uri.query().unwrap_or("");
-        let target = query
-            .split('&')
-            .find_map(|pair| {
-                let mut parts = pair.split('=');
-                match (parts.next(), parts.next()) {
-                    (Some("target"), Some(value)) => Some(value.to_string()),
-                    _ => None,
-                }
-            });
+        let target = query.split('&').find_map(|pair| {
+            let mut parts = pair.split('=');
+            match (parts.next(), parts.next()) {
+                (Some("target"), Some(value)) => Some(value.to_string()),
+                _ => None,
+            }
+        });
 
         let target = match target {
             Some(t) => t,
@@ -2423,7 +2620,8 @@ impl LithairServer {
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(format!(
-                    r#"{{"error":"Follower '{}' not found in cluster"}}"#, target
+                    r#"{{"error":"Follower '{}' not found in cluster"}}"#,
+                    target
                 ))))
                 .unwrap());
         }
@@ -2442,7 +2640,10 @@ impl LithairServer {
             Ok(()) => {
                 self.resync_stats.record_send_success();
                 log::info!("✅ Manual resync to {} completed successfully", target);
-                (hyper::StatusCode::OK, format!("Snapshot resync to {} completed successfully", target))
+                (
+                    hyper::StatusCode::OK,
+                    format!("Snapshot resync to {} completed successfully", target),
+                )
             }
             Err(e) => {
                 self.resync_stats.record_send_failure();
@@ -2454,11 +2655,14 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(status)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&serde_json::json!({
-                "target": target,
-                "success": status == hyper::StatusCode::OK,
-                "message": message,
-            })).unwrap_or_default())))
+            .body(Full::new(Bytes::from(
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "target": target,
+                    "success": status == hyper::StatusCode::OK,
+                    "message": message,
+                }))
+                .unwrap_or_default(),
+            )))
             .unwrap())
     }
 
@@ -2481,15 +2685,21 @@ impl LithairServer {
                 .status(hyper::StatusCode::TEMPORARY_REDIRECT)
                 .header("Content-Type", "application/json")
                 .header("Location", format!("http://127.0.0.1:{}/_raft/migrate", leader_port))
-                .body(Full::new(Bytes::from(serde_json::json!({
-                    "error": "Not leader",
-                    "leader_port": leader_port
-                }).to_string())))
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": "Not leader",
+                        "leader_port": leader_port
+                    })
+                    .to_string(),
+                )))
                 .unwrap());
         }
 
         // Parse the operation from request body
-        let body = req.body_mut().collect().await
+        let body = req
+            .body_mut()
+            .collect()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to read body: {}", e))?
             .to_bytes();
 
@@ -2499,9 +2709,12 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(serde_json::json!({
-                        "error": format!("Invalid operation: {}", e)
-                    }).to_string())))
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({
+                            "error": format!("Invalid operation: {}", e)
+                        })
+                        .to_string(),
+                    )))
                     .unwrap());
             }
         };
@@ -2519,9 +2732,12 @@ impl LithairServer {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::json!({
-                    "error": "Only migration operations are allowed on this endpoint"
-                }).to_string())))
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": "Only migration operations are allowed on this endpoint"
+                    })
+                    .to_string(),
+                )))
                 .unwrap());
         }
 
@@ -2549,7 +2765,8 @@ impl LithairServer {
                 term,
                 leader_id,
                 self.replication_batcher.clone(),
-            ).await;
+            )
+            .await;
 
             match replication_result {
                 Ok(new_commit) => {
@@ -2560,62 +2777,67 @@ impl LithairServer {
                     let apply_result = self.apply_crud_operation(&operation).await;
 
                     match apply_result {
-                        Ok(result) => {
-                            Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::OK)
-                                .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(serde_json::json!({
+                        Ok(result) => Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::OK)
+                            .header("Content-Type", "application/json")
+                            .body(Full::new(Bytes::from(
+                                serde_json::json!({
                                     "success": true,
                                     "commit_index": new_commit,
                                     "result": result
-                                }).to_string())))
-                                .unwrap())
-                        }
-                        Err(e) => {
-                            Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(serde_json::json!({
+                                })
+                                .to_string(),
+                            )))
+                            .unwrap()),
+                        Err(e) => Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Full::new(Bytes::from(
+                                serde_json::json!({
                                     "error": format!("Migration apply failed: {}", e),
                                     "commit_index": new_commit
-                                }).to_string())))
-                                .unwrap())
-                        }
+                                })
+                                .to_string(),
+                            )))
+                            .unwrap()),
                     }
                 }
-                Err(e) => {
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                        .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(serde_json::json!({
+                Err(e) => Ok(hyper::Response::builder()
+                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({
                             "error": format!("Replication failed: {}", e)
-                        }).to_string())))
-                        .unwrap())
-                }
+                        })
+                        .to_string(),
+                    )))
+                    .unwrap()),
             }
         } else {
             // Single node mode - just apply
             let apply_result = self.apply_crud_operation(&operation).await;
             match apply_result {
-                Ok(result) => {
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::OK)
-                        .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(serde_json::json!({
+                Ok(result) => Ok(hyper::Response::builder()
+                    .status(hyper::StatusCode::OK)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({
                             "success": true,
                             "result": result
-                        }).to_string())))
-                        .unwrap())
-                }
-                Err(e) => {
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(serde_json::json!({
+                        })
+                        .to_string(),
+                    )))
+                    .unwrap()),
+                Err(e) => Ok(hyper::Response::builder()
+                    .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({
                             "error": format!("Migration failed: {}", e)
-                        }).to_string())))
-                        .unwrap())
-                }
+                        })
+                        .to_string(),
+                    )))
+                    .unwrap()),
             }
         }
     }
@@ -2636,7 +2858,7 @@ impl LithairServer {
     }
 
     /// Handle data admin API requests (/_admin/data/*)
-    /// 
+    ///
     /// Endpoints:
     /// - GET /_admin/data/models - List all registered models with stats
     /// - GET /_admin/data/models/{name} - Get model info and data
@@ -2649,8 +2871,8 @@ impl LithairServer {
         path: &str,
         method: &hyper::Method,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
         use bytes::Bytes;
+        use http_body_util::Full;
 
         // Parse the path: /_admin/data/{resource}[/{name}][/{action}]
         let path_parts: Vec<&str> = path
@@ -2665,7 +2887,7 @@ impl LithairServer {
             (&hyper::Method::GET, ["models"]) => {
                 let models = self.models.read().await;
                 let mut model_list = Vec::new();
-                
+
                 for model in models.iter() {
                     let count = model.handler.get_count().await;
                     model_list.push(serde_json::json!({
@@ -2691,11 +2913,11 @@ impl LithairServer {
             // GET /_admin/data/models/{name} - Get model data
             (&hyper::Method::GET, ["models", name]) => {
                 let models = self.models.read().await;
-                
+
                 if let Some(model) = models.iter().find(|m| m.name == *name) {
                     let data = model.handler.get_all_data_json().await;
                     let count = model.handler.get_count().await;
-                    
+
                     let response = serde_json::json!({
                         "model": model.name,
                         "base_path": model.base_path,
@@ -2706,13 +2928,18 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(200)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response).unwrap())))
+                        .body(Full::new(Bytes::from(
+                            serde_json::to_string_pretty(&response).unwrap(),
+                        )))
                         .unwrap())
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Model '{}' not found"}}"#, name))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"Model '{}' not found"}}"#,
+                            name
+                        ))))
                         .unwrap())
                 }
             }
@@ -2727,14 +2954,22 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(200)
                         .header("Content-Type", "application/json")
-                        .header("Content-Disposition", format!("attachment; filename=\"{}_export.json\"", name))
-                        .body(Full::new(Bytes::from(serde_json::to_string_pretty(&export).unwrap())))
+                        .header(
+                            "Content-Disposition",
+                            format!("attachment; filename=\"{}_export.json\"", name),
+                        )
+                        .body(Full::new(Bytes::from(
+                            serde_json::to_string_pretty(&export).unwrap(),
+                        )))
                         .unwrap())
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Model '{}' not found"}}"#, name))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"Model '{}' not found"}}"#,
+                            name
+                        ))))
                         .unwrap())
                 }
             }
@@ -2749,13 +2984,18 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(200)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(serde_json::to_string_pretty(&history).unwrap())))
+                        .body(Full::new(Bytes::from(
+                            serde_json::to_string_pretty(&history).unwrap(),
+                        )))
                         .unwrap())
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Model '{}' not found"}}"#, name))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"Model '{}' not found"}}"#,
+                            name
+                        ))))
                         .unwrap())
                 }
             }
@@ -2803,22 +3043,25 @@ impl LithairServer {
                             Ok(hyper::Response::builder()
                                 .status(200)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response).unwrap())))
+                                .body(Full::new(Bytes::from(
+                                    serde_json::to_string_pretty(&response).unwrap(),
+                                )))
                                 .unwrap())
                         }
-                        Err(e) => {
-                            Ok(hyper::Response::builder()
-                                .status(400)
-                                .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                                .unwrap())
-                        }
+                        Err(e) => Ok(hyper::Response::builder()
+                            .status(400)
+                            .header("Content-Type", "application/json")
+                            .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                            .unwrap()),
                     }
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Model '{}' not found"}}"#, name))))
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"Model '{}' not found"}}"#,
+                            name
+                        ))))
                         .unwrap())
                 }
             }
@@ -2917,7 +3160,7 @@ impl LithairServer {
             (&hyper::Method::POST, ["backup"]) => {
                 let models = self.models.read().await;
                 let mut backup_data = Vec::new();
-                
+
                 for model in models.iter() {
                     let export = model.handler.export_json().await;
                     backup_data.push(export);
@@ -2939,13 +3182,11 @@ impl LithairServer {
             }
 
             // 404 for unknown data admin paths
-            _ => {
-                Ok(hyper::Response::builder()
-                    .status(404)
-                    .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Unknown data admin endpoint"}"#)))
-                    .unwrap())
-            }
+            _ => Ok(hyper::Response::builder()
+                .status(404)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error":"Unknown data admin endpoint"}"#)))
+                .unwrap()),
         }
     }
 
@@ -2955,8 +3196,8 @@ impl LithairServer {
     async fn handle_data_admin_ui_request(
         &self,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
         use bytes::Bytes;
+        use http_body_util::Full;
 
         Ok(hyper::Response::builder()
             .status(200)
@@ -2996,22 +3237,26 @@ impl LithairServer {
         // Check if this is a write operation
         let is_create = method == hyper::Method::POST && segments.is_empty();
         let is_bulk_create = method == hyper::Method::POST && segments.first() == Some(&"_bulk");
-        let is_update = (method == hyper::Method::PUT || method == hyper::Method::PATCH) && !segments.is_empty();
+        let is_update = (method == hyper::Method::PUT || method == hyper::Method::PATCH)
+            && !segments.is_empty();
         let is_delete = method == hyper::Method::DELETE && !segments.is_empty();
         let is_write = is_create || is_bulk_create || is_update || is_delete;
 
         // Extract the resource ID for UPDATE and DELETE operations
-        let resource_id = if is_update || is_delete {
-            segments.first().map(|s| s.to_string())
-        } else {
-            None
-        };
+        let resource_id =
+            if is_update || is_delete { segments.first().map(|s| s.to_string()) } else { None };
 
         // ==================== CLUSTER MODE WITH CONSENSUS LOG ====================
         // If we have a consensus log (cluster mode), write operations go through Raft
         if is_write && self.consensus_log.is_some() && !self.cluster_peers.is_empty() {
-            log::debug!("🔄 CLUSTER MODE: {} {} (create={}, update={}, delete={})",
-                method, path, is_create, is_update, is_delete);
+            log::debug!(
+                "🔄 CLUSTER MODE: {} {} (create={}, update={}, delete={})",
+                method,
+                path,
+                is_create,
+                is_update,
+                is_delete
+            );
 
             // Check if we are the leader
             let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
@@ -3036,8 +3281,8 @@ impl LithairServer {
             use http_body_util::BodyExt;
             let (_parts, body) = req.into_parts();
             let body_bytes = body.collect().await?.to_bytes();
-            let body_json: serde_json::Value = serde_json::from_slice(&body_bytes)
-                .unwrap_or(serde_json::Value::Null);
+            let body_json: serde_json::Value =
+                serde_json::from_slice(&body_bytes).unwrap_or(serde_json::Value::Null);
 
             // Create the CRUD operation
             // For CREATE operations: generate ID on leader to ensure all nodes have same ID
@@ -3056,10 +3301,7 @@ impl LithairServer {
                 if data.get("updated_at").is_none() {
                     data["updated_at"] = serde_json::Value::String(now.clone());
                 }
-                crate::cluster::CrudOperation::Create {
-                    model_path: model.base_path.clone(),
-                    data,
-                }
+                crate::cluster::CrudOperation::Create { model_path: model.base_path.clone(), data }
             } else if is_update {
                 let id = resource_id.clone().unwrap_or_default();
                 log::info!("📝 CLUSTER: Creating UPDATE operation for id={}", id);
@@ -3090,10 +3332,7 @@ impl LithairServer {
             } else if is_delete {
                 let id = resource_id.clone().unwrap_or_default();
                 log::info!("🗑️ CLUSTER: Creating DELETE operation for id={}", id);
-                crate::cluster::CrudOperation::Delete {
-                    model_path: model.base_path.clone(),
-                    id,
-                }
+                crate::cluster::CrudOperation::Delete { model_path: model.base_path.clone(), id }
             } else {
                 // Bulk create - for now handle as single operation
                 // TODO: Handle bulk properly with BatchOperation
@@ -3108,10 +3347,7 @@ impl LithairServer {
                 if data.get("updated_at").is_none() {
                     data["updated_at"] = serde_json::Value::String(now);
                 }
-                crate::cluster::CrudOperation::Create {
-                    model_path: model.base_path.clone(),
-                    data,
-                }
+                crate::cluster::CrudOperation::Create { model_path: model.base_path.clone(), data }
             };
 
             // Step 1: Append to local consensus log (in-memory, fast)
@@ -3153,25 +3389,28 @@ impl LithairServer {
             let replication_future = async move {
                 // Always send ALL entries from index 1 to ensure no gaps
                 let entries_to_send = consensus_log_clone.get_entries_from(1).await;
-                
+
                 if entries_to_send.is_empty() {
                     return Ok(entry_index);
                 }
-                
-                log::debug!("📤 Replicating {} entries (window {} to {}), target_commit={}", 
+
+                log::debug!(
+                    "📤 Replicating {} entries (window {} to {}), target_commit={}",
                     entries_to_send.len(),
                     entries_to_send.first().map(|e| e.log_id.index).unwrap_or(0),
                     entries_to_send.last().map(|e| e.log_id.index).unwrap_or(0),
-                    entry_index);
-                
+                    entry_index
+                );
+
                 Self::replicate_log_entries_to_followers(
                     &peers_clone,
                     entries_to_send,
-                    entry_index,  // Commit up to this entry if majority responds
+                    entry_index, // Commit up to this entry if majority responds
                     term,
                     node_id,
                     batcher_clone,
-                ).await
+                )
+                .await
             };
 
             // Run WAL and replication in parallel
@@ -3182,7 +3421,10 @@ impl LithairServer {
                 log::error!("❌ WAL write failed: {}", e);
                 return Ok(hyper::Response::builder()
                     .status(503)
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"WAL write failed: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(format!(
+                        r#"{{"error":"WAL write failed: {}"}}"#,
+                        e
+                    ))))
                     .unwrap());
             }
             log::debug!("💾 WAL entry durable: index={}", entry_index);
@@ -3205,9 +3447,8 @@ impl LithairServer {
                         // Send ALL entries from index 1 to ensure followers can always catch up
                         // This is critical: if we use a window, followers stuck on entry N will never
                         // receive entries N+1 to window_start, causing permanent divergence
-                        let entries_for_notify = consensus_log_for_notify
-                            .get_entries_from(1).await;
-                        
+                        let entries_for_notify = consensus_log_for_notify.get_entries_from(1).await;
+
                         let client = reqwest::Client::builder()
                             .timeout(std::time::Duration::from_secs(1))
                             .build()
@@ -3222,14 +3463,17 @@ impl LithairServer {
                                 leader_commit: commit_index_to_notify,
                             };
                             // Send to ALL peers IN PARALLEL
-                            let futures: Vec<_> = peers_for_notify.iter().map(|peer| {
-                                let endpoint = format!("http://{}/_raft/append", peer);
-                                let client = client.clone();
-                                let request = request.clone();
-                                async move {
-                                    let _ = client.post(&endpoint).json(&request).send().await;
-                                }
-                            }).collect();
+                            let futures: Vec<_> = peers_for_notify
+                                .iter()
+                                .map(|peer| {
+                                    let endpoint = format!("http://{}/_raft/append", peer);
+                                    let client = client.clone();
+                                    let request = request.clone();
+                                    async move {
+                                        let _ = client.post(&endpoint).json(&request).send().await;
+                                    }
+                                })
+                                .collect();
                             futures::future::join_all(futures).await;
                         }
                     });
@@ -3254,9 +3498,13 @@ impl LithairServer {
                     let expected_prior = entry_index.saturating_sub(1);
                     let mut commit_waited = 0u32;
                     while consensus_log.commit_index() < expected_prior {
-                        if commit_waited > 50000 { // 50000 * 100µs = 5 seconds max wait for commit
-                            log::error!("❌ Waited 5s for earlier entry {} to commit (current commit={})",
-                                expected_prior, consensus_log.commit_index());
+                        if commit_waited > 50000 {
+                            // 50000 * 100µs = 5 seconds max wait for commit
+                            log::error!(
+                                "❌ Waited 5s for earlier entry {} to commit (current commit={})",
+                                expected_prior,
+                                consensus_log.commit_index()
+                            );
                             // Return error - something is seriously wrong if commit takes this long
                             return Ok(hyper::Response::builder()
                                 .status(503)
@@ -3274,11 +3522,16 @@ impl LithairServer {
                     // Once it's committed, its handler will apply it (no timeout - it WILL apply)
                     let mut apply_waited = 0u32;
                     while consensus_log.applied_index() < expected_prior {
-                        if apply_waited > 100000 { // 100000 * 100µs = 10 seconds max wait for apply
+                        if apply_waited > 100000 {
+                            // 100000 * 100µs = 10 seconds max wait for apply
                             // This should never happen if commit succeeded - log but continue waiting
-                            log::warn!("⚠️ Slow apply: entry {} waiting for {} (commit={}, applied={})",
-                                entry_index, expected_prior,
-                                consensus_log.commit_index(), consensus_log.applied_index());
+                            log::warn!(
+                                "⚠️ Slow apply: entry {} waiting for {} (commit={}, applied={})",
+                                entry_index,
+                                expected_prior,
+                                consensus_log.commit_index(),
+                                consensus_log.applied_index()
+                            );
                             apply_waited = 0; // Reset counter to keep waiting
                         }
                         tokio::time::sleep(std::time::Duration::from_micros(100)).await;
@@ -3305,7 +3558,10 @@ impl LithairServer {
                             log::error!("Failed to apply operation: {}", e);
                             return Ok(hyper::Response::builder()
                                 .status(500)
-                                .body(Full::new(Bytes::from(format!(r#"{{"error":"Apply failed: {}"}}"#, e))))
+                                .body(Full::new(Bytes::from(format!(
+                                    r#"{{"error":"Apply failed: {}"}}"#,
+                                    e
+                                ))))
                                 .unwrap());
                         }
                     }
@@ -3330,12 +3586,10 @@ impl LithairServer {
                 let body_bytes = body.collect().await?.to_bytes();
                 Ok(hyper::Response::from_parts(parts, Full::new(body_bytes)))
             }
-            Err(_) => {
-                Ok(hyper::Response::builder()
-                    .status(500)
-                    .body(Full::new(Bytes::from(r#"{"error":"Internal error"}"#)))
-                    .unwrap())
-            }
+            Err(_) => Ok(hyper::Response::builder()
+                .status(500)
+                .body(Full::new(Bytes::from(r#"{"error":"Internal error"}"#)))
+                .unwrap()),
         }
     }
 
@@ -3346,7 +3600,10 @@ impl LithairServer {
 
     /// Apply a CRUD operation from the consensus log to the appropriate model
     /// This is called when a log entry is committed and needs to be applied to the state machine
-    pub async fn apply_crud_operation(&self, operation: &crate::cluster::CrudOperation) -> Result<serde_json::Value, String> {
+    pub async fn apply_crud_operation(
+        &self,
+        operation: &crate::cluster::CrudOperation,
+    ) -> Result<serde_json::Value, String> {
         use crate::cluster::CrudOperation;
 
         let models = self.models.read().await;
@@ -3354,7 +3611,8 @@ impl LithairServer {
         match operation {
             CrudOperation::Create { model_path, data } => {
                 // Find the model by base_path
-                let model = models.iter()
+                let model = models
+                    .iter()
                     .find(|m| model_path.starts_with(&m.base_path))
                     .ok_or_else(|| format!("Model not found for path: {}", model_path))?;
 
@@ -3362,7 +3620,8 @@ impl LithairServer {
                 Ok(data.clone())
             }
             CrudOperation::Update { model_path, id, data } => {
-                let model = models.iter()
+                let model = models
+                    .iter()
                     .find(|m| model_path.starts_with(&m.base_path))
                     .ok_or_else(|| format!("Model not found for path: {}", model_path))?;
 
@@ -3370,7 +3629,8 @@ impl LithairServer {
                 Ok(data.clone())
             }
             CrudOperation::Delete { model_path, id } => {
-                let model = models.iter()
+                let model = models
+                    .iter()
                     .find(|m| model_path.starts_with(&m.base_path))
                     .ok_or_else(|| format!("Model not found for path: {}", model_path))?;
 
@@ -3378,19 +3638,20 @@ impl LithairServer {
                 Ok(serde_json::json!({"deleted": id}))
             }
             // === Migration Operations (Phase 2: Full implementation) ===
-            CrudOperation::MigrationBegin {
-                from_version,
-                to_version,
-                migration_id,
-            } => {
+            CrudOperation::MigrationBegin { from_version, to_version, migration_id } => {
                 log::info!(
                     "🔄 MIGRATION_BEGIN: {} -> {} (id: {})",
-                    from_version, to_version, migration_id
+                    from_version,
+                    to_version,
+                    migration_id
                 );
 
                 // Use migration manager if available
                 if let Some(ref manager) = self.migration_manager {
-                    match manager.begin_migration(*migration_id, from_version.clone(), to_version.clone()).await {
+                    match manager
+                        .begin_migration(*migration_id, from_version.clone(), to_version.clone())
+                        .await
+                    {
                         Ok(()) => {
                             log::info!("✅ Migration {} registered successfully", migration_id);
                             Ok(serde_json::json!({
@@ -3417,14 +3678,12 @@ impl LithairServer {
                     }))
                 }
             }
-            CrudOperation::MigrationStep {
-                migration_id,
-                step_index,
-                operation,
-            } => {
+            CrudOperation::MigrationStep { migration_id, step_index, operation } => {
                 log::info!(
                     "🔧 MIGRATION_STEP: migration={}, step={}, operation={:?}",
-                    migration_id, step_index, operation
+                    migration_id,
+                    step_index,
+                    operation
                 );
 
                 // Apply the schema change and record rollback
@@ -3434,7 +3693,10 @@ impl LithairServer {
                     Ok(rollback_op) => {
                         // Record step in migration manager
                         if let Some(ref manager) = self.migration_manager {
-                            if let Err(e) = manager.record_step(migration_id, *step_index, rollback_op, None).await {
+                            if let Err(e) = manager
+                                .record_step(migration_id, *step_index, rollback_op, None)
+                                .await
+                            {
                                 log::warn!("⚠️ Failed to record migration step: {}", e);
                             }
                         }
@@ -3450,13 +3712,11 @@ impl LithairServer {
                     }
                 }
             }
-            CrudOperation::MigrationCommit {
-                migration_id,
-                checksum,
-            } => {
+            CrudOperation::MigrationCommit { migration_id, checksum } => {
                 log::info!(
                     "✅ MIGRATION_COMMIT: migration={}, checksum={}",
-                    migration_id, checksum
+                    migration_id,
+                    checksum
                 );
 
                 if let Some(ref manager) = self.migration_manager {
@@ -3465,7 +3725,11 @@ impl LithairServer {
                         let new_version = ctx.to_version.clone();
                         match manager.commit_migration(migration_id, new_version).await {
                             Ok(()) => {
-                                log::info!("✅ Migration {} committed, checksum verified: {}", migration_id, checksum);
+                                log::info!(
+                                    "✅ Migration {} committed, checksum verified: {}",
+                                    migration_id,
+                                    checksum
+                                );
                                 Ok(serde_json::json!({
                                     "status": "committed",
                                     "migration_id": migration_id.to_string(),
@@ -3473,7 +3737,11 @@ impl LithairServer {
                                 }))
                             }
                             Err(e) => {
-                                log::error!("❌ Failed to commit migration {}: {}", migration_id, e);
+                                log::error!(
+                                    "❌ Failed to commit migration {}: {}",
+                                    migration_id,
+                                    e
+                                );
                                 Err(e)
                             }
                         }
@@ -3491,14 +3759,12 @@ impl LithairServer {
                     }))
                 }
             }
-            CrudOperation::MigrationRollback {
-                migration_id,
-                failed_step,
-                reason,
-            } => {
+            CrudOperation::MigrationRollback { migration_id, failed_step, reason } => {
                 log::warn!(
                     "⚠️ MIGRATION_ROLLBACK: migration={}, failed_step={}, reason={}",
-                    migration_id, failed_step, reason
+                    migration_id,
+                    failed_step,
+                    reason
                 );
 
                 if let Some(ref manager) = self.migration_manager {
@@ -3523,7 +3789,10 @@ impl LithairServer {
                                     "reason": reason,
                                 }))
                             } else {
-                                log::error!("⚠️ Migration {} partially rolled back with errors", migration_id);
+                                log::error!(
+                                    "⚠️ Migration {} partially rolled back with errors",
+                                    migration_id
+                                );
                                 Ok(serde_json::json!({
                                     "status": "partial_rollback",
                                     "migration_id": migration_id.to_string(),
@@ -3566,10 +3835,7 @@ impl LithairServer {
                 log::info!("📦 Applying AddModel: {}", name);
                 // TODO: Phase 3 - Register model in runtime schema registry
                 // For now, log and return the inverse operation
-                Ok(SchemaChange::RemoveModel {
-                    name: name.clone(),
-                    backup_path: None,
-                })
+                Ok(SchemaChange::RemoveModel { name: name.clone(), backup_path: None })
             }
             SchemaChange::RemoveModel { name, backup_path } => {
                 log::info!("🗑️ Applying RemoveModel: {} (backup: {:?})", name, backup_path);
@@ -3584,10 +3850,7 @@ impl LithairServer {
             SchemaChange::AddField { model, field, default_value: _ } => {
                 log::info!("➕ Applying AddField: {}.{}", model, field.name);
                 // TODO: Phase 3 - Add field to model schema
-                Ok(SchemaChange::RemoveField {
-                    model: model.clone(),
-                    field: field.name.clone(),
-                })
+                Ok(SchemaChange::RemoveField { model: model.clone(), field: field.name.clone() })
             }
             SchemaChange::RemoveField { model, field } => {
                 log::info!("➖ Applying RemoveField: {}.{}", model, field);
@@ -3681,11 +3944,13 @@ impl LithairServer {
     ) -> Result<(), String> {
         let mgr = snapshot_manager.read().await;
 
-        let meta = mgr.current_meta()
+        let meta = mgr
+            .current_meta()
             .ok_or_else(|| "No snapshot available to send".to_string())?
             .clone();
 
-        let bytes = mgr.get_snapshot_bytes(meta.last_included_index)
+        let bytes = mgr
+            .get_snapshot_bytes(meta.last_included_index)
             .map_err(|e| format!("Failed to read snapshot bytes: {}", e))?;
 
         drop(mgr);
@@ -3710,8 +3975,12 @@ impl LithairServer {
             .map_err(|e| format!("Failed to send snapshot to {}: {}", peer, e))?;
 
         if response.status().is_success() {
-            log::info!("📸 Snapshot sent successfully to {} (index={}, {}KB)",
-                peer, meta.last_included_index, meta.size_bytes / 1024);
+            log::info!(
+                "📸 Snapshot sent successfully to {} (index={}, {}KB)",
+                peer,
+                meta.last_included_index,
+                meta.size_bytes / 1024
+            );
             Ok(())
         } else {
             Err(format!("Snapshot send to {} failed with status {}", peer, response.status()))
@@ -3728,11 +3997,13 @@ impl LithairServer {
     ) -> Result<(), String> {
         let mgr = snapshot_manager.read().await;
 
-        let meta = mgr.current_meta()
+        let meta = mgr
+            .current_meta()
             .ok_or_else(|| "No snapshot available to send".to_string())?
             .clone();
 
-        let bytes = mgr.get_snapshot_bytes(meta.last_included_index)
+        let bytes = mgr
+            .get_snapshot_bytes(meta.last_included_index)
             .map_err(|e| format!("Failed to read snapshot bytes: {}", e))?;
 
         drop(mgr);
@@ -3757,8 +4028,13 @@ impl LithairServer {
             .map_err(|e| format!("Failed to send snapshot to {}: {}", peer, e))?;
 
         if response.status().is_success() {
-            log::info!("📸 Snapshot sent successfully to {} (index={}, {}KB, timeout={}s)",
-                peer, meta.last_included_index, meta.size_bytes / 1024, timeout_secs);
+            log::info!(
+                "📸 Snapshot sent successfully to {} (index={}, {}KB, timeout={}s)",
+                peer,
+                meta.last_included_index,
+                meta.size_bytes / 1024,
+                timeout_secs
+            );
             Ok(())
         } else {
             Err(format!("Snapshot send to {} failed with status {}", peer, response.status()))
@@ -3820,7 +4096,8 @@ impl LithairServer {
         let active_peers: Vec<_> = peers
             .iter()
             .filter(|p| {
-                health_summary.get(*p)
+                health_summary
+                    .get(*p)
                     .map(|h| *h != crate::cluster::replication_batcher::FollowerHealth::Desynced)
                     .unwrap_or(true) // Unknown = try anyway
             })
@@ -3829,7 +4106,10 @@ impl LithairServer {
 
         let skipped_count = peers.len() - active_peers.len();
         if skipped_count > 0 {
-            log::debug!("⏭️ Skipping {} desynced followers (will use snapshot resync)", skipped_count);
+            log::debug!(
+                "⏭️ Skipping {} desynced followers (will use snapshot resync)",
+                skipped_count
+            );
         }
 
         // Spawn parallel requests to active (non-desynced) followers only
@@ -3846,16 +4126,26 @@ impl LithairServer {
                 let start = std::time::Instant::now();
                 let result = match client.post(&endpoint).json(&request).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        if let Ok(response) = resp.json::<crate::cluster::consensus_log::AppendEntriesResponse>().await {
+                        if let Ok(response) = resp
+                            .json::<crate::cluster::consensus_log::AppendEntriesResponse>()
+                            .await
+                        {
                             if response.success {
                                 // Log applied_index for debugging but don't require it
                                 // Apply happens synchronously before response, so success means applied
                                 if response.applied_index < target_commit {
-                                    log::debug!("📤 Log replicated to {} (applied_index={}, target={})",
-                                        peer_name, response.applied_index, target_commit);
+                                    log::debug!(
+                                        "📤 Log replicated to {} (applied_index={}, target={})",
+                                        peer_name,
+                                        response.applied_index,
+                                        target_commit
+                                    );
                                 } else {
-                                    log::debug!("📤 Log replicated AND applied on {} (applied_index={})",
-                                        peer_name, response.applied_index);
+                                    log::debug!(
+                                        "📤 Log replicated AND applied on {} (applied_index={})",
+                                        peer_name,
+                                        response.applied_index
+                                    );
                                 }
                                 (peer_name.clone(), true, response.last_log_index)
                             } else {
@@ -3866,7 +4156,11 @@ impl LithairServer {
                         }
                     }
                     Ok(resp) => {
-                        log::warn!("⚠️ Replicate log to {} failed: status {}", peer_name, resp.status());
+                        log::warn!(
+                            "⚠️ Replicate log to {} failed: status {}",
+                            peer_name,
+                            resp.status()
+                        );
                         (peer_name.clone(), false, 0)
                     }
                     Err(e) => {
@@ -3912,9 +4206,14 @@ impl LithairServer {
                     // Track when majority is reached, but DON'T return early
                     if success_count >= needed_from_followers && !majority_reached {
                         majority_reached = true;
-                        commit_index = entries.last().map(|e| e.log_id.index).unwrap_or(leader_commit);
-                        log::debug!("✅ Majority reached ({}/{}), will commit index {}",
-                            success_count + 1, total_nodes, commit_index);
+                        commit_index =
+                            entries.last().map(|e| e.log_id.index).unwrap_or(leader_commit);
+                        log::debug!(
+                            "✅ Majority reached ({}/{}), will commit index {}",
+                            success_count + 1,
+                            total_nodes,
+                            commit_index
+                        );
                         // Continue waiting for remaining followers instead of returning
                     }
                 } else {
@@ -3928,8 +4227,12 @@ impl LithairServer {
 
         // Check if majority was reached (even if some followers timed out)
         if majority_reached {
-            log::debug!("✅ Replication complete: {}/{} followers succeeded, committing {}",
-                success_count, peers.len(), commit_index);
+            log::debug!(
+                "✅ Replication complete: {}/{} followers succeeded, committing {}",
+                success_count,
+                peers.len(),
+                commit_index
+            );
             Ok(commit_index)
         } else {
             Err(format!(
@@ -3973,7 +4276,9 @@ impl Default for LithairServer {
             snapshot_manager: None,
             migration_manager: None,
             resync_stats: Arc::new(crate::cluster::ResyncStats::new()),
-            schema_sync_state: Arc::new(tokio::sync::RwLock::new(crate::schema::SchemaSyncState::default())),
+            schema_sync_state: Arc::new(tokio::sync::RwLock::new(
+                crate::schema::SchemaSyncState::default(),
+            )),
         }
     }
 }

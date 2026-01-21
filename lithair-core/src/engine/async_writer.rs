@@ -1,6 +1,6 @@
-use crate::engine::events::{EventStore, EventEnvelope};
-use tokio::sync::{mpsc, oneshot};
+use crate::engine::events::{EventEnvelope, EventStore};
 use std::sync::{Arc, RwLock};
+use tokio::sync::{mpsc, oneshot};
 
 /// Message pour le writer thread
 #[derive(Debug)]
@@ -150,7 +150,11 @@ impl AsyncWriter {
     }
 
     /// Flush le buffer sur disque via EventStore
-    fn flush_buffer(store: &Arc<RwLock<EventStore>>, buffer: &mut Vec<String>, flushes: &mut Vec<oneshot::Sender<()>>) {
+    fn flush_buffer(
+        store: &Arc<RwLock<EventStore>>,
+        buffer: &mut Vec<String>,
+        flushes: &mut Vec<oneshot::Sender<()>>,
+    ) {
         if buffer.is_empty() && flushes.is_empty() {
             return;
         }
@@ -169,7 +173,7 @@ impl AsyncWriter {
 
         // Write all events
         for event_json in buffer.drain(..) {
-             let _ = guard.append_raw_line(&event_json);
+            let _ = guard.append_raw_line(&event_json);
         }
 
         // FS YNC
@@ -197,7 +201,8 @@ impl AsyncWriter {
     /// Flush all pending events to disk immediately and wait for completion.
     pub async fn flush(&self) -> Result<(), String> {
         let (tx, rx) = oneshot::channel();
-        self.tx.send(WriteEvent::Flush(tx))
+        self.tx
+            .send(WriteEvent::Flush(tx))
             .map_err(|e| format!("Failed to send flush signal: {}", e))?;
 
         // Wait for acknowledgement
