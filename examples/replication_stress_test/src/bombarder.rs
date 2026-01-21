@@ -37,7 +37,7 @@
 //! cargo run --bin bombarder -- watch
 //! ```
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use md5::{Digest, Md5};
@@ -317,6 +317,7 @@ struct RaftHealth {
 
 #[derive(Debug)]
 struct StressMetrics {
+    #[allow(dead_code)]
     total_ops: u64,
     successful: AtomicU64,
     failed: AtomicU64,
