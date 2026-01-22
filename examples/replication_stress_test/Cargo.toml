@@ -2,6 +2,7 @@
 name = "replication_stress_test"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Minimal example for testing and debugging Lithair replication issues"
 
 [[bin]]

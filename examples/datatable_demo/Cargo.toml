@@ -2,6 +2,7 @@
 name = "datatable_demo"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "High-performance data table demo with millions of entries - Full Lithair stack"
 
 [[bin]]

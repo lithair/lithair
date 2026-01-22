@@ -2,6 +2,7 @@
 name = "rbac_sso_demo"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Lithair RBAC + SSO Demo - Declarative authentication with multiple identity providers"
 authors = ["Yoan Roblet (Arcker)"]
 
