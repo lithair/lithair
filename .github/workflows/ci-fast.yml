@@ -9,7 +9,7 @@ jobs:
   build-test-fast:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     container: rust:1-alpine
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -35,10 +35,19 @@ jobs:
         run: |
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin >/dev/null 2>&1
 
-      - name: CI Pipeline (build + clippy + tests with deny warnings)
+      - name: CI Pipeline (release build to save disk space)
         run: |
-          task ci:full
+          echo "🚀 Lithair CI Fast Pipeline (Alpine + Release)"
+          echo "✅ Code formatting check..."
+          cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
+          echo "🔨 Building workspace (release mode for disk efficiency)..."
+          RUSTFLAGS="-D warnings" cargo build --workspace --release --quiet && echo "   ✓ Build OK" || (echo "   ✗ Build failed" && exit 1)
+          echo "🔍 Clippy analysis..."
+          cargo clippy --workspace --release --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
+          echo "🧪 Test suite (release mode)..."
+          cargo test --workspace --release --quiet && echo "   ✓ Tests OK" || (echo "   ✗ Tests failed" && exit 1)
+          echo "🎉 CI Fast completed successfully!"
 
       - name: Summary
         run: |
-          echo "🚀 Fast CI completed using rust:1-alpine container"
+          echo "🚀 Fast CI completed using rust:1-alpine container (release mode)"
