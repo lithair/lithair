@@ -92,7 +92,7 @@ impl SnapshotManager {
     ) -> std::io::Result<SnapshotMeta> {
         // Serialize with rkyv
         let bytes = rkyv::to_bytes::<RkyvError>(&data)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         let checksum = Self::fnv1a_hash(&bytes);
         let timestamp = std::time::SystemTime::now()
@@ -117,7 +117,7 @@ impl SnapshotManager {
         // Write metadata
         let meta_path = self.snapshot_dir.join(format!("snapshot_{}.meta", last_index));
         let meta_json = serde_json::to_string_pretty(&meta)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         std::fs::write(&meta_path, meta_json)?;
 
         // Update current pointer
@@ -197,7 +197,7 @@ impl SnapshotManager {
         let meta_path =
             self.snapshot_dir.join(format!("snapshot_{}.meta", meta.last_included_index));
         let meta_json = serde_json::to_string_pretty(&meta)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         std::fs::write(&meta_path, meta_json)?;
 
         // Update current pointer

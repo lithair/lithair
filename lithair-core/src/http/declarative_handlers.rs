@@ -230,6 +230,12 @@ pub trait CustomHandlerCallback<T>: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<Resp, Infallible>> + Send + 'a>>;
 }
 
+impl<T> Default for CustomHandlerRegistry<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> CustomHandlerRegistry<T> {
     pub fn new() -> Self {
         Self { handlers: HashMap::new() }

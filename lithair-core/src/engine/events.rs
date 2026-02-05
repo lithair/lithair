@@ -161,7 +161,7 @@ impl EventEnvelope {
 /// Backend storage for EventStore
 enum EventStoreBackend {
     /// Single file storage (default, backward compatible)
-    Single(FileStorage),
+    Single(Box<FileStorage>),
     /// Multi-file storage (one file per aggregate_id)
     /// Boxed to break infinite recursion since MultiFileEventStore contains HashMap<String, EventStore>
     Multi(Box<MultiFileEventStore>),
@@ -206,7 +206,7 @@ impl EventStore {
             EventStoreBackend::Multi(Box::new(multi_store))
         } else {
             let storage = FileStorage::new(file_path)?;
-            EventStoreBackend::Single(storage)
+            EventStoreBackend::Single(Box::new(storage))
         };
 
         let events_count = match &backend {
@@ -252,7 +252,7 @@ impl EventStore {
     /// Create a new event store with existing file storage (single-file mode)
     pub fn with_storage(storage: FileStorage) -> EngineResult<Self> {
         let events_count = storage.read_all_events()?.len();
-        let backend = EventStoreBackend::Single(storage);
+        let backend = EventStoreBackend::Single(Box::new(storage));
 
         // Load the last event hash for chain continuity
         let last_event_hash = Self::load_last_event_hash(&backend, false)?;

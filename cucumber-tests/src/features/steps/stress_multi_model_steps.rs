@@ -221,7 +221,7 @@ async fn when_execute_random_crud(world: &mut LithairWorld, operation_count: u64
         completed = batch_end;
 
         // Progress report every 10%
-        if completed % (operation_count / 10).max(1) == 0 {
+        if completed.is_multiple_of((operation_count / 10).max(1)) {
             let progress = (completed as f64 / operation_count as f64) * 100.0;
             println!(
                 "📊 Progress: {:.0}% ({}/{} operations)",
@@ -301,7 +301,7 @@ async fn when_execute_concurrent_crud(
                     _ => STRESS_STATS.requests_to_node_2.fetch_add(1, Ordering::Relaxed),
                 };
 
-                if let Err(_) = execute_operation(&client, port, model, operation).await {
+                if execute_operation(&client, port, model, operation).await.is_err() {
                     STRESS_STATS.errors.fetch_add(1, Ordering::Relaxed);
                 }
             }
@@ -366,7 +366,7 @@ async fn when_execute_more_crud_remaining(world: &mut LithairWorld, operation_co
         let model = ModelType::random();
         let operation = CrudOperation::random_weighted();
 
-        if let Err(_) = execute_operation(&client, port, model, operation).await {
+        if execute_operation(&client, port, model, operation).await.is_err() {
             STRESS_STATS.errors.fetch_add(1, Ordering::Relaxed);
         }
     }

@@ -99,8 +99,7 @@ impl PatternMatcher {
     ///
     /// Supports subdomain wildcards: "*.example.com"
     pub fn matches_domain(pattern: &str, domain: &str) -> bool {
-        if pattern.starts_with("*.") {
-            let suffix = &pattern[2..];
+        if let Some(suffix) = pattern.strip_prefix("*.") {
             domain.ends_with(suffix) || domain == suffix
         } else {
             pattern == domain

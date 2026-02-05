@@ -426,10 +426,7 @@ async fn run_benchmark(args: &Args, stats: Arc<BenchmarkStats>) -> Result<()> {
                 // READ operations
                 (CrudOp::Read, _) => {
                     let url = format!("{}{}", base_url, table.endpoint());
-                    match client.get(&url).send().await {
-                        Ok(resp) if resp.status().is_success() => true,
-                        _ => false,
-                    }
+                    matches!(client.get(&url).send().await, Ok(resp) if resp.status().is_success())
                 }
 
                 // UPDATE operations (items and orders only, logs are append-only)

@@ -211,7 +211,7 @@ async fn then_file_contains_only_type(
 
         // Vérifier que l'aggregate_id correspond
         let parsed: serde_json::Value = serde_json::from_str(json_part)
-            .expect(&format!("Invalid JSON at line {}", line_num + 1));
+            .unwrap_or_else(|_| panic!("Invalid JSON at line {}", line_num + 1));
 
         if let Some(agg_id) = parsed.get("aggregate_id").and_then(|v| v.as_str()) {
             assert_eq!(

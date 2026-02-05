@@ -15,7 +15,7 @@ use super::{DetectedSchemaChange, MigrationStrategy, ModelSpec};
 // =============================================================================
 
 /// Strategy for handling schema changes in a cluster
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum VoteStrategy {
     /// Auto-accept without voting - change applied immediately
     AutoAccept,
@@ -24,6 +24,7 @@ pub enum VoteStrategy {
     Reject,
 
     /// Require majority consensus from cluster nodes
+    #[default]
     Consensus,
 
     /// Require manual approval via admin API
@@ -42,11 +43,6 @@ fn default_min_approvers() -> u32 {
     1
 }
 
-impl Default for VoteStrategy {
-    fn default() -> Self {
-        VoteStrategy::Consensus
-    }
-}
 
 // =============================================================================
 // SCHEMA VOTE POLICY
@@ -365,7 +361,7 @@ pub struct HumanApproval {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchemaSyncMessage {
     /// Propose a schema change to the cluster
-    ProposeChange(PendingSchemaChange),
+    ProposeChange(Box<PendingSchemaChange>),
 
     /// Vote to approve a pending change
     ApproveChange { change_id: Uuid, node_id: u64 },
@@ -395,7 +391,7 @@ pub enum SchemaSyncMessage {
 // =============================================================================
 
 /// Schema migration lock status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SchemaLockStatus {
     /// Whether schema migrations are locked (blocked)
     pub locked: bool,
@@ -413,17 +409,6 @@ pub struct SchemaLockStatus {
     pub unlocked_at: Option<u64>,
 }
 
-impl Default for SchemaLockStatus {
-    fn default() -> Self {
-        Self {
-            locked: false, // Default: unlocked (backwards compatible)
-            reason: None,
-            unlock_expires_at: None,
-            unlocked_by: None,
-            unlocked_at: None,
-        }
-    }
-}
 
 impl SchemaLockStatus {
     /// Check if currently locked (considering timeout)

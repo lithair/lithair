@@ -88,14 +88,14 @@ async fn convert_request(
 ) -> Result<LithairRequest, Box<dyn std::error::Error + Send + Sync>> {
     use http_body_util::BodyExt;
 
-    let method = match req.method() {
-        &hyper::Method::GET => super::HttpMethod::GET,
-        &hyper::Method::POST => super::HttpMethod::POST,
-        &hyper::Method::PUT => super::HttpMethod::PUT,
-        &hyper::Method::DELETE => super::HttpMethod::DELETE,
-        &hyper::Method::PATCH => super::HttpMethod::PATCH,
-        &hyper::Method::HEAD => super::HttpMethod::HEAD,
-        &hyper::Method::OPTIONS => super::HttpMethod::OPTIONS,
+    let method = match *req.method() {
+        hyper::Method::GET => super::HttpMethod::GET,
+        hyper::Method::POST => super::HttpMethod::POST,
+        hyper::Method::PUT => super::HttpMethod::PUT,
+        hyper::Method::DELETE => super::HttpMethod::DELETE,
+        hyper::Method::PATCH => super::HttpMethod::PATCH,
+        hyper::Method::HEAD => super::HttpMethod::HEAD,
+        hyper::Method::OPTIONS => super::HttpMethod::OPTIONS,
         _ => super::HttpMethod::GET,
     };
 

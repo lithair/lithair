@@ -259,7 +259,7 @@ where
     }
 
     pub async fn flush(&self) -> Result<(), crate::Error> {
-        self.async_writer.flush().await.map_err(|e| crate::Error::EngineError(e))
+        self.async_writer.flush().await.map_err(crate::Error::EngineError)
     }
 
     pub fn write<F>(&self, key: &str, f: F) -> Result<(), crate::Error>
@@ -281,7 +281,7 @@ where
         // Collect all state (snapshot)
         // We serialize the whole map: key -> VersionedEntry<S>
         let mut snapshot_map = std::collections::HashMap::new();
-        let _ = (*self.state_map).retain_sync(|key, v| {
+        (*self.state_map).retain_sync(|key, v| {
             snapshot_map.insert(key.clone(), v.clone());
             true
         });
@@ -304,7 +304,7 @@ where
         E: Event<State = S>,
     {
         let mut state_clone =
-            if let Some(current) = self.read(key, |s| s.clone()) { current } else { S::default() };
+            self.read(key, |s| s.clone()).unwrap_or_default();
 
         event.apply(&mut state_clone);
 
@@ -464,8 +464,8 @@ where
 
     /// Helper for tests: Clear all values
     pub fn clear_sync(&self) {
-        let _ = (*self.state_map).retain_sync(|_, _| false);
-        let _ = (*self.indexes).retain_sync(|_, _| false);
+        (*self.state_map).retain_sync(|_, _| false);
+        (*self.indexes).retain_sync(|_, _| false);
     }
 
     pub async fn clear(&self) {
@@ -475,7 +475,7 @@ where
     /// Helper for tests: Iterate all values synchronously
     pub fn iter_all_sync(&self) -> Vec<(String, S)> {
         let mut result = Vec::new();
-        let _ = (*self.state_map).retain_sync(|key, v| {
+        (*self.state_map).retain_sync(|key, v| {
             result.push((key.clone(), v.data.clone()));
             true // Keep all items
         });

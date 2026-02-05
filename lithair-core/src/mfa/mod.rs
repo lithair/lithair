@@ -88,20 +88,15 @@ impl Default for MfaConfig {
 }
 
 /// TOTP algorithm
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TotpAlgorithm {
     /// SHA1 (most compatible, default)
+    #[default]
     SHA1,
     /// SHA256
     SHA256,
     /// SHA512
     SHA512,
-}
-
-impl Default for TotpAlgorithm {
-    fn default() -> Self {
-        Self::SHA1
-    }
 }
 
 fn default_algorithm() -> TotpAlgorithm {
@@ -121,7 +116,7 @@ fn default_storage_path() -> String {
 }
 
 /// MFA status for a user
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MfaStatus {
     /// Whether MFA is enabled for this user
     pub enabled: bool,
@@ -131,10 +126,4 @@ pub struct MfaStatus {
 
     /// When MFA was enabled (if enabled)
     pub enabled_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-impl Default for MfaStatus {
-    fn default() -> Self {
-        Self { enabled: false, required: false, enabled_at: None }
-    }
 }

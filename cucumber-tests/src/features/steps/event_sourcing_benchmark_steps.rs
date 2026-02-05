@@ -104,7 +104,7 @@ async fn create_products_with_wrong_prices(world: &mut LithairWorld, count: usiz
         let product = TestArticle {
             id: format!("product-{}", i),
             title: format!("Product {} - WRONG PRICE", i),
-            content: format!("Price: 999.99 (incorrect)"),
+            content: "Price: 999.99 (incorrect)".to_string(),
         };
         let id = product.id.clone();
         world.scc2_articles.write(&id, |s| *s = product).ok();
@@ -140,7 +140,7 @@ async fn correct_prices_with_events(world: &mut LithairWorld, count: usize) {
         world
             .scc2_articles
             .write(&id, |product| {
-                product.content = format!("Price: 29.99 (corrected)");
+                product.content = "Price: 29.99 (corrected)".to_string();
                 product.title = product.title.replace("WRONG PRICE", "CORRECTED");
             })
             .ok();

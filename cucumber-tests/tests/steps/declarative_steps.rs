@@ -45,15 +45,11 @@ impl ModelSpec for TestState {
         if field_name == "Product.name" && config.product_name_unique {
             Some(FieldPolicy { unique: true, ..Default::default() })
         } else if field_name == "category_id" {
-            if let Some(target) = &config.category_relation {
-                Some(FieldPolicy {
-                    fk: true,
-                    fk_collection: Some(target.clone()),
-                    ..Default::default()
-                })
-            } else {
-                None
-            }
+            config.category_relation.as_ref().map(|target| FieldPolicy {
+                fk: true,
+                fk_collection: Some(target.clone()),
+                ..Default::default()
+            })
         } else {
             None
         }
@@ -233,8 +229,7 @@ async fn given_model_spec(w: &mut DeclarativeWorld, _model: String, field: Strin
         config.product_name_unique = true;
     }
     // Init engine
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
     // Force RwLock backend for simplicity unless specified otherwise,
     // OR allow Scc2 if env var is set.
     // For unique check simulation in test, we used to read spec manually.
@@ -282,7 +277,7 @@ async fn when_create_product_named(w: &mut DeclarativeWorld, id: String, name: S
 #[then(expr = "l'opération doit réussir")]
 async fn then_operation_succeeds(w: &mut DeclarativeWorld) {
     match &w.last_result {
-        Some(Ok(_)) => assert!(true),
+        Some(Ok(_)) => {}
         Some(Err(e)) => panic!("Operation failed unexpected: {}", e),
         None => panic!("No operation performed"),
     }
@@ -306,8 +301,7 @@ async fn then_operation_fails_unique(w: &mut DeclarativeWorld) {
 
 #[given("un moteur initialisé avec support multi-entité")]
 async fn given_multi_entity_engine(w: &mut DeclarativeWorld) {
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
@@ -371,8 +365,7 @@ async fn then_check_event_type(w: &mut DeclarativeWorld, type_name: String) {
 
 #[given("un journal contenant:")]
 async fn given_journal_with_content(w: &mut DeclarativeWorld, step: &cucumber::gherkin::Step) {
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
 
     // Pre-seed the log file directly
     if let Some(table) = &step.table {
@@ -410,16 +403,14 @@ async fn given_journal_with_content(w: &mut DeclarativeWorld, step: &cucumber::g
 
 #[when("je redémarre le moteur")]
 async fn when_restart_engine(w: &mut DeclarativeWorld) {
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
     // New engine instance should replay events
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
 #[given("un moteur configuré en mode binaire")]
 async fn given_binary_engine(w: &mut DeclarativeWorld) {
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
     // Set env var for binary mode
     std::env::set_var("RS_ENABLE_BINARY", "1");
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
@@ -427,8 +418,7 @@ async fn given_binary_engine(w: &mut DeclarativeWorld) {
 
 #[when("je redémarre le moteur en mode binaire")]
 async fn when_restart_binary_engine(w: &mut DeclarativeWorld) {
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
     // Set env var for binary mode
     std::env::set_var("RS_ENABLE_BINARY", "1");
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
@@ -488,8 +478,7 @@ async fn given_model_spec_relation(
     }
 
     // Init Engine
-    let mut config = EngineConfig::default();
-    config.event_log_path = w.temp_dir.path().to_str().unwrap().to_string();
+    let config = EngineConfig { event_log_path: w.temp_dir.path().to_str().unwrap().to_string(), ..Default::default() };
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 

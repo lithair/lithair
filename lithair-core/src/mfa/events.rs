@@ -82,7 +82,7 @@ impl MfaEvent {
 }
 
 /// MFA State - reconstructed from events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MfaState {
     /// Username → MFA data
     pub users: std::collections::HashMap<String, UserMfaState>,
@@ -96,12 +96,6 @@ pub struct UserMfaState {
     pub backup_codes: Vec<String>,
     pub last_verification: Option<DateTime<Utc>>,
     pub failed_attempts: usize,
-}
-
-impl Default for MfaState {
-    fn default() -> Self {
-        Self { users: std::collections::HashMap::new() }
-    }
 }
 
 impl MfaState {

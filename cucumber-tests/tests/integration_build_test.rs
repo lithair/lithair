@@ -21,7 +21,7 @@ mod compilation {
         println!("🔨 Test : Compilation du binaire release...");
 
         let output = Command::new("cargo")
-            .args(&["build", "--release", "--bin", "lithair"])
+            .args(["build", "--release", "--bin", "lithair"])
             .current_dir("../")
             .output()
             .expect("Failed to execute cargo build");

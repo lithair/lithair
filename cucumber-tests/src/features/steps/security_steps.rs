@@ -179,9 +179,8 @@ async fn when_call_endpoint_multiple_times(world: &mut LithairWorld, endpoint: S
 
     let mut success_count = 0;
     for i in 0..count {
-        match world.make_request("GET", &format!("{}?req={}", endpoint, i), None).await {
-            Ok(()) => success_count += 1,
-            Err(_) => {}
+        if let Ok(()) = world.make_request("GET", &format!("{}?req={}", endpoint, i), None).await {
+            success_count += 1;
         }
     }
 

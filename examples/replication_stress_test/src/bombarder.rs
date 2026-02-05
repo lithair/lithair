@@ -818,8 +818,6 @@ async fn storm_test(
 
     // Chaos mode: spawn node killer task
     let chaos_handle = if chaos {
-        let base_port = base_port;
-        let kill_interval = kill_interval;
         Some(tokio::spawn(async move {
             use rand::seq::SliceRandom;
             let mut rng = rand::rngs::StdRng::from_entropy();

@@ -107,11 +107,7 @@ impl SessionCookie {
     pub fn extract_from_header(&self, cookie_header: &str) -> Option<String> {
         cookie_header.split(';').find_map(|cookie| {
             let cookie = cookie.trim();
-            if let Some(value) = cookie.strip_prefix(&format!("{}=", self.config.name)) {
-                Some(value.to_string())
-            } else {
-                None
-            }
+            cookie.strip_prefix(&format!("{}=", self.config.name)).map(|value| value.to_string())
         })
     }
 }

@@ -172,7 +172,7 @@ impl TotpValidator {
     /// Uses totp-rs built-in validation with time drift tolerance
     pub fn validate(secret: &TotpSecret, code: &str) -> Result<bool> {
         let totp = secret.get_totp()?;
-        Ok(totp.check_current(code).map_err(|e| anyhow!("Validation error: {}", e))?)
+        totp.check_current(code).map_err(|e| anyhow!("Validation error: {}", e))
     }
 }
 

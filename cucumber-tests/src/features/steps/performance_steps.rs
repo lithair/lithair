@@ -128,9 +128,8 @@ async fn concurrent_connections(world: &mut LithairWorld, client_count: u32) {
     let mut success_count = 0;
 
     for i in 0..client_count {
-        match world.make_request("GET", &format!("/perf/echo?client={}", i), None).await {
-            Ok(()) => success_count += 1,
-            Err(_) => {} // Ignore errors for now
+        if let Ok(()) = world.make_request("GET", &format!("/perf/echo?client={}", i), None).await {
+            success_count += 1;
         }
     }
 

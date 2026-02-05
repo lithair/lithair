@@ -150,9 +150,9 @@ impl LithairServerBuilder {
     // ========================================================================
 
     /// Add session manager
-    pub fn with_sessions<S: 'static + Send + Sync>(mut self, manager: SessionManager<S>) -> Self
+    pub fn with_sessions<S>(mut self, manager: SessionManager<S>) -> Self
     where
-        S: crate::session::SessionStore,
+        S: crate::session::SessionStore + 'static + Send + Sync,
     {
         self.config.sessions.enabled = true;
         self.session_manager = Some(Arc::new(manager));
@@ -1493,7 +1493,7 @@ impl LithairServerBuilder {
             // Schema sync state for cluster-wide schema consensus
             schema_sync_state: Arc::new(tokio::sync::RwLock::new(
                 self.schema_vote_policy
-                    .map(|p| crate::schema::SchemaSyncState::with_policy(p))
+                    .map(crate::schema::SchemaSyncState::with_policy)
                     .unwrap_or_default(),
             )),
         })

@@ -82,6 +82,7 @@ where
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     /// Optional extractor to resolve user permissions (as strings) from the HTTP request
     /// This enables declarative read filtering via HttpExposable::can_read()
+    #[allow(clippy::type_complexity)]
     permission_extractor: Option<Arc<dyn Fn(&Req) -> Vec<String> + Send + Sync>>,
     pub(crate) session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
@@ -549,7 +550,7 @@ where
     async fn handle_list(&self, req: &Req) -> Result<Resp, Infallible> {
         // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
-            self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_else(|| Vec::new());
+            self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
         let storage = self.storage.read().await;
         // Apply declarative read filtering via HttpExposable::can_read
@@ -846,7 +847,7 @@ where
     async fn handle_get(&self, id: &str, req: &Req) -> Result<Resp, Infallible> {
         // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
-            self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_else(|| Vec::new());
+            self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
         let storage = self.storage.read().await;
 
