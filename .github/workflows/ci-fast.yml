@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     container: rust:1-alpine
     timeout-minutes: 30
+    env:
+      # Override release profile for CI: disable LTO and use more codegen units
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
 
     steps:
       - name: Checkout
@@ -35,19 +39,19 @@ jobs:
         run: |
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin >/dev/null 2>&1
 
-      - name: CI Pipeline (release build to save disk space)
+      - name: CI Pipeline (release without LTO for disk and time efficiency)
         run: |
-          echo "🚀 Lithair CI Fast Pipeline (Alpine + Release)"
+          echo "🚀 Lithair CI Fast Pipeline (Alpine)"
           echo "✅ Code formatting check..."
           cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
-          echo "🔨 Building workspace (release mode for disk efficiency)..."
+          echo "🔨 Building workspace..."
           RUSTFLAGS="-D warnings" cargo build --workspace --release --quiet && echo "   ✓ Build OK" || (echo "   ✗ Build failed" && exit 1)
           echo "🔍 Clippy analysis..."
           cargo clippy --workspace --release --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
-          echo "🧪 Test suite (release mode)..."
+          echo "🧪 Test suite..."
           cargo test --workspace --release --quiet && echo "   ✓ Tests OK" || (echo "   ✗ Tests failed" && exit 1)
           echo "🎉 CI Fast completed successfully!"
 
       - name: Summary
         run: |
-          echo "🚀 Fast CI completed using rust:1-alpine container (release mode)"
+          echo "🚀 Fast CI completed using rust:1-alpine container"
