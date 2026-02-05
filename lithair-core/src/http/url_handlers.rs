@@ -27,6 +27,12 @@ pub trait UrlHandler<T>: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<Resp, Infallible>> + Send + 'a>>;
 }
 
+impl<T> Default for UrlHandlerRegistry<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> UrlHandlerRegistry<T> {
     pub fn new() -> Self {
         Self { handlers: HashMap::new(), exact_matches: HashMap::new(), prefix_matches: Vec::new() }

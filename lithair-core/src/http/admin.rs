@@ -165,9 +165,9 @@ where
     }
 
     // Route based on HTTP method
-    match method {
-        &Method::GET => handler.handle_admin_get(path, &req).await,
-        &Method::POST => handler.handle_admin_post(path, req).await,
+    match *method {
+        Method::GET => handler.handle_admin_get(path, &req).await,
+        Method::POST => handler.handle_admin_post(path, req).await,
         _ => json_error_response(
             StatusCode::METHOD_NOT_ALLOWED,
             "method_not_allowed",

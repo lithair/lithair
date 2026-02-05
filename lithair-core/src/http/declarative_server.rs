@@ -513,11 +513,7 @@ where
         let deprecation_warnings = self.deprecation_warnings;
 
         // Initialize anti-DDoS protection if configured
-        let anti_ddos = if let Some(ref cfg) = self.anti_ddos_config {
-            Some(Arc::new(AntiDDoSProtection::new(cfg.clone())))
-        } else {
-            None
-        };
+        let anti_ddos = self.anti_ddos_config.as_ref().map(|cfg| Arc::new(AntiDDoSProtection::new(cfg.clone())));
 
         let gzip_cfg = resolve_gzip_config(gzip_cfg);
         let access_log_enabled = self.access_log

@@ -131,16 +131,10 @@ pub struct TestData {
 }
 
 // État de test pour le moteur Lithair
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TestAppState {
     pub data: TestData,
     pub version: u64,
-}
-
-impl Default for TestAppState {
-    fn default() -> Self {
-        Self { data: TestData::default(), version: 0 }
-    }
 }
 
 impl lithair_core::model_inspect::Inspectable for TestAppState {
@@ -354,7 +348,7 @@ impl lithair_core::RaftstoneApplication for TestEngineApp {
 
     fn event_deserializers(
     ) -> Vec<Box<dyn lithair_core::engine::EventDeserializer<State = Self::State>>> {
-        vec![Box::new(VersionedArticleCreatedDeserializer::default())]
+        vec![Box::new(VersionedArticleCreatedDeserializer)]
     }
 }
 

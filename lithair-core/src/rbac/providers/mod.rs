@@ -9,9 +9,10 @@ pub use password::PasswordProvider;
 use crate::rbac::traits::AuthProvider;
 
 /// Provider configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum ProviderConfig {
     /// No authentication
+    #[default]
     None,
 
     /// Simple password authentication
@@ -27,12 +28,6 @@ pub enum ProviderConfig {
     /// Future: LDAP
     #[allow(dead_code)]
     Ldap { server: String, base_dn: String },
-}
-
-impl Default for ProviderConfig {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl ProviderConfig {

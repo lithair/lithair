@@ -555,11 +555,7 @@ impl BenchmarkEngine {
         // Get and remove a known ID for this table
         let id = {
             let mut known_ids = self.known_ids.write().await;
-            if let Some(pos) = known_ids.iter().position(|(t, _)| *t == table) {
-                Some(known_ids.remove(pos).1)
-            } else {
-                None
-            }
+            known_ids.iter().position(|(t, _)| *t == table).map(|pos| known_ids.remove(pos).1)
         };
 
         let Some(id) = id else {
@@ -703,7 +699,7 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
 /// Generate random payload of given size
 fn generate_payload(size: usize) -> String {
     use std::iter::repeat_with;
-    repeat_with(|| fastrand::alphanumeric()).take(size).collect()
+    repeat_with(fastrand::alphanumeric).take(size).collect()
 }
 
 /// Random priority (0-10)

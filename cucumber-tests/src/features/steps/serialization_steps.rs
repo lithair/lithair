@@ -69,7 +69,7 @@ async fn given_article_with_fields(
 async fn given_random_articles(world: &mut LithairWorld, count: usize) {
     println!("📦 Génération de {} articles aléatoires...", count);
 
-    let articles: Vec<TestArticle> = (0..count).map(|i| TestArticle::random(i)).collect();
+    let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(serde_json::to_string(&articles).unwrap_or_default());
@@ -250,7 +250,7 @@ async fn when_benchmark_json_serialize(world: &mut LithairWorld, count: usize) {
 
 #[when(expr = "je mesure le temps pour désérialiser les {int} articles JSON")]
 async fn when_benchmark_json_deserialize(world: &mut LithairWorld, count: usize) {
-    let articles: Vec<TestArticle> = (0..count).map(|i| TestArticle::random(i)).collect();
+    let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     let json_data: Vec<Vec<u8>> =
         articles.iter().map(|a| json_mode::serialize_bytes(a).unwrap()).collect();
@@ -282,7 +282,7 @@ async fn when_benchmark_json_deserialize(world: &mut LithairWorld, count: usize)
 
 #[when(expr = "je mesure le temps pour sérialiser les {int} articles en rkyv")]
 async fn when_benchmark_rkyv_serialize(world: &mut LithairWorld, count: usize) {
-    let articles: Vec<TestArticle> = (0..count).map(|i| TestArticle::random(i)).collect();
+    let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     println!("⏱️  Benchmark sérialisation rkyv de {} articles...", count);
 
@@ -313,7 +313,7 @@ async fn when_benchmark_rkyv_serialize(world: &mut LithairWorld, count: usize) {
 
 #[when(expr = "je mesure le temps pour désérialiser les {int} articles rkyv")]
 async fn when_benchmark_rkyv_deserialize(world: &mut LithairWorld, count: usize) {
-    let articles: Vec<TestArticle> = (0..count).map(|i| TestArticle::random(i)).collect();
+    let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     let rkyv_data: Vec<Vec<u8>> = articles
         .iter()
@@ -461,7 +461,7 @@ async fn when_try_deserialize_rkyv(world: &mut LithairWorld) {
 
 #[when(expr = "je benchmark la sérialisation JSON sur {int} articles")]
 async fn when_full_benchmark_json(world: &mut LithairWorld, count: usize) {
-    let articles: Vec<TestArticle> = (0..count).map(|i| TestArticle::random(i)).collect();
+    let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     println!("⏱️  Benchmark complet JSON sur {} articles...", count);
 
@@ -493,7 +493,7 @@ async fn when_full_benchmark_json(world: &mut LithairWorld, count: usize) {
 
 #[when(expr = "je benchmark la sérialisation rkyv sur {int} articles")]
 async fn when_full_benchmark_rkyv(world: &mut LithairWorld, count: usize) {
-    let articles: Vec<TestArticle> = (0..count).map(|i| TestArticle::random(i)).collect();
+    let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     println!("⏱️  Benchmark complet rkyv sur {} articles...", count);
 

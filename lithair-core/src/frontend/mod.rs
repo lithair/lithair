@@ -169,6 +169,104 @@ impl Event for FrontendEvent {
     }
 }
 
+/// Load static files from a directory into Lithair memory
+///
+/// This loads all files from the specified directory into memory as a virtual host,
+/// enabling zero-disk-I/O serving after initial load. Files are served via AssetServer.
+///
+/// # Arguments
+/// * `state` - Shared frontend state (thread-safe with Arc<RwLock>)
+/// * `host_id` - Virtual host identifier (e.g., "main_site", "blog")
+/// * `base_path` - HTTP base path for routing (e.g., "/", "/blog")
+/// * `directory` - Filesystem directory containing static files
+///
+/// # Returns
+/// Number of files loaded into memory
+pub async fn load_static_directory_to_memory<P: AsRef<Path>>(
+    state: std::sync::Arc<tokio::sync::RwLock<FrontendState>>,
+    host_id: &str,
+    base_path: &str,
+    directory: P,
+) -> Result<usize> {
+    let mut state_guard = state.write().await;
+    load_static_directory_to_memory_internal(&mut state_guard, host_id, base_path, directory).await
+}
+
+/// Internal function for loading static files (non-thread-safe version)
+async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
+    state: &mut FrontendState,
+    host_id: &str,
+    base_path: &str,
+    directory: P,
+) -> Result<usize> {
+    let dir_path = directory.as_ref();
+    if !dir_path.exists() {
+        return Err(anyhow::anyhow!("Directory does not exist: {}", dir_path.display()));
+    }
+
+    let mut loaded_count = 0;
+
+    // Walk through directory recursively
+    fn walk_dir(
+        dir: &Path,
+        base_path_disk: &Path,
+        assets: &mut Vec<(String, Vec<u8>)>,
+    ) -> Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                walk_dir(&path, base_path_disk, assets)?;
+            } else if path.is_file() {
+                // Create web path from file path
+                let relative_path = path.strip_prefix(base_path_disk)?;
+                let web_path = format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
+
+                // Read file content
+                let content = std::fs::read(&path)?;
+                assets.push((web_path, content));
+            }
+        }
+        Ok(())
+    }
+
+    let mut assets_vec = Vec::new();
+    walk_dir(dir_path, dir_path, &mut assets_vec)?;
+
+    // Create or get virtual host location
+    let location =
+        state
+            .virtual_hosts
+            .entry(host_id.to_string())
+            .or_insert_with(|| VirtualHostLocation {
+                host_id: host_id.to_string(),
+                base_path: base_path.to_string(),
+                assets: HashMap::new(),
+                path_index: HashMap::new(),
+                static_root: dir_path.to_string_lossy().to_string(),
+                active: true,
+            });
+
+    // Load assets into virtual host location
+    for (web_path, content) in assets_vec {
+        let asset = StaticAsset::new(web_path.clone(), content);
+        log::info!(
+            "📄 [{}] {} ({} bytes, {})",
+            host_id,
+            web_path,
+            asset.size_bytes,
+            asset.mime_type
+        );
+
+        location.assets.insert(asset.id, asset.clone());
+        location.path_index.insert(web_path, asset.id);
+        loaded_count += 1;
+    }
+
+    Ok(loaded_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,102 +348,4 @@ mod tests {
         // Note: Tests need to be updated for multi-virtual-host architecture
         assert!(!state.version_history.contains_key(&asset_id));
     }
-}
-
-/// Load static files from a directory into Lithair memory
-///
-/// This loads all files from the specified directory into memory as a virtual host,
-/// enabling zero-disk-I/O serving after initial load. Files are served via AssetServer.
-///
-/// # Arguments
-/// * `state` - Shared frontend state (thread-safe with Arc<RwLock>)
-/// * `host_id` - Virtual host identifier (e.g., "main_site", "blog")
-/// * `base_path` - HTTP base path for routing (e.g., "/", "/blog")
-/// * `directory` - Filesystem directory containing static files
-///
-/// # Returns
-/// Number of files loaded into memory
-pub async fn load_static_directory_to_memory<P: AsRef<Path>>(
-    state: std::sync::Arc<tokio::sync::RwLock<FrontendState>>,
-    host_id: &str,
-    base_path: &str,
-    directory: P,
-) -> Result<usize> {
-    let mut state_guard = state.write().await;
-    load_static_directory_to_memory_internal(&mut *state_guard, host_id, base_path, directory).await
-}
-
-/// Internal function for loading static files (non-thread-safe version)
-async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
-    state: &mut FrontendState,
-    host_id: &str,
-    base_path: &str,
-    directory: P,
-) -> Result<usize> {
-    let dir_path = directory.as_ref();
-    if !dir_path.exists() {
-        return Err(anyhow::anyhow!("Directory does not exist: {}", dir_path.display()));
-    }
-
-    let mut loaded_count = 0;
-
-    // Walk through directory recursively
-    fn walk_dir(
-        dir: &Path,
-        base_path_disk: &Path,
-        assets: &mut Vec<(String, Vec<u8>)>,
-    ) -> Result<()> {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                walk_dir(&path, base_path_disk, assets)?;
-            } else if path.is_file() {
-                // Create web path from file path
-                let relative_path = path.strip_prefix(base_path_disk)?;
-                let web_path = format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
-
-                // Read file content
-                let content = std::fs::read(&path)?;
-                assets.push((web_path, content));
-            }
-        }
-        Ok(())
-    }
-
-    let mut assets_vec = Vec::new();
-    walk_dir(dir_path, dir_path, &mut assets_vec)?;
-
-    // Create or get virtual host location
-    let location =
-        state
-            .virtual_hosts
-            .entry(host_id.to_string())
-            .or_insert_with(|| VirtualHostLocation {
-                host_id: host_id.to_string(),
-                base_path: base_path.to_string(),
-                assets: HashMap::new(),
-                path_index: HashMap::new(),
-                static_root: dir_path.to_string_lossy().to_string(),
-                active: true,
-            });
-
-    // Load assets into virtual host location
-    for (web_path, content) in assets_vec {
-        let asset = StaticAsset::new(web_path.clone(), content);
-        log::info!(
-            "📄 [{}] {} ({} bytes, {})",
-            host_id,
-            web_path,
-            asset.size_bytes,
-            asset.mime_type
-        );
-
-        location.assets.insert(asset.id, asset.clone());
-        location.path_index.insert(web_path, asset.id);
-        loaded_count += 1;
-    }
-
-    Ok(loaded_count)
 }

@@ -270,11 +270,17 @@ pub struct AppState {
     pub users: Arc<Vec<User>>,
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self { products: Arc::new(vec![]), users: Arc::new(vec![]) }
+    }
+}
+
 impl AppState {
     /// Initialize empty state
     /// Products will be added via API calls (see: task examples:rbac:seed)
     pub fn new() -> Self {
-        Self { products: Arc::new(vec![]), users: Arc::new(vec![]) }
+        Self::default()
     }
 }
 

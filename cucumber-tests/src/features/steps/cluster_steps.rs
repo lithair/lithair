@@ -14,7 +14,7 @@ async fn given_lithair_cluster_en(world: &mut LithairWorld, node_count: u32) {
         world
             .make_cluster_request(i, "GET", "/health", None)
             .await
-            .expect(&format!("Node {} health check failed", i));
+            .unwrap_or_else(|_| panic!("Node {} health check failed", i));
     }
     println!("Cluster of {} nodes started (ports: {:?})", node_count, ports);
 }
@@ -154,7 +154,7 @@ async fn then_data_replicated_on_followers(world: &mut LithairWorld) {
         world
             .make_cluster_request(i, "GET", "/api/articles", None)
             .await
-            .expect(&format!("Read from follower {} failed", i));
+            .unwrap_or_else(|_| panic!("Read from follower {} failed", i));
     }
     println!("Data replicated to all followers");
 }
@@ -284,7 +284,7 @@ async fn then_replicated_on_followers(world: &mut LithairWorld) {
         world
             .make_cluster_request(i, "GET", "/api/articles", None)
             .await
-            .expect(&format!("Read from follower {} failed", i));
+            .unwrap_or_else(|_| panic!("Read from follower {} failed", i));
     }
     println!("✅ Data replicated to all followers");
 }
@@ -308,7 +308,7 @@ async fn then_same_data_on_followers(world: &mut LithairWorld) {
         world
             .make_cluster_request(i, "GET", "/api/articles", None)
             .await
-            .expect(&format!("Read from node {} failed", i));
+            .unwrap_or_else(|_| panic!("Read from node {} failed", i));
         responses.push(world.last_response.clone());
     }
 
@@ -407,7 +407,7 @@ async fn when_create_articles_on_leader_en(world: &mut LithairWorld, count: u32)
         world
             .make_cluster_request(0, "POST", "/api/articles", Some(data))
             .await
-            .expect(&format!("Failed to create article {}", i));
+            .unwrap_or_else(|_| panic!("Failed to create article {}", i));
     }
 
     world.last_response = Some(format!(r#"{{"articles_created": {}}}"#, count));
@@ -456,7 +456,7 @@ async fn given_cluster_nodes(world: &mut LithairWorld, node_count: u32) {
         world
             .make_cluster_request(i, "GET", "/health", None)
             .await
-            .expect(&format!("Node {} health check failed", i));
+            .unwrap_or_else(|_| panic!("Node {} health check failed", i));
 
         assert!(world.last_response.is_some(), "Node {} not responding", i);
         let response = world.last_response.as_ref().unwrap();
@@ -492,7 +492,7 @@ async fn when_write_article_to_node(world: &mut LithairWorld, node_id: u32) {
     world
         .make_cluster_request(node_id as usize, "POST", "/api/articles", Some(data))
         .await
-        .expect(&format!("Failed to write to node {}", node_id));
+        .unwrap_or_else(|_| panic!("Failed to write to node {}", node_id));
 
     assert!(world.last_response.is_some(), "No response from node {}", node_id);
     let response = world.last_response.as_ref().unwrap();
@@ -518,7 +518,7 @@ async fn when_create_articles_on_leader(world: &mut LithairWorld, count: u32) {
         world
             .make_cluster_request(0, "POST", "/api/articles", Some(data))
             .await
-            .expect(&format!("Failed to create article {}", i));
+            .unwrap_or_else(|_| panic!("Failed to create article {}", i));
     }
 
     println!("✅ {} articles créés sur le leader", count);
@@ -534,7 +534,7 @@ async fn when_read_from_node(world: &mut LithairWorld, node_id: u32) {
     world
         .make_cluster_request(node_id as usize, "GET", "/api/articles", None)
         .await
-        .expect(&format!("Failed to read from node {}", node_id));
+        .unwrap_or_else(|_| panic!("Failed to read from node {}", node_id));
 
     assert!(world.last_response.is_some(), "No response from node {}", node_id);
 
@@ -553,7 +553,7 @@ async fn then_all_nodes_have_same_data(world: &mut LithairWorld) {
         world
             .make_cluster_request(i, "GET", "/api/articles", None)
             .await
-            .expect(&format!("Failed to read from node {}", i));
+            .unwrap_or_else(|_| panic!("Failed to read from node {}", i));
 
         responses.push(world.last_response.clone());
     }
@@ -585,7 +585,7 @@ async fn then_data_replicated_on_all_nodes(world: &mut LithairWorld) {
         world
             .make_cluster_request(i, "GET", "/api/articles", None)
             .await
-            .expect(&format!("Node {} read failed", i));
+            .unwrap_or_else(|_| panic!("Node {} read failed", i));
 
         assert!(world.last_response.is_some(), "Node {} no response", i);
     }
@@ -628,7 +628,7 @@ async fn then_cluster_continues(world: &mut LithairWorld) {
     drop(test_data);
 
     for i in 0..cluster_size {
-        if let Ok(_) = world.make_cluster_request(i, "GET", "/health", None).await {
+        if world.make_cluster_request(i, "GET", "/health", None).await.is_ok() {
             working_nodes += 1;
         }
     }
@@ -764,7 +764,7 @@ async fn when_create_products_on_leader(world: &mut LithairWorld, count: u32) {
         world
             .make_real_cluster_request(0, "POST", "/api/products", Some(data))
             .await
-            .expect(&format!("Failed to create product {}", i));
+            .unwrap_or_else(|_| panic!("Failed to create product {}", i));
     }
 
     println!("✅ Created {} products on leader", count);
@@ -1195,12 +1195,11 @@ async fn then_hash_chain_valid_on_all_real_nodes(world: &mut LithairWorld) {
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
 
-                            if line_num > 0 {
-                                if previous_hash.is_some() && event_prev_hash != previous_hash {
-                                    println!("⚠️ Node {} chain break at line {}", i, line_num);
-                                    valid_chain = false;
-                                    break;
-                                }
+                            if line_num > 0
+                                && previous_hash.is_some() && event_prev_hash != previous_hash {
+                                println!("⚠️ Node {} chain break at line {}", i, line_num);
+                                valid_chain = false;
+                                break;
                             }
 
                             previous_hash = event

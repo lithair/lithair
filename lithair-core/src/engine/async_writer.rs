@@ -20,7 +20,7 @@ pub struct AsyncWriter {
 }
 
 /// Configuration du mode de durabilité
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DurabilityMode {
     /// ⚡ Performance maximale : batch + flush périodique (10ms)
     /// ⚠️  RISQUE : Perte max 10ms de données en cas de crash brutal
@@ -31,14 +31,8 @@ pub enum DurabilityMode {
     /// ✅ GARANTIE : Aucune perte de données, même en cas de crash
     /// 📊 Usage : Production, données critiques, event-sourcing
     /// ⚠️  Note : 10-100x plus lent, mais c'est le STANDARD des DB sérieuses
+    #[default]
     MaxDurability,
-}
-
-impl Default for DurabilityMode {
-    fn default() -> Self {
-        // 🛡️ PAR DÉFAUT = Durabilité maximale
-        DurabilityMode::MaxDurability
-    }
 }
 
 impl AsyncWriter {

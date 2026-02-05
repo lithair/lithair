@@ -46,7 +46,7 @@ impl lithair_core::model_inspect::Inspectable for Product {
         match field_name {
             "id" => serde_json::to_value(&self.id).ok(),
             "sku" => serde_json::to_value(&self.sku).ok(),
-            "price" => serde_json::to_value(&self.price).ok(),
+            "price" => serde_json::to_value(self.price).ok(),
             _ => None,
         }
     }
@@ -75,7 +75,7 @@ impl lithair_core::model_inspect::Inspectable for Order {
             "id" => serde_json::to_value(&self.id).ok(),
             "user_id" => serde_json::to_value(&self.user_id).ok(),
             "product_ids" => serde_json::to_value(&self.product_ids).ok(),
-            "total" => serde_json::to_value(&self.total).ok(),
+            "total" => serde_json::to_value(self.total).ok(),
             _ => None,
         }
     }

@@ -58,7 +58,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Complete Lithair configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LithairConfig {
     pub server: ServerConfig,
     pub sessions: SessionsConfig,
@@ -72,22 +72,6 @@ pub struct LithairConfig {
     pub raft: RaftConfig,
 }
 
-impl Default for LithairConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            sessions: SessionsConfig::default(),
-            rbac: RbacConfig::default(),
-            replication: ReplicationConfig::default(),
-            admin: AdminConfig::default(),
-            logging: LoggingConfig::default(),
-            storage: StorageConfig::default(),
-            performance: PerformanceConfig::default(),
-            frontend: FrontendConfig::default(),
-            raft: RaftConfig::default(),
-        }
-    }
-}
 
 impl LithairConfig {
     /// Load configuration with full supersedence chain

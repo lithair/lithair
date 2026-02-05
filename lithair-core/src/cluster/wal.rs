@@ -456,13 +456,13 @@ impl WriteAheadLog {
 
         // Serialize with rkyv
         let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         // Calculate checksum (simple FNV-1a for speed)
         let checksum = Self::fnv1a_hash(&bytes);
 
         // Open file for append
-        let mut file = OpenOptions::new().write(true).append(true).open(&self.path)?;
+        let mut file = OpenOptions::new().append(true).open(&self.path)?;
 
         // Write header: length (8 bytes) + checksum (8 bytes)
         file.write_all(&(bytes.len() as u64).to_le_bytes())?;
@@ -492,7 +492,7 @@ impl WriteAheadLog {
 
         let _guard = self.write_lock.write().await;
 
-        let mut file = OpenOptions::new().write(true).append(true).open(&self.path)?;
+        let mut file = OpenOptions::new().append(true).open(&self.path)?;
 
         let mut total_written = 0u64;
         let mut last_index = 0u64;
@@ -500,7 +500,7 @@ impl WriteAheadLog {
         for entry in entries {
             let wal_entry = WalEntry::from_log_entry(entry);
             let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             let checksum = Self::fnv1a_hash(&bytes);
 
@@ -609,7 +609,7 @@ impl WriteAheadLog {
         for entry in &entries_to_keep {
             let wal_entry = WalEntry::from_log_entry(entry);
             let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             let checksum = Self::fnv1a_hash(&bytes);
 

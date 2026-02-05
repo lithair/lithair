@@ -166,6 +166,7 @@ impl LithairServer {
     /// 2. Config file (config.toml)
     /// 3. Environment variables
     /// 4. Code (builder methods)
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> LithairServerBuilder {
         LithairServerBuilder::new()
     }
@@ -611,8 +612,8 @@ impl LithairServer {
         }
 
         // Initialize Raft cluster if configured
-        if self.config.raft.enabled && self.node_id.is_some() && !self.cluster_peers.is_empty() {
-            let node_id = self.node_id.unwrap();
+        if self.config.raft.enabled && !self.cluster_peers.is_empty() {
+            if let Some(node_id) = self.node_id {
             let port = self.config.server.port;
 
             log::info!("🗳️ Initializing Raft cluster...");
@@ -715,7 +716,7 @@ impl LithairServer {
                             // Get list of desynced followers
                             let desynced = batcher_clone.get_desynced_followers(commit_index).await;
 
-                            if !desynced.is_empty() && snapshot_manager.is_some() {
+                            if !desynced.is_empty() { if let Some(ref snap_mgr_inner) = snapshot_manager {
                                 // Filter out followers that are in cooldown
                                 let cooldown_duration =
                                     Duration::from_secs(replication_config.resync_cooldown_secs);
@@ -738,7 +739,7 @@ impl LithairServer {
                                         eligible_for_resync.len()
                                     );
 
-                                    let snapshot_mgr = snapshot_manager.as_ref().unwrap().clone();
+                                    let snapshot_mgr = snap_mgr_inner.clone();
                                     let models_clone = Arc::clone(&models);
                                     let batcher_for_resync = Arc::clone(&batcher_clone);
 
@@ -819,6 +820,7 @@ impl LithairServer {
                                         }
                                     }
                                 }
+                            }
                             }
                         }
 
@@ -992,6 +994,7 @@ impl LithairServer {
                 });
                 log::info!("🔄 Background replication task started");
             }
+            }
         }
 
         // Build server address
@@ -1119,8 +1122,7 @@ impl LithairServer {
         // Wildcard matching
         if pattern.contains('*') {
             // Handle `**` (multi-segment wildcard) - matches everything after
-            if pattern.ends_with("/**") {
-                let prefix = &pattern[..pattern.len() - 3];
+            if let Some(prefix) = pattern.strip_suffix("/**") {
                 return path.starts_with(prefix);
             }
 
@@ -1480,7 +1482,7 @@ impl LithairServer {
         if method == hyper::Method::GET && !self.frontend_engines.is_empty() {
             // Sort prefixes by length (longest first) for proper matching
             let mut prefixes: Vec<_> = self.frontend_engines.keys().collect();
-            prefixes.sort_by(|a, b| b.len().cmp(&a.len()));
+            prefixes.sort_by_key(|b| std::cmp::Reverse(b.len()));
 
             // Special handling for _astro assets: try ALL frontends as fallback
             // This allows admin frontend to reference /_astro/* even when served at /secure-xy3xir/
@@ -1523,19 +1525,15 @@ impl LithairServer {
                             parts.uri = asset_path.parse().unwrap();
                             let modified_req = hyper::Request::from_parts(parts, body);
 
-                            // Call frontend server (returns BoxBody, includes 404 if not found)
-                            match frontend_server.handle_request(modified_req).await {
-                                Ok(response) => {
-                                    // Convert BoxBody to Full<Bytes>
-                                    use http_body_util::BodyExt;
-                                    let (parts, body) = response.into_parts();
-                                    let bytes = body.collect().await.unwrap().to_bytes();
-                                    let full_response =
-                                        hyper::Response::from_parts(parts, Full::new(bytes));
-                                    return Ok(full_response);
-                                }
-                                Err(_) => {} // Infallible, won't happen
-                            }
+                            // Call frontend server (returns BoxBody, Infallible error)
+                            let Ok(response) = frontend_server.handle_request(modified_req).await;
+                            // Convert BoxBody to Full<Bytes>
+                            use http_body_util::BodyExt;
+                            let (parts, body) = response.into_parts();
+                            let bytes = body.collect().await.unwrap().to_bytes();
+                            let full_response =
+                                hyper::Response::from_parts(parts, Full::new(bytes));
+                            return Ok(full_response);
                         }
                         // Break after first prefix match to avoid consuming req multiple times
                         break;
@@ -2527,11 +2525,7 @@ impl LithairServer {
         let followers_json: Vec<serde_json::Value> = followers_stats
             .iter()
             .map(|f| {
-                let lag = if commit_index > f.last_replicated_index {
-                    commit_index - f.last_replicated_index
-                } else {
-                    0
-                };
+                let lag = commit_index.saturating_sub(f.last_replicated_index);
 
                 serde_json::json!({
                     "address": f.address,
@@ -3248,7 +3242,7 @@ impl LithairServer {
 
         // ==================== CLUSTER MODE WITH CONSENSUS LOG ====================
         // If we have a consensus log (cluster mode), write operations go through Raft
-        if is_write && self.consensus_log.is_some() && !self.cluster_peers.is_empty() {
+        if is_write && !self.cluster_peers.is_empty() { if let Some(ref consensus_log_ref) = self.consensus_log {
             log::debug!(
                 "🔄 CLUSTER MODE: {} {} (create={}, update={}, delete={})",
                 method,
@@ -3275,7 +3269,7 @@ impl LithairServer {
             }
 
             // We are the leader - process through consensus log
-            let consensus_log = self.consensus_log.as_ref().unwrap();
+            let consensus_log = consensus_log_ref;
 
             // Read request body for write operations
             use http_body_util::BodyExt;
@@ -3574,6 +3568,7 @@ impl LithairServer {
                         .unwrap());
                 }
             }
+        }
         }
 
         // ==================== SINGLE-NODE MODE OR READ OPERATIONS ====================

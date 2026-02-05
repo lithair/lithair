@@ -28,7 +28,7 @@ impl TestServer {
 
         // 3. Lancer le serveur
         let process = Command::new("../target/release/lithair")
-            .args(&["--config", &config_path])
+            .args(["--config", &config_path])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -64,7 +64,7 @@ path = "/tmp/lithair-test-{}"
         if !binary_path.exists() {
             println!("⚠️ Binary not found, compiling...");
             let status = Command::new("cargo")
-                .args(&["build", "--release", "--bin", "lithair"])
+                .args(["build", "--release", "--bin", "lithair"])
                 .current_dir("../")
                 .status()
                 .map_err(|e| format!("Failed to compile: {}", e))?;
