@@ -48,27 +48,27 @@
 //! }
 //! ```
 
-pub mod assets;
-pub mod server;
 pub mod admin;
+pub mod assets;
 pub mod config;
 pub mod engine;
+pub mod server;
 
-pub use assets::StaticAsset;
-pub use server::{AssetServer, FrontendServer};
 pub use admin::AssetAdminHandler;
+pub use assets::StaticAsset;
 pub use config::FrontendConfig;
 pub use engine::FrontendEngine;
+pub use server::{AssetServer, FrontendServer};
 
 // Utility functions are defined below
 
 use crate::engine::Event;
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use uuid::Uuid;
-use anyhow::Result;
 
 /// Frontend events for asset management with event sourcing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,11 +91,7 @@ pub enum FrontendEvent {
         updated_at: DateTime<Utc>,
     },
     /// Asset was deleted
-    AssetDeleted {
-        id: Uuid,
-        path: String,
-        deleted_at: DateTime<Utc>,
-    },
+    AssetDeleted { id: Uuid, path: String, deleted_at: DateTime<Utc> },
     /// Asset was deployed to a specific version
     AssetDeployed {
         id: Uuid,
@@ -166,12 +162,7 @@ impl Event for FrontendEvent {
                 // For now, remove from version history
                 state.version_history.remove(id);
             }
-            FrontendEvent::AssetDeployed {
-                id: _,
-                version: _,
-                deployment_source,
-                deployed_at,
-            } => {
+            FrontendEvent::AssetDeployed { id: _, version: _, deployment_source, deployed_at } => {
                 state.deployments.insert(deployment_source.clone(), *deployed_at);
             }
         }
@@ -206,7 +197,7 @@ mod tests {
     fn test_frontend_event_asset_updated() {
         let mut state = FrontendState::default();
         let asset_id = Uuid::new_v4();
-        
+
         // Create asset first
         let create_event = FrontendEvent::AssetCreated {
             id: asset_id,
@@ -291,7 +282,6 @@ async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
     base_path: &str,
     directory: P,
 ) -> Result<usize> {
-
     let dir_path = directory.as_ref();
     if !dir_path.exists() {
         return Err(anyhow::anyhow!("Directory does not exist: {}", dir_path.display()));
@@ -300,7 +290,11 @@ async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
     let mut loaded_count = 0;
 
     // Walk through directory recursively
-    fn walk_dir(dir: &Path, base_path_disk: &Path, assets: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
+    fn walk_dir(
+        dir: &Path,
+        base_path_disk: &Path,
+        assets: &mut Vec<(String, Vec<u8>)>,
+    ) -> Result<()> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -324,21 +318,29 @@ async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
     walk_dir(dir_path, dir_path, &mut assets_vec)?;
 
     // Create or get virtual host location
-    let location = state.virtual_hosts.entry(host_id.to_string()).or_insert_with(|| {
-        VirtualHostLocation {
-            host_id: host_id.to_string(),
-            base_path: base_path.to_string(),
-            assets: HashMap::new(),
-            path_index: HashMap::new(),
-            static_root: dir_path.to_string_lossy().to_string(),
-            active: true,
-        }
-    });
+    let location =
+        state
+            .virtual_hosts
+            .entry(host_id.to_string())
+            .or_insert_with(|| VirtualHostLocation {
+                host_id: host_id.to_string(),
+                base_path: base_path.to_string(),
+                assets: HashMap::new(),
+                path_index: HashMap::new(),
+                static_root: dir_path.to_string_lossy().to_string(),
+                active: true,
+            });
 
     // Load assets into virtual host location
     for (web_path, content) in assets_vec {
         let asset = StaticAsset::new(web_path.clone(), content);
-        log::info!("📄 [{}] {} ({} bytes, {})", host_id, web_path, asset.size_bytes, asset.mime_type);
+        log::info!(
+            "📄 [{}] {} ({} bytes, {})",
+            host_id,
+            web_path,
+            asset.size_bytes,
+            asset.mime_type
+        );
 
         location.assets.insert(asset.id, asset.clone());
         location.path_index.insert(web_path, asset.id);
@@ -347,4 +349,3 @@ async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
 
     Ok(loaded_count)
 }
-

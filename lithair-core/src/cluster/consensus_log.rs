@@ -147,9 +147,7 @@ impl ConsensusLog {
         let mut entries = self.entries.write().await;
         // Insert in sorted order by log_id to handle concurrent requests
         // that might acquire the lock out of index order
-        let pos = entries.iter()
-            .position(|e| e.log_id > entry.log_id)
-            .unwrap_or(entries.len());
+        let pos = entries.iter().position(|e| e.log_id > entry.log_id).unwrap_or(entries.len());
         entries.insert(pos, entry.clone());
 
         entry
@@ -165,9 +163,7 @@ impl ConsensusLog {
             let existing = log.iter().find(|e| e.log_id == entry.log_id);
             if existing.is_none() {
                 // Insert in order
-                let pos = log.iter()
-                    .position(|e| e.log_id > entry.log_id)
-                    .unwrap_or(log.len());
+                let pos = log.iter().position(|e| e.log_id > entry.log_id).unwrap_or(log.len());
                 log.insert(pos, entry);
             }
         }
@@ -260,11 +256,7 @@ impl ConsensusLog {
     /// Get entries from a given index for replication to followers
     pub async fn get_entries_from(&self, from_index: u64) -> Vec<LogEntry> {
         let entries = self.entries.read().await;
-        entries
-            .iter()
-            .filter(|e| e.log_id.index >= from_index)
-            .cloned()
-            .collect()
+        entries.iter().filter(|e| e.log_id.index >= from_index).cloned().collect()
     }
 
     /// Get the last log entry
@@ -325,10 +317,12 @@ mod tests {
     async fn test_log_append() {
         let log = ConsensusLog::new();
 
-        let entry = log.append(CrudOperation::Create {
-            model_path: "/api/products".to_string(),
-            data: serde_json::json!({"name": "Test"}),
-        }).await;
+        let entry = log
+            .append(CrudOperation::Create {
+                model_path: "/api/products".to_string(),
+                data: serde_json::json!({"name": "Test"}),
+            })
+            .await;
 
         assert_eq!(entry.log_id.term, 1);
         assert_eq!(entry.log_id.index, 1);
@@ -338,21 +332,27 @@ mod tests {
     async fn test_log_ordering() {
         let log = ConsensusLog::new();
 
-        let entry1 = log.append(CrudOperation::Create {
-            model_path: "/api/products".to_string(),
-            data: serde_json::json!({"id": "1"}),
-        }).await;
+        let entry1 = log
+            .append(CrudOperation::Create {
+                model_path: "/api/products".to_string(),
+                data: serde_json::json!({"id": "1"}),
+            })
+            .await;
 
-        let entry2 = log.append(CrudOperation::Update {
-            model_path: "/api/products".to_string(),
-            id: "1".to_string(),
-            data: serde_json::json!({"id": "1", "name": "Updated"}),
-        }).await;
+        let entry2 = log
+            .append(CrudOperation::Update {
+                model_path: "/api/products".to_string(),
+                id: "1".to_string(),
+                data: serde_json::json!({"id": "1", "name": "Updated"}),
+            })
+            .await;
 
-        let entry3 = log.append(CrudOperation::Delete {
-            model_path: "/api/products".to_string(),
-            id: "1".to_string(),
-        }).await;
+        let entry3 = log
+            .append(CrudOperation::Delete {
+                model_path: "/api/products".to_string(),
+                id: "1".to_string(),
+            })
+            .await;
 
         assert!(entry1.log_id < entry2.log_id);
         assert!(entry2.log_id < entry3.log_id);
@@ -365,12 +365,14 @@ mod tests {
         log.append(CrudOperation::Create {
             model_path: "/api/products".to_string(),
             data: serde_json::json!({"id": "1"}),
-        }).await;
+        })
+        .await;
 
         log.append(CrudOperation::Create {
             model_path: "/api/products".to_string(),
             data: serde_json::json!({"id": "2"}),
-        }).await;
+        })
+        .await;
 
         // Nothing committed yet
         let unapplied = log.get_unapplied_entries().await;

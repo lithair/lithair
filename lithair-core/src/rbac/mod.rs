@@ -37,7 +37,7 @@ mod traits;
 
 // Public exports
 pub use auth_handlers::{handle_rbac_login, handle_rbac_logout};
-pub use config::{ServerRbacConfig, RbacUser, DeclarativePermissionChecker};
+pub use config::{DeclarativePermissionChecker, RbacUser, ServerRbacConfig};
 pub use context::{AuthContext, RbacContext};
 pub use middleware::RbacMiddleware;
 pub use permissions::{FieldPermission, Permission, PermissionLevel};
@@ -66,13 +66,13 @@ pub trait PermissionChecker: Send + Sync {
 pub struct RbacConfig {
     /// Whether RBAC is enabled for this model
     pub enabled: bool,
-    
+
     /// Available roles for this model
     pub roles: Vec<String>,
-    
+
     /// Default role for unauthenticated users
     pub default_role: String,
-    
+
     /// Authentication provider configuration
     pub provider: ProviderConfig,
 }
@@ -93,25 +93,25 @@ impl RbacConfig {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Enable RBAC
     pub fn enabled(mut self) -> Self {
         self.enabled = true;
         self
     }
-    
+
     /// Set available roles
     pub fn with_roles(mut self, roles: Vec<String>) -> Self {
         self.roles = roles;
         self
     }
-    
+
     /// Set default role
     pub fn with_default_role(mut self, role: String) -> Self {
         self.default_role = role;
         self
     }
-    
+
     /// Set authentication provider
     pub fn with_provider(mut self, provider: ProviderConfig) -> Self {
         self.provider = provider;

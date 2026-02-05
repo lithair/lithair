@@ -4,7 +4,7 @@
 //! desynced followers. When a follower is too far behind (>1000 ops or >5s),
 //! it's more efficient to send a full snapshot than replay all missing ops.
 
-use rkyv::{Archive, Deserialize, Serialize, rancor::Error as RkyvError};
+use rkyv::{rancor::Error as RkyvError, Archive, Deserialize, Serialize};
 use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -36,9 +36,7 @@ pub struct SnapshotData {
 
 impl SnapshotData {
     pub fn new() -> Self {
-        Self {
-            models: Vec::new(),
-        }
+        Self { models: Vec::new() }
     }
 
     /// Add model data to snapshot
@@ -82,10 +80,7 @@ impl SnapshotManager {
         // Try to load existing snapshot metadata
         let current_meta = Self::load_latest_meta(&snapshot_dir)?;
 
-        Ok(Self {
-            snapshot_dir,
-            current_meta,
-        })
+        Ok(Self { snapshot_dir, current_meta })
     }
 
     /// Create a new snapshot from current state
@@ -186,27 +181,21 @@ impl SnapshotManager {
         }
 
         // Parse data with rkyv zero-copy deserialization
-        let data = rkyv::from_bytes::<SnapshotData, RkyvError>(bytes)
-            .map_err(|e| {
-                log::error!(
-                    "Snapshot deserialization failed: {:?}, bytes_len={}",
-                    e, bytes.len()
-                );
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("rkyv deserialization failed: {:?}", e),
-                )
-            })?;
+        let data = rkyv::from_bytes::<SnapshotData, RkyvError>(bytes).map_err(|e| {
+            log::error!("Snapshot deserialization failed: {:?}, bytes_len={}", e, bytes.len());
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("rkyv deserialization failed: {:?}", e),
+            )
+        })?;
 
         // Write to disk
-        let data_path = self
-            .snapshot_dir
-            .join(format!("snapshot_{}.data", meta.last_included_index));
+        let data_path =
+            self.snapshot_dir.join(format!("snapshot_{}.data", meta.last_included_index));
         std::fs::write(&data_path, bytes)?;
 
-        let meta_path = self
-            .snapshot_dir
-            .join(format!("snapshot_{}.meta", meta.last_included_index));
+        let meta_path =
+            self.snapshot_dir.join(format!("snapshot_{}.meta", meta.last_included_index));
         let meta_json = serde_json::to_string_pretty(&meta)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         std::fs::write(&meta_path, meta_json)?;
@@ -251,10 +240,7 @@ impl SnapshotManager {
             .filter_map(|entry| {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.starts_with("snapshot_") && name.ends_with(".data") {
-                    name.strip_prefix("snapshot_")?
-                        .strip_suffix(".data")?
-                        .parse()
-                        .ok()
+                    name.strip_prefix("snapshot_")?.strip_suffix(".data")?.parse().ok()
                 } else {
                     None
                 }
@@ -386,11 +372,7 @@ mod tests {
         let data_files: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .ends_with(".data")
-            })
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".data"))
             .collect();
 
         assert_eq!(data_files.len(), 3);

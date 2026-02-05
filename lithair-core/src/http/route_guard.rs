@@ -14,14 +14,14 @@
 //! })
 //! ```
 
+use bytes::Bytes;
 #[allow(unused_imports)]
 use http_body_util::BodyExt;
-use hyper::{Request, Response, StatusCode, Method};
 use http_body_util::Full;
-use bytes::Bytes;
-use std::sync::Arc;
+use hyper::{Method, Request, Response, StatusCode};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 type Req = Request<hyper::body::Incoming>;
 type Resp = Response<Full<Bytes>>;
@@ -70,24 +70,21 @@ pub enum RouteGuard {
 impl std::fmt::Debug for RouteGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RouteGuard::RequireAuth { redirect_to, exclude } => {
-                f.debug_struct("RequireAuth")
-                    .field("redirect_to", redirect_to)
-                    .field("exclude", exclude)
-                    .finish()
-            }
-            RouteGuard::RequireRole { roles, redirect_to } => {
-                f.debug_struct("RequireRole")
-                    .field("roles", roles)
-                    .field("redirect_to", redirect_to)
-                    .finish()
-            }
-            RouteGuard::RateLimit { max_requests, window_secs } => {
-                f.debug_struct("RateLimit")
-                    .field("max_requests", max_requests)
-                    .field("window_secs", window_secs)
-                    .finish()
-            }
+            RouteGuard::RequireAuth { redirect_to, exclude } => f
+                .debug_struct("RequireAuth")
+                .field("redirect_to", redirect_to)
+                .field("exclude", exclude)
+                .finish(),
+            RouteGuard::RequireRole { roles, redirect_to } => f
+                .debug_struct("RequireRole")
+                .field("roles", roles)
+                .field("redirect_to", redirect_to)
+                .finish(),
+            RouteGuard::RateLimit { max_requests, window_secs } => f
+                .debug_struct("RateLimit")
+                .field("max_requests", max_requests)
+                .field("window_secs", window_secs)
+                .finish(),
             RouteGuard::Custom(_) => f.debug_struct("Custom").finish(),
         }
     }
@@ -125,7 +122,7 @@ impl RouteGuard {
         redirect_to: &Option<String>,
         exclude: &[String],
     ) -> Result<GuardResult, anyhow::Error> {
-        use crate::session::{SessionStore, PersistentSessionStore};
+        use crate::session::{PersistentSessionStore, SessionStore};
 
         let path = req.uri().path();
 
@@ -148,27 +145,25 @@ impl RouteGuard {
         };
 
         // Extract token from Authorization header or Cookie
-        let token = req.headers()
+        let token = req
+            .headers()
             .get(hyper::header::AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
             .and_then(|h| h.strip_prefix("Bearer "))
             .or_else(|| {
-                req.headers()
-                    .get(hyper::header::COOKIE)
-                    .and_then(|h| h.to_str().ok())
-                    .and_then(|cookies| {
-                        cookies.split(';')
+                req.headers().get(hyper::header::COOKIE).and_then(|h| h.to_str().ok()).and_then(
+                    |cookies| {
+                        cookies
+                            .split(';')
                             .find(|c| c.trim().starts_with("session_token="))
                             .and_then(|c| c.split('=').nth(1))
-                    })
+                    },
+                )
             });
 
         // Validate token
-        let is_valid = if let Some(token) = token {
-            store.get(token).await?.is_some()
-        } else {
-            false
-        };
+        let is_valid =
+            if let Some(token) = token { store.get(token).await?.is_some() } else { false };
 
         if is_valid {
             Ok(GuardResult::Allow)
@@ -186,7 +181,7 @@ impl RouteGuard {
 <body><p>Redirecting to login...</p></body></html>"#,
                             redirect_url
                         ))))
-                        .unwrap()
+                        .unwrap(),
                 ))
             } else {
                 Ok(GuardResult::Deny(
@@ -194,7 +189,7 @@ impl RouteGuard {
                         .status(StatusCode::UNAUTHORIZED)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(r#"{"error":"Authentication required"}"#)))
-                        .unwrap()
+                        .unwrap(),
                 ))
             }
         }

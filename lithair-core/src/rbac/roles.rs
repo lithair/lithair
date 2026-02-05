@@ -7,10 +7,10 @@ use std::collections::HashSet;
 pub struct Role {
     /// Role name
     pub name: String,
-    
+
     /// Role description
     pub description: Option<String>,
-    
+
     /// Permissions granted by this role
     pub permissions: HashSet<String>,
 }
@@ -18,25 +18,21 @@ pub struct Role {
 impl Role {
     /// Create a new role
     pub fn new(name: String) -> Self {
-        Self {
-            name,
-            description: None,
-            permissions: HashSet::new(),
-        }
+        Self { name, description: None, permissions: HashSet::new() }
     }
-    
+
     /// Set description
     pub fn with_description(mut self, description: String) -> Self {
         self.description = Some(description);
         self
     }
-    
+
     /// Add a permission
     pub fn with_permission(mut self, permission: String) -> Self {
         self.permissions.insert(permission);
         self
     }
-    
+
     /// Check if role has a permission
     pub fn has_permission(&self, permission: &str) -> bool {
         self.permissions.contains(permission)
@@ -48,7 +44,7 @@ impl Role {
 pub struct RoleDefinition {
     /// Available roles
     pub roles: Vec<String>,
-    
+
     /// Default role for unauthenticated users
     pub default_role: String,
 }
@@ -67,7 +63,7 @@ impl RoleDefinition {
     pub fn new(roles: Vec<String>, default_role: String) -> Self {
         Self { roles, default_role }
     }
-    
+
     /// Check if a role exists
     pub fn has_role(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role)

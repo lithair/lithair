@@ -7,22 +7,22 @@ use std::collections::HashMap;
 pub struct AuthContext {
     /// User identifier (from LDAP, OAuth, etc.)
     pub user_id: Option<String>,
-    
+
     /// User roles (application-level)
     pub roles: Vec<String>,
-    
+
     /// User groups (from identity provider like LDAP)
     pub groups: Vec<String>,
-    
+
     /// Whether the user is authenticated
     pub authenticated: bool,
-    
+
     /// Authentication provider name
     pub provider: String,
-    
+
     /// Whether MFA was verified (if required)
     pub mfa_verified: bool,
-    
+
     /// Provider-specific metadata
     pub metadata: HashMap<String, String>,
 }
@@ -46,7 +46,7 @@ impl AuthContext {
     pub fn unauthenticated() -> Self {
         Self::default()
     }
-    
+
     /// Create an authenticated context
     pub fn authenticated(user_id: String, roles: Vec<String>, provider: String) -> Self {
         Self {
@@ -59,17 +59,17 @@ impl AuthContext {
             metadata: HashMap::new(),
         }
     }
-    
+
     /// Check if user has a specific role
     pub fn has_role(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role)
     }
-    
+
     /// Check if user is in a specific group
     pub fn has_group(&self, group: &str) -> bool {
         self.groups.iter().any(|g| g == group)
     }
-    
+
     /// Check if user has role OR group
     pub fn has_role_or_group(&self, name: &str) -> bool {
         self.has_role(name) || self.has_group(name)
@@ -81,10 +81,10 @@ impl AuthContext {
 pub struct RbacContext {
     /// Authentication context
     pub auth: AuthContext,
-    
+
     /// Request path
     pub path: String,
-    
+
     /// HTTP method
     pub method: String,
 }

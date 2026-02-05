@@ -1,5 +1,5 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
+use cucumber::{given, then, when};
 
 /// Start a REAL Lithair HTTP server for E2E tests
 ///
@@ -14,8 +14,7 @@ use crate::features::world::LithairWorld;
 #[given("a Lithair server is started")]
 async fn given_lithair_server(world: &mut LithairWorld) {
     // 1. Initialize persistence
-    let temp_path = world.init_temp_storage().await
-        .expect("Init storage failed");
+    let temp_path = world.init_temp_storage().await.expect("Init storage failed");
 
     // 2. Start the REAL HTTP server
     world.start_server(0, "test").await  // Port 0 = random port

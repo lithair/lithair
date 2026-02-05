@@ -1,10 +1,10 @@
-use cucumber::given;
-use cucumber::when;
-use cucumber::then;
 use crate::features::world::LithairWorld;
-use std::time::{Duration, Instant};
-use serde_json::json;
+use cucumber::given;
+use cucumber::then;
+use cucumber::when;
 use lithair_core::engine::Event;
+use serde_json::json;
+use std::time::{Duration, Instant};
 
 // ==================== GIVEN STEPS ====================
 
@@ -31,8 +31,12 @@ async fn preload_articles_in_memory(world: &mut LithairWorld, count: usize) {
     let elapsed = start.elapsed();
     let throughput = count as f64 / elapsed.as_secs_f64();
 
-    println!("✅ {} articles chargés en mémoire en {:.2}s ({:.0} articles/sec)",
-        count, elapsed.as_secs_f64(), throughput);
+    println!(
+        "✅ {} articles chargés en mémoire en {:.2}s ({:.0} articles/sec)",
+        count,
+        elapsed.as_secs_f64(),
+        throughput
+    );
 }
 
 // ==================== WHEN STEPS ====================
@@ -56,9 +60,7 @@ async fn read_random_articles(world: &mut LithairWorld, count: usize) {
         let client = client.clone();
         let url = format!("{}/api/articles", base_url);
 
-        let task = tokio::spawn(async move {
-            client.get(&url).send().await
-        });
+        let task = tokio::spawn(async move { client.get(&url).send().await });
 
         tasks.push(task);
 
@@ -104,7 +106,8 @@ async fn write_articles_directly(world: &mut LithairWorld, count: usize) {
                 "title": format!("Article {}", i),
                 "content": format!("Content {}", i),
                 "timestamp": chrono::Utc::now().to_rfc3339()
-            }).to_string();
+            })
+            .to_string();
 
             let _ = fs.append_event(&event_json);
 
@@ -124,8 +127,12 @@ async fn write_articles_directly(world: &mut LithairWorld, count: usize) {
         metrics.last_throughput = throughput;
     }
 
-    println!("✅ {} événements écrits en {:.2}s ({:.0} events/sec)",
-        count, elapsed.as_secs_f64(), throughput);
+    println!(
+        "✅ {} événements écrits en {:.2}s ({:.0} events/sec)",
+        count,
+        elapsed.as_secs_f64(),
+        throughput
+    );
 }
 
 #[when(expr = "je crée {int} articles via HTTP POST")]
@@ -155,10 +162,7 @@ async fn create_articles_via_http(world: &mut LithairWorld, count: usize) {
                 "content": format!("Content {}", i),
             });
 
-            client.post(&url)
-                .json(&article)
-                .send()
-                .await
+            client.post(&url).json(&article).send().await
         });
 
         tasks.push(task);
@@ -182,14 +186,25 @@ async fn create_articles_via_http(world: &mut LithairWorld, count: usize) {
         metrics.last_throughput = throughput;
     }
 
-    println!("✅ {} articles créés (E2E) en {:.2}s ({:.0} articles/sec)",
-        count, elapsed.as_secs_f64(), throughput);
+    println!(
+        "✅ {} articles créés (E2E) en {:.2}s ({:.0} articles/sec)",
+        count,
+        elapsed.as_secs_f64(),
+        throughput
+    );
 }
 
 #[when(expr = "je lance {int}% lectures et {int}% écritures pendant {int} secondes")]
-async fn mixed_workload(world: &mut LithairWorld, read_pct: usize, write_pct: usize, duration_secs: usize) {
-    println!("🔀 Workload mixte: {}% lectures, {}% écritures pendant {}s",
-        read_pct, write_pct, duration_secs);
+async fn mixed_workload(
+    world: &mut LithairWorld,
+    read_pct: usize,
+    write_pct: usize,
+    duration_secs: usize,
+) {
+    println!(
+        "🔀 Workload mixte: {}% lectures, {}% écritures pendant {}s",
+        read_pct, write_pct, duration_secs
+    );
 
     let client = reqwest::Client::new();
     let base_url = {
@@ -265,7 +280,8 @@ async fn check_avg_read_latency(world: &mut LithairWorld, max_ms: usize) {
     assert!(
         avg_latency < max_ms as f64,
         "❌ Latence moyenne {:.2}ms > {}ms requis",
-        avg_latency, max_ms
+        avg_latency,
+        max_ms
     );
 
     println!("✅ Latence moyenne {:.2}ms < {}ms ✓", avg_latency, max_ms);
@@ -279,7 +295,8 @@ async fn check_read_throughput(world: &mut LithairWorld, min_rps: usize) {
     assert!(
         throughput > min_rps as f64,
         "❌ Throughput {:.0} req/sec < {} requis",
-        throughput, min_rps
+        throughput,
+        min_rps
     );
 
     println!("✅ Throughput {:.0} req/sec > {} req/sec ✓", throughput, min_rps);
@@ -293,9 +310,10 @@ async fn measure_write_throughput(world: &mut LithairWorld) {
 
 #[then("tous les articles doivent être en mémoire")]
 async fn check_articles_in_memory(world: &mut LithairWorld) {
-    let count = world.engine.with_state(|state| {
-        state.data.articles.len()
-    }).expect("Impossible de lire l'état");
+    let count = world
+        .engine
+        .with_state(|state| state.data.articles.len())
+        .expect("Impossible de lire l'état");
 
     println!("✅ {} articles présents en mémoire", count);
 }

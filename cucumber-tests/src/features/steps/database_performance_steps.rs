@@ -1,9 +1,9 @@
-use cucumber::{given, when, then};
 use crate::features::world::{LithairWorld, TestArticle};
-use std::time::{Instant, Duration};
-use std::sync::{Arc, RwLock};
-use tokio::time::sleep;
+use cucumber::{given, then, when};
 use lithair_core::engine::{AsyncWriter, EventStore};
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 // ==================== GIVEN STEPS ====================
 
@@ -21,9 +21,8 @@ async fn server_with_persistence(world: &mut LithairWorld, port: u16, path: Stri
     std::fs::create_dir_all(&path).expect("Failed to create persistence dir");
 
     // Créer EventStore + AsyncWriter
-    let event_store = Arc::new(RwLock::new(
-        EventStore::new(&path).expect("EventStore init failed")
-    ));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(&path).expect("EventStore init failed")));
     let async_writer = AsyncWriter::new(event_store, 1000);
 
     // Stocker dans world
@@ -79,7 +78,12 @@ async fn create_articles_fast(world: &mut LithairWorld, count: usize) {
     let elapsed = start.elapsed();
     let throughput = count as f64 / elapsed.as_secs_f64();
 
-    println!("✅ {} articles created en {:.2}s ({:.0} articles/sec)", count, elapsed.as_secs_f64(), throughput);
+    println!(
+        "✅ {} articles created en {:.2}s ({:.0} articles/sec)",
+        count,
+        elapsed.as_secs_f64(),
+        throughput
+    );
 
     // Sauvegarder métriques
     let mut metrics = world.metrics.lock().await;
@@ -240,9 +244,8 @@ async fn restart_server_from_path(world: &mut LithairWorld, path: String) {
     println!("🔄 Restarting server from {}...", path);
 
     // Recréer EventStore + AsyncWriter depuis les fichiers existants
-    let event_store = Arc::new(RwLock::new(
-        EventStore::new(&path).expect("EventStore recovery failed")
-    ));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(&path).expect("EventStore recovery failed")));
     let async_writer = AsyncWriter::new(event_store.clone(), 1000);
 
     *world.async_writer.lock().await = Some(async_writer);
@@ -279,7 +282,11 @@ async fn event_log_exists(world: &mut LithairWorld) {
 }
 
 #[then(expr = "the events.raftlog file must contain exactly {int} {string} events")]
-async fn event_log_contains_exact_count(world: &mut LithairWorld, count: usize, event_type: String) {
+async fn event_log_contains_exact_count(
+    world: &mut LithairWorld,
+    count: usize,
+    event_type: String,
+) {
     let persist_path = {
         let metrics = world.metrics.lock().await;
         metrics.persist_path.clone()
@@ -288,10 +295,7 @@ async fn event_log_contains_exact_count(world: &mut LithairWorld, count: usize, 
     let log_file = format!("{}/events.raftlog", persist_path);
     let content = std::fs::read_to_string(&log_file).expect("Failed to read events.raftlog");
 
-    let actual_count = content
-        .lines()
-        .filter(|line| line.contains(&event_type))
-        .count();
+    let actual_count = content.lines().filter(|line| line.contains(&event_type)).count();
 
     assert_eq!(
         actual_count, count,
@@ -330,7 +334,8 @@ async fn time_under_limit(world: &mut LithairWorld, max_seconds: u64) {
     assert!(
         actual_seconds <= max_seconds,
         "❌ Total time {}s > {}s max",
-        actual_seconds, max_seconds
+        actual_seconds,
+        max_seconds
     );
 
     println!("✅ Total time {}s <= {}s", actual_seconds, max_seconds);
@@ -348,11 +353,7 @@ async fn all_events_persisted(world: &mut LithairWorld, count: usize) {
 
     let actual = content.lines().filter(|l| !l.trim().is_empty()).count();
 
-    assert!(
-        actual >= count,
-        "❌ Expected at least {} events, found {}",
-        count, actual
-    );
+    assert!(actual >= count, "❌ Expected at least {} events, found {}", count, actual);
 
     println!("✅ {} events persisted", actual);
 }
@@ -393,11 +394,7 @@ async fn all_checksums_match(_world: &mut LithairWorld) {
 async fn final_article_count(world: &mut LithairWorld, expected: usize) {
     let actual = world.scc2_articles.internal_map().len();
 
-    assert_eq!(
-        actual, expected,
-        "❌ Expected {} active articles, found {}",
-        expected, actual
-    );
+    assert_eq!(actual, expected, "❌ Expected {} active articles, found {}", expected, actual);
 
     println!("✅ Final state: {} articles actifs", actual);
 }
@@ -417,7 +414,8 @@ async fn articles_readable_immediately(world: &mut LithairWorld, count: usize) {
     assert!(
         actual >= count,
         "❌ Only {} articles readable immediately (expected {})",
-        actual, count
+        actual,
+        count
     );
 
     println!("✅ {} articles readable immediately", actual);
@@ -433,10 +431,7 @@ async fn file_not_empty(world: &mut LithairWorld) {
     let log_file = format!("{}/events.raftlog", persist_path);
     let metadata = std::fs::metadata(&log_file).expect("Failed to get file metadata");
 
-    assert!(
-        metadata.len() > 0,
-        "❌ File empty!"
-    );
+    assert!(metadata.len() > 0, "❌ File empty!");
 
     println!("✅ File not empty: {} bytes", metadata.len());
 }
@@ -453,10 +448,7 @@ async fn data_on_physical_disk(world: &mut LithairWorld) {
     // Vérifier que le fichier existe et n'est pas vide
     let content = std::fs::read_to_string(&log_file).expect("Failed to read file");
 
-    assert!(
-        !content.is_empty(),
-        "❌ No data on disk!"
-    );
+    assert!(!content.is_empty(), "❌ No data on disk!");
 
     println!("✅ Data present on physical disk");
 }
@@ -476,7 +468,8 @@ async fn articles_present_after_recovery(world: &mut LithairWorld, count: usize)
     assert!(
         actual >= count,
         "❌ Only {} articles after recovery (expected {})",
-        actual, count
+        actual,
+        count
     );
 
     println!("✅ {} articles present after recovery", actual);
@@ -495,10 +488,7 @@ async fn no_flushed_data_lost(world: &mut LithairWorld) {
     let content = std::fs::read_to_string(&log_file).expect("Failed to read file");
     let line_count = content.lines().filter(|l| !l.trim().is_empty()).count();
 
-    assert!(
-        line_count > 0,
-        "❌ Data lost! File empty after crash."
-    );
+    assert!(line_count > 0, "❌ Data lost! File empty after crash.");
 
     println!("✅ No flushed data lost ({} events recovered)", line_count);
 }

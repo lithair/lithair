@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
 use crate::features::world::{LithairWorld, TestArticle};
-use lithair_core::engine::{AsyncWriter, Engine, EngineConfig, EngineError, EventStore, FileStorage, Event};
+use lithair_core::engine::{
+    AsyncWriter, Engine, EngineConfig, EngineError, Event, EventStore, FileStorage,
+};
 
 // ==================== TEST RECOVERY ====================
 
@@ -33,11 +35,12 @@ async fn restart_engine(world: &mut LithairWorld, persist_path: String) {
     println!("🔄 Redémarrage du moteur depuis: {}", persist_path);
 
     // Créer un nouveau EventStore + AsyncWriter
-    let event_store = Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
-    let _async_writer = Arc::new(tokio::sync::Mutex::new(Some(AsyncWriter::new(event_store.clone(), 1000))));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(&persist_path).expect("EventStore init failed")));
+    let _async_writer =
+        Arc::new(tokio::sync::Mutex::new(Some(AsyncWriter::new(event_store.clone(), 1000))));
 
-    *world.async_writer.lock().await =
-        Some(AsyncWriter::new(event_store, 1000));
+    *world.async_writer.lock().await = Some(AsyncWriter::new(event_store, 1000));
 
     println!("✅ Moteur redémarré");
 }
@@ -592,7 +595,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
             let mut duplicates = 0usize;
 
             for _ in 0..repeats {
-                let mut engine_guard = engine_clone.lock().await;
+                let engine_guard = engine_clone.lock().await;
                 let key = event_clone.aggregate_id().unwrap_or("global".to_string());
                 match engine_guard.apply_event(key, event_clone.clone()) {
                     Ok(_) => applied += 1,
@@ -624,7 +627,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
 
     // Forcer un flush des événements persistés
     {
-        let mut engine_guard = engine.lock().await;
+        let engine_guard = engine.lock().await;
         engine_guard.flush().expect("Échec flush moteur dédup concurrente");
     }
 

@@ -4,9 +4,9 @@
 //! to handler functions with parameter extraction and middleware support.
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use super::{HttpMethod, HttpRequest, HttpResponse};
 
@@ -28,7 +28,11 @@ pub type RouteHandler<S> = Arc<dyn Fn(&HttpRequest, &PathParams, &S) -> HttpResp
 ///
 /// Handlers receive the request, path parameters, and state, and return a future that resolves to a response
 pub type AsyncRouteHandler<S> = Arc<
-    dyn Fn(&HttpRequest, &PathParams, &S) -> Pin<Box<dyn Future<Output = HttpResponse> + Send + 'static>>
+    dyn Fn(
+            &HttpRequest,
+            &PathParams,
+            &S,
+        ) -> Pin<Box<dyn Future<Output = HttpResponse> + Send + 'static>>
         + Send
         + Sync,
 >;
@@ -164,9 +168,7 @@ impl<S> AsyncRoute<S> {
         Self {
             method,
             pattern: pattern.to_string(),
-            handler: Arc::new(move |req, params, state| {
-                Box::pin(handler(req, params, state))
-            }),
+            handler: Arc::new(move |req, params, state| Box::pin(handler(req, params, state))),
             middleware: Vec::new(),
         }
     }
@@ -224,7 +226,12 @@ impl<S> AsyncRoute<S> {
     }
 
     /// Execute this async route with the given request and state
-    pub async fn execute_async(&self, request: &HttpRequest, params: &PathParams, state: &S) -> HttpResponse {
+    pub async fn execute_async(
+        &self,
+        request: &HttpRequest,
+        params: &PathParams,
+        state: &S,
+    ) -> HttpResponse {
         // Run middleware first
         for middleware in &self.middleware {
             if let Some(response) = middleware(request) {
@@ -337,11 +344,11 @@ pub struct EnhancedRouter<A: crate::engine::RaftstoneApplication> {
 impl<S> Router<S> {
     /// Create a new router
     pub fn new() -> Self {
-        Self { 
+        Self {
             routes: Vec::new(),
             async_routes: Vec::new(),
             not_found_handler: None,
-            _error_handler: None
+            _error_handler: None,
         }
     }
 

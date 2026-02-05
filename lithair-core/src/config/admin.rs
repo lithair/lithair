@@ -43,7 +43,9 @@ impl Default for AdminConfig {
 }
 
 impl AdminConfig {
-    pub fn merge(&mut self, other: Self) { *self = other; }
+    pub fn merge(&mut self, other: Self) {
+        *self = other;
+    }
 
     /// Apply environment variables and handle special cases (random generation, persistence)
     pub fn apply_env_vars(&mut self) {
@@ -78,12 +80,17 @@ impl AdminConfig {
         if let Ok(token) = env::var("RS_DEV_RELOAD_TOKEN") {
             if !token.is_empty() {
                 self.dev_reload_token = Some(token.clone());
-                log::warn!("⚠️  DEV RELOAD TOKEN ENABLED: {} (DEVELOPMENT ONLY - NOT FOR PRODUCTION!)", token);
+                log::warn!(
+                    "⚠️  DEV RELOAD TOKEN ENABLED: {} (DEVELOPMENT ONLY - NOT FOR PRODUCTION!)",
+                    token
+                );
             }
         }
     }
 
-    pub fn validate(&self) -> Result<()> { Ok(()) }
+    pub fn validate(&self) -> Result<()> {
+        Ok(())
+    }
 
     /// Generate a cryptographically secure random admin path
     /// Format: /<random-prefix>-<6-chars>

@@ -3,13 +3,13 @@
 //! Routes `/api/` requests to the appropriate DeclarativeHttpHandler instances based on path.
 //! This allows separation of concerns: Frontend assets, SSR pages, and API backend routes.
 
-use crate::http::{DeclarativeHttpHandler, Req, Resp, not_found_response};
-use crate::lifecycle::LifecycleAware;
 use crate::consensus::ReplicatedModel;
 use crate::http::declarative::HttpExposable;
+use crate::http::{not_found_response, DeclarativeHttpHandler, Req, Resp};
+use crate::lifecycle::LifecycleAware;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 /// Generic API Router that maps URL paths to DeclarativeHttpHandler instances
@@ -26,7 +26,11 @@ pub struct ApiRouter {
 
 /// Trait wrapper to enable storing different DeclarativeHttpHandler types in the same collection
 trait ApiHandlerWrapper: Send + Sync {
-    fn handle_request<'a>(&'a self, req: Req, path_segments: Vec<String>) -> Pin<Box<dyn Future<Output = Result<Resp, std::convert::Infallible>> + Send + 'a>>;
+    fn handle_request<'a>(
+        &'a self,
+        req: Req,
+        path_segments: Vec<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<Resp, std::convert::Infallible>> + Send + 'a>>;
 }
 
 /// Implementation for any DeclarativeHttpHandler type wrapped in Arc
@@ -34,7 +38,11 @@ impl<T> ApiHandlerWrapper for Arc<DeclarativeHttpHandler<T>>
 where
     T: Clone + Send + Sync + HttpExposable + LifecycleAware + ReplicatedModel + 'static,
 {
-    fn handle_request<'a>(&'a self, req: Req, path_segments: Vec<String>) -> Pin<Box<dyn Future<Output = Result<Resp, std::convert::Infallible>> + Send + 'a>> {
+    fn handle_request<'a>(
+        &'a self,
+        req: Req,
+        path_segments: Vec<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<Resp, std::convert::Infallible>> + Send + 'a>> {
         Box::pin(async move {
             // Convert Vec<String> to Vec<&str>
             let path_refs: Vec<&str> = path_segments.iter().map(|s| s.as_str()).collect();
@@ -46,9 +54,7 @@ where
 impl ApiRouter {
     /// Create a new empty API router
     pub fn new() -> Self {
-        Self {
-            handlers: HashMap::new(),
-        }
+        Self { handlers: HashMap::new() }
     }
 
     /// Register a DeclarativeHttpHandler for a specific API path prefix

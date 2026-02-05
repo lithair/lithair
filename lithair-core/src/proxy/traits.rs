@@ -1,8 +1,8 @@
 //! Core traits for proxy functionality
 
-use hyper::{Request, Response};
-use http_body_util::combinators::BoxBody;
 use bytes::Bytes;
+use http_body_util::combinators::BoxBody;
+use hyper::{Request, Response};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -13,15 +13,15 @@ type Body = BoxBody<Bytes, hyper::Error>;
 pub type ProxyResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// Trait for handling proxy requests
-/// 
+///
 /// This trait provides the core interface for all proxy types (forward, reverse, transparent).
 /// Implementations should handle request validation, filtering, and forwarding.
 pub trait ProxyHandler: Send + Sync {
     /// Handle an incoming proxy request
-    /// 
+    ///
     /// # Arguments
     /// * `req` - The incoming HTTP request
-    /// 
+    ///
     /// # Returns
     /// A future that resolves to the proxy response
     fn handle_request(
@@ -30,10 +30,10 @@ pub trait ProxyHandler: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = ProxyResult<Response<Body>>> + Send + 'static>>;
 
     /// Check if a request should be blocked
-    /// 
+    ///
     /// # Arguments
     /// * `req` - The request to check
-    /// 
+    ///
     /// # Returns
     /// `true` if the request should be blocked, `false` otherwise
     fn should_block(

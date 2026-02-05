@@ -6,8 +6,52 @@ on:
   pull_request:
 
 jobs:
-  build-test-smoke:
+  security:
+    name: Security Audit
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-audit-
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo audit
+        run: cargo audit
+
+      - name: Run cargo deny (licenses and advisories)
+        run: cargo deny check advisories licenses
+        continue-on-error: true  # Don't fail on license issues initially
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+
+  build-test-smoke:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container: rust:1-bookworm
     timeout-minutes: 30
 
@@ -18,7 +62,7 @@ jobs:
       - name: Install system deps
         run: |
           apt-get update -qq
-          apt-get install -y -qq curl jq lsof python3 build-essential
+          apt-get install -y -qq curl jq lsof python3 build-essential nodejs npm
 
       - name: Cache cargo
         uses: actions/cache@v4

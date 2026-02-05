@@ -242,7 +242,11 @@ impl SnapshotStore {
     }
 
     /// Check if a snapshot should be created based on event count
-    pub fn should_create_snapshot(&self, current_event_count: usize, snapshot_event_count: usize) -> bool {
+    pub fn should_create_snapshot(
+        &self,
+        current_event_count: usize,
+        snapshot_event_count: usize,
+    ) -> bool {
         let events_since_snapshot = current_event_count.saturating_sub(snapshot_event_count);
         events_since_snapshot >= self.snapshot_threshold
     }
@@ -262,9 +266,7 @@ impl SnapshotStore {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    let dir_name = path.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string());
+                    let dir_name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_string());
 
                     if let Some(name) = dir_name {
                         if name != "global" {
@@ -319,10 +321,7 @@ impl RecoveryContext {
         let snapshot = snapshot_store.load_snapshot(aggregate_id)?;
         let events_to_skip = snapshot.as_ref().map(|s| s.metadata.event_count).unwrap_or(0);
 
-        Ok(Self {
-            snapshot,
-            events_to_skip,
-        })
+        Ok(Self { snapshot, events_to_skip })
     }
 
     /// Check if we have a snapshot to restore from
@@ -364,12 +363,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_corruption_detection() {
-        let mut snapshot = Snapshot::new(
-            None,
-            500,
-            None,
-            r#"{"value": 42}"#.to_string(),
-        );
+        let mut snapshot = Snapshot::new(None, 500, None, r#"{"value": 42}"#.to_string());
 
         // Corrupt the state
         snapshot.state = r#"{"value": 99}"#.to_string();
@@ -475,12 +469,7 @@ mod tests {
 
         // Create several snapshots
         for agg in &["articles", "users", "products"] {
-            let snapshot = Snapshot::new(
-                Some(agg.to_string()),
-                100,
-                None,
-                "{}".to_string(),
-            );
+            let snapshot = Snapshot::new(Some(agg.to_string()), 100, None, "{}".to_string());
             store.save_snapshot(&snapshot).unwrap();
         }
 

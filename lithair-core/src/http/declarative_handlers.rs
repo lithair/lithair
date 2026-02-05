@@ -28,14 +28,13 @@
 //! };
 //! ```
 
-use crate::http::{AutoAdminConfig, Req, Resp};
 use crate::http::firewall::Firewall;
+use crate::http::{AutoAdminConfig, Req, Resp};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::future::Future;
 use std::pin::Pin;
-
 
 /// Declarative Handler Configuration - Pure Data-First Approach
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,39 +184,24 @@ impl AdminHandlerConfig {
 impl ApiProxyConfig {
     /// Create declarative API proxy configuration
     pub fn declarative() -> Self {
-        Self {
-            auto_crud: true,
-            proxy_targets: Vec::new(),
-        }
+        Self { auto_crud: true, proxy_targets: Vec::new() }
     }
 }
 
 impl FrontendHandlerConfig {
     /// Create memory-first frontend configuration
     pub fn memory_first() -> Self {
-        Self {
-            memory_first: true,
-            dev_mode: false,
-            fallback_file: Some("index.html".to_string()),
-        }
+        Self { memory_first: true, dev_mode: false, fallback_file: Some("index.html".to_string()) }
     }
 
     /// Create development mode configuration
     pub fn dev_mode() -> Self {
-        Self {
-            memory_first: false,
-            dev_mode: true,
-            fallback_file: Some("index.html".to_string()),
-        }
+        Self { memory_first: false, dev_mode: true, fallback_file: Some("index.html".to_string()) }
     }
 
     /// Create hybrid mode configuration
     pub fn hybrid_mode() -> Self {
-        Self {
-            memory_first: true,
-            dev_mode: true,
-            fallback_file: Some("index.html".to_string()),
-        }
+        Self { memory_first: true, dev_mode: true, fallback_file: Some("index.html".to_string()) }
     }
 }
 
@@ -248,9 +232,7 @@ pub trait CustomHandlerCallback<T>: Send + Sync {
 
 impl<T> CustomHandlerRegistry<T> {
     pub fn new() -> Self {
-        Self {
-            handlers: HashMap::new(),
-        }
+        Self { handlers: HashMap::new() }
     }
 
     /// Register a custom handler with a callback
@@ -283,8 +265,6 @@ impl<T> CustomHandlerRegistry<T> {
         }
     }
 }
-
-
 
 /// Declarative Handler System - Processes configuration and routes requests automatically
 pub struct DeclarativeHandlerSystem {
@@ -350,16 +330,16 @@ impl DeclarativeHandlerSystem {
         match &handler.handler_type {
             HandlerType::Admin(config) => {
                 self.execute_admin_handler(req, server, config, firewall).await
-            },
+            }
             HandlerType::ApiProxy(config) => {
                 self.execute_api_proxy_handler(req, server, config).await
-            },
+            }
             HandlerType::Frontend(config) => {
                 self.execute_frontend_handler(req, server, config).await
-            },
+            }
             HandlerType::Custom(config) => {
                 self.execute_custom_handler(req, server, config, custom_registry).await
-            },
+            }
         }
     }
 
@@ -381,8 +361,15 @@ impl DeclarativeHandlerSystem {
 
         // Use the existing automatic admin system
         if let Some(auto_response) = handle_auto_admin_endpoints_with_reload(
-            method, path, &req, server, &config.auto_admin, firewall
-        ).await {
+            method,
+            path,
+            &req,
+            server,
+            &config.auto_admin,
+            firewall,
+        )
+        .await
+        {
             Ok(auto_response)
         } else {
             Ok(crate::http::not_found_response("admin endpoint"))

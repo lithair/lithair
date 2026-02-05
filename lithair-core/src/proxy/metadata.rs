@@ -22,7 +22,10 @@ pub struct EntryMetadata {
     pub category: Option<String>,
 
     /// Source URL where this entry was fetched from
-    #[cfg_attr(feature = "openapi", schema(example = "https://reputation.alienvault.com/reputation.txt"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "https://reputation.alienvault.com/reputation.txt")
+    )]
     pub source_url: String,
 
     /// Timestamp when this entry was last updated (Unix timestamp)
@@ -45,11 +48,7 @@ impl EntryMetadata {
     }
 
     /// Create metadata for an external source
-    pub fn from_source(
-        source_name: String,
-        category: Option<String>,
-        source_url: String,
-    ) -> Self {
+    pub fn from_source(source_name: String, category: Option<String>, source_url: String) -> Self {
         Self {
             source_name,
             category,
@@ -63,10 +62,8 @@ impl EntryMetadata {
 
     /// Update the timestamp to now
     pub fn touch(&mut self) {
-        self.last_updated = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        self.last_updated =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     }
 }
 
@@ -90,10 +87,7 @@ impl FilterEntry {
 
     /// Create a manual filter entry
     pub fn manual(value: String, category: Option<String>) -> Self {
-        Self {
-            value,
-            metadata: EntryMetadata::manual(category),
-        }
+        Self { value, metadata: EntryMetadata::manual(category) }
     }
 
     /// Create a filter entry from an external source
@@ -103,10 +97,7 @@ impl FilterEntry {
         category: Option<String>,
         source_url: String,
     ) -> Self {
-        Self {
-            value,
-            metadata: EntryMetadata::from_source(source_name, category, source_url),
-        }
+        Self { value, metadata: EntryMetadata::from_source(source_name, category, source_url) }
     }
 }
 
@@ -123,18 +114,12 @@ pub struct BlockResult {
 impl BlockResult {
     /// Create a non-blocked result
     pub fn allowed() -> Self {
-        Self {
-            blocked: false,
-            block_info: None,
-        }
+        Self { blocked: false, block_info: None }
     }
 
     /// Create a blocked result with info
     pub fn blocked(entry: FilterEntry, category: String) -> Self {
-        Self {
-            blocked: true,
-            block_info: Some(BlockInfo { entry, category }),
-        }
+        Self { blocked: true, block_info: Some(BlockInfo { entry, category }) }
     }
 }
 
@@ -225,10 +210,7 @@ mod tests {
             "https://firehol.org".to_string(),
         );
 
-        let info = BlockInfo {
-            entry,
-            category: "block_source_ips".to_string(),
-        };
+        let info = BlockInfo { entry, category: "block_source_ips".to_string() };
 
         let message = info.create_message();
         assert!(message.contains("Source IP"));

@@ -155,10 +155,7 @@ async fn main() -> Result<()> {
 
     let args = ClusterArgs::parse();
     let peer_ports = args.peers.clone().unwrap_or_default();
-    let peers: Vec<String> = peer_ports
-        .iter()
-        .map(|p| format!("127.0.0.1:{}", p))
-        .collect();
+    let peers: Vec<String> = peer_ports.iter().map(|p| format!("127.0.0.1:{}", p)).collect();
 
     // Data directory - can be overridden via env var
     let base_dir = std::env::var("STRESS_TEST_DATA").unwrap_or_else(|_| "data".to_string());

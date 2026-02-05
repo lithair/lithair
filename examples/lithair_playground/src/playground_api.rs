@@ -41,9 +41,8 @@ impl PlaygroundState {
 
     /// Get comprehensive cluster status by querying all nodes
     pub async fn get_cluster_status(&self) -> Result<serde_json::Value> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(2)).build()?;
 
         // Query local node health
         let local_health = self.get_local_health().await;
@@ -89,16 +88,21 @@ impl PlaygroundState {
         }
 
         // Find leader
-        let leader_port = if local_health.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(false) {
-            Some(self.port)
-        } else {
-            peer_statuses.iter()
-                .find(|p| p.health.as_ref()
-                    .and_then(|h| h.get("is_leader"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false))
-                .map(|p| p.port)
-        };
+        let leader_port =
+            if local_health.get("is_leader").and_then(|v| v.as_bool()).unwrap_or(false) {
+                Some(self.port)
+            } else {
+                peer_statuses
+                    .iter()
+                    .find(|p| {
+                        p.health
+                            .as_ref()
+                            .and_then(|h| h.get("is_leader"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                    })
+                    .map(|p| p.port)
+            };
 
         Ok(serde_json::json!({
             "node_id": self.node_id,
@@ -133,7 +137,10 @@ impl PlaygroundState {
     }
 
     /// Start a benchmark
-    pub async fn start_benchmark(&self, mut req: Request<hyper::body::Incoming>) -> Result<serde_json::Value> {
+    pub async fn start_benchmark(
+        &self,
+        mut req: Request<hyper::body::Incoming>,
+    ) -> Result<serde_json::Value> {
         // Parse config from request body
         let body = req.body_mut().collect().await?.to_bytes();
         let config: BenchmarkConfig = if body.is_empty() {
@@ -154,11 +161,8 @@ impl PlaygroundState {
         }
 
         // Create and start benchmark
-        let engine = BenchmarkEngine::new(
-            config.clone(),
-            self.port,
-            self.event_broadcaster.clone(),
-        );
+        let engine =
+            BenchmarkEngine::new(config.clone(), self.port, self.event_broadcaster.clone());
 
         let engine_clone = engine.clone();
         let status_storage = self.last_benchmark_status.clone();
@@ -231,20 +235,14 @@ impl PlaygroundState {
 
     /// Check data consistency across all cluster nodes
     pub async fn check_consistency(&self) -> Result<serde_json::Value> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build()?;
 
-        let all_ports: Vec<u16> = std::iter::once(self.port)
-            .chain(self.peer_ports.iter().copied())
-            .collect();
+        let all_ports: Vec<u16> =
+            std::iter::once(self.port).chain(self.peer_ports.iter().copied()).collect();
 
         // Endpoints to check
-        let endpoints = [
-            ("/api/items", "items"),
-            ("/api/orders", "orders"),
-            ("/api/logs", "logs"),
-        ];
+        let endpoints = [("/api/items", "items"), ("/api/orders", "orders"), ("/api/logs", "logs")];
 
         let mut results = Vec::new();
         let mut node_data: std::collections::HashMap<String, Vec<(u16, usize, String)>> =
@@ -262,7 +260,8 @@ impl PlaygroundState {
                             // Sort items by ID before hashing to ensure consistent comparison
                             // regardless of return order from different nodes
                             let hash = if let Some(arr) = data.as_array() {
-                                let mut ids: Vec<String> = arr.iter()
+                                let mut ids: Vec<String> = arr
+                                    .iter()
                                     .filter_map(|item| item.get("id").and_then(|v| v.as_str()))
                                     .map(|s| s.to_string())
                                     .collect();
@@ -275,7 +274,11 @@ impl PlaygroundState {
                         }
                     }
                     Ok(resp) => {
-                        node_data.get_mut(*name).unwrap().push((*port, 0, format!("HTTP {}", resp.status())));
+                        node_data.get_mut(*name).unwrap().push((
+                            *port,
+                            0,
+                            format!("HTTP {}", resp.status()),
+                        ));
                     }
                     Err(e) => {
                         node_data.get_mut(*name).unwrap().push((*port, 0, format!("Error: {}", e)));
@@ -294,12 +297,15 @@ impl PlaygroundState {
             let first_count = counts.first().copied().unwrap_or(0);
             let all_same_count = counts.iter().all(|c| *c == first_count);
 
-            let node_details: Vec<serde_json::Value> = data.iter()
-                .map(|(port, count, hash)| serde_json::json!({
-                    "port": port,
-                    "count": count,
-                    "hash": &hash[..8.min(hash.len())] // First 8 chars of hash
-                }))
+            let node_details: Vec<serde_json::Value> = data
+                .iter()
+                .map(|(port, count, hash)| {
+                    serde_json::json!({
+                        "port": port,
+                        "count": count,
+                        "hash": &hash[..8.min(hash.len())] // First 8 chars of hash
+                    })
+                })
                 .collect();
 
             results.push(serde_json::json!({
@@ -310,7 +316,8 @@ impl PlaygroundState {
             }));
         }
 
-        let all_consistent = results.iter()
+        let all_consistent = results
+            .iter()
             .all(|r| r.get("consistent").and_then(|v| v.as_bool()).unwrap_or(false));
 
         Ok(serde_json::json!({
@@ -356,7 +363,7 @@ pub struct MigrationBeginRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MigrationStepRequest {
     pub migration_id: String,
-    pub step_type: String,  // "add_model", "add_field", "remove_field", "rename_field", etc.
+    pub step_type: String, // "add_model", "add_field", "remove_field", "rename_field", etc.
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -379,15 +386,17 @@ pub struct MigrationFinalizeRequest {
 
 impl PlaygroundState {
     /// Begin a new migration through the leader
-    pub async fn migration_begin(&self, mut req: Request<hyper::body::Incoming>) -> Result<serde_json::Value> {
+    pub async fn migration_begin(
+        &self,
+        mut req: Request<hyper::body::Incoming>,
+    ) -> Result<serde_json::Value> {
         let body = req.body_mut().collect().await?.to_bytes();
         let request: MigrationBeginRequest = serde_json::from_slice(&body)?;
 
         // Find leader and send migration begin
         let leader_port = self.find_leader_port().await?;
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
 
         // Create version structs
         let from_version = request.from_version.unwrap_or_else(|| "0.0.0".to_string());
@@ -414,10 +423,7 @@ impl PlaygroundState {
         });
 
         let url = format!("http://127.0.0.1:{}/_raft/migrate", leader_port);
-        let resp = client.post(&url)
-            .json(&operation)
-            .send()
-            .await?;
+        let resp = client.post(&url).json(&operation).send().await?;
 
         if resp.status().is_success() {
             let result = resp.json::<serde_json::Value>().await?;
@@ -439,14 +445,16 @@ impl PlaygroundState {
     }
 
     /// Apply a migration step through the leader
-    pub async fn migration_step(&self, mut req: Request<hyper::body::Incoming>) -> Result<serde_json::Value> {
+    pub async fn migration_step(
+        &self,
+        mut req: Request<hyper::body::Incoming>,
+    ) -> Result<serde_json::Value> {
         let body = req.body_mut().collect().await?.to_bytes();
         let request: MigrationStepRequest = serde_json::from_slice(&body)?;
 
         let leader_port = self.find_leader_port().await?;
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
 
         // Build schema change based on step_type
         let schema_change = match request.step_type.as_str() {
@@ -506,10 +514,7 @@ impl PlaygroundState {
         });
 
         let url = format!("http://127.0.0.1:{}/_raft/migrate", leader_port);
-        let resp = client.post(&url)
-            .json(&operation)
-            .send()
-            .await?;
+        let resp = client.post(&url).json(&operation).send().await?;
 
         if resp.status().is_success() {
             let result = resp.json::<serde_json::Value>().await?;
@@ -531,14 +536,16 @@ impl PlaygroundState {
     }
 
     /// Commit a migration through the leader
-    pub async fn migration_commit(&self, mut req: Request<hyper::body::Incoming>) -> Result<serde_json::Value> {
+    pub async fn migration_commit(
+        &self,
+        mut req: Request<hyper::body::Incoming>,
+    ) -> Result<serde_json::Value> {
         let body = req.body_mut().collect().await?.to_bytes();
         let request: MigrationFinalizeRequest = serde_json::from_slice(&body)?;
 
         let leader_port = self.find_leader_port().await?;
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
 
         // Generate checksum (simplified - in real impl would compute from all steps)
         let checksum = format!("commit_{}", chrono::Utc::now().timestamp());
@@ -551,10 +558,7 @@ impl PlaygroundState {
         });
 
         let url = format!("http://127.0.0.1:{}/_raft/migrate", leader_port);
-        let resp = client.post(&url)
-            .json(&operation)
-            .send()
-            .await?;
+        let resp = client.post(&url).json(&operation).send().await?;
 
         if resp.status().is_success() {
             let result = resp.json::<serde_json::Value>().await?;
@@ -575,14 +579,16 @@ impl PlaygroundState {
     }
 
     /// Rollback a migration through the leader
-    pub async fn migration_rollback(&self, mut req: Request<hyper::body::Incoming>) -> Result<serde_json::Value> {
+    pub async fn migration_rollback(
+        &self,
+        mut req: Request<hyper::body::Incoming>,
+    ) -> Result<serde_json::Value> {
         let body = req.body_mut().collect().await?.to_bytes();
         let request: MigrationFinalizeRequest = serde_json::from_slice(&body)?;
 
         let leader_port = self.find_leader_port().await?;
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
 
         let operation = serde_json::json!({
             "MigrationRollback": {
@@ -593,10 +599,7 @@ impl PlaygroundState {
         });
 
         let url = format!("http://127.0.0.1:{}/_raft/migrate", leader_port);
-        let resp = client.post(&url)
-            .json(&operation)
-            .send()
-            .await?;
+        let resp = client.post(&url).json(&operation).send().await?;
 
         if resp.status().is_success() {
             let result = resp.json::<serde_json::Value>().await?;
@@ -637,9 +640,8 @@ impl PlaygroundState {
             return Ok(self.port);
         }
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()?;
+        let client =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(2)).build()?;
 
         // Check local node first
         let local_url = format!("http://127.0.0.1:{}/_raft/health", self.port);
@@ -669,9 +671,5 @@ impl PlaygroundState {
 
 /// Parse version string "1.2.3" into parts
 fn parse_version_part(version: &str, index: usize) -> u32 {
-    version
-        .split('.')
-        .nth(index)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0)
+    version.split('.').nth(index).and_then(|s| s.parse().ok()).unwrap_or(0)
 }

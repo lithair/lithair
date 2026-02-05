@@ -5,9 +5,7 @@
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
-use syn::{
-    parse2, Attribute, Data, DeriveInput, Fields, Ident, Meta,
-};
+use syn::{parse2, Attribute, Data, DeriveInput, Fields, Ident, Meta};
 
 /// Parse default value from #[db(default = X)] attribute
 fn extract_default_from_db_attr(attr: &Attribute) -> Option<String> {
@@ -126,10 +124,8 @@ pub fn lithair_model_impl(input: TokenStream) -> TokenStream {
         if let Some(default_val) = db_default_value {
             if !has_serde_default {
                 // Generate a default function name
-                let fn_name = Ident::new(
-                    &format!("__lithair_default_{}", field_name),
-                    Span::call_site(),
-                );
+                let fn_name =
+                    Ident::new(&format!("__lithair_default_{}", field_name), Span::call_site());
 
                 // Parse the default value to generate appropriate code
                 let default_expr: TokenStream = if default_val == "true" || default_val == "false" {
@@ -176,7 +172,8 @@ pub fn lithair_model_impl(input: TokenStream) -> TokenStream {
     }
 
     // Rebuild the struct with modified fields
-    let other_attrs_tokens: Vec<TokenStream> = other_attrs.iter().map(|a| a.to_token_stream()).collect();
+    let other_attrs_tokens: Vec<TokenStream> =
+        other_attrs.iter().map(|a| a.to_token_stream()).collect();
 
     // Add derives if not present
     let derive_additions = {

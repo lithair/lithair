@@ -35,9 +35,7 @@ impl PasswordHasherService {
     /// - Iterations: 2
     /// - Parallelism: 1
     pub fn new() -> Self {
-        Self {
-            argon2: Argon2::default(),
-        }
+        Self { argon2: Argon2::default() }
     }
 
     /// Hash a password using Argon2id
@@ -75,8 +73,8 @@ impl PasswordHasherService {
     /// assert!(!hasher.verify_password("wrong_password", &hash).unwrap());
     /// ```
     pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool, PasswordError> {
-        let parsed_hash = PasswordHash::new(hash)
-            .map_err(|e| PasswordError::InvalidHash(e.to_string()))?;
+        let parsed_hash =
+            PasswordHash::new(hash).map_err(|e| PasswordError::InvalidHash(e.to_string()))?;
 
         match self.argon2.verify_password(password.as_bytes(), &parsed_hash) {
             Ok(()) => Ok(true),
@@ -112,7 +110,9 @@ impl std::fmt::Display for PasswordError {
         match self {
             PasswordError::HashingFailed(msg) => write!(f, "Password hashing failed: {}", msg),
             PasswordError::InvalidHash(msg) => write!(f, "Invalid password hash: {}", msg),
-            PasswordError::VerificationFailed(msg) => write!(f, "Password verification failed: {}", msg),
+            PasswordError::VerificationFailed(msg) => {
+                write!(f, "Password verification failed: {}", msg)
+            }
         }
     }
 }

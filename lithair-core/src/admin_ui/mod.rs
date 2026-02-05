@@ -1,10 +1,10 @@
 //! Embedded Data Admin UI
-//! 
+//!
 //! This module provides an embedded dashboard for browsing and managing data.
 //! Only compiled when the `admin-ui` feature is enabled.
-//! 
+//!
 //! # Usage
-//! 
+//!
 //! ```rust,ignore
 //! LithairServer::new()
 //!     .with_model::<Article>("./data/articles", "/api/articles")
@@ -28,22 +28,16 @@ pub struct AdminUiConfig {
 
 impl Default for AdminUiConfig {
     fn default() -> Self {
-        Self {
-            path: "/_data".to_string(),
-            require_auth: true,
-        }
+        Self { path: "/_data".to_string(), require_auth: true }
     }
 }
 
 impl AdminUiConfig {
     /// Create a new config with custom path
     pub fn new(path: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            require_auth: true,
-        }
+        Self { path: path.into(), require_auth: true }
     }
-    
+
     /// Disable authentication requirement (not recommended for production)
     pub fn no_auth(mut self) -> Self {
         self.require_auth = false;

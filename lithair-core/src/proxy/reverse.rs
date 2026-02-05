@@ -1,18 +1,18 @@
 //! Reverse proxy implementation (nginx-like)
-//! 
+//!
 //! Handles incoming requests and forwards them to backend services.
 
 use super::traits::{ProxyHandler, ProxyResult};
-use hyper::{Request, Response};
-use http_body_util::combinators::BoxBody;
 use bytes::Bytes;
+use http_body_util::combinators::BoxBody;
+use hyper::{Request, Response};
 use std::future::Future;
 use std::pin::Pin;
 
 type Body = BoxBody<Bytes, hyper::Error>;
 
 /// Reverse proxy handler
-/// 
+///
 /// Implements a reverse proxy that forwards incoming requests to backend services.
 /// Supports load balancing, health checks, and SSL termination.
 pub struct ReverseProxyHandler {

@@ -3,9 +3,9 @@
 //! Provides utilities for extracting and validating TLS certificate fingerprints.
 //! Used for advanced filtering based on server certificates (SHA-256, SHA-1).
 
-use sha2::{Digest as Sha2Digest, Sha256};
-use sha1::Sha1;
 use rustls::pki_types::CertificateDer;
+use sha1::Sha1;
+use sha2::{Digest as Sha2Digest, Sha256};
 
 /// TLS certificate fingerprint
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -35,11 +35,7 @@ impl CertificateFingerprint {
             hex::encode(result).to_lowercase()
         };
 
-        Self {
-            sha256,
-            sha1,
-            der: der.to_vec(),
-        }
+        Self { sha256, sha1, der: der.to_vec() }
     }
 
     /// Create fingerprint from rustls certificate
@@ -99,8 +95,7 @@ impl TlsFingerprinter {
         blocklist_sha256: &std::collections::HashSet<String>,
         blocklist_sha1: &std::collections::HashSet<String>,
     ) -> bool {
-        blocklist_sha256.contains(&fingerprint.sha256)
-            || blocklist_sha1.contains(&fingerprint.sha1)
+        blocklist_sha256.contains(&fingerprint.sha256) || blocklist_sha1.contains(&fingerprint.sha1)
     }
 }
 

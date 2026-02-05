@@ -3,8 +3,8 @@
 //! Note: QR code generation is handled directly by totp-rs via the 'qr' feature.
 //! This module provides convenience wrappers for Lithair's use case.
 
-use anyhow::Result;
 use super::TotpSecret;
+use anyhow::Result;
 
 /// Generate QR code for a TOTP secret
 ///
@@ -28,14 +28,13 @@ pub fn generate_qr_code(secret: &TotpSecret) -> Result<String> {
 mod tests {
     use super::*;
     use crate::mfa::TotpAlgorithm;
-    
+
     #[test]
     fn test_qr_code_generation() {
-        let secret = TotpSecret::generate_with_account(
-            TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin"
-        );
+        let secret =
+            TotpSecret::generate_with_account(TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin");
         let qr = generate_qr_code(&secret).unwrap();
-        
+
         // totp-rs returns base64-encoded image
         assert!(!qr.is_empty());
     }

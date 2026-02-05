@@ -427,9 +427,7 @@ impl<P: Permission> RBACMiddleware<P> {
     }
 
     fn base64url_decode(&self, data: &str) -> Result<Vec<u8>, String> {
-        URL_SAFE_NO_PAD
-            .decode(data)
-            .map_err(|e| format!("Base64 decode error: {}", e))
+        URL_SAFE_NO_PAD.decode(data).map_err(|e| format!("Base64 decode error: {}", e))
     }
 
     fn create_jwt_signature(&self, header: &str, payload: &str) -> String {

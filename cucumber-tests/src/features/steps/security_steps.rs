@@ -1,5 +1,5 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
+use cucumber::{given, then, when};
 use tokio::time::{sleep, Duration};
 
 // ==================== BACKGROUND STEPS ====================
@@ -10,7 +10,10 @@ async fn given_firewall_server(world: &mut LithairWorld) {
     world.init_temp_storage().await.expect("Init storage failed");
 
     // Start server with random port
-    world.start_server(0, "http_firewall_demo").await.expect("Failed to start server with firewall");
+    world
+        .start_server(0, "http_firewall_demo")
+        .await
+        .expect("Failed to start server with firewall");
     sleep(Duration::from_millis(300)).await;
 
     // Verify server responds
@@ -47,8 +50,12 @@ async fn when_ip_rate_limit(world: &mut LithairWorld, request_count: u32) {
     }
 
     let mut test_data = world.test_data.lock().await;
-    test_data.users.insert("blocked_requests".to_string(), serde_json::json!(blocked_count));
-    test_data.users.insert("success_requests".to_string(), serde_json::json!(success_count));
+    test_data
+        .users
+        .insert("blocked_requests".to_string(), serde_json::json!(blocked_count));
+    test_data
+        .users
+        .insert("success_requests".to_string(), serde_json::json!(success_count));
 
     println!("Requests: {} accepted, {} blocked", success_count, blocked_count);
 }
@@ -62,7 +69,10 @@ async fn then_ip_blocked(world: &mut LithairWorld) {
     let total = blocked + success;
     assert!(total > 0, "No requests processed");
 
-    println!("Requests processed: {} total ({} accepted, {} blocked)", total, success, blocked);
+    println!(
+        "Requests processed: {} total ({} accepted, {} blocked)",
+        total, success, blocked
+    );
 }
 
 #[then("a 429 error message should be returned")]
@@ -78,7 +88,11 @@ async fn then_incident_logged(_world: &mut LithairWorld) {
 // ==================== SCENARIO: RBAC ====================
 
 #[when(expr = "a {string} user accesses {string}")]
-async fn when_user_accesses_endpoint(world: &mut LithairWorld, user_role: String, endpoint: String) {
+async fn when_user_accesses_endpoint(
+    world: &mut LithairWorld,
+    user_role: String,
+    endpoint: String,
+) {
     println!("{} attempting to access {}", user_role, endpoint);
 
     // Make real HTTP request with role header
@@ -88,7 +102,9 @@ async fn when_user_accesses_endpoint(world: &mut LithairWorld, user_role: String
     let mut test_data = world.test_data.lock().await;
     test_data.users.insert("last_role".to_string(), serde_json::json!(user_role));
     test_data.users.insert("last_endpoint".to_string(), serde_json::json!(endpoint));
-    test_data.users.insert("access_granted".to_string(), serde_json::json!(result.is_ok()));
+    test_data
+        .users
+        .insert("access_granted".to_string(), serde_json::json!(result.is_ok()));
 }
 
 #[then("they should receive a 403 Forbidden error")]
@@ -106,14 +122,18 @@ async fn then_receive_200(_world: &mut LithairWorld) {
 #[when("I provide a valid JWT token")]
 async fn when_valid_jwt(world: &mut LithairWorld) {
     let mut test_data = world.test_data.lock().await;
-    test_data.tokens.insert("current_token".to_string(), "valid_jwt_token".to_string());
+    test_data
+        .tokens
+        .insert("current_token".to_string(), "valid_jwt_token".to_string());
     println!("Valid JWT token provided");
 }
 
 #[when("I provide an expired JWT token")]
 async fn when_expired_jwt(world: &mut LithairWorld) {
     let mut test_data = world.test_data.lock().await;
-    test_data.tokens.insert("current_token".to_string(), "expired_jwt_token".to_string());
+    test_data
+        .tokens
+        .insert("current_token".to_string(), "expired_jwt_token".to_string());
     println!("Expired JWT token provided");
 }
 
@@ -166,7 +186,9 @@ async fn when_call_endpoint_multiple_times(world: &mut LithairWorld, endpoint: S
     }
 
     let mut test_data = world.test_data.lock().await;
-    test_data.users.insert("endpoint_success".to_string(), serde_json::json!(success_count));
+    test_data
+        .users
+        .insert("endpoint_success".to_string(), serde_json::json!(success_count));
 
     println!("{} requests succeeded", success_count);
 }

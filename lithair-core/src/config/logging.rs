@@ -24,11 +24,15 @@ impl Default for LoggingConfig {
 }
 
 impl LoggingConfig {
-    pub fn merge(&mut self, other: Self) { *self = other; }
+    pub fn merge(&mut self, other: Self) {
+        *self = other;
+    }
     pub fn apply_env_vars(&mut self) {
         if let Ok(level) = env::var("RS_LOG_LEVEL") {
             self.level = level;
         }
     }
-    pub fn validate(&self) -> Result<()> { Ok(()) }
+    pub fn validate(&self) -> Result<()> {
+        Ok(())
+    }
 }

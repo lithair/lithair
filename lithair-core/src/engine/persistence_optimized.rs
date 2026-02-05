@@ -158,8 +158,16 @@ impl AsyncEventWriter {
         println!("   • Buffer size: {} bytes", config.buffer_size);
         println!("   • Flush interval: {}ms", config.flush_interval_ms);
         println!("   • Max events buffer: {}", config.max_events_buffer);
-        println!("   • Fsync enabled: {} {}", fsync_enabled, if fsync_enabled { "🛡️" } else { "⚡" });
-        println!("   • CRC32 checksums: {} {}", enable_checksums, if enable_checksums { "🛡️" } else { "⚡" });
+        println!(
+            "   • Fsync enabled: {} {}",
+            fsync_enabled,
+            if fsync_enabled { "🛡️" } else { "⚡" }
+        );
+        println!(
+            "   • CRC32 checksums: {} {}",
+            enable_checksums,
+            if enable_checksums { "🛡️" } else { "⚡" }
+        );
 
         loop {
             // Check for incoming commands with timeout
@@ -197,7 +205,12 @@ impl AsyncEventWriter {
                         event_count += 1;
                     }
                     AsyncWriteCommand::Flush => {
-                        Self::flush_buffer(&mut file, &mut event_count, &mut last_flush, fsync_enabled);
+                        Self::flush_buffer(
+                            &mut file,
+                            &mut event_count,
+                            &mut last_flush,
+                            fsync_enabled,
+                        );
                     }
                     AsyncWriteCommand::Shutdown => {
                         // Always fsync on shutdown for safety

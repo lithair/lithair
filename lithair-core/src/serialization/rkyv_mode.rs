@@ -70,9 +70,13 @@ impl fmt::Display for DualModeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DualModeError::JsonSerializeError(msg) => write!(f, "JSON serialize error: {}", msg),
-            DualModeError::JsonDeserializeError(msg) => write!(f, "JSON deserialize error: {}", msg),
+            DualModeError::JsonDeserializeError(msg) => {
+                write!(f, "JSON deserialize error: {}", msg)
+            }
             DualModeError::RkyvSerializeError(msg) => write!(f, "rkyv serialize error: {}", msg),
-            DualModeError::RkyvDeserializeError(msg) => write!(f, "rkyv deserialize error: {}", msg),
+            DualModeError::RkyvDeserializeError(msg) => {
+                write!(f, "rkyv deserialize error: {}", msg)
+            }
             DualModeError::RkyvValidationError(msg) => write!(f, "rkyv validation error: {}", msg),
             DualModeError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
         }
@@ -93,8 +97,7 @@ pub mod json_mode {
 
     /// Serialize to JSON string using serde_json (simd-json for parsing only)
     pub fn serialize<T: SerdeSerialize>(value: &T) -> DualModeResult<String> {
-        serde_json::to_string(value)
-            .map_err(|e| DualModeError::JsonSerializeError(e.to_string()))
+        serde_json::to_string(value).map_err(|e| DualModeError::JsonSerializeError(e.to_string()))
     }
 
     /// Serialize to JSON bytes
@@ -115,8 +118,7 @@ pub mod json_mode {
 
     /// Deserialize using standard serde_json (for immutable data)
     pub fn deserialize_immutable<T: DeserializeOwned>(data: &[u8]) -> DualModeResult<T> {
-        serde_json::from_slice(data)
-            .map_err(|e| DualModeError::JsonDeserializeError(e.to_string()))
+        serde_json::from_slice(data).map_err(|e| DualModeError::JsonDeserializeError(e.to_string()))
     }
 }
 
@@ -135,11 +137,11 @@ pub mod binary_mode {
     use super::*;
 
     // Re-export rkyv types for convenience
-    pub use rkyv::{Archive, Deserialize, Serialize};
-    pub use rkyv::rancor::Error as RkyvError;
     pub use rkyv::api::high::HighValidator;
     pub use rkyv::bytecheck::CheckBytes;
+    pub use rkyv::rancor::Error as RkyvError;
     pub use rkyv::util::AlignedVec;
+    pub use rkyv::{Archive, Deserialize, Serialize};
 
     /// Serialize a value that implements rkyv's Archive + Serialize
     ///
@@ -181,9 +183,9 @@ pub mod binary_mode {
     #[macro_export]
     macro_rules! rkyv_serialize {
         ($value:expr) => {
-            $crate::serialization::rkyv_mode::binary_mode::serialize_to_bytes(
-                rkyv::to_bytes::<rkyv::rancor::Error>($value)
-            )
+            $crate::serialization::rkyv_mode::binary_mode::serialize_to_bytes(rkyv::to_bytes::<
+                rkyv::rancor::Error,
+            >($value))
         };
     }
 
@@ -192,9 +194,10 @@ pub mod binary_mode {
     #[macro_export]
     macro_rules! rkyv_deserialize {
         ($type:ty, $data:expr) => {
-            $crate::serialization::rkyv_mode::binary_mode::deserialize_result(
-                rkyv::from_bytes::<$type, rkyv::rancor::Error>($data)
-            )
+            $crate::serialization::rkyv_mode::binary_mode::deserialize_result(rkyv::from_bytes::<
+                $type,
+                rkyv::rancor::Error,
+            >($data))
         };
     }
 
@@ -203,15 +206,16 @@ pub mod binary_mode {
     #[macro_export]
     macro_rules! rkyv_access {
         ($type:ty, $data:expr) => {
-            $crate::serialization::rkyv_mode::binary_mode::access_result(
-                rkyv::access::<<$type as rkyv::Archive>::Archived, rkyv::rancor::Error>($data)
-            )
+            $crate::serialization::rkyv_mode::binary_mode::access_result(rkyv::access::<
+                <$type as rkyv::Archive>::Archived,
+                rkyv::rancor::Error,
+            >($data))
         };
     }
 
-    pub use rkyv_serialize;
-    pub use rkyv_deserialize;
     pub use rkyv_access;
+    pub use rkyv_deserialize;
+    pub use rkyv_serialize;
 }
 
 // ============================================================================
@@ -276,7 +280,11 @@ impl fmt::Display for SerializationBenchmarkResult {
         write!(
             f,
             "{}: serialize={}ns, deserialize={}ns, size={}B, throughput={:.2}MB/s",
-            self.mode, self.serialize_ns, self.deserialize_ns, self.size_bytes, self.throughput_mb_s
+            self.mode,
+            self.serialize_ns,
+            self.deserialize_ns,
+            self.size_bytes,
+            self.throughput_mb_s
         )
     }
 }
@@ -303,8 +311,8 @@ where
     let deserialize_time = deser_start.elapsed().as_nanos() as u64 / iterations as u64;
 
     let total_time = start.elapsed().as_secs_f64();
-    let throughput = (json_bytes.len() as f64 * iterations as f64 * 2.0)
-        / (total_time * 1_000_000.0);
+    let throughput =
+        (json_bytes.len() as f64 * iterations as f64 * 2.0) / (total_time * 1_000_000.0);
 
     SerializationBenchmarkResult {
         mode: SerializationMode::Json,
@@ -343,18 +351,12 @@ mod tests {
 
     #[test]
     fn test_serialization_mode_from_accept() {
-        assert_eq!(
-            SerializationMode::from_accept("application/json"),
-            SerializationMode::Json
-        );
+        assert_eq!(SerializationMode::from_accept("application/json"), SerializationMode::Json);
         assert_eq!(
             SerializationMode::from_accept("application/octet-stream"),
             SerializationMode::Binary
         );
-        assert_eq!(
-            SerializationMode::from_accept("text/html"),
-            SerializationMode::Json
-        );
+        assert_eq!(SerializationMode::from_accept("text/html"), SerializationMode::Json);
     }
 
     #[test]

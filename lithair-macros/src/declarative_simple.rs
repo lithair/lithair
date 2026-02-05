@@ -539,10 +539,14 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             None => quote! { None },
         };
 
-        let allow_strings: Vec<proc_macro2::TokenStream> = allow_lits.iter().map(|l| quote!{ #l.to_string() }).collect();
-        let deny_strings: Vec<proc_macro2::TokenStream> = deny_lits.iter().map(|l| quote!{ #l.to_string() }).collect();
-        let prot_strings: Vec<proc_macro2::TokenStream> = prot_lits.iter().map(|l| quote!{ #l.to_string() }).collect();
-        let ex_strings: Vec<proc_macro2::TokenStream> = ex_lits.iter().map(|l| quote!{ #l.to_string() }).collect();
+        let allow_strings: Vec<proc_macro2::TokenStream> =
+            allow_lits.iter().map(|l| quote! { #l.to_string() }).collect();
+        let deny_strings: Vec<proc_macro2::TokenStream> =
+            deny_lits.iter().map(|l| quote! { #l.to_string() }).collect();
+        let prot_strings: Vec<proc_macro2::TokenStream> =
+            prot_lits.iter().map(|l| quote! { #l.to_string() }).collect();
+        let ex_strings: Vec<proc_macro2::TokenStream> =
+            ex_lits.iter().map(|l| quote! { #l.to_string() }).collect();
 
         quote! {
             fn firewall_config() -> Option<lithair_core::http::FirewallConfig> {

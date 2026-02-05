@@ -24,8 +24,8 @@ pub use json::{parse_json, stringify_json, JsonError, JsonValue};
 
 // Re-export dual-mode serialization (NEW)
 pub use rkyv_mode::{
-    benchmark_json, binary_mode, json_mode, DualModeError, DualModeResult,
-    DualModeSerializer, SerializationBenchmarkResult, SerializationMode,
+    benchmark_json, binary_mode, json_mode, DualModeError, DualModeResult, DualModeSerializer,
+    SerializationBenchmarkResult, SerializationMode,
 };
 
 /// Result type for serialization operations

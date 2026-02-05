@@ -1,4 +1,4 @@
-use cucumber::{World, cli};
+use cucumber::{cli, World};
 mod features;
 
 #[tokio::main]

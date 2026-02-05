@@ -14,21 +14,20 @@ pub struct PerformanceConfig {
 
 impl Default for PerformanceConfig {
     fn default() -> Self {
-        Self {
-            cache_enabled: true,
-            cache_size: 1000,
-            cache_ttl: 300,
-            batch_size: 100,
-        }
+        Self { cache_enabled: true, cache_size: 1000, cache_ttl: 300, batch_size: 100 }
     }
 }
 
 impl PerformanceConfig {
-    pub fn merge(&mut self, other: Self) { *self = other; }
+    pub fn merge(&mut self, other: Self) {
+        *self = other;
+    }
     pub fn apply_env_vars(&mut self) {
         if let Ok(enabled) = env::var("RS_CACHE_ENABLED") {
             self.cache_enabled = enabled.parse().unwrap_or(true);
         }
     }
-    pub fn validate(&self) -> Result<()> { Ok(()) }
+    pub fn validate(&self) -> Result<()> {
+        Ok(())
+    }
 }

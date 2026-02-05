@@ -524,12 +524,7 @@ impl FileStorage {
                     Ok(json_data) => all.push(json_data),
                     Err(e) => {
                         corrupted_count += 1;
-                        eprintln!(
-                            "⚠️ CRC32 validation error at {}:{}: {}",
-                            path,
-                            line_num + 1,
-                            e
-                        );
+                        eprintln!("⚠️ CRC32 validation error at {}:{}: {}", path, line_num + 1, e);
                         // Reject corrupted events - data integrity is critical
                     }
                 }
@@ -572,7 +567,7 @@ impl FileStorage {
                 }
 
                 // Read 8 bytes for length
-                let len_bytes: [u8; 8] = content[cursor..cursor+8].try_into().unwrap();
+                let len_bytes: [u8; 8] = content[cursor..cursor + 8].try_into().unwrap();
                 let len = u64::from_le_bytes(len_bytes) as usize;
                 cursor += 8;
 
@@ -583,7 +578,7 @@ impl FileStorage {
                 }
 
                 // Extract payload
-                let payload = content[cursor..cursor+len].to_vec();
+                let payload = content[cursor..cursor + len].to_vec();
                 all.push(payload);
                 cursor += len;
             }

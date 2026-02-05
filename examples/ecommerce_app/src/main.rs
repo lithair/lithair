@@ -1,9 +1,12 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
+use lithair_core::model::{FieldPolicy, ModelSpec};
 use lithair_core::{
-    engine::{RaftstoneApplication, AutoJoiner, RelationRegistry, DataSource},
+    engine::{AutoJoiner, DataSource, RaftstoneApplication, RelationRegistry},
     http::{CommandMessage, CommandRoute, HttpMethod, HttpResponse, Route},
     Lithair,
 };
-use lithair_core::model::{FieldPolicy, ModelSpec};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -16,15 +19,8 @@ struct ProductModelSpec;
 impl ModelSpec for ProductModelSpec {
     fn get_policy(&self, field_name: &str) -> Option<FieldPolicy> {
         match field_name {
-            "name" => Some(FieldPolicy {
-                unique: true,
-                indexed: true,
-                ..Default::default()
-            }),
-            "price" => Some(FieldPolicy {
-                indexed: true,
-                ..Default::default()
-            }),
+            "name" => Some(FieldPolicy { unique: true, indexed: true, ..Default::default() }),
+            "price" => Some(FieldPolicy { indexed: true, ..Default::default() }),
             "category_id" => Some(FieldPolicy {
                 fk: true,
                 fk_collection: Some("categories".to_string()), // ✨ Link to Category
@@ -113,9 +109,8 @@ impl lithair_core::engine::Event for AppEvent {
     }
 
     fn from_json(json: &str) -> lithair_core::engine::EngineResult<Self> {
-        serde_json::from_str(json).map_err(|e| {
-            lithair_core::engine::EngineError::SerializationError(e.to_string())
-        })
+        serde_json::from_str(json)
+            .map_err(|e| lithair_core::engine::EngineError::SerializationError(e.to_string()))
     }
 
     fn apply(&self, state: &mut Self::State) {
@@ -123,16 +118,24 @@ impl lithair_core::engine::Event for AppEvent {
             AppEvent::Category(e) => apply_category_event(state, e),
             AppEvent::Product(e) => apply_product_event(state, e),
             AppEvent::Order(e) => apply_order_event(state, e),
-            AppEvent::OrderPlacedWithStockReduction { order_id, product_id, quantity, new_stock } => {
-                apply_order_event(state, &OrderEvent::Placed {
-                    id: order_id.clone(),
-                    product_id: product_id.clone(),
-                    quantity: *quantity,
-                });
-                apply_product_event(state, &ProductEvent::StockUpdated {
-                    id: product_id.clone(),
-                    new_stock: *new_stock,
-                });
+            AppEvent::OrderPlacedWithStockReduction {
+                order_id,
+                product_id,
+                quantity,
+                new_stock,
+            } => {
+                apply_order_event(
+                    state,
+                    &OrderEvent::Placed {
+                        id: order_id.clone(),
+                        product_id: product_id.clone(),
+                        quantity: *quantity,
+                    },
+                );
+                apply_product_event(
+                    state,
+                    &ProductEvent::StockUpdated { id: product_id.clone(), new_stock: *new_stock },
+                );
             }
         }
     }
@@ -141,7 +144,9 @@ impl lithair_core::engine::Event for AppEvent {
 fn apply_category_event(state: &mut AppState, event: &CategoryEvent) {
     match event {
         CategoryEvent::Created { id, name } => {
-            state.categories.insert(id.clone(), Category { id: id.clone(), name: name.clone() });
+            state
+                .categories
+                .insert(id.clone(), Category { id: id.clone(), name: name.clone() });
         }
     }
 }
@@ -149,13 +154,16 @@ fn apply_category_event(state: &mut AppState, event: &CategoryEvent) {
 fn apply_product_event(state: &mut AppState, event: &ProductEvent) {
     match event {
         ProductEvent::Created { id, name, price, stock, category_id } => {
-            state.products.insert(id.clone(), Product {
-                id: id.clone(),
-                name: name.clone(),
-                price: *price,
-                stock: *stock,
-                category_id: category_id.clone(),
-            });
+            state.products.insert(
+                id.clone(),
+                Product {
+                    id: id.clone(),
+                    name: name.clone(),
+                    price: *price,
+                    stock: *stock,
+                    category_id: category_id.clone(),
+                },
+            );
         }
         ProductEvent::StockUpdated { id, new_stock } => {
             if let Some(p) = state.products.get_mut(id) {
@@ -168,12 +176,15 @@ fn apply_product_event(state: &mut AppState, event: &ProductEvent) {
 fn apply_order_event(state: &mut AppState, event: &OrderEvent) {
     match event {
         OrderEvent::Placed { id, product_id, quantity } => {
-            state.orders.insert(id.clone(), Order {
-                id: id.clone(),
-                product_id: product_id.clone(),
-                quantity: *quantity,
-                status: "Pending".to_string(),
-            });
+            state.orders.insert(
+                id.clone(),
+                Order {
+                    id: id.clone(),
+                    product_id: product_id.clone(),
+                    quantity: *quantity,
+                    status: "Pending".to_string(),
+                },
+            );
         }
         OrderEvent::StatusChanged { id, new_status } => {
             if let Some(o) = state.orders.get_mut(id) {
@@ -228,7 +239,11 @@ struct CategoryDataSource {
 
 impl DataSource for CategoryDataSource {
     fn fetch_by_id(&self, id: &str) -> Option<Value> {
-        self.categories.lock().unwrap().get(id).map(|c| serde_json::to_value(c).unwrap())
+        self.categories
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|c| serde_json::to_value(c).unwrap())
     }
 }
 
@@ -252,7 +267,8 @@ impl RaftstoneApplication for EcommerceApp {
         AppState::default()
     }
 
-    fn event_deserializers() -> Vec<Box<dyn lithair_core::engine::EventDeserializer<State = Self::State>>> {
+    fn event_deserializers(
+    ) -> Vec<Box<dyn lithair_core::engine::EventDeserializer<State = Self::State>>> {
         vec![]
     }
 
@@ -266,9 +282,10 @@ impl RaftstoneApplication for EcommerceApp {
         let category_store = Arc::new(Mutex::new(state.categories.clone()));
 
         // Register "categories" data source
-        registry.register("categories", Arc::new(CategoryDataSource {
-            categories: category_store.clone(),
-        }));
+        registry.register(
+            "categories",
+            Arc::new(CategoryDataSource { categories: category_store.clone() }),
+        );
 
         let _ = REGISTRY.set(registry);
 
@@ -288,26 +305,29 @@ impl RaftstoneApplication for EcommerceApp {
                 // In Scc2Engine, this is automatic as it reads from live memory.
                 // Here we need to ensure our DataSource has the latest data.
                 if let Some(ds) = registry.get("categories") {
-                     // This cast is ugly but specific to this "HashMap Adapter" demo
-                     // Real implementation with Scc2Engine avoids this.
-                     // We'll skip the update for now and rely on the fact we are read-mostly.
+                    // This cast is ugly but specific to this "HashMap Adapter" demo
+                    // Real implementation with Scc2Engine avoids this.
+                    // We'll skip the update for now and rely on the fact we are read-mostly.
                 }
 
                 // ⚠️ CRITICAL: For this demo to work with HashMap state,
                 // we need to construct a fresh DataSource using the *current* state passed to the route.
                 let local_registry = RelationRegistry::new();
-                local_registry.register("categories", Arc::new(CategoryDataSource {
-                    categories: Arc::new(Mutex::new(state.categories.clone())),
-                }));
+                local_registry.register(
+                    "categories",
+                    Arc::new(CategoryDataSource {
+                        categories: Arc::new(Mutex::new(state.categories.clone())),
+                    }),
+                );
 
                 let products: Vec<&Product> = state.products.values().collect();
 
                 // ✨ MAGIC HAPPENS HERE: Auto-Join based on ModelSpec
-                let json = AutoJoiner::expand_list(&products, &PRODUCT_SPEC, &local_registry).unwrap();
+                let json =
+                    AutoJoiner::expand_list(&products, &PRODUCT_SPEC, &local_registry).unwrap();
 
                 HttpResponse::ok().json(&json.to_string())
             }),
-
             Route::new(HttpMethod::GET, "/api/categories", |_req, _, state: &AppState| {
                 HttpResponse::ok().json(&serde_json::to_string(&state.categories).unwrap())
             }),
@@ -318,27 +338,33 @@ impl RaftstoneApplication for EcommerceApp {
         vec![
             // Create Category
             CommandRoute::new(HttpMethod::POST, "/api/categories", |req, _, sender| {
-                let payload: serde_json::Value = serde_json::from_str(req.body_string().unwrap_or("")).unwrap();
+                let payload: serde_json::Value =
+                    serde_json::from_str(req.body_string().unwrap_or("")).unwrap();
                 let id = Uuid::new_v4().to_string();
                 let name = payload["name"].as_str().unwrap().to_string();
 
                 let event = AppEvent::Category(CategoryEvent::Created { id: id.clone(), name });
 
                 let (tx, rx) = std::sync::mpsc::channel();
-                sender.lock().unwrap().send(CommandMessage { event, response_sender: tx }).unwrap();
+                sender
+                    .lock()
+                    .unwrap()
+                    .send(CommandMessage { event, response_sender: tx })
+                    .unwrap();
                 let _ = rx.recv().unwrap();
 
                 HttpResponse::created().json(&serde_json::json!({ "id": id }).to_string())
             }),
-
             // Create Product
             CommandRoute::new(HttpMethod::POST, "/api/products", |req, _, sender| {
-                let payload: serde_json::Value = serde_json::from_str(req.body_string().unwrap_or("")).unwrap();
+                let payload: serde_json::Value =
+                    serde_json::from_str(req.body_string().unwrap_or("")).unwrap();
                 let id = Uuid::new_v4().to_string();
                 let name = payload["name"].as_str().unwrap().to_string();
                 let price = payload["price"].as_f64().unwrap();
                 let stock = payload["stock"].as_i64().unwrap() as i32;
-                let category_id = payload.get("category_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let category_id =
+                    payload.get("category_id").and_then(|v| v.as_str()).map(|s| s.to_string());
 
                 let event = AppEvent::Product(ProductEvent::Created {
                     id: id.clone(),
@@ -349,7 +375,11 @@ impl RaftstoneApplication for EcommerceApp {
                 });
 
                 let (tx, rx) = std::sync::mpsc::channel();
-                sender.lock().unwrap().send(CommandMessage { event, response_sender: tx }).unwrap();
+                sender
+                    .lock()
+                    .unwrap()
+                    .send(CommandMessage { event, response_sender: tx })
+                    .unwrap();
                 let _ = rx.recv().unwrap();
 
                 HttpResponse::created().json(&serde_json::json!({ "id": id }).to_string())

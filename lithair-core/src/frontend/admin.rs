@@ -34,7 +34,9 @@ impl AssetAdminHandler {
             }
         }
 
-        let total_size: u64 = state.virtual_hosts.values()
+        let total_size: u64 = state
+            .virtual_hosts
+            .values()
             .flat_map(|vh| vh.assets.values())
             .map(|a| a.size_bytes)
             .sum();
@@ -95,15 +97,16 @@ impl AssetAdminHandler {
         let mut state = self.state.write().await;
 
         // Get or create virtual host
-        let vhost = state.virtual_hosts.entry(host_id.to_string())
-            .or_insert_with(|| super::VirtualHostLocation {
+        let vhost = state.virtual_hosts.entry(host_id.to_string()).or_insert_with(|| {
+            super::VirtualHostLocation {
                 host_id: host_id.to_string(),
                 base_path: "/".to_string(),
                 assets: std::collections::HashMap::new(),
                 path_index: std::collections::HashMap::new(),
                 static_root: String::new(),
                 active: true,
-            });
+            }
+        });
 
         vhost.assets.insert(asset.id, asset.clone());
         vhost.path_index.insert(asset.path.clone(), asset.id);
@@ -143,30 +146,35 @@ impl AssetAdminHandler {
     pub async fn get_stats(&self) -> Result<HttpResponse> {
         let state = self.state.read().await;
 
-        let total_assets: usize = state.virtual_hosts.values()
-            .map(|vh| vh.assets.len())
-            .sum();
+        let total_assets: usize = state.virtual_hosts.values().map(|vh| vh.assets.len()).sum();
 
-        let total_size: u64 = state.virtual_hosts.values()
+        let total_size: u64 = state
+            .virtual_hosts
+            .values()
             .flat_map(|vh| vh.assets.values())
             .map(|a| a.size_bytes)
             .sum();
 
-        let mime_types: std::collections::HashMap<String, usize> =
-            state.virtual_hosts.values()
-                .flat_map(|vh| vh.assets.values())
-                .fold(std::collections::HashMap::new(), |mut acc, asset| {
-                    *acc.entry(asset.mime_type.clone()).or_default() += 1;
-                    acc
-                });
+        let mime_types: std::collections::HashMap<String, usize> = state
+            .virtual_hosts
+            .values()
+            .flat_map(|vh| vh.assets.values())
+            .fold(std::collections::HashMap::new(), |mut acc, asset| {
+                *acc.entry(asset.mime_type.clone()).or_default() += 1;
+                acc
+            });
 
-        let vhost_stats: Vec<_> = state.virtual_hosts.iter()
-            .map(|(id, vh)| json!({
-                "host_id": id,
-                "base_path": &vh.base_path,
-                "asset_count": vh.assets.len(),
-                "active": vh.active
-            }))
+        let vhost_stats: Vec<_> = state
+            .virtual_hosts
+            .iter()
+            .map(|(id, vh)| {
+                json!({
+                    "host_id": id,
+                    "base_path": &vh.base_path,
+                    "asset_count": vh.assets.len(),
+                    "active": vh.active
+                })
+            })
             .collect();
 
         let json_value = json!({

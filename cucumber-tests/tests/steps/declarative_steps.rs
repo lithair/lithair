@@ -7,14 +7,12 @@ use lithair_core::model_inspect::Inspectable;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 
 // --- Global Config for Tests (to simulate dynamic ModelSpec) ---
-static TEST_SPEC_CONFIG: RwLock<TestModelSpecConfig> = RwLock::new(TestModelSpecConfig {
-    product_name_unique: false,
-    category_relation: None,
-});
+static TEST_SPEC_CONFIG: RwLock<TestModelSpecConfig> =
+    RwLock::new(TestModelSpecConfig { product_name_unique: false, category_relation: None });
 
 #[derive(Debug, Clone)]
 struct TestModelSpecConfig {
@@ -258,21 +256,23 @@ async fn when_create_product_named(w: &mut DeclarativeWorld, id: String, name: S
         // not necessarily the Engine's internal enforcement yet, although Scc2 now has it).
         // We check against the TestState which now implements ModelSpec using TEST_SPEC_CONFIG.
 
-        let unique_violation = engine.read_state("global", |state| {
-            if let Some(policy) = state.get_policy("Product.name") {
-                 if policy.unique {
-                    return state.products.values().any(|p| p.name == name);
-                 }
-            }
-            false
-        }).unwrap_or(false);
+        let unique_violation = engine
+            .read_state("global", |state| {
+                if let Some(policy) = state.get_policy("Product.name") {
+                    if policy.unique {
+                        return state.products.values().any(|p| p.name == name);
+                    }
+                }
+                false
+            })
+            .unwrap_or(false);
 
         if unique_violation {
             w.last_result = Some(Err("Unique constraint violation".to_string()));
         } else {
             let res = engine.apply_event("global".to_string(), event).map_err(|e| e.to_string());
             if res.is_ok() {
-                 engine.flush().unwrap();
+                engine.flush().unwrap();
             }
             w.last_result = Some(res);
         }
@@ -318,7 +318,6 @@ async fn when_create_product_stock(w: &mut DeclarativeWorld, id: String, stock: 
     w.engine.as_mut().unwrap().apply_event("global".to_string(), event).unwrap();
     w.engine.as_mut().unwrap().flush().unwrap();
 }
-
 
 #[when(expr = "je crée une commande {string} pour le produit {string} \\(qte: {int})")]
 async fn when_create_order(w: &mut DeclarativeWorld, id: String, product_id: String, qty: i32) {
@@ -526,7 +525,7 @@ async fn when_expand_relations(w: &mut DeclarativeWorld, id: String) {
     // Need to read spec from global config because the instance in engine
     // might be a default one, but we want the one we configured.
     // Actually, TestState uses the global config in its ModelSpec impl, so using engine state is correct.
-    let spec_wrapper = TEST_SPEC_CONFIG.read().unwrap();
+    let _spec_wrapper = TEST_SPEC_CONFIG.read().unwrap();
     // We need a struct implementing ModelSpec to pass to expand.
     // Since TestState implements ModelSpec using the global config, we can use an instance of TestState.
     // BUT, we are in an async function and reading state from engine returns a value, not a ref to state that we can pass as ModelSpec.

@@ -1,12 +1,15 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
+use cucumber::{given, then, when};
 use tokio::time::{sleep, Duration};
 
 // ==================== BACKGROUND ====================
 
 #[given(expr = "a Lithair application with integrated frontend")]
 async fn given_app_with_frontend(world: &mut LithairWorld) {
-    world.start_server(8084, "fullstack_demo").await.expect("Failed to start fullstack server");
+    world
+        .start_server(8084, "fullstack_demo")
+        .await
+        .expect("Failed to start fullstack server");
     sleep(Duration::from_millis(300)).await;
     println!("Fullstack application started");
 }

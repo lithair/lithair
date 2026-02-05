@@ -1,10 +1,9 @@
-use cucumber::{given, then, when};
 use crate::features::world::LithairWorld;
-use tokio::time::{sleep, Duration};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use cucumber::{given, then, when};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 
 // ==================== STRESS TEST STATISTICS ====================
 
@@ -123,7 +122,10 @@ impl CrudOperation {
 
 #[given(expr = "a real LithairServer cluster of {int} nodes with multi-model support")]
 async fn given_real_cluster_multi_model(world: &mut LithairWorld, node_count: u32) {
-    println!("🚀 Starting REAL multi-model LithairServer cluster with {} nodes...", node_count);
+    println!(
+        "🚀 Starting REAL multi-model LithairServer cluster with {} nodes...",
+        node_count
+    );
 
     // Reset stats
     STRESS_STATS.products_created.store(0, Ordering::Relaxed);
@@ -150,10 +152,15 @@ async fn given_real_cluster_multi_model(world: &mut LithairWorld, node_count: u3
     }
 
     // Use persistent data directory (/tmp/lithair-stress-test/) cleaned at start
-    let ports = world.start_real_cluster_persistent(node_count as usize).await
+    let ports = world
+        .start_real_cluster_persistent(node_count as usize)
+        .await
         .expect("Failed to start real cluster");
 
-    println!("✅ Multi-model real cluster of {} nodes started (ports: {:?})", node_count, ports);
+    println!(
+        "✅ Multi-model real cluster of {} nodes started (ports: {:?})",
+        node_count, ports
+    );
     println!("📁 Data persisted at: /tmp/lithair-stress-test/");
 }
 
@@ -216,7 +223,10 @@ async fn when_execute_random_crud(world: &mut LithairWorld, operation_count: u64
         // Progress report every 10%
         if completed % (operation_count / 10).max(1) == 0 {
             let progress = (completed as f64 / operation_count as f64) * 100.0;
-            println!("📊 Progress: {:.0}% ({}/{} operations)", progress, completed, operation_count);
+            println!(
+                "📊 Progress: {:.0}% ({}/{} operations)",
+                progress, completed, operation_count
+            );
         }
     }
 
@@ -225,13 +235,24 @@ async fn when_execute_random_crud(world: &mut LithairWorld, operation_count: u64
     let duration = STRESS_STATS.duration();
     let ops_per_sec = operation_count as f64 / duration.as_secs_f64();
 
-    println!("✅ Completed {} operations in {:.2}s ({:.0} ops/sec)",
-             operation_count, duration.as_secs_f64(), ops_per_sec);
+    println!(
+        "✅ Completed {} operations in {:.2}s ({:.0} ops/sec)",
+        operation_count,
+        duration.as_secs_f64(),
+        ops_per_sec
+    );
 }
 
 #[when(regex = r"I execute (\d+) concurrent random CRUD operations with (\d+) workers")]
-async fn when_execute_concurrent_crud(world: &mut LithairWorld, operation_count: u64, worker_count: u32) {
-    println!("🎲 Executing {} concurrent CRUD operations with {} workers...", operation_count, worker_count);
+async fn when_execute_concurrent_crud(
+    world: &mut LithairWorld,
+    operation_count: u64,
+    worker_count: u32,
+) {
+    println!(
+        "🎲 Executing {} concurrent CRUD operations with {} workers...",
+        operation_count, worker_count
+    );
 
     *STRESS_STATS.start_time.lock().unwrap() = Some(std::time::Instant::now());
 
@@ -299,23 +320,27 @@ async fn when_execute_concurrent_crud(world: &mut LithairWorld, operation_count:
     let duration = STRESS_STATS.duration();
     let ops_per_sec = operation_count as f64 / duration.as_secs_f64();
 
-    println!("✅ Completed {} concurrent operations in {:.2}s ({:.0} ops/sec)",
-             operation_count, duration.as_secs_f64(), ops_per_sec);
+    println!(
+        "✅ Completed {} concurrent operations in {:.2}s ({:.0} ops/sec)",
+        operation_count,
+        duration.as_secs_f64(),
+        ops_per_sec
+    );
 }
 
 #[when(regex = r"I execute (\d+) more random CRUD operations on remaining nodes")]
 async fn when_execute_more_crud_remaining(world: &mut LithairWorld, operation_count: u64) {
-    println!("🎲 Executing {} more random CRUD operations on remaining nodes...", operation_count);
+    println!(
+        "🎲 Executing {} more random CRUD operations on remaining nodes...",
+        operation_count
+    );
 
-    let ports = world.get_real_cluster_ports().await;
+    let _ports = world.get_real_cluster_ports().await;
 
     // Filter to only alive nodes
     let alive_ports: Vec<u16> = {
         let nodes = world.real_cluster_nodes.lock().await;
-        nodes.iter()
-            .filter(|n| n.process.is_some())
-            .map(|n| n.port)
-            .collect()
+        nodes.iter().filter(|n| n.process.is_some()).map(|n| n.port).collect()
     };
 
     if alive_ports.is_empty() {
@@ -346,7 +371,11 @@ async fn when_execute_more_crud_remaining(world: &mut LithairWorld, operation_co
         }
     }
 
-    println!("✅ Completed {} more operations on {} remaining nodes", operation_count, alive_ports.len());
+    println!(
+        "✅ Completed {} more operations on {} remaining nodes",
+        operation_count,
+        alive_ports.len()
+    );
 }
 
 // ==================== CHAOS OPERATIONS ====================
@@ -408,11 +437,7 @@ async fn then_all_models_consistent(world: &mut LithairWorld) {
             let result = world.make_real_cluster_request(i, "GET", endpoint, None).await;
             match result {
                 Ok(response) => {
-                    let count = if let Some(arr) = response.as_array() {
-                        arr.len()
-                    } else {
-                        0
-                    };
+                    let count = if let Some(arr) = response.as_array() { arr.len() } else { 0 };
                     counts.push(count);
                     println!("  Node {} {}: {} items", i, model_name, count);
                 }
@@ -444,7 +469,8 @@ async fn then_remaining_nodes_consistent(world: &mut LithairWorld) {
 
     let alive_nodes: Vec<(u64, u16)> = {
         let nodes = world.real_cluster_nodes.lock().await;
-        nodes.iter()
+        nodes
+            .iter()
             .filter(|n| n.process.is_some())
             .map(|n| (n.node_id, n.port))
             .collect()
@@ -462,14 +488,11 @@ async fn then_remaining_nodes_consistent(world: &mut LithairWorld) {
         let mut counts = Vec::new();
 
         for (node_id, _port) in &alive_nodes {
-            let result = world.make_real_cluster_request(*node_id as usize, "GET", endpoint, None).await;
+            let result =
+                world.make_real_cluster_request(*node_id as usize, "GET", endpoint, None).await;
             match result {
                 Ok(response) => {
-                    let count = if let Some(arr) = response.as_array() {
-                        arr.len()
-                    } else {
-                        0
-                    };
+                    let count = if let Some(arr) = response.as_array() { arr.len() } else { 0 };
                     counts.push(count);
                 }
                 Err(_) => {
@@ -482,7 +505,10 @@ async fn then_remaining_nodes_consistent(world: &mut LithairWorld) {
             let first_count = counts[0];
             let all_same = counts.iter().all(|&c| c == first_count);
             if all_same {
-                println!("  ✅ {} consistent on remaining nodes ({} items)", model_name, first_count);
+                println!(
+                    "  ✅ {} consistent on remaining nodes ({} items)",
+                    model_name, first_count
+                );
             } else {
                 println!("  ⚠️ {} variance on remaining nodes: {:?}", model_name, counts);
             }
@@ -498,18 +524,24 @@ async fn then_operation_count_matches(_world: &mut LithairWorld) {
     let errors = STRESS_STATS.errors.load(Ordering::Relaxed);
 
     println!("📊 Operation counts:");
-    println!("  Products: {} created, {} updated, {} deleted",
-             STRESS_STATS.products_created.load(Ordering::Relaxed),
-             STRESS_STATS.products_updated.load(Ordering::Relaxed),
-             STRESS_STATS.products_deleted.load(Ordering::Relaxed));
-    println!("  Customers: {} created, {} updated, {} deleted",
-             STRESS_STATS.customers_created.load(Ordering::Relaxed),
-             STRESS_STATS.customers_updated.load(Ordering::Relaxed),
-             STRESS_STATS.customers_deleted.load(Ordering::Relaxed));
-    println!("  Orders: {} created, {} updated, {} deleted",
-             STRESS_STATS.orders_created.load(Ordering::Relaxed),
-             STRESS_STATS.orders_updated.load(Ordering::Relaxed),
-             STRESS_STATS.orders_deleted.load(Ordering::Relaxed));
+    println!(
+        "  Products: {} created, {} updated, {} deleted",
+        STRESS_STATS.products_created.load(Ordering::Relaxed),
+        STRESS_STATS.products_updated.load(Ordering::Relaxed),
+        STRESS_STATS.products_deleted.load(Ordering::Relaxed)
+    );
+    println!(
+        "  Customers: {} created, {} updated, {} deleted",
+        STRESS_STATS.customers_created.load(Ordering::Relaxed),
+        STRESS_STATS.customers_updated.load(Ordering::Relaxed),
+        STRESS_STATS.customers_deleted.load(Ordering::Relaxed)
+    );
+    println!(
+        "  Orders: {} created, {} updated, {} deleted",
+        STRESS_STATS.orders_created.load(Ordering::Relaxed),
+        STRESS_STATS.orders_updated.load(Ordering::Relaxed),
+        STRESS_STATS.orders_deleted.load(Ordering::Relaxed)
+    );
     println!("  Total: {} operations, {} errors", total, errors);
 
     assert!(total > 0, "Should have executed some operations");
@@ -540,14 +572,15 @@ async fn then_no_data_lost(world: &mut LithairWorld) {
 async fn then_majority_succeeded(_world: &mut LithairWorld) {
     let total = STRESS_STATS.total_operations();
     let errors = STRESS_STATS.errors.load(Ordering::Relaxed);
-    let success_rate = if total > 0 {
-        ((total - errors) as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
+    let success_rate =
+        if total > 0 { ((total - errors) as f64 / total as f64) * 100.0 } else { 0.0 };
 
-    println!("📊 Success rate: {:.1}% ({} successes, {} errors)",
-             success_rate, total - errors, errors);
+    println!(
+        "📊 Success rate: {:.1}% ({} successes, {} errors)",
+        success_rate,
+        total - errors,
+        errors
+    );
 
     assert!(success_rate >= 50.0, "At least 50% of operations should succeed");
     println!("✅ Majority of operations succeeded");
@@ -556,8 +589,8 @@ async fn then_majority_succeeded(_world: &mut LithairWorld) {
 #[then("the data files should be identical across all nodes")]
 async fn then_data_files_identical(_world: &mut LithairWorld) {
     use std::collections::HashMap;
-    use std::path::PathBuf;
     use std::io::{BufRead, BufReader};
+    use std::path::PathBuf;
 
     println!("🔍 Verifying data file consistency across all nodes...");
     println!("   Note: Leader stores *Created events, followers store *Replicated events");
@@ -587,12 +620,13 @@ async fn then_data_files_identical(_world: &mut LithairWorld) {
                     0
                 };
 
-                let file_size = std::fs::metadata(&raftlog_path)
-                    .map(|m| m.len())
-                    .unwrap_or(0);
+                let file_size = std::fs::metadata(&raftlog_path).map(|m| m.len()).unwrap_or(0);
 
                 model_counts.insert(model.to_string(), event_count);
-                println!("  Node {} {}: {} events ({} bytes)", node_id, model, event_count, file_size);
+                println!(
+                    "  Node {} {}: {} events ({} bytes)",
+                    node_id, model, event_count, file_size
+                );
             } else {
                 model_counts.insert(model.to_string(), 0);
                 println!("  ⚠️ Node {} {}: MISSING", node_id, model);
@@ -624,8 +658,7 @@ async fn then_data_files_identical(_world: &mut LithairWorld) {
         let counts_match = counts.iter().all(|&c| c == counts[0]);
 
         if has_events && counts_match {
-            println!("  ✅ {} event counts MATCH across all nodes ({} events)",
-                     model, counts[0]);
+            println!("  ✅ {} event counts MATCH across all nodes ({} events)", model, counts[0]);
             consistency_report.push(format!("{}: {} events (consistent)", model, counts[0]));
         } else if !has_events {
             println!("  ❌ {} events MISSING on some nodes - counts: {:?}", model, counts);
@@ -643,13 +676,19 @@ async fn then_data_files_identical(_world: &mut LithairWorld) {
 
             // Allow small variance (< 1%) due to async replication timing
             if variance < 1.0 {
-                println!("  ✅ {} event counts CLOSE ENOUGH ({:.2}% variance) - counts: {:?}",
-                         model, variance, counts);
-                consistency_report.push(format!("{}: ~{} events ({:.2}% variance)", model, max_count, variance));
+                println!(
+                    "  ✅ {} event counts CLOSE ENOUGH ({:.2}% variance) - counts: {:?}",
+                    model, variance, counts
+                );
+                consistency_report
+                    .push(format!("{}: ~{} events ({:.2}% variance)", model, max_count, variance));
             } else {
-                println!("  ⚠️ {} event counts DIFFER ({:.2}% variance) - counts: {:?}",
-                         model, variance, counts);
-                consistency_report.push(format!("{}: DIFFERS {:?} ({:.2}% variance)", model, counts, variance));
+                println!(
+                    "  ⚠️ {} event counts DIFFER ({:.2}% variance) - counts: {:?}",
+                    model, variance, counts
+                );
+                consistency_report
+                    .push(format!("{}: DIFFERS {:?} ({:.2}% variance)", model, counts, variance));
                 all_consistent = false;
             }
         }
@@ -680,44 +719,61 @@ async fn then_display_statistics(_world: &mut LithairWorld) {
     let errors = STRESS_STATS.errors.load(Ordering::Relaxed);
     let redirects = STRESS_STATS.redirects.load(Ordering::Relaxed);
 
-    let ops_per_sec = if duration.as_secs_f64() > 0.0 {
-        total as f64 / duration.as_secs_f64()
-    } else {
-        0.0
-    };
+    let ops_per_sec =
+        if duration.as_secs_f64() > 0.0 { total as f64 / duration.as_secs_f64() } else { 0.0 };
 
     println!("\n╔══════════════════════════════════════════════════════════════╗");
     println!("║                   STRESS TEST STATISTICS                      ║");
     println!("╠══════════════════════════════════════════════════════════════╣");
-    println!("║ Duration: {:.2}s                                              ", duration.as_secs_f64());
+    println!(
+        "║ Duration: {:.2}s                                              ",
+        duration.as_secs_f64()
+    );
     println!("║ Total Operations: {}                                          ", total);
     println!("║ Throughput: {:.0} ops/sec                                     ", ops_per_sec);
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║ BY MODEL:                                                     ║");
-    println!("║   Products:  C={} U={} D={}",
-             STRESS_STATS.products_created.load(Ordering::Relaxed),
-             STRESS_STATS.products_updated.load(Ordering::Relaxed),
-             STRESS_STATS.products_deleted.load(Ordering::Relaxed));
-    println!("║   Customers: C={} U={} D={}",
-             STRESS_STATS.customers_created.load(Ordering::Relaxed),
-             STRESS_STATS.customers_updated.load(Ordering::Relaxed),
-             STRESS_STATS.customers_deleted.load(Ordering::Relaxed));
-    println!("║   Orders:    C={} U={} D={}",
-             STRESS_STATS.orders_created.load(Ordering::Relaxed),
-             STRESS_STATS.orders_updated.load(Ordering::Relaxed),
-             STRESS_STATS.orders_deleted.load(Ordering::Relaxed));
+    println!(
+        "║   Products:  C={} U={} D={}",
+        STRESS_STATS.products_created.load(Ordering::Relaxed),
+        STRESS_STATS.products_updated.load(Ordering::Relaxed),
+        STRESS_STATS.products_deleted.load(Ordering::Relaxed)
+    );
+    println!(
+        "║   Customers: C={} U={} D={}",
+        STRESS_STATS.customers_created.load(Ordering::Relaxed),
+        STRESS_STATS.customers_updated.load(Ordering::Relaxed),
+        STRESS_STATS.customers_deleted.load(Ordering::Relaxed)
+    );
+    println!(
+        "║   Orders:    C={} U={} D={}",
+        STRESS_STATS.orders_created.load(Ordering::Relaxed),
+        STRESS_STATS.orders_updated.load(Ordering::Relaxed),
+        STRESS_STATS.orders_deleted.load(Ordering::Relaxed)
+    );
     println!("╠══════════════════════════════════════════════════════════════╣");
     println!("║ BY NODE:                                                      ║");
-    println!("║   Node 0 (Leader):   {} requests",
-             STRESS_STATS.requests_to_node_0.load(Ordering::Relaxed));
-    println!("║   Node 1 (Follower): {} requests",
-             STRESS_STATS.requests_to_node_1.load(Ordering::Relaxed));
-    println!("║   Node 2 (Follower): {} requests",
-             STRESS_STATS.requests_to_node_2.load(Ordering::Relaxed));
+    println!(
+        "║   Node 0 (Leader):   {} requests",
+        STRESS_STATS.requests_to_node_0.load(Ordering::Relaxed)
+    );
+    println!(
+        "║   Node 1 (Follower): {} requests",
+        STRESS_STATS.requests_to_node_1.load(Ordering::Relaxed)
+    );
+    println!(
+        "║   Node 2 (Follower): {} requests",
+        STRESS_STATS.requests_to_node_2.load(Ordering::Relaxed)
+    );
     println!("╠══════════════════════════════════════════════════════════════╣");
-    println!("║ ERRORS: {} total ({} redirects)                              ", errors, redirects);
-    println!("║ SUCCESS RATE: {:.1}%                                          ",
-             if total > 0 { ((total - errors) as f64 / total as f64) * 100.0 } else { 0.0 });
+    println!(
+        "║ ERRORS: {} total ({} redirects)                              ",
+        errors, redirects
+    );
+    println!(
+        "║ SUCCESS RATE: {:.1}%                                          ",
+        if total > 0 { ((total - errors) as f64 / total as f64) * 100.0 } else { 0.0 }
+    );
     println!("╚══════════════════════════════════════════════════════════════╝\n");
 }
 
@@ -737,7 +793,8 @@ async fn execute_operation(
             let body = generate_create_body(model);
             let url = format!("{}{}", base_url, endpoint);
 
-            let resp = client.post(&url)
+            let resp = client
+                .post(&url)
                 .json(&body)
                 .send()
                 .await
@@ -791,7 +848,8 @@ async fn execute_operation(
             let body = generate_update_body(model, &id);
             let url = format!("{}{}/{}", base_url, endpoint, id);
 
-            let resp = client.put(&url)
+            let resp = client
+                .put(&url)
                 .json(&body)
                 .send()
                 .await
@@ -799,8 +857,12 @@ async fn execute_operation(
 
             if resp.status().is_success() {
                 match model {
-                    ModelType::Product => STRESS_STATS.products_updated.fetch_add(1, Ordering::Relaxed),
-                    ModelType::Customer => STRESS_STATS.customers_updated.fetch_add(1, Ordering::Relaxed),
+                    ModelType::Product => {
+                        STRESS_STATS.products_updated.fetch_add(1, Ordering::Relaxed)
+                    }
+                    ModelType::Customer => {
+                        STRESS_STATS.customers_updated.fetch_add(1, Ordering::Relaxed)
+                    }
                     ModelType::Order => STRESS_STATS.orders_updated.fetch_add(1, Ordering::Relaxed),
                 };
                 Ok(())
@@ -830,15 +892,20 @@ async fn execute_operation(
 
             let url = format!("{}{}/{}", base_url, endpoint, id);
 
-            let resp = client.delete(&url)
+            let resp = client
+                .delete(&url)
                 .send()
                 .await
                 .map_err(|e| format!("Delete request failed: {}", e))?;
 
             if resp.status().is_success() || resp.status().as_u16() == 404 {
                 match model {
-                    ModelType::Product => STRESS_STATS.products_deleted.fetch_add(1, Ordering::Relaxed),
-                    ModelType::Customer => STRESS_STATS.customers_deleted.fetch_add(1, Ordering::Relaxed),
+                    ModelType::Product => {
+                        STRESS_STATS.products_deleted.fetch_add(1, Ordering::Relaxed)
+                    }
+                    ModelType::Customer => {
+                        STRESS_STATS.customers_deleted.fetch_add(1, Ordering::Relaxed)
+                    }
                     ModelType::Order => STRESS_STATS.orders_deleted.fetch_add(1, Ordering::Relaxed),
                 };
                 Ok(())

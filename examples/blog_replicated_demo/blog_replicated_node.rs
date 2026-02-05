@@ -54,7 +54,9 @@ use http_body_util::Full;
 use lithair_core::app::LithairServer;
 use lithair_core::cluster::ClusterArgs;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
-use lithair_core::session::{PersistentSessionStore, Session, SessionConfig, SessionMiddleware, SessionStore};
+use lithair_core::session::{
+    PersistentSessionStore, Session, SessionConfig, SessionMiddleware, SessionStore,
+};
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -211,9 +213,12 @@ async fn login(
         ("reporter", "password123") => "Reporter",
         ("contributor", "password123") => "Contributor",
         _ => {
-            return Ok(json_response(StatusCode::UNAUTHORIZED, serde_json::json!({
-                "error": "Invalid credentials"
-            })));
+            return Ok(json_response(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({
+                    "error": "Invalid credentials"
+                }),
+            ));
         }
     };
 
@@ -229,11 +234,14 @@ async fn login(
 
     log::info!("User logged in: {} as {}", login_req.username, role);
 
-    Ok(json_response(StatusCode::OK, serde_json::json!({
-        "session_token": session_id,
-        "role": role,
-        "expires_in": 3600
-    })))
+    Ok(json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "session_token": session_id,
+            "role": role,
+            "expires_in": 3600
+        }),
+    ))
 }
 
 /// Logout endpoint - destroys the session
@@ -244,9 +252,12 @@ async fn logout(
     let session = match session_middleware.extract_session(&req).await? {
         Some(s) => s,
         None => {
-            return Ok(json_response(StatusCode::UNAUTHORIZED, serde_json::json!({
-                "error": "No active session"
-            })));
+            return Ok(json_response(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({
+                    "error": "No active session"
+                }),
+            ));
         }
     };
 
@@ -257,9 +268,12 @@ async fn logout(
 
     log::info!("User logged out: {} (session: {})", user_id, session_id);
 
-    Ok(json_response(StatusCode::OK, serde_json::json!({
-        "message": "Logged out successfully"
-    })))
+    Ok(json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "message": "Logged out successfully"
+        }),
+    ))
 }
 
 fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Full<Bytes>> {
@@ -282,10 +296,7 @@ async fn main() -> Result<()> {
 
     let args = ClusterArgs::parse();
     let peer_ports = args.peers.clone().unwrap_or_default();
-    let peers: Vec<String> = peer_ports
-        .iter()
-        .map(|p| format!("127.0.0.1:{}", p))
-        .collect();
+    let peers: Vec<String> = peer_ports.iter().map(|p| format!("127.0.0.1:{}", p)).collect();
 
     // Data directories
     let base_dir = std::env::var("EXPERIMENT_DATA_BASE").unwrap_or_else(|_| "data".to_string());
@@ -298,12 +309,9 @@ async fn main() -> Result<()> {
 
     // Session store
     let session_store = Arc::new(PersistentSessionStore::new(PathBuf::from(&sessions_path))?);
-    let session_config = SessionConfig::hybrid()
-        .with_max_age(std::time::Duration::from_secs(3600));
-    let session_middleware = Arc::new(SessionMiddleware::new(
-        session_store.clone(),
-        session_config,
-    ));
+    let session_config = SessionConfig::hybrid().with_max_age(std::time::Duration::from_secs(3600));
+    let session_middleware =
+        Arc::new(SessionMiddleware::new(session_store.clone(), session_config));
 
     // Clones for handlers
     let ss_login = session_store.clone();
@@ -314,15 +322,16 @@ async fn main() -> Result<()> {
 
     // Frontend engine (SCC2-based, memory-first)
     let frontend_engine = Arc::new(
-        FrontendEngine::new("blog_replicated", &format!("{}/frontend", data_dir)).await
-            .expect("Failed to create frontend engine")
+        FrontendEngine::new("blog_replicated", &format!("{}/frontend", data_dir))
+            .await
+            .expect("Failed to create frontend engine"),
     );
 
     // Load frontend assets - try multiple paths
     let frontend_paths = [
-        "frontend",                                    // Same directory as binary
-        "examples/blog_replicated_demo/frontend",     // From workspace root
-        "../blog_replicated_demo/frontend",           // Relative from examples
+        "frontend",                               // Same directory as binary
+        "examples/blog_replicated_demo/frontend", // From workspace root
+        "../blog_replicated_demo/frontend",       // Relative from examples
     ];
 
     let mut loaded = false;

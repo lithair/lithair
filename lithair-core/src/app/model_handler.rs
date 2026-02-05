@@ -1,12 +1,12 @@
 //! Type-erased model handler for LithairServer
 
+use crate::consensus::ReplicatedModel;
 use crate::http::{DeclarativeHttpHandler, HttpExposable};
 use crate::lifecycle::LifecycleAware;
-use crate::consensus::ReplicatedModel;
+use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
 use hyper::body::Incoming;
 use hyper::{Request, Response};
-use bytes::Bytes;
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -55,7 +55,11 @@ pub trait ModelHandler: Send + Sync {
 
     /// Submit an edit event (event-sourced update - never replaces, always appends)
     /// Returns the new state after applying the edit event
-    async fn submit_edit_event(&self, id: &str, changes: serde_json::Value) -> Result<serde_json::Value, String>;
+    async fn submit_edit_event(
+        &self,
+        id: &str,
+        changes: serde_json::Value,
+    ) -> Result<serde_json::Value, String>;
 
     // ========================================================================
     // REPLICATION METHODS - For cluster data replication from leader to followers
@@ -66,11 +70,18 @@ pub trait ModelHandler: Send + Sync {
     async fn apply_replicated_item_json(&self, item_json: serde_json::Value) -> Result<(), String>;
 
     /// Apply multiple replicated items from leader (bulk replication)
-    async fn apply_replicated_items_json(&self, items_json: Vec<serde_json::Value>) -> Result<usize, String>;
+    async fn apply_replicated_items_json(
+        &self,
+        items_json: Vec<serde_json::Value>,
+    ) -> Result<usize, String>;
 
     /// Apply a replicated UPDATE from leader (type-erased via JSON)
     /// Called by followers when receiving UPDATE replication data from leader
-    async fn apply_replicated_update_json(&self, id: &str, item_json: serde_json::Value) -> Result<(), String>;
+    async fn apply_replicated_update_json(
+        &self,
+        id: &str,
+        item_json: serde_json::Value,
+    ) -> Result<(), String>;
 
     /// Apply a replicated DELETE from leader
     /// Called by followers when receiving DELETE replication from leader
@@ -93,34 +104,37 @@ where
 {
     pub async fn new(data_path: String) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let handler = DeclarativeHttpHandler::<T>::new_with_replay(&data_path).await?;
-        let model_name = std::any::type_name::<T>().split("::").last().unwrap_or("Unknown").to_string();
+        let model_name =
+            std::any::type_name::<T>().split("::").last().unwrap_or("Unknown").to_string();
         let base_path = T::http_base_path().to_string();
-        Ok(Self {
-            handler,
-            model_name,
-            base_path,
-        })
+        Ok(Self { handler, model_name, base_path })
     }
-    
+
     pub fn with_base_path(mut self, path: impl Into<String>) -> Self {
         self.base_path = path.into();
         self
     }
-    
+
     /// Set the permission checker for RBAC enforcement
-    pub fn with_permission_checker(mut self, checker: Arc<dyn crate::rbac::PermissionChecker>) -> Self {
+    pub fn with_permission_checker(
+        mut self,
+        checker: Arc<dyn crate::rbac::PermissionChecker>,
+    ) -> Self {
         self.handler = self.handler.with_permission_checker(checker);
         self
     }
-    
+
     /// Set the session store for extracting user roles
     pub fn with_session_store<S: 'static + Send + Sync>(mut self, store: Arc<S>) -> Self {
         self.handler = self.handler.with_session_store(store);
         self
     }
-    
+
     /// Set session store directly (for type-erased Arc<dyn Any>)
-    pub(crate) fn set_session_store_any(mut self, store: Arc<dyn std::any::Any + Send + Sync>) -> Self {
+    pub(crate) fn set_session_store_any(
+        mut self,
+        store: Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Self {
         self.handler.session_store = Some(store);
         self
     }
@@ -129,28 +143,34 @@ where
 #[async_trait::async_trait]
 impl<T> ModelHandler for DeclarativeModelHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel + serde::Serialize + serde::de::DeserializeOwned + 'static,
+    T: HttpExposable
+        + LifecycleAware
+        + ReplicatedModel
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + 'static,
 {
     async fn handle_request(&self, req: Req, path_segments: &[&str]) -> Result<Resp, Infallible> {
         self.handler.handle_request(req, path_segments).await
     }
-    
+
     async fn get_all_data_json(&self) -> serde_json::Value {
         let items = self.handler.get_all_items().await;
         serde_json::to_value(&items).unwrap_or(serde_json::json!([]))
     }
-    
+
     async fn get_item_json(&self, id: &str) -> Option<serde_json::Value> {
         let items = self.handler.get_all_items().await;
-        items.into_iter()
+        items
+            .into_iter()
             .find(|item| item.get_primary_key() == id)
             .and_then(|item| serde_json::to_value(&item).ok())
     }
-    
+
     async fn get_count(&self) -> usize {
         self.handler.get_all_items().await.len()
     }
-    
+
     async fn export_json(&self) -> serde_json::Value {
         let items = self.handler.get_all_items().await;
         let count = items.len();
@@ -162,7 +182,7 @@ where
             "data": serde_json::to_value(&items).unwrap_or(serde_json::json!([]))
         })
     }
-    
+
     fn model_name(&self) -> &str {
         &self.model_name
     }
@@ -202,7 +222,11 @@ where
         self.handler.get_entity_event_count(id).await
     }
 
-    async fn submit_edit_event(&self, id: &str, changes: serde_json::Value) -> Result<serde_json::Value, String> {
+    async fn submit_edit_event(
+        &self,
+        id: &str,
+        changes: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let updated_item = self.handler.submit_admin_edit(id, changes).await?;
         serde_json::to_value(&updated_item)
             .map_err(|e| format!("Failed to serialize result: {}", e))
@@ -217,7 +241,10 @@ where
         self.handler.apply_replicated_item(item).await
     }
 
-    async fn apply_replicated_items_json(&self, items_json: Vec<serde_json::Value>) -> Result<usize, String> {
+    async fn apply_replicated_items_json(
+        &self,
+        items_json: Vec<serde_json::Value>,
+    ) -> Result<usize, String> {
         // Deserialize each JSON to typed item
         let items: Vec<T> = items_json
             .into_iter()
@@ -229,7 +256,11 @@ where
         self.handler.apply_replicated_items(items).await
     }
 
-    async fn apply_replicated_update_json(&self, id: &str, item_json: serde_json::Value) -> Result<(), String> {
+    async fn apply_replicated_update_json(
+        &self,
+        id: &str,
+        item_json: serde_json::Value,
+    ) -> Result<(), String> {
         // Deserialize JSON to typed item
         let item: T = serde_json::from_value(item_json)
             .map_err(|e| format!("Failed to deserialize replicated update: {}", e))?;

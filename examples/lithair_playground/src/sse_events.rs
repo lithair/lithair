@@ -5,8 +5,9 @@
 //! - Cluster state changes
 //! - Benchmark progress
 
+#![allow(dead_code)]
+
 use bytes::Bytes;
-use futures::stream::StreamExt;
 use http::{Response, StatusCode};
 use http_body_util::StreamBody;
 use std::collections::HashMap;
@@ -33,9 +34,7 @@ pub struct SseEventBroadcaster {
 
 impl SseEventBroadcaster {
     pub fn new() -> Self {
-        Self {
-            channels: RwLock::new(HashMap::new()),
-        }
+        Self { channels: RwLock::new(HashMap::new()) }
     }
 
     /// Get or create a channel
@@ -56,10 +55,7 @@ impl SseEventBroadcaster {
     /// Broadcast an event to a channel
     pub async fn broadcast(&self, channel: &str, data: serde_json::Value) {
         let sender = self.get_channel(channel).await;
-        let event = SseEvent {
-            channel: channel.to_string(),
-            data,
-        };
+        let event = SseEvent { channel: channel.to_string(), data };
         // Ignore send errors (no subscribers)
         let _ = sender.send(event);
     }

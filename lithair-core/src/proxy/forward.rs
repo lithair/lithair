@@ -1,18 +1,18 @@
 //! Forward proxy implementation (Squid-like)
-//! 
+//!
 //! Handles client requests to external servers, with filtering and caching support.
 
 use super::traits::{ProxyHandler, ProxyResult};
-use hyper::{Request, Response};
-use http_body_util::combinators::BoxBody;
 use bytes::Bytes;
+use http_body_util::combinators::BoxBody;
+use hyper::{Request, Response};
 use std::future::Future;
 use std::pin::Pin;
 
 type Body = BoxBody<Bytes, hyper::Error>;
 
 /// Forward proxy handler
-/// 
+///
 /// Implements a forward proxy that intercepts client requests to external servers.
 /// Supports filtering, caching, and authentication.
 pub struct ForwardProxyHandler {
