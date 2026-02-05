@@ -54,19 +54,12 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     container: rust:1-bookworm
     timeout-minutes: 35
+    env:
+      # Override release profile for CI: disable LTO and use more codegen units
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
 
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          docker-images: false
-          swap-storage: false
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -84,10 +77,10 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target/release
-          key: ${{ runner.os }}-rust1-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+            target/ci
+          key: ${{ runner.os }}-rust1-cargo-ci-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-rust1-cargo-release-
+            ${{ runner.os }}-rust1-cargo-ci-
 
       - name: Install Task
         run: |
@@ -97,9 +90,18 @@ jobs:
         run: |
           task docs:lint
 
-      - name: CI Pipeline (build + clippy + tests with deny warnings)
+      - name: CI Pipeline (release without LTO for disk efficiency)
         run: |
-          task ci:full
+          echo "🚀 Lithair CI Pipeline"
+          echo "✅ Code formatting check..."
+          cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
+          echo "🔨 Building workspace..."
+          RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --release --quiet && echo "   ✓ Build OK" || (echo "   ✗ Build failed" && exit 1)
+          echo "🔍 Clippy analysis..."
+          cargo clippy --workspace --all-targets --release --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
+          echo "🧪 Test suite..."
+          cargo test --workspace --all-targets --release --quiet && echo "   ✓ Tests OK" || (echo "   ✗ Tests failed" && exit 1)
+          echo "🎉 CI completed successfully!"
 
       - name: Ensure demo scripts are executable
         run: |
@@ -137,4 +139,3 @@ jobs:
           RS_PERF_MAX_BYTES: 262144
         run: |
           bash examples/raft_replication_demo/bench_http_server_stateless.sh
-
