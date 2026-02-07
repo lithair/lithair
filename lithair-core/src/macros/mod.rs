@@ -6,13 +6,12 @@
 pub mod api;
 pub mod model;
 
-// Re-export helper types
 #[allow(unused_imports)]
 pub use api::ApiGenerator;
 #[allow(unused_imports)]
 pub use model::ModelGenerator;
 
-/// Helper traits for macro-generated code
+/// Helper trait for macro-generated models
 #[allow(dead_code)]
 pub trait GeneratedModel {
     /// Get the model name

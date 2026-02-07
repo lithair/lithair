@@ -147,7 +147,7 @@ impl RaftLeadershipState {
         self.current_leader_id.store(self.node_id, Ordering::SeqCst);
         self.leader_port.store(self.self_port, Ordering::SeqCst);
         self.update_heartbeat();
-        println!("👑 Node {} is now the LEADER", self.node_id);
+        log::info!("Node {} is now the LEADER", self.node_id);
     }
 
     /// Become a follower - called when a new leader is detected
@@ -157,8 +157,8 @@ impl RaftLeadershipState {
         self.current_leader_id.store(new_leader_id, Ordering::SeqCst);
         self.leader_port.store(new_leader_port, Ordering::SeqCst);
         self.update_heartbeat();
-        println!(
-            "👥 Node {} is now a FOLLOWER (leader: node {} on port {})",
+        log::info!(
+            "Node {} is now a FOLLOWER (leader: node {} on port {})",
             self.node_id, new_leader_id, new_leader_port
         );
     }
@@ -167,7 +167,7 @@ impl RaftLeadershipState {
     ///
     /// Returns (should_become_leader, new_leader_id, new_leader_port)
     pub async fn start_election(&self) -> (bool, u64, u16) {
-        println!("🗳️ Node {} starting election...", self.node_id);
+        log::debug!("Node {} starting election...", self.node_id);
         self.current_state.store(1, Ordering::SeqCst); // 1 = Candidate
 
         let client = HttpClient::builder()
@@ -192,12 +192,12 @@ impl RaftLeadershipState {
                                 .and_then(|p| p.parse::<u16>().ok())
                                 .unwrap_or(0);
                             alive_peers.push((peer_id, peer_port));
-                            println!("   ✅ Peer {} (node {}) is alive", peer, peer_id);
+                            log::debug!("Peer {} (node {}) is alive", peer, peer_id);
                         }
                     }
                 }
                 _ => {
-                    println!("   ❌ Peer {} is not responding", peer);
+                    log::warn!("Peer {} is not responding", peer);
                 }
             }
         }
@@ -210,7 +210,7 @@ impl RaftLeadershipState {
         let (winner_id, winner_port) = candidates[0];
         let should_become_leader = winner_id == self.node_id;
 
-        println!("🗳️ Election result: node {} wins (port {})", winner_id, winner_port);
+        log::info!("Election result: node {} wins (port {})", winner_id, winner_port);
 
         (should_become_leader, winner_id, winner_port)
     }

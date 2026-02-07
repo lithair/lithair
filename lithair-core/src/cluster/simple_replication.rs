@@ -190,7 +190,7 @@ where
                         set.insert(id);
                     }
                     if Self::is_verbose() {
-                        println!("🔁 Loaded {} processed bulk batch_ids", set.len());
+                        log::debug!("Loaded {} processed bulk batch_ids", set.len());
                     }
                 }
             }
@@ -228,7 +228,7 @@ where
         }
         // Persist asynchronously; ignore errors (logged) to keep hot path fast
         if let Err(e) = self.persist_processed_batches_to_disk().await {
-            println!("⚠️ Failed to persist processed batch ids: {}", e);
+            log::warn!("Failed to persist processed batch ids: {}", e);
         }
     }
 
@@ -241,8 +241,8 @@ where
             let mut attempt = 0u32;
             loop {
                 if Self::is_verbose() {
-                    println!(
-                        "➡️  Replicating BULK ({} items) to {} (attempt {} of {})",
+                    log::debug!(
+                        "Replicating BULK ({} items) to {} (attempt {} of {})",
                         message.items.len(),
                         peer,
                         attempt + 1,
@@ -261,20 +261,20 @@ where
                     Ok(response) => {
                         if response.status().is_success() {
                             if Self::is_verbose() {
-                                println!("✅ BULK replicate to {} successful", peer);
+                                log::debug!("BULK replicate to {} successful", peer);
                             }
                             break;
                         } else {
-                            println!(
-                                "❌ BULK replicate to {} failed with status {}",
+                            log::error!(
+                                "BULK replicate to {} failed with status {}",
                                 peer,
                                 response.status()
                             );
                         }
                     }
                     Err(e) => {
-                        println!(
-                            "⚠️ Network error replicating BULK to {}: {} (attempt {} of {})",
+                        log::warn!(
+                            "Network error replicating BULK to {}: {} (attempt {} of {})",
                             peer,
                             e,
                             attempt + 1,
@@ -285,8 +285,8 @@ where
 
                 attempt += 1;
                 if attempt >= max_retries {
-                    println!(
-                        "❌ Giving up BULK replicate to {} after {} attempts",
+                    log::error!(
+                        "Giving up BULK replicate to {} after {} attempts",
                         peer, max_retries
                     );
                     break;
@@ -402,8 +402,8 @@ where
         }
 
         if Self::is_verbose() {
-            println!(
-                "📥 Received replication: {} - {} from leader {}",
+            log::debug!(
+                "Received replication: {} - {} from leader {}",
                 message.operation,
                 message.id.as_deref().unwrap_or("unknown"),
                 message.leader_node_id
@@ -425,7 +425,7 @@ where
             }
             _ => {
                 if Self::is_verbose() {
-                    println!("⚠️ Unknown replication operation: {}", message.operation);
+                    log::warn!("Unknown replication operation: {}", message.operation);
                 }
             }
         }
@@ -454,20 +454,20 @@ where
                     Ok(response) => {
                         if response.status().is_success() {
                             if Self::is_verbose() {
-                                println!("✅ Replicate to {} successful", peer);
+                                log::debug!("Replicate to {} successful", peer);
                             }
                             break;
                         } else {
-                            println!(
-                                "❌ Replicate to {} failed with status {}",
+                            log::error!(
+                                "Replicate to {} failed with status {}",
                                 peer,
                                 response.status()
                             );
                         }
                     }
                     Err(e) => {
-                        println!(
-                            "⚠️ Network error replicating to {}: {} (attempt {} of {})",
+                        log::warn!(
+                            "Network error replicating to {}: {} (attempt {} of {})",
                             peer,
                             e,
                             attempt + 1,
@@ -478,7 +478,7 @@ where
 
                 attempt += 1;
                 if attempt >= max_retries {
-                    println!("❌ Giving up replicate to {} after {} attempts", peer, max_retries);
+                    log::error!("Giving up replicate to {} after {} attempts", peer, max_retries);
                     break;
                 }
                 let backoff = Duration::from_millis(200 * (1u64 << attempt.min(5)));
@@ -522,7 +522,7 @@ where
                     match response.json::<Vec<T>>().await {
                         Ok(leader_data) => {
                             if Self::is_verbose() {
-                                println!("🔄 Syncing {} items from leader", leader_data.len());
+                                log::debug!("Syncing {} items from leader", leader_data.len());
                             }
 
                             // Replace entire cache with leader data
@@ -535,17 +535,17 @@ where
                             }
 
                             if Self::is_verbose() {
-                                println!("✅ Sync completed - {} items in cache", cache.len());
+                                log::debug!("Sync completed - {} items in cache", cache.len());
                             }
                         }
                         Err(e) => {
-                            println!("⚠️ Failed to parse sync data: {}", e);
+                            log::warn!("Failed to parse sync data: {}", e);
                         }
                     }
                 }
             }
             Err(e) => {
-                println!("⚠️ Failed to sync from leader: {}", e);
+                log::warn!("Failed to sync from leader: {}", e);
             }
         }
 

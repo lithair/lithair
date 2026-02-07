@@ -555,7 +555,10 @@ impl BenchmarkEngine {
         // Get and remove a known ID for this table
         let id = {
             let mut known_ids = self.known_ids.write().await;
-            known_ids.iter().position(|(t, _)| *t == table).map(|pos| known_ids.remove(pos).1)
+            known_ids
+                .iter()
+                .position(|(t, _)| *t == table)
+                .map(|pos| known_ids.remove(pos).1)
         };
 
         let Some(id) = id else {

@@ -1094,7 +1094,11 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
     // Forcer la persistance des IDs de déduplication
     std::env::set_var("RS_DEDUP_PERSIST", "1");
 
-    let config = EngineConfig { event_log_path: base_path.clone(), use_multi_file_store: true, ..Default::default() };
+    let config = EngineConfig {
+        event_log_path: base_path.clone(),
+        use_multi_file_store: true,
+        ..Default::default()
+    };
 
     // Run 1: appliquer l'événement une première fois en mode multi-fichiers
     let engine = Engine::<TestEngineApp>::new(config.clone()).expect(
@@ -1233,7 +1237,11 @@ async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld
     std::fs::create_dir_all(&base_path)
         .expect("Impossible de créer le répertoire de test pour le mode multi-fichiers");
 
-    let config = EngineConfig { event_log_path: base_path.clone(), use_multi_file_store: true, ..Default::default() };
+    let config = EngineConfig {
+        event_log_path: base_path.clone(),
+        use_multi_file_store: true,
+        ..Default::default()
+    };
 
     let engine = Engine::<TestEngineApp>::new(config)
         .expect("Échec d'initialisation du moteur en mode multi-fichiers");
@@ -1407,7 +1415,11 @@ async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     // Note: FileStorage::new lit RS_MAX_LOG_FILE_SIZE et configure max_log_file_size en conséquence.
     std::env::set_var("RS_MAX_LOG_FILE_SIZE", "512");
 
-    let config = EngineConfig { event_log_path: base_path.clone(), use_multi_file_store: true, ..Default::default() };
+    let config = EngineConfig {
+        event_log_path: base_path.clone(),
+        use_multi_file_store: true,
+        ..Default::default()
+    };
 
     let engine = Engine::<TestEngineApp>::new(config)
         .expect("Échec d'initialisation du moteur en mode multi-fichiers pour la rotation");
@@ -1560,7 +1572,11 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     std::fs::create_dir_all(&base_path)
         .expect("Impossible de créer le répertoire de test pour les relations multi-fichiers");
 
-    let config = EngineConfig { event_log_path: base_path.clone(), use_multi_file_store: true, ..Default::default() };
+    let config = EngineConfig {
+        event_log_path: base_path.clone(),
+        use_multi_file_store: true,
+        ..Default::default()
+    };
 
     let engine = Engine::<TestEngineApp>::new(config).expect(
         "Échec d'initialisation du moteur en mode multi-fichiers pour les relations dynamiques",
@@ -1832,7 +1848,11 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
     std::fs::write(&events_path, content)
         .expect("Impossible d'écrire le log d'événements versionnés");
 
-    let config = EngineConfig { event_log_path: base_path.clone(), use_multi_file_store: false, ..Default::default() };
+    let config = EngineConfig {
+        event_log_path: base_path.clone(),
+        use_multi_file_store: false,
+        ..Default::default()
+    };
 
     let engine = Engine::<TestEngineApp>::new(config)
         .expect("Échec d'initialisation du moteur pour versioning");

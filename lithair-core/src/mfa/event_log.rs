@@ -35,7 +35,7 @@ impl MfaEventLog {
         let state = MfaState::replay(&events);
         let event_count = events.len();
 
-        log::info!("📂 Loaded {} MFA events from log", event_count);
+        log::info!("Loaded {} MFA events from log", event_count);
 
         Ok(Self {
             log_path,
@@ -74,7 +74,7 @@ impl MfaEventLog {
     /// Append event to log and update state
     pub async fn append(&self, event: MfaEvent) -> Result<()> {
         // Log event
-        log::info!("📝 MFA Event: {} for {}", event.event_type(), event.username());
+        log::info!("MFA Event: {} for {}", event.event_type(), event.username());
 
         // Serialize event
         let json = serde_json::to_string(&event)

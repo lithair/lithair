@@ -149,7 +149,7 @@ impl JsonParser {
     }
 
     fn parse_string(&mut self) -> Result<JsonValue, JsonError> {
-        // TODO: Implement proper string parsing with escape sequences
+        // Note: escape sequences inside strings are not yet handled during parsing
         self.pos += 1; // Skip opening quote
         let start = self.pos;
 

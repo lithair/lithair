@@ -68,7 +68,7 @@ impl<T: Send + Sync> ThreeTierRouter<T> {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
-        log::debug!("🌐 Three-Tier Route: {} {}", method, path);
+        log::debug!("Three-Tier Route: {} {}", method, path);
 
         // Three-tier routing logic
         if path.starts_with(&self.admin_prefix) {

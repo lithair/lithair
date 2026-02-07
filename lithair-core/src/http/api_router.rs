@@ -69,7 +69,7 @@ impl ApiRouter {
     where
         T: Clone + Send + Sync + HttpExposable + LifecycleAware + ReplicatedModel + 'static,
     {
-        log::info!("🔌 Registering API handler: {} → DeclarativeHttpHandler", path_prefix);
+        log::info!("Registering API handler: {} -> DeclarativeHttpHandler", path_prefix);
         self.handlers.insert(path_prefix.to_string(), Box::new(handler));
     }
 
@@ -95,7 +95,7 @@ impl ApiRouter {
         }
 
         if let Some((matched_prefix, handler)) = best_match {
-            log::debug!("🔌 API route match: {} → {}", path, matched_prefix);
+            log::debug!("API route match: {} -> {}", path, matched_prefix);
 
             // Extract path segments for the handler (remove the matched prefix)
             let remaining_path = path.strip_prefix(matched_prefix).unwrap_or("");
@@ -110,12 +110,12 @@ impl ApiRouter {
                 Err(_) => {
                     // Since DeclarativeHttpHandler returns Result<Resp, Infallible>,
                     // this should never happen, but we handle it for completeness
-                    log::error!("❌ API handler error for {}: Infallible error occurred", path);
+                    log::error!("API handler error for {}: Infallible error occurred", path);
                     Some(not_found_response("API handler error"))
                 }
             }
         } else {
-            log::warn!("❌ No API handler found for path: {}", path);
+            log::warn!("No API handler found for path: {}", path);
             None
         }
     }
@@ -155,12 +155,6 @@ mod tests {
         assert!(stats.handler_prefixes.is_empty());
     }
 
-    // TODO: Add proper integration tests with hyper Request conversion
-    // #[tokio::test]
-    // async fn test_api_router_empty() {
-    //     let router = ApiRouter::new();
-    //     // Need proper hyper::Request<hyper::body::Incoming> here
-    //     let response = router.route_request(req).await;
-    //     assert!(response.is_none());
-    // }
+    // Integration tests with hyper Request<Incoming> are omitted here because
+    // constructing a valid Incoming body requires a live HTTP connection.
 }

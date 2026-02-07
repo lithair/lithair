@@ -91,8 +91,8 @@ impl SnapshotManager {
         data: SnapshotData,
     ) -> std::io::Result<SnapshotMeta> {
         // Serialize with rkyv
-        let bytes = rkyv::to_bytes::<RkyvError>(&data)
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        let bytes =
+            rkyv::to_bytes::<RkyvError>(&data).map_err(|e| std::io::Error::other(e.to_string()))?;
 
         let checksum = Self::fnv1a_hash(&bytes);
         let timestamp = std::time::SystemTime::now()

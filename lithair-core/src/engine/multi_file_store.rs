@@ -130,8 +130,8 @@ impl MultiFileEventStore {
         let store = EventStore::new(aggregate_dir.to_str().unwrap())?;
 
         if self.log_verbose {
-            println!(
-                "📂 Created EventStore for aggregate '{}' at {}",
+            log::debug!(
+                "Created EventStore for aggregate '{}' at {}",
                 aggregate_id,
                 aggregate_dir.display()
             );
@@ -286,7 +286,7 @@ impl MultiFileEventStore {
         self.snapshot_store.save_snapshot(&snapshot)?;
 
         if self.log_verbose {
-            println!("📸 Snapshot created for {:?}: {} events", aggregate_id, event_count);
+            log::debug!("Snapshot created for {:?}: {} events", aggregate_id, event_count);
         }
 
         Ok(())

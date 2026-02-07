@@ -44,7 +44,7 @@ impl LithairServer {
         };
 
         log::info!(
-            "📋 Schema proposal received for model '{}' from node {}",
+            "Schema proposal received for model '{}' from node {}",
             pending_change.model_name,
             pending_change.proposer_node_id
         );
@@ -59,7 +59,7 @@ impl LithairServer {
             VoteStrategy::AutoAccept => {
                 // Auto-accept: Apply immediately
                 log::info!(
-                    "✅ Auto-accepting schema change for '{}' (strategy: {:?})",
+                    "Auto-accepting schema change for '{}' (strategy: {:?})",
                     pending_change.model_name,
                     pending_change.overall_strategy
                 );
@@ -78,7 +78,7 @@ impl LithairServer {
             VoteStrategy::Reject => {
                 // Reject: Don't accept this type of change
                 log::warn!(
-                    "❌ Rejecting schema change for '{}' (policy rejects {:?} changes)",
+                    "Rejecting schema change for '{}' (policy rejects {:?} changes)",
                     pending_change.model_name,
                     pending_change.overall_strategy
                 );
@@ -93,7 +93,7 @@ impl LithairServer {
             VoteStrategy::Consensus | VoteStrategy::ManualApproval { .. } => {
                 // Create pending change for voting/approval
                 log::info!(
-                    "⏳ Schema change for '{}' requires {:?}",
+                    "Schema change for '{}' requires {:?}",
                     pending_change.model_name,
                     strategy
                 );
@@ -188,10 +188,10 @@ impl LithairServer {
 
         if vote.approve {
             pending.add_approval(vote.node_id);
-            log::info!("👍 Node {} approved schema change {}", vote.node_id, vote.change_id);
+            log::info!("Node {} approved schema change {}", vote.node_id, vote.change_id);
         } else {
             pending.add_rejection(vote.node_id, vote.reason);
-            log::info!("👎 Node {} rejected schema change {}", vote.node_id, vote.change_id);
+            log::info!("Node {} rejected schema change {}", vote.node_id, vote.change_id);
         }
 
         // Check if we have consensus
@@ -203,13 +203,13 @@ impl LithairServer {
         if has_approvals {
             pending.status = SchemaChangeStatus::Applied;
             log::info!(
-                "✅ Schema change {} approved and applied for '{}'",
+                "Schema change {} approved and applied for '{}'",
                 vote.change_id,
                 model_name
             );
         } else if should_reject {
             pending.status = SchemaChangeStatus::Rejected;
-            log::warn!("❌ Schema change {} rejected", vote.change_id);
+            log::warn!("Schema change {} rejected", vote.change_id);
         }
 
         let response_status = pending.status.clone();
@@ -417,7 +417,7 @@ impl LithairServer {
 
         pending.add_human_approval(user_id.clone(), user_name.clone());
         log::info!(
-            "👤 Human approval from '{}' for schema change {}",
+            "Human approval from '{}' for schema change {}",
             user_name.as_deref().unwrap_or(&user_id),
             change_id
         );
@@ -431,7 +431,7 @@ impl LithairServer {
         if has_approvals {
             pending.status = SchemaChangeStatus::Applied;
             log::info!(
-                "✅ Schema change {} approved and applied for '{}' (human approval)",
+                "Schema change {} approved and applied for '{}' (human approval)",
                 change_id,
                 model_name
             );
@@ -451,7 +451,7 @@ impl LithairServer {
                 log::error!("Failed to persist approved schema to disk: {}", e);
                 // Continue anyway - schema is applied in memory
             } else {
-                log::info!("💾 Schema for '{}' persisted to disk", model_name_for_response);
+                log::info!("Schema for '{}' persisted to disk", model_name_for_response);
             }
 
             let response = serde_json::json!({
@@ -531,7 +531,7 @@ impl LithairServer {
             pending.rejection_reason = reject_body.reason.clone();
 
             log::warn!(
-                "❌ Schema change {} manually rejected: {}",
+                "Schema change {} manually rejected: {}",
                 change_id,
                 reject_body.reason.as_deref().unwrap_or("No reason provided")
             );
@@ -608,12 +608,12 @@ impl LithairServer {
         let pending_count = state.pending_changes.len();
 
         log::info!(
-            "🔄 Schema sync requested - current state: {} schemas, {} pending",
+            "Schema sync requested - current state: {} schemas, {} pending",
             schema_count,
             pending_count
         );
 
-        // TODO: Implement actual leader communication
+        // Note: Actual leader communication is not yet implemented
         // For now, return current state as acknowledgment
         let response = serde_json::json!({
             "status": "sync_triggered",
@@ -953,7 +953,7 @@ impl LithairServer {
                         state.schemas.insert(model_name.clone(), previous_spec.clone());
 
                         log::warn!(
-                            "⏪ Schema rollback executed for '{}' (change {})",
+                            "Schema rollback executed for '{}' (change {})",
                             model_name,
                             change_id
                         );
@@ -1052,7 +1052,7 @@ impl LithairServer {
         }
 
         log::info!(
-            "🔒 Schema migrations LOCKED{}",
+            "Schema migrations LOCKED{}",
             reason.as_ref().map(|r| format!(": {}", r)).unwrap_or_default()
         );
 
@@ -1112,7 +1112,7 @@ impl LithairServer {
         let auto_relock_msg = duration_secs.map(|d| format!(" (auto-relock in {}s)", d));
 
         log::info!(
-            "🔓 Schema migrations UNLOCKED{}{}",
+            "Schema migrations UNLOCKED{}{}",
             reason.as_ref().map(|r| format!(": {}", r)).unwrap_or_default(),
             auto_relock_msg.as_deref().unwrap_or("")
         );

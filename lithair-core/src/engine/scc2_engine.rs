@@ -83,7 +83,7 @@ where
     {
         let start = std::time::Instant::now();
         let events = {
-            let store = self.event_store.read().unwrap();
+            let store = self.event_store.read().expect("event store lock poisoned");
             store.get_all_events().map_err(|e| crate::Error::EngineError(e.to_string()))?
         };
 
@@ -110,7 +110,7 @@ where
         }
 
         if self.config.verbose_logging {
-            println!("✅ SCC2: Replayed {} events in {:?}", count, start.elapsed());
+            log::info!("SCC2: Replayed {} events in {:?}", count, start.elapsed());
         }
 
         Ok(())
@@ -290,12 +290,12 @@ where
             .map_err(|e| crate::Error::SerializationError(e.to_string()))?;
 
         // Save to EventStore
-        let store = self.event_store.read().unwrap();
+        let store = self.event_store.read().expect("event store lock poisoned");
         store.save_snapshot(&json).map_err(|e| crate::Error::EngineError(e.to_string()))
     }
 
     pub fn truncate_log(&self) -> Result<(), crate::Error> {
-        let mut store = self.event_store.write().unwrap();
+        let mut store = self.event_store.write().expect("event store lock poisoned");
         store.truncate_events().map_err(|e| crate::Error::EngineError(e.to_string()))
     }
 
@@ -303,8 +303,7 @@ where
     where
         E: Event<State = S>,
     {
-        let mut state_clone =
-            self.read(key, |s| s.clone()).unwrap_or_default();
+        let mut state_clone = self.read(key, |s| s.clone()).unwrap_or_default();
 
         event.apply(&mut state_clone);
 

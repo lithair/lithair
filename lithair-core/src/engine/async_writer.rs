@@ -22,15 +22,15 @@ pub struct AsyncWriter {
 /// Configuration du mode de durabilité
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DurabilityMode {
-    /// ⚡ Performance maximale : batch + flush périodique (10ms)
-    /// ⚠️  RISQUE : Perte max 10ms de données en cas de crash brutal
-    /// 📊 Usage : Benchmarks, prototypes, données non-critiques
+    /// Performance maximale : batch + flush périodique (10ms)
+    /// RISQUE : Perte max 10ms de données en cas de crash brutal
+    /// Usage : Benchmarks, prototypes, données non-critiques
     Performance,
 
-    /// 🛡️  Durabilité maximale : fsync après chaque batch (DEFAULT)
-    /// ✅ GARANTIE : Aucune perte de données, même en cas de crash
-    /// 📊 Usage : Production, données critiques, event-sourcing
-    /// ⚠️  Note : 10-100x plus lent, mais c'est le STANDARD des DB sérieuses
+    /// Durabilité maximale : fsync après chaque batch (DEFAULT)
+    /// GARANTIE : Aucune perte de données, même en cas de crash
+    /// Usage : Production, données critiques, event-sourcing
+    /// Note : 10-100x plus lent, mais c'est le STANDARD des DB sérieuses
     #[default]
     MaxDurability,
 }
@@ -49,7 +49,7 @@ impl AsyncWriter {
     ) -> Self {
         // Configurer fsync selon le mode de durabilité (sur le store partagé)
         {
-            let mut guard = store.write().unwrap();
+            let mut guard = store.write().expect("event store lock poisoned");
             let fsync = durability == DurabilityMode::MaxDurability;
             guard.configure_batching(batch_size, fsync);
         }
@@ -156,7 +156,7 @@ impl AsyncWriter {
         let mut guard = match store.write() {
             Ok(g) => g,
             Err(e) => {
-                eprintln!("❌ Erreur lock EventStore: {}", e);
+                log::error!("EventStore lock error: {}", e);
                 // If we can't lock, we can't write.
                 // Fail pending flushes?
                 // Ideally we should panic or retry, but here we just drop them which causes Receiver drop error.
@@ -172,7 +172,7 @@ impl AsyncWriter {
 
         // FS YNC
         if let Err(e) = guard.flush_events() {
-            eprintln!("❌ Erreur flush_events: {}", e);
+            log::error!("flush_events error: {}", e);
         }
 
         // Acknowledge all flushes

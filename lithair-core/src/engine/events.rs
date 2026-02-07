@@ -464,7 +464,7 @@ impl EventStore {
                 storage.configure_batching(max_batch_size, fsync_on_append)
             }
             EventStoreBackend::Multi(_) => {
-                // TODO: Multi-file mode doesn't support configure_batching yet
+                // Note: Multi-file mode does not currently support configure_batching
             }
         }
     }
@@ -726,18 +726,18 @@ impl ChainVerificationResult {
         if self.is_valid {
             if self.legacy_events > 0 {
                 format!(
-                    "✅ Chain valid: {}/{} events verified ({} legacy events without hash chain)",
+                    "Chain valid: {}/{} events verified ({} legacy events without hash chain)",
                     self.verified_events, self.total_events, self.legacy_events
                 )
             } else {
                 format!(
-                    "✅ Chain fully verified: {}/{} events",
+                    "Chain fully verified: {}/{} events",
                     self.verified_events, self.total_events
                 )
             }
         } else {
             format!(
-                "❌ Chain INVALID: {} hash errors, {} broken links out of {} events",
+                "Chain INVALID: {} hash errors, {} broken links out of {} events",
                 self.invalid_hashes.len(),
                 self.broken_links.len(),
                 self.total_events
@@ -758,15 +758,13 @@ pub struct ChainError {
 }
 
 /// Event stream for real-time event processing
-pub struct EventStream {
-    // TODO: Implement event streaming
-}
+#[allow(dead_code)]
+pub struct EventStream;
 
 impl EventStream {
+    /// Create a new event stream
     pub fn new() -> Self {
-        Self {
-            // TODO: Initialize event stream
-        }
+        Self
     }
 }
 

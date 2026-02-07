@@ -16,7 +16,7 @@ type Body = BoxBody<Bytes, hyper::Error>;
 /// Implements a forward proxy that intercepts client requests to external servers.
 /// Supports filtering, caching, and authentication.
 pub struct ForwardProxyHandler {
-    // TODO: Add filter lists, cache, auth state
+    // Note: filter lists, cache, and auth state fields are not yet defined
 }
 
 impl ForwardProxyHandler {
@@ -38,11 +38,8 @@ impl ProxyHandler for ForwardProxyHandler {
         _req: Request<Body>,
     ) -> Pin<Box<dyn Future<Output = ProxyResult<Response<Body>>> + Send + 'static>> {
         Box::pin(async move {
-            // TODO: Implement forward proxy logic
-            // 1. Check filters
-            // 2. Check auth
-            // 3. Forward request
-            // 4. Cache response if applicable
+            // Note: forward proxy logic (filter checking, authentication, request
+            // forwarding, response caching) is not yet implemented
             unimplemented!("Forward proxy not yet implemented")
         })
     }
@@ -52,7 +49,7 @@ impl ProxyHandler for ForwardProxyHandler {
         _req: &Request<Body>,
     ) -> Pin<Box<dyn Future<Output = ProxyResult<bool>> + Send + 'static>> {
         Box::pin(async move {
-            // TODO: Check against filter lists
+            // Note: filter list checking is not yet implemented; defaults to allow
             Ok(false)
         })
     }

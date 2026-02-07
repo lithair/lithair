@@ -46,7 +46,7 @@ impl AssetServer {
                 // Try direct asset lookup
                 if let Some(asset) = engine.get_asset(&clean_path).await {
                     log::info!(
-                        "🚀 [{}] Serving {} from SCC2 memory ({} bytes)",
+                        "[{}] Serving {} from SCC2 memory ({} bytes)",
                         engine.host_id(),
                         clean_path,
                         asset.size_bytes
@@ -58,7 +58,7 @@ impl AssetServer {
                 if (clean_path == "/" || clean_path.is_empty()) && fallback_path.is_some() {
                     if let Some(asset) = engine.get_asset("/index.html").await {
                         log::info!(
-                            "🚀 [{}] Serving fallback /index.html from SCC2 memory",
+                            "[{}] Serving fallback /index.html from SCC2 memory",
                             engine.host_id()
                         );
                         return Some((asset.content, asset.mime_type));
@@ -97,7 +97,7 @@ impl AssetServer {
                         if let Some(asset_id) = vhost.path_index.get(&asset_path) {
                             if let Some(asset) = vhost.assets.get(asset_id) {
                                 log::info!(
-                                    "🚀 [{}] Serving {} from memory ({} bytes)",
+                                    "[{}] Serving {} from memory ({} bytes)",
                                     vhost.host_id,
                                     clean_path,
                                     asset.size_bytes
@@ -111,7 +111,7 @@ impl AssetServer {
                             if let Some(fallback_id) = vhost.path_index.get("/index.html") {
                                 if let Some(asset) = vhost.assets.get(fallback_id) {
                                     log::info!(
-                                        "🚀 [{}] Serving fallback /index.html from memory",
+                                        "[{}] Serving fallback /index.html from memory",
                                         vhost.host_id
                                     );
                                     return Some((asset.content.clone(), asset.mime_type.clone()));

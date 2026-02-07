@@ -110,7 +110,7 @@ where
         for entry in entries {
             if let EntryPayload::Normal(request) = &entry.payload {
                 // Treat all ClientRequest as events for now
-                println!("📝 Lithair: Storing request: {}", request.status);
+                log::debug!("Lithair: Storing request: {}", request.status);
                 
                 // Simple file append for demo
                 let log_path = format!("{}/distributed_events.log", self.data_dir());
@@ -155,7 +155,7 @@ where
         for entry in entries {
             if let EntryPayload::Normal(request) = &entry.payload {
                 // Handle ClientRequest for MemStore compatibility
-                println!("⚡ Lithair: Applied request to state machine: {}", request.status);
+                log::debug!("Lithair: Applied request to state machine: {}", request.status);
                 responses.push(LithairResponse::EventApplied {
                     event_id: uuid::Uuid::new_v4().to_string(),
                     applied_at: std::time::SystemTime::now()
@@ -186,7 +186,7 @@ where
         _meta: &SnapshotMeta<NodeId, ()>,
         _snapshot: Box<Cursor<Vec<u8>>>,
     ) -> Result<(), StorageError<NodeId>> {
-        println!("📦 Lithair: Snapshot installed");
+        log::info!("Lithair: Snapshot installed");
         Ok(())
     }
 

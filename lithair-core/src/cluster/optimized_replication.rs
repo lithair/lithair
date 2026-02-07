@@ -147,7 +147,7 @@ impl<T: BincodeSerializable> OptimizedReplicationMessage<T> {
             json_time, bincode_time, json_size, bincode_size
         );
 
-        println!("🚀 T021 REPLICATION: {:.2}x speedup, {:.1}% size reduction", 
+        log::debug!("T021 REPLICATION: {:.2}x speedup, {:.1}% size reduction",
                  speedup, t021_stats.size_reduction_percent);
 
         Ok(Self {
@@ -259,7 +259,7 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
         let mut storage = self.storage.write().await;
         storage.insert(key, envelope.data);
 
-        println!("💾 T021: Stored {} bytes in bincode format", envelope.size());
+        log::debug!("T021: Stored {} bytes in bincode format", envelope.size());
         Ok(())
     }
 
@@ -270,11 +270,11 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
             // Deserialize from bincode (T021)
             match T::from_bincode_bytes(bincode_data) {
                 Ok(data) => {
-                    println!("🔍 T021: Retrieved data from {} bytes bincode", bincode_data.len());
+                    log::debug!("T021: Retrieved data from {} bytes bincode", bincode_data.len());
                     Some(data)
                 }
                 Err(e) => {
-                    println!("❌ T021: Failed to deserialize bincode data: {}", e);
+                    log::error!("T021: Failed to deserialize bincode data: {}", e);
                     None
                 }
             }
@@ -294,7 +294,7 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
             }
         }
 
-        println!("📦 T021: Retrieved {} items from bincode storage", results.len());
+        log::debug!("T021: Retrieved {} items from bincode storage", results.len());
         results
     }
 
@@ -308,7 +308,7 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
             data,
         )?;
 
-        println!("🚀 T021 REPLICATION: {:.2}x speedup, {:.1}% size reduction", 
+        log::debug!("T021 REPLICATION: {:.2}x speedup, {:.1}% size reduction",
                  message.get_speedup(), message.get_size_reduction());
 
         // Update global metrics
@@ -330,7 +330,7 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
                     metrics.successful_replications += 1;
                 }
                 Err(e) => {
-                    println!("❌ T021: Failed to replicate to {}: {}", peer, e);
+                    log::error!("T021: Failed to replicate to {}: {}", peer, e);
                     let mut metrics = self.metrics.write().await;
                     metrics.failed_replications += 1;
                 }
@@ -346,7 +346,7 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
         let message_data = message.to_bincode_bytes()
             .map_err(|e| format!("T021 message serialization failed: {}", e))?;
 
-        println!("📤 T021: Sending {} bytes bincode message to {}", message_data.len(), peer);
+        log::debug!("T021: Sending {} bytes bincode message to {}", message_data.len(), peer);
 
         // In a real implementation, this would use HTTP/gRPC with bincode content
         // For now, simulate successful send
@@ -360,7 +360,7 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
         let message = OptimizedReplicationMessage::<T>::from_bincode_bytes(message_data)
             .map_err(|e| format!("T021 message deserialization failed: {}", e))?;
 
-        println!("📥 T021: Received replication message with {:.2}x speedup", message.get_speedup());
+        log::debug!("T021: Received replication message with {:.2}x speedup", message.get_speedup());
 
         // Extract and store the payload
         let payload = message.extract_payload()?;
@@ -388,15 +388,13 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
     pub async fn print_performance_summary(&self) {
         let metrics = self.get_performance_metrics().await;
         
-        println!("\n🚀 T021 PERFORMANCE SUMMARY");
-        println!("================================");
-        println!("Total operations: {}", metrics.total_operations);
-        println!("Average speedup: {:.2}x", metrics.average_speedup());
-        println!("Average size reduction: {:.1}%", metrics.average_size_reduction());
-        println!("Successful replications: {}", metrics.successful_replications);
-        println!("Failed replications: {}", metrics.failed_replications);
-        println!("Success rate: {:.1}%", 
-                 metrics.successful_replications as f64 / 
+        log::info!("T021 PERFORMANCE SUMMARY: total_ops={}, avg_speedup={:.2}x, avg_size_reduction={:.1}%, successful={}, failed={}, success_rate={:.1}%",
+                 metrics.total_operations,
+                 metrics.average_speedup(),
+                 metrics.average_size_reduction(),
+                 metrics.successful_replications,
+                 metrics.failed_replications,
+                 metrics.successful_replications as f64 /
                  (metrics.successful_replications + metrics.failed_replications) as f64 * 100.0);
     }
 }

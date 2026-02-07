@@ -1196,7 +1196,9 @@ async fn then_hash_chain_valid_on_all_real_nodes(world: &mut LithairWorld) {
                                 .map(|s| s.to_string());
 
                             if line_num > 0
-                                && previous_hash.is_some() && event_prev_hash != previous_hash {
+                                && previous_hash.is_some()
+                                && event_prev_hash != previous_hash
+                            {
                                 println!("⚠️ Node {} chain break at line {}", i, line_num);
                                 valid_chain = false;
                                 break;

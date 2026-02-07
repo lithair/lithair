@@ -390,15 +390,15 @@ where
     pub fn new(event_store_path: &str, port: u16) -> anyhow::Result<Self> {
         let model_name = std::any::type_name::<T>().split("::").last().unwrap_or("UnknownModel");
 
-        println!("🏗️  Creating Pure Declarative Lithair Server");
-        println!("   Model: {}", model_name);
-        println!("   Base Path: /api/{}", T::http_base_path());
-        println!("   Port: {}", port);
+        log::info!("Creating Pure Declarative Lithair Server");
+        log::info!("   Model: {}", model_name);
+        log::info!("   Base Path: /api/{}", T::http_base_path());
+        log::info!("   Port: {}", port);
 
         let handler = DeclarativeHttpHandler::<T>::new(event_store_path)
             .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
 
-        println!("✅ Declarative Server ready - EventStore: {}", event_store_path);
+        log::info!("Declarative Server ready - EventStore: {}", event_store_path);
 
         Ok(Self {
             handler,
@@ -441,8 +441,8 @@ where
             };
             self.consensus_config = Some(consensus_config);
 
-            println!(
-                "🔄 Auto-configured distributed replication for model with replicated fields: {:?}",
+            log::info!(
+                "Auto-configured distributed replication for model with replicated fields: {:?}",
                 T::replicated_fields()
             );
         }
@@ -471,10 +471,10 @@ where
         // Initialize logging system if configured
         if let Some(ref logging_config) = self.logging_config {
             if let Err(e) = crate::logging::init_logging(logging_config) {
-                println!("⚠️ Logging initialization failed: {}", e);
-                println!("   Continuing without custom logging...");
+                log::warn!("Logging initialization failed: {}", e);
+                log::warn!("   Continuing without custom logging...");
             } else {
-                log::info!("📋 Lithair logging system initialized");
+                log::info!("Lithair logging system initialized");
                 log::debug!(
                     "Logging config: outputs={}, format={:?}",
                     logging_config.outputs.len(),
@@ -487,8 +487,8 @@ where
         if let Some(ref consensus_config) = self.consensus_config {
             let mut consensus = DeclarativeConsensus::<T>::new(consensus_config.clone());
             if let Err(e) = consensus.initialize().await {
-                println!("⚠️ Consensus initialization failed: {}", e);
-                println!("   Continuing in single-node mode...");
+                log::warn!("Consensus initialization failed: {}", e);
+                log::warn!("   Continuing in single-node mode...");
             }
         }
 
@@ -513,7 +513,10 @@ where
         let deprecation_warnings = self.deprecation_warnings;
 
         // Initialize anti-DDoS protection if configured
-        let anti_ddos = self.anti_ddos_config.as_ref().map(|cfg| Arc::new(AntiDDoSProtection::new(cfg.clone())));
+        let anti_ddos = self
+            .anti_ddos_config
+            .as_ref()
+            .map(|cfg| Arc::new(AntiDDoSProtection::new(cfg.clone())));
 
         let gzip_cfg = resolve_gzip_config(gzip_cfg);
         let access_log_enabled = self.access_log
@@ -521,7 +524,7 @@ where
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
-        println!("🌐 Pure Lithair Declarative Server listening on http://127.0.0.1:{}", self.port);
+        log::info!("Pure Lithair Declarative Server listening on http://127.0.0.1:{}", self.port);
 
         let listener = TcpListener::bind(addr).await?;
         loop {
@@ -531,7 +534,7 @@ where
             if let Some(ref protection) = anti_ddos {
                 if !protection.is_connection_allowed(remote_addr.ip()).await {
                     // Connection rejected by anti-DDoS protection
-                    log::warn!("🛡️ Anti-DDoS: Connection rejected from {}", remote_addr.ip());
+                    log::warn!("Anti-DDoS: Connection rejected from {}", remote_addr.ip());
                     drop(stream);
                     continue;
                 }
@@ -599,13 +602,13 @@ where
                 let connection_timeout = std::time::Duration::from_secs(300); // 5 minutes max per connection
                 match tokio::time::timeout(connection_timeout, conn).await {
                     Err(_) => {
-                        eprintln!(
+                        log::error!(
                             "Connection timeout after {} seconds",
                             connection_timeout.as_secs()
                         );
                     }
                     Ok(Err(e)) => {
-                        eprintln!("Server connection error: {}", e);
+                        log::error!("Server connection error: {}", e);
                     }
                     Ok(Ok(())) => {
                         // Connection completed successfully
@@ -616,57 +619,54 @@ where
     }
 
     fn print_startup_info(&self) {
-        println!();
-        println!("🎯 Ready for pure declarative operations!");
+        log::info!("Ready for pure declarative operations!");
         if let Some(node_id) = self.node_id {
-            println!("   Node ID: {}", node_id);
+            log::info!("   Node ID: {}", node_id);
         }
-        println!(
+        log::info!(
             "   Test with: curl -X POST http://127.0.0.1:{}/api/{} \\",
             self.port,
             T::http_base_path()
         );
-        println!("             -H 'Content-Type: application/json' \\");
-        println!("             -d '{{...}}'  # Your model JSON");
-        println!();
-        println!("📡 Auto-generated endpoints:");
-        println!("   GET    /api/{:<20} - List all items", T::http_base_path());
-        println!("   POST   /api/{:<20} - Create item", T::http_base_path());
-        println!("   GET    /api/{}/{{id}}{:<10} - Get item by ID", T::http_base_path(), "");
-        println!("   PUT    /api/{}/{{id}}{:<10} - Update item", T::http_base_path(), "");
-        println!("   DELETE /api/{}/{{id}}{:<10} - Delete item", T::http_base_path(), "");
-        println!(
+        log::info!("             -H 'Content-Type: application/json' \\");
+        log::info!("             -d '{{...}}'  # Your model JSON");
+        log::info!("Auto-generated endpoints:");
+        log::info!("   GET    /api/{:<20} - List all items", T::http_base_path());
+        log::info!("   POST   /api/{:<20} - Create item", T::http_base_path());
+        log::info!("   GET    /api/{}/{{id}}{:<10} - Get item by ID", T::http_base_path(), "");
+        log::info!("   PUT    /api/{}/{{id}}{:<10} - Update item", T::http_base_path(), "");
+        log::info!("   DELETE /api/{}/{{id}}{:<10} - Delete item", T::http_base_path(), "");
+        log::info!(
             "   GET    /api/{}/count{:<10} - Lightweight item count",
             T::http_base_path(),
             ""
         );
-        println!(
+        log::info!(
             "   GET    /api/{}/random-id{:<6} - Lightweight random existing id",
             T::http_base_path(),
             ""
         );
-        println!();
-        println!("🏥 Health & Observability endpoints:");
-        println!("   GET    /health{:<20} - Liveness probe (always enabled)", "");
+        log::info!("Health & Observability endpoints:");
+        log::info!("   GET    /health{:<20} - Liveness probe (always enabled)", "");
 
         if let Some(cfg) = &self.readiness_config {
             if cfg.enabled {
-                println!("   GET    /ready{:<21} - Readiness probe (configurable)", "");
+                log::info!("   GET    /ready{:<21} - Readiness probe (configurable)", "");
             }
         }
 
-        println!("   GET    /info{:<22} - Server diagnostics (like phpinfo)", "");
+        log::info!("   GET    /info{:<22} - Server diagnostics (like phpinfo)", "");
 
         if let Some(cfg) = &self.observe_config {
             if cfg.enabled {
-                println!("   GET    {}/metrics{:<13} - Prometheus metrics", cfg.base_path, "");
+                log::info!("   GET    {}/metrics{:<13} - Prometheus metrics", cfg.base_path, "");
                 if cfg.perf_enabled {
-                    println!("   POST   {}/perf/echo{:<11} - Latency testing", cfg.base_path, "");
-                    println!(
+                    log::info!("   POST   {}/perf/echo{:<11} - Latency testing", cfg.base_path, "");
+                    log::info!(
                         "   GET    {}/perf/json{:<11} - JSON throughput testing",
                         cfg.base_path, ""
                     );
-                    println!(
+                    log::info!(
                         "   GET    {}/perf/bytes{:<10} - Raw throughput testing",
                         cfg.base_path, ""
                     );
@@ -676,20 +676,17 @@ where
 
         // Legacy endpoint info
         if self.legacy_endpoints {
-            println!();
-            println!("⚠️  Legacy endpoints (deprecated):");
-            println!("   GET    /status{:<20} - Use /ready instead", "");
+            log::warn!("Legacy endpoints (deprecated):");
+            log::warn!("   GET    /status{:<20} - Use /ready instead", "");
             if let Some(cfg) = &self.perf_config {
                 if cfg.enabled {
-                    println!(
+                    log::warn!(
                         "   *      {}/...{:<17} - Use /observe/perf/... instead",
                         cfg.base_path, ""
                     );
                 }
             }
         }
-
-        println!();
     }
 }
 
@@ -842,18 +839,18 @@ where
     /// ```
     pub fn with_rbac(mut self, config: RbacConfig) -> Self {
         log::info!(
-            "🔐 Configuring RBAC: enabled={}, provider={:?}",
+            "Configuring RBAC: enabled={}, provider={:?}",
             config.enabled,
             config.provider
         );
 
         // Create middleware if provider is configured
         if let Some(provider) = config.provider.create_provider() {
-            log::info!("🔐 RBAC middleware created with provider: {}", provider.name());
+            log::info!("RBAC middleware created with provider: {}", provider.name());
             // Convert Box to Arc
             self.rbac_middleware = Some(RbacMiddleware::new(Arc::from(provider)));
         } else {
-            log::warn!("🔐 RBAC enabled but no provider configured!");
+            log::warn!("RBAC enabled but no provider configured!");
         }
         self.rbac_config = Some(config);
         self
@@ -935,7 +932,7 @@ where
     // Anti-DDoS protection - rate limiting per IP
     if let (Some(protection), Some(addr)) = (&config.anti_ddos, remote_addr) {
         if !protection.is_request_allowed(addr.ip()).await {
-            log::warn!("🛡️ Anti-DDoS: Rate limit exceeded for {}", addr.ip());
+            log::warn!("Anti-DDoS: Rate limit exceeded for {}", addr.ip());
             let resp = Response::builder()
                 .status(StatusCode::TOO_MANY_REQUESTS)
                 .header("content-type", "application/json")
@@ -956,9 +953,9 @@ where
     // This is a placeholder for the authentication flow
     let _auth_context = if let Some(ref _middleware) = config.rbac_middleware {
         // Convert request for authentication
-        // TODO: Implement proper request conversion and authentication
-        // For now, return unauthenticated context
-        log::debug!("🔐 RBAC middleware enabled, authentication will be performed");
+        // Note: proper request conversion and authentication is not yet wired up;
+        // returns an unauthenticated context for now
+        log::debug!("RBAC middleware enabled, authentication will be performed");
         Some(crate::rbac::AuthContext::unauthenticated())
     } else {
         None
@@ -1001,7 +998,7 @@ where
                 ];
 
                 if cfg.include_consensus {
-                    // TODO: Add actual consensus status when available
+                    // Note: reports single-node; actual consensus status is not yet exposed
                     json_parts.push(r#""consensus":"single-node""#.to_string());
                 }
 
@@ -1123,7 +1120,7 @@ where
 
             // /observe/metrics - Prometheus metrics endpoint
             if uri == format!("{}/metrics", base) && method == Method::GET && cfg.metrics_enabled {
-                // TODO: Implement actual Prometheus metrics
+                // Note: returns placeholder metrics; full Prometheus instrumentation is not yet implemented
                 let metrics_body = format!(
                     "# HELP lithair_requests_total Total HTTP requests\n# TYPE lithair_requests_total counter\nlithair_requests_total{{model=\"{}\"}} 0\n",
                     model_name
@@ -1272,7 +1269,7 @@ where
     // Legacy Status endpoint (/status)
     if config.legacy_endpoints && uri == "/status" && method == Method::GET {
         if config.deprecation_warnings {
-            eprintln!("⚠️  DEPRECATED: /status endpoint is deprecated, use /ready instead");
+            log::warn!("DEPRECATED: /status endpoint is deprecated, use /ready instead");
         }
         let resp = finalize_response_async(Response::builder()
             .status(StatusCode::OK)
@@ -1287,7 +1284,7 @@ where
 
     // Legacy Performance endpoints (/perf/*)
     if config.legacy_endpoints && config.deprecation_warnings && uri.starts_with("/perf/") {
-        eprintln!("⚠️  DEPRECATED: /perf/* endpoints are deprecated, use /observe/perf/* instead");
+        log::warn!("DEPRECATED: /perf/* endpoints are deprecated, use /observe/perf/* instead");
     }
 
     // Optional performance/stateless endpoints (legacy support)
@@ -1427,14 +1424,14 @@ where
 
         // RBAC Authorization Check
         if let Some(ref middleware) = config.rbac_middleware {
-            log::info!("🔐 RBAC: Checking authorization for {} {}", method, uri);
+            log::info!("RBAC: Checking authorization for {} {}", method, uri);
 
             // Extract auth headers
             let password = req.headers().get("x-auth-password").and_then(|v| v.to_str().ok());
 
             let role = req.headers().get("x-auth-role").and_then(|v| v.to_str().ok());
 
-            log::info!("🔐 RBAC: password={:?}, role={:?}", password.is_some(), role);
+            log::info!("RBAC: password={:?}, role={:?}", password.is_some(), role);
 
             // Create a simple request for authentication
             let auth_req = Request::builder().method(method.clone()).uri(uri.clone());
@@ -1460,7 +1457,7 @@ where
                 auth_result.as_ref().map(|ctx| ctx.authenticated).unwrap_or(false);
 
             if requires_auth && !is_authenticated {
-                log::warn!("🔐 RBAC: Unauthenticated request to {} {}", method, uri);
+                log::warn!("RBAC: Unauthenticated request to {} {}", method, uri);
                 let resp = Response::builder()
                     .status(StatusCode::UNAUTHORIZED)
                     .header("content-type", "application/json")
@@ -1474,7 +1471,7 @@ where
                 // Simple role-based check: only Administrator can delete
                 if let Some(r) = role {
                     if r != "Administrator" {
-                        log::warn!("🔐 RBAC: User {} attempted DELETE without permission", r);
+                        log::warn!("RBAC: User {} attempted DELETE without permission", r);
                         let resp = Response::builder()
                             .status(StatusCode::FORBIDDEN)
                             .header("content-type", "application/json")
@@ -1583,7 +1580,7 @@ fn log_access(
     let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
     let dur_ms = start.elapsed().as_millis();
     let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
-    println!(
+    log::info!(
         "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
         remote_ip, method, uri, status, len, enc, dur_ms
     );

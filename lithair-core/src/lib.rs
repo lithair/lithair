@@ -101,7 +101,7 @@ pub use security::{
 };
 
 // Re-exports from lithair-macros crate (when available)
-// TODO: Uncomment when lithair-macros is implemented
+// Note: Planned macro integration - uncomment when lithair-macros is ready
 // pub use lithair_macros::{RaftstoneModel, RaftstoneApi};
 
 // Main result type for the framework
@@ -179,7 +179,7 @@ pub struct Lithair<A: RaftstoneApplication> {
 enum LithairMode<A: RaftstoneApplication> {
     /// Single-node mode with local engine
     Local(std::marker::PhantomData<A>),
-    // TODO: Multi-node distributed mode with OpenRaft consensus (re-enable after fixing raft modules)
+    // Distributed mode not yet available (requires OpenRaft consensus integration)
     // Distributed { cluster_config: raft::ClusterConfig, _phantom: std::marker::PhantomData<A> },
 }
 
@@ -239,7 +239,7 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
     // };
     // let framework = Lithair::new_distributed(app, cluster_config);
     // ```
-    // TODO: Re-enable distributed mode after fixing raft modules
+    // Distributed mode not yet available - awaiting raft module stabilization
     /*pub fn new_distributed(app: A, cluster_config: raft::ClusterConfig) -> Self {
         Self {
             application: app,
@@ -316,7 +316,7 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
     pub fn run(self, addr: &str) -> Result<()> {
         match self.mode {
             LithairMode::Local(_) => self.run_local(addr),
-            // TODO: Re-enable distributed mode
+            // Distributed mode not yet available
             // LithairMode::Distributed { ref cluster_config, .. } => {
             //     let cluster_config_clone = cluster_config.clone();
             //     self.run_distributed(addr, cluster_config_clone)
@@ -326,9 +326,9 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
 
     /// Run in single-node local mode
     fn run_local(self, addr: &str) -> Result<()> {
-        println!("🚀 Lithair framework starting on {} (Local Mode)", addr);
-        println!("📊 Application: {}", std::any::type_name::<A>());
-        println!("🏗️  State type: {}", std::any::type_name::<A::State>());
+        log::info!("Lithair framework starting on {} (Local Mode)", addr);
+        log::info!("Application: {}", std::any::type_name::<A>());
+        log::info!("State type: {}", std::any::type_name::<A::State>());
 
         // 1. Initialize the engine with event sourcing and persistence
         let engine = {
@@ -406,7 +406,7 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
         );
         let server = crate::http::HttpServer::new().with_router(stateless_router);
 
-        println!("✅ Lithair framework initialized successfully");
+        log::info!("Lithair framework initialized successfully");
         server.serve(addr).map_err(|e| crate::Error::HttpError(e.to_string()))?;
 
         // 5. Cleanup on shutdown - signal worker thread to stop
@@ -418,17 +418,16 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
         Ok(())
     }
 
-    // Run in distributed mode (TODO: Full implementation)
-    // TODO: Re-enable after fixing raft modules
+    // Distributed mode not yet available - full implementation pending
     /*fn run_distributed(self, addr: &str, cluster_config: raft::ClusterConfig) -> Result<()> {
-        println!("🚀 Lithair framework starting on {} (Distributed Mode - TODO)", addr);
-        println!("📊 Application: {}", std::any::type_name::<A>());
-        println!("🏗️  State type: {}", std::any::type_name::<A::State>());
-        println!("🌐 Node ID: {} | Data Dir: {}", cluster_config.node_id, cluster_config.data_dir);
+        println!("Lithair framework starting on {} (Distributed Mode - not yet implemented)", addr);
+        println!("Application: {}", std::any::type_name::<A>());
+        println!("State type: {}", std::any::type_name::<A::State>());
+        println!("Node ID: {} | Data Dir: {}", cluster_config.node_id, cluster_config.data_dir);
 
         // For now, fall back to local mode with a warning
-        println!("⚠️  Distributed mode not yet fully implemented - running in single-node mode");
-        println!("TODO: Complete OpenRaft integration for true distributed consensus");
+        println!("Distributed mode not yet fully implemented - running in single-node mode");
+        println!("OpenRaft integration pending");
 
         // Run local mode but with different data directory
         let mut local_copy = Lithair {
@@ -463,7 +462,7 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
 
         // Add default fallback routes if no custom routes are defined
         if router.route_count() == 0 {
-            println!("⚠️  No custom routes defined, adding default routes");
+            log::warn!("No custom routes defined, adding default routes");
             router = router
                 .route(crate::http::Route::new(
                     crate::http::HttpMethod::GET,
@@ -477,8 +476,8 @@ impl<A: RaftstoneApplication + 'static> Lithair<A> {
                 ));
         }
 
-        println!(
-            "📋 Registered {} routes ({} regular + {} command)",
+        log::info!(
+            "Registered {} routes ({} regular + {} command)",
             router.route_count(),
             A::routes().len(),
             A::command_routes().len()
@@ -705,7 +704,7 @@ fn create_admin_products_page() -> crate::http::HttpResponse {
 
         <div class="main-content">
             <div class="products-section">
-                <h2 class="section-title">📦 Products List</h2>
+                <h2 class="section-title">Products List</h2>
 
                 <div class="success-message" id="success-message"></div>
                 <div class="error-message" id="error-message"></div>
@@ -729,7 +728,7 @@ fn create_admin_products_page() -> crate::http::HttpResponse {
             </div>
 
             <div class="form-section">
-                <h2 class="section-title" id="form-title">➕ Add New Product</h2>
+                <h2 class="section-title" id="form-title">Add New Product</h2>
 
                 <form id="product-form">
                     <input type="hidden" id="product-id" value="">
@@ -957,7 +956,7 @@ fn engine_worker_thread<A: crate::engine::RaftstoneApplication>(
     engine: crate::engine::Engine<A>,
     cmd_rx: std::sync::mpsc::Receiver<crate::http::CommandMessage<A>>,
 ) -> Result<()> {
-    println!("🚀 Lithair command worker thread started (InfluxDB pattern)");
+    log::info!("Lithair command worker thread started (InfluxDB pattern)");
 
     // Process commands sequentially - no race conditions!
     while let Ok(cmd_msg) = cmd_rx.recv() {
@@ -976,9 +975,9 @@ fn engine_worker_thread<A: crate::engine::RaftstoneApplication>(
     }
 
     // Channel closed, shutdown engine
-    println!("🔄 Command worker shutting down...");
+    log::debug!("Command worker shutting down...");
     engine.shutdown().map_err(|e| crate::Error::EngineError(e.to_string()))?;
-    println!("✅ Engine worker thread stopped");
+    log::info!("Engine worker thread stopped");
     Ok(())
 }
 
@@ -987,55 +986,55 @@ fn engine_worker_thread_shared<A: crate::engine::RaftstoneApplication>(
     engine_arc: std::sync::Arc<std::sync::RwLock<crate::engine::Engine<A>>>,
     cmd_rx: std::sync::mpsc::Receiver<crate::http::CommandMessage<A>>,
 ) -> Result<()> {
-    println!("🚀 Lithair SHARED command worker thread started (async RwLock pattern)");
+    log::info!("Lithair SHARED command worker thread started (async RwLock pattern)");
 
     // Process commands sequentially - shared state with read routes!
     while let Ok(cmd_msg) = cmd_rx.recv() {
-        println!("📨 Worker thread received command");
+        log::debug!("Worker thread received command");
         let result = {
-            println!("🔒 Attempting to write-lock engine...");
+            log::debug!("Attempting to write-lock engine...");
             let engine_guard = match engine_arc.write() {
                 Ok(guard) => {
-                    println!("✅ Engine write-locked successfully");
+                    log::debug!("Engine write-locked successfully");
                     guard
                 }
                 Err(_) => {
-                    println!("❌ Engine write-lock failed");
+                    log::error!("Engine write-lock failed");
                     let _ = cmd_msg.response_sender.send(Err("Engine lock error".to_string()));
                     continue;
                 }
             };
 
             // Apply the event to the shared engine - this updates the SAME state that read routes access!
-            println!("🔄 Applying event to engine...");
+            log::debug!("Applying event to engine...");
             let key = cmd_msg.event.aggregate_id().unwrap_or_else(|| "global".to_string());
             match engine_guard.apply_event(key, cmd_msg.event) {
                 Ok(_) => {
-                    println!("✅ Event applied to SHARED engine state successfully");
+                    log::debug!("Event applied to SHARED engine state successfully");
                     Ok(())
                 }
                 Err(e) => {
-                    println!("❌ Failed to apply event to shared state: {}", e);
+                    log::error!("Failed to apply event to shared state: {}", e);
                     Err(format!("Engine error: {}", e))
                 }
             }
         };
 
         // Send response back to the HTTP handler
-        println!("📤 Sending response back to HTTP handler...");
+        log::debug!("Sending response back to HTTP handler...");
         if cmd_msg.response_sender.send(result).is_err() {
-            println!("⚠️ HTTP handler dropped, continuing with other commands");
+            log::warn!("HTTP handler dropped, continuing with other commands");
             // HTTP handler dropped, continue processing other commands
             continue;
         }
-        println!("✅ Response sent successfully");
+        log::debug!("Response sent successfully");
     }
 
     // Channel closed, shutdown
-    println!("🔄 Shared command worker shutting down...");
+    log::debug!("Shared command worker shutting down...");
     if let Ok(_engine_guard) = engine_arc.read() {
         // Note: We can't move out of the Arc<RwLock<>> for shutdown
-        println!("✅ Shared engine worker thread stopped (engine still accessible for reads)");
+        log::info!("Shared engine worker thread stopped (engine still accessible for reads)");
     }
     Ok(())
 }
@@ -1085,7 +1084,7 @@ fn create_stateless_router_with_shared_engine<A: crate::engine::RaftstoneApplica
 
     // Route all requests through enhanced router with SHARED engine access using read-lock
     router = router.not_found(move |req, _params, _state| {
-        println!("🔓 HTTP Handler: Processing request: {} {}", req.method(), req.path());
+        log::debug!("HTTP Handler: Processing request: {} {}", req.method(), req.path());
 
         // Use a two-phase approach to avoid deadlock:
         // 1. Check if it's a command route and handle WITHOUT read-lock
@@ -1101,20 +1100,20 @@ fn create_stateless_router_with_shared_engine<A: crate::engine::RaftstoneApplica
             let dummy_state = A::initial_state();
             let response =
                 enhanced_router_clone.handle_request(req, &dummy_state, &cmd_sender_clone);
-            println!("✅ HTTP Handler: Command route matched - executed WITHOUT read-lock");
+            log::debug!("HTTP Handler: Command route matched - executed WITHOUT read-lock");
             return response;
         }
 
         // Phase 2: Handle as read route with read-lock
-        println!("🔓 HTTP Handler: Attempting to acquire read-lock for read-only request");
+        log::debug!("HTTP Handler: Attempting to acquire read-lock for read-only request");
         let response = {
             let engine_guard = match engine_for_handler.read() {
                 Ok(guard) => {
-                    println!("✅ HTTP Handler: Read-lock acquired successfully");
+                    log::debug!("HTTP Handler: Read-lock acquired successfully");
                     guard
                 }
                 Err(_) => {
-                    println!("❌ HTTP Handler: Read-lock failed");
+                    log::error!("HTTP Handler: Read-lock failed");
                     return crate::http::HttpResponse::internal_server_error()
                         .text("Engine read-lock error");
                 }
@@ -1127,13 +1126,13 @@ fn create_stateless_router_with_shared_engine<A: crate::engine::RaftstoneApplica
                 // Use the fresh state that includes all applied events!
                 enhanced_router_clone.handle_request(req, fresh_app_state, &cmd_sender_clone)
             });
-            println!("🔓 HTTP Handler: About to release read-lock");
+            log::debug!("HTTP Handler: About to release read-lock");
             // Map EngineResult to what the router expects (HttpResponse)
             result.unwrap_or_else(|| {
                 crate::http::HttpResponse::internal_server_error().text("State access error")
             })
         }; // READ LOCK IS RELEASED HERE!
-        println!("✅ HTTP Handler: Read-lock released");
+        log::debug!("HTTP Handler: Read-lock released");
 
         response
     });

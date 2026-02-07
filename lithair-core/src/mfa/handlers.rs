@@ -77,7 +77,7 @@ pub async fn handle_mfa_status(
     let enabled = storage.is_enabled(username).await;
 
     // Check if MFA is required for this user's role (would need role info)
-    let required = false; // TODO: Get from session/user role
+    let required = false; // Note: currently defaults to false; session/user role integration is not yet supported
 
     let response = MfaStatusResponse { enabled, required };
     let json = serde_json::to_string(&response)?;

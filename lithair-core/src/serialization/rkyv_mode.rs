@@ -172,9 +172,7 @@ pub mod binary_mode {
 
     /// Convert access/validation result to DualModeResult
     #[inline]
-    pub fn access_result<T, E: rkyv::rancor::Source>(
-        result: Result<&T, E>,
-    ) -> DualModeResult<&T> {
+    pub fn access_result<T, E: rkyv::rancor::Source>(result: Result<&T, E>) -> DualModeResult<&T> {
         result.map_err(|e| DualModeError::RkyvValidationError(e.to_string()))
     }
 

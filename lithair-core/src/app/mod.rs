@@ -193,9 +193,9 @@ impl LithairServer {
         let is_cluster = !self.cluster_peers.is_empty();
         let node_id = self.node_id.unwrap_or(0);
 
-        log::info!("🔍 Validating model schemas...");
+        log::info!("Validating model schemas...");
         if is_cluster {
-            log::info!("   🌐 Cluster mode: schema changes will be synchronized");
+            log::info!("   Cluster mode: schema changes will be synchronized");
         }
 
         let mut has_breaking_changes = false;
@@ -229,7 +229,7 @@ impl LithairServer {
 
                     if changes.is_empty() {
                         log::info!(
-                            "   ✅ {} - schema unchanged (v{})",
+                            "   {} - schema unchanged (v{})",
                             info.name,
                             current_spec.version
                         );
@@ -245,7 +245,7 @@ impl LithairServer {
                             let state = self.schema_sync_state.read().await;
                             if state.lock_status.is_locked() {
                                 log::error!(
-                                    "   🔒 {} - schema changes BLOCKED (migrations locked)",
+                                    "   {} - schema changes BLOCKED (migrations locked)",
                                     info.name
                                 );
                                 log::error!(
@@ -259,7 +259,7 @@ impl LithairServer {
                         }
 
                         log::warn!(
-                            "   ⚠️  {} - {} schema change(s) detected:",
+                            "   {} - {} schema change(s) detected:",
                             info.name,
                             changes.len()
                         );
@@ -296,7 +296,7 @@ impl LithairServer {
                             match strategy {
                                 crate::schema::VoteStrategy::AutoAccept => {
                                     log::info!(
-                                        "      🌐 Cluster: auto-accepting {:?} change",
+                                        "      Cluster: auto-accepting {:?} change",
                                         pending.overall_strategy
                                     );
                                     state.schemas.insert(info.name.clone(), current_spec.clone());
@@ -329,17 +329,17 @@ impl LithairServer {
                                 }
                                 crate::schema::VoteStrategy::Reject => {
                                     log::error!(
-                                        "      🌐 Cluster: rejecting {:?} change (policy)",
+                                        "      Cluster: rejecting {:?} change (policy)",
                                         pending.overall_strategy
                                     );
                                     has_breaking_changes = true;
                                 }
                                 _ => {
                                     // Consensus or ManualApproval required
-                                    log::info!("      🌐 Cluster: change requires {:?}", strategy);
+                                    log::info!("      Cluster: change requires {:?}", strategy);
                                     state.add_pending(pending);
                                     // Node should wait or be blocked until approval
-                                    // For now, we'll just log and continue (TODO: implement blocking)
+                                    // Note: Blocking on pending approval is not yet supported
                                     log::warn!("      ⏳ Schema change pending approval - check /_admin/schema/pending");
                                 }
                             }
@@ -355,7 +355,7 @@ impl LithairServer {
                                         log::error!("      Failed to save updated schema: {}", e);
                                     } else {
                                         log::info!(
-                                            "      📝 Schema updated to v{}",
+                                            "      Schema updated to v{}",
                                             current_spec.version
                                         );
                                         // Record in history (non-cluster mode)
@@ -393,7 +393,7 @@ impl LithairServer {
                                         Some(stored.clone()),
                                     );
                                     log::info!(
-                                        "      🔒 Manual mode: change pending approval (id: {})",
+                                        "      Manual mode: change pending approval (id: {})",
                                         pending.id
                                     );
                                     log::warn!(
@@ -414,7 +414,7 @@ impl LithairServer {
                 None => {
                     // First run - save initial schema
                     log::info!(
-                        "   📝 {} - first run, saving schema v{}",
+                        "   {} - first run, saving schema v{}",
                         info.name,
                         current_spec.version
                     );
@@ -436,7 +436,7 @@ impl LithairServer {
             anyhow::bail!("Schema validation failed: breaking changes detected in strict mode");
         }
 
-        log::info!("✅ Schema validation complete");
+        log::info!("Schema validation complete");
         Ok(())
     }
 
@@ -456,13 +456,13 @@ impl LithairServer {
                     state.change_history = history.changes;
                     if !state.change_history.is_empty() {
                         log::info!(
-                            "📜 Loaded {} schema change(s) from history",
+                            "Loaded {} schema change(s) from history",
                             state.change_history.len()
                         );
                     }
                 }
                 Err(e) => {
-                    log::warn!("⚠️  Failed to load schema history: {}", e);
+                    log::warn!("Failed to load schema history: {}", e);
                 }
             }
 
@@ -472,11 +472,11 @@ impl LithairServer {
                     let mut state = self.schema_sync_state.write().await;
                     state.lock_status = lock;
                     if state.lock_status.is_locked() {
-                        log::warn!("🔒 Schema migrations are LOCKED (persisted state)");
+                        log::warn!("Schema migrations are LOCKED (persisted state)");
                     }
                 }
                 Err(e) => {
-                    log::warn!("⚠️  Failed to load schema lock status: {}", e);
+                    log::warn!("Failed to load schema lock status: {}", e);
                 }
             }
         }
@@ -488,7 +488,7 @@ impl LithairServer {
 
         // Create model handlers from factories
         for info in &self.model_infos {
-            log::info!("📦 Creating handler for model: {}", info.name);
+            log::info!("Creating handler for model: {}", info.name);
             match (info.factory)(info.data_path.clone()).await {
                 Ok(handler) => {
                     let mut models = self.models.write().await;
@@ -499,10 +499,10 @@ impl LithairServer {
                         handler,
                         schema_extractor: info.schema_extractor.clone(),
                     });
-                    log::info!("✅ Handler created for {}", info.name);
+                    log::info!("Handler created for {}", info.name);
                 }
                 Err(e) => {
-                    log::error!("❌ Failed to create handler for {}: {}", info.name, e);
+                    log::error!("Failed to create handler for {}: {}", info.name, e);
                     return Err(e.context(format!("Failed to create handler for {}", info.name)));
                 }
             }
@@ -516,15 +516,15 @@ impl LithairServer {
 
         // Apply logging config if provided
         if let Some(ref logging_config) = self.logging_config {
-            log::info!("📝 Applying custom logging configuration");
-            // TODO: Actually apply the logging config
+            log::info!("Applying custom logging configuration");
+            // Note: Custom logging config application is not yet implemented
             let _ = logging_config; // Suppress unused warning for now
         }
 
         // Validate configuration
         self.config.validate()?;
 
-        log::info!("🚀 Starting Lithair Server");
+        log::info!("Starting Lithair Server");
         log::info!("   Port: {}", self.config.server.port);
         log::info!("   Host: {}", self.config.server.host);
         log::info!(
@@ -551,7 +551,7 @@ impl LithairServer {
 
         // Load each frontend
         for (route_prefix, static_dir) in frontends_to_load {
-            log::info!("📦 Loading frontend at '{}' from {}...", route_prefix, static_dir);
+            log::info!("Loading frontend at '{}' from {}...", route_prefix, static_dir);
 
             // Create unique host_id from route_prefix
             let host_id = if route_prefix == "/" {
@@ -563,227 +563,236 @@ impl LithairServer {
             // Create FrontendEngine (SCC2 lock-free with event sourcing)
             match crate::frontend::FrontendEngine::new(&host_id, "./data/frontend").await {
                 Ok(engine) => {
-                    log::info!("   ✅ FrontendEngine created (host_id: {})", host_id);
+                    log::info!("   FrontendEngine created (host_id: {})", host_id);
 
                     // Load assets into memory
                     match engine.load_directory(&static_dir).await {
                         Ok(count) => {
-                            log::info!("   ✅ {} assets loaded (40M+ ops/sec)", count);
+                            log::info!("   {} assets loaded (40M+ ops/sec)", count);
                             self.frontend_engines.insert(route_prefix.clone(), Arc::new(engine));
                         }
                         Err(e) => {
-                            log::warn!("   ⚠️ Could not load frontend assets: {}", e);
+                            log::warn!("   Could not load frontend assets: {}", e);
                         }
                     }
                 }
                 Err(e) => {
-                    log::warn!("   ⚠️ Could not create frontend engine: {}", e);
+                    log::warn!("   Could not create frontend engine: {}", e);
                 }
             }
         }
 
         // Log HTTP features
         if self.readiness_config.is_some() {
-            log::info!("   ✓ Readiness checks enabled");
+            log::info!("   Readiness checks enabled");
         }
         if self.observe_config.is_some() {
-            log::info!("   ✓ Observability endpoints enabled");
+            log::info!("   Observability endpoints enabled");
         }
         if self.perf_config.is_some() {
-            log::info!("   ✓ Performance endpoints enabled");
+            log::info!("   Performance endpoints enabled");
         }
         if let Some(ref gzip) = self.gzip_config {
-            log::info!("   ✓ Gzip compression enabled (min: {} bytes)", gzip.min_bytes);
+            log::info!("   Gzip compression enabled (min: {} bytes)", gzip.min_bytes);
         }
         if !self.route_policies.is_empty() {
-            log::info!("   ✓ Route policies: {} configured", self.route_policies.len());
+            log::info!("   Route policies: {} configured", self.route_policies.len());
         }
         if self.firewall_config.is_some() {
-            log::info!("   ✓ Firewall enabled");
+            log::info!("   Firewall enabled");
         }
         if self.anti_ddos_config.is_some() {
-            log::info!("   ✓ Anti-DDoS protection enabled");
+            log::info!("   Anti-DDoS protection enabled");
         }
         if self.legacy_endpoints {
-            log::info!("   ⚠ Legacy endpoints enabled");
+            log::info!("   Legacy endpoints enabled");
         }
         if self.deprecation_warnings {
-            log::info!("   ⚠ Deprecation warnings enabled");
+            log::info!("   Deprecation warnings enabled");
         }
 
         // Initialize Raft cluster if configured
         if self.config.raft.enabled && !self.cluster_peers.is_empty() {
             if let Some(node_id) = self.node_id {
-            let port = self.config.server.port;
+                let port = self.config.server.port;
 
-            log::info!("🗳️ Initializing Raft cluster...");
-            log::info!("   Node ID: {}", node_id);
-            log::info!("   Peers: {:?}", self.cluster_peers);
-            log::info!("   Raft path: {}", self.config.raft.path);
-            log::info!(
-                "   Raft auth: {}",
-                if self.config.raft.auth_required { "enabled" } else { "disabled" }
-            );
-
-            let raft_state =
-                Arc::new(RaftLeadershipState::new(node_id, port, self.cluster_peers.clone()));
-
-            if raft_state.is_leader() {
-                log::info!("👑 THIS NODE IS THE LEADER");
-            } else {
+                log::info!("Initializing Raft cluster...");
+                log::info!("   Node ID: {}", node_id);
+                log::info!("   Peers: {:?}", self.cluster_peers);
+                log::info!("   Raft path: {}", self.config.raft.path);
                 log::info!(
-                    "👥 This node is a FOLLOWER (leader port: {})",
-                    raft_state.get_leader_port()
+                    "   Raft auth: {}",
+                    if self.config.raft.auth_required { "enabled" } else { "disabled" }
                 );
-            }
 
-            self.raft_state = Some(raft_state);
+                let raft_state =
+                    Arc::new(RaftLeadershipState::new(node_id, port, self.cluster_peers.clone()));
 
-            // Initialize replication batcher with peers
-            if let Some(ref batcher) = self.replication_batcher {
-                batcher.initialize(&self.cluster_peers).await;
-                log::info!(
-                    "📊 Replication batcher initialized with {} peers",
-                    self.cluster_peers.len()
-                );
-            }
+                if raft_state.is_leader() {
+                    log::info!("THIS NODE IS THE LEADER");
+                } else {
+                    log::info!(
+                        "This node is a FOLLOWER (leader port: {})",
+                        raft_state.get_leader_port()
+                    );
+                }
 
-            // Start WAL background flush task (group commit)
-            if let Some(ref wal) = self.wal {
-                let _flush_handle = wal.spawn_flush_task();
-                log::info!("💾 WAL group commit enabled (flush interval: 5ms)");
-            }
+                self.raft_state = Some(raft_state);
 
-            // Log snapshot status
-            if self.snapshot_manager.is_some() {
-                log::info!("📸 Snapshot manager enabled for resync");
-            }
+                // Initialize replication batcher with peers
+                if let Some(ref batcher) = self.replication_batcher {
+                    batcher.initialize(&self.cluster_peers).await;
+                    log::info!(
+                        "Replication batcher initialized with {} peers",
+                        self.cluster_peers.len()
+                    );
+                }
 
-            // Start background replication task for lagging followers
-            if let Some(ref batcher) = self.replication_batcher {
-                let batcher_clone = Arc::clone(batcher);
-                let peers = self.cluster_peers.clone();
-                let consensus_log = self.consensus_log.clone();
-                let node_id = self.node_id.unwrap_or(0);
-                let raft_state = self.raft_state.clone();
-                let snapshot_manager = self.snapshot_manager.clone();
-                let models = Arc::clone(&self.models);
-                let replication_config = self.config.replication.clone();
-                let resync_stats = Arc::clone(&self.resync_stats);
+                // Start WAL background flush task (group commit)
+                if let Some(ref wal) = self.wal {
+                    let _flush_handle = wal.spawn_flush_task();
+                    log::info!("WAL group commit enabled (flush interval: 5ms)");
+                }
 
-                tokio::spawn(async move {
-                    use std::collections::HashMap;
-                    use std::time::Duration;
-                    use tokio::time::interval;
+                // Log snapshot status
+                if self.snapshot_manager.is_some() {
+                    log::info!("Snapshot manager enabled for resync");
+                }
 
-                    let mut ticker = interval(Duration::from_millis(100)); // Check every 100ms
-                    let mut _catchup_counter = 0u64; // Reserved for future use
-                    let mut resync_counter = 0u64; // For periodic snapshot resync
+                // Start background replication task for lagging followers
+                if let Some(ref batcher) = self.replication_batcher {
+                    let batcher_clone = Arc::clone(batcher);
+                    let peers = self.cluster_peers.clone();
+                    let consensus_log = self.consensus_log.clone();
+                    let node_id = self.node_id.unwrap_or(0);
+                    let raft_state = self.raft_state.clone();
+                    let snapshot_manager = self.snapshot_manager.clone();
+                    let models = Arc::clone(&self.models);
+                    let replication_config = self.config.replication.clone();
+                    let resync_stats = Arc::clone(&self.resync_stats);
 
-                    // Track last resync time per follower for cooldown
-                    let mut last_resync: HashMap<String, std::time::Instant> = HashMap::new();
+                    tokio::spawn(async move {
+                        use std::collections::HashMap;
+                        use std::time::Duration;
+                        use tokio::time::interval;
 
-                    // Calculate resync check ticks from config (100ms base interval)
-                    let resync_check_ticks = replication_config.resync_check_interval_ms / 100;
+                        let mut ticker = interval(Duration::from_millis(100)); // Check every 100ms
+                        let mut _catchup_counter = 0u64; // Reserved for future use
+                        let mut resync_counter = 0u64; // For periodic snapshot resync
 
-                    loop {
-                        ticker.tick().await;
+                        // Track last resync time per follower for cooldown
+                        let mut last_resync: HashMap<String, std::time::Instant> = HashMap::new();
 
-                        // Only leader should do background replication
-                        if let Some(ref state) = raft_state {
-                            if !state.is_leader() {
-                                continue;
+                        // Calculate resync check ticks from config (100ms base interval)
+                        let resync_check_ticks = replication_config.resync_check_interval_ms / 100;
+
+                        loop {
+                            ticker.tick().await;
+
+                            // Only leader should do background replication
+                            if let Some(ref state) = raft_state {
+                                if !state.is_leader() {
+                                    continue;
+                                }
                             }
-                        }
 
-                        let consensus_log_ref = match &consensus_log {
-                            Some(log) => log,
-                            None => continue,
-                        };
+                            let consensus_log_ref = match &consensus_log {
+                                Some(log) => log,
+                                None => continue,
+                            };
 
-                        let term = consensus_log_ref.current_term();
-                        let commit_index = consensus_log_ref.commit_index();
+                            let term = consensus_log_ref.current_term();
+                            let commit_index = consensus_log_ref.commit_index();
 
-                        // Increment counters
-                        _catchup_counter += 1;
-                        resync_counter += 1;
+                            // Increment counters
+                            _catchup_counter += 1;
+                            resync_counter += 1;
 
-                        // === SNAPSHOT-BASED RESYNC FOR DESYNCED FOLLOWERS ===
-                        // Check based on configurable interval (default: 1 second = 10 ticks)
-                        if resync_counter >= resync_check_ticks {
-                            resync_counter = 0;
+                            // === SNAPSHOT-BASED RESYNC FOR DESYNCED FOLLOWERS ===
+                            // Check based on configurable interval (default: 1 second = 10 ticks)
+                            if resync_counter >= resync_check_ticks {
+                                resync_counter = 0;
 
-                            // Get list of desynced followers
-                            let desynced = batcher_clone.get_desynced_followers(commit_index).await;
+                                // Get list of desynced followers
+                                let desynced =
+                                    batcher_clone.get_desynced_followers(commit_index).await;
 
-                            if !desynced.is_empty() { if let Some(ref snap_mgr_inner) = snapshot_manager {
-                                // Filter out followers that are in cooldown
-                                let cooldown_duration =
-                                    Duration::from_secs(replication_config.resync_cooldown_secs);
-                                let now = std::time::Instant::now();
-                                let eligible_for_resync: Vec<_> = desynced
-                                    .into_iter()
-                                    .filter(|peer| {
-                                        match last_resync.get(peer) {
-                                            Some(last_time) => {
-                                                now.duration_since(*last_time) >= cooldown_duration
-                                            }
-                                            None => true, // Never resynced, eligible
-                                        }
-                                    })
-                                    .collect();
+                                if !desynced.is_empty() {
+                                    if let Some(ref snap_mgr_inner) = snapshot_manager {
+                                        // Filter out followers that are in cooldown
+                                        let cooldown_duration = Duration::from_secs(
+                                            replication_config.resync_cooldown_secs,
+                                        );
+                                        let now = std::time::Instant::now();
+                                        let eligible_for_resync: Vec<_> = desynced
+                                            .into_iter()
+                                            .filter(|peer| {
+                                                match last_resync.get(peer) {
+                                                    Some(last_time) => {
+                                                        now.duration_since(*last_time)
+                                                            >= cooldown_duration
+                                                    }
+                                                    None => true, // Never resynced, eligible
+                                                }
+                                            })
+                                            .collect();
 
-                                if !eligible_for_resync.is_empty() {
-                                    log::info!(
-                                        "🔄 Found {} desynced followers eligible for resync",
+                                        if !eligible_for_resync.is_empty() {
+                                            log::info!(
+                                        "Found {} desynced followers eligible for resync",
                                         eligible_for_resync.len()
                                     );
 
-                                    let snapshot_mgr = snap_mgr_inner.clone();
-                                    let models_clone = Arc::clone(&models);
-                                    let batcher_for_resync = Arc::clone(&batcher_clone);
+                                            let snapshot_mgr = snap_mgr_inner.clone();
+                                            let models_clone = Arc::clone(&models);
+                                            let batcher_for_resync = Arc::clone(&batcher_clone);
 
-                                    // Create snapshot if needed (only once per resync cycle)
-                                    if let Err(e) = Self::create_snapshot_from_models(
-                                        &models_clone,
-                                        &snapshot_mgr,
-                                        term,
-                                        commit_index,
-                                    )
-                                    .await
-                                    {
-                                        log::warn!("Failed to create snapshot for resync: {}", e);
-                                    } else {
-                                        // Track snapshot creation
-                                        resync_stats.record_snapshot_created();
+                                            // Create snapshot if needed (only once per resync cycle)
+                                            if let Err(e) = Self::create_snapshot_from_models(
+                                                &models_clone,
+                                                &snapshot_mgr,
+                                                term,
+                                                commit_index,
+                                            )
+                                            .await
+                                            {
+                                                log::warn!(
+                                                    "Failed to create snapshot for resync: {}",
+                                                    e
+                                                );
+                                            } else {
+                                                // Track snapshot creation
+                                                resync_stats.record_snapshot_created();
 
-                                        // Send snapshot to each desynced follower (in parallel, with configurable rate limit)
-                                        let max_concurrent =
-                                            replication_config.max_concurrent_resyncs;
-                                        let snapshot_timeout_secs =
-                                            replication_config.snapshot_send_timeout_secs;
+                                                // Send snapshot to each desynced follower (in parallel, with configurable rate limit)
+                                                let max_concurrent =
+                                                    replication_config.max_concurrent_resyncs;
+                                                let snapshot_timeout_secs =
+                                                    replication_config.snapshot_send_timeout_secs;
 
-                                        for peer in
-                                            eligible_for_resync.into_iter().take(max_concurrent)
-                                        {
-                                            // Mark as resyncing with current timestamp
-                                            last_resync.insert(peer.clone(), now);
+                                                for peer in eligible_for_resync
+                                                    .into_iter()
+                                                    .take(max_concurrent)
+                                                {
+                                                    // Mark as resyncing with current timestamp
+                                                    last_resync.insert(peer.clone(), now);
 
-                                            let peer_clone = peer.clone();
-                                            let snapshot_mgr_clone = snapshot_mgr.clone();
-                                            let batcher_resync = Arc::clone(&batcher_for_resync);
-                                            let stats_clone = Arc::clone(&resync_stats);
+                                                    let peer_clone = peer.clone();
+                                                    let snapshot_mgr_clone = snapshot_mgr.clone();
+                                                    let batcher_resync =
+                                                        Arc::clone(&batcher_for_resync);
+                                                    let stats_clone = Arc::clone(&resync_stats);
 
-                                            // Track send attempt
-                                            resync_stats.record_send_attempt(commit_index);
+                                                    // Track send attempt
+                                                    resync_stats.record_send_attempt(commit_index);
 
-                                            tokio::spawn(async move {
-                                                log::info!(
-                                                    "📸 Sending snapshot to desynced follower: {}",
+                                                    tokio::spawn(async move {
+                                                        log::info!(
+                                                    "Sending snapshot to desynced follower: {}",
                                                     peer_clone
                                                 );
 
-                                                match Self::send_snapshot_to_follower_with_timeout(
+                                                        match Self::send_snapshot_to_follower_with_timeout(
                                                     &peer_clone,
                                                     &snapshot_mgr_clone,
                                                     snapshot_timeout_secs,
@@ -792,7 +801,7 @@ impl LithairServer {
                                                 {
                                                     Ok(()) => {
                                                         log::info!(
-                                                            "✅ Snapshot installed on {}",
+                                                            "Snapshot installed on {}",
                                                             peer_clone
                                                         );
                                                         // Track success
@@ -808,7 +817,7 @@ impl LithairServer {
                                                     }
                                                     Err(e) => {
                                                         log::error!(
-                                                            "❌ Snapshot send to {} failed: {}",
+                                                            "Snapshot send to {} failed: {}",
                                                             peer_clone,
                                                             e
                                                         );
@@ -816,56 +825,132 @@ impl LithairServer {
                                                         stats_clone.record_send_failure();
                                                     }
                                                 }
-                                            });
+                                                    });
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                            }
-                        }
 
-                        // === INCREMENTAL CATCH-UP FOR LAGGING FOLLOWERS ===
-                        // Only send entries that followers are actually missing
-                        if commit_index > 0 {
-                            // Get health status to skip desynced followers
-                            let health_summary = batcher_clone.get_health_summary().await;
+                            // === INCREMENTAL CATCH-UP FOR LAGGING FOLLOWERS ===
+                            // Only send entries that followers are actually missing
+                            if commit_index > 0 {
+                                // Get health status to skip desynced followers
+                                let health_summary = batcher_clone.get_health_summary().await;
 
-                            for peer in &peers {
-                                // Skip desynced followers - they'll get snapshots instead
-                                if let Some(health) = health_summary.get(peer) {
-                                    if *health == crate::cluster::replication_batcher::FollowerHealth::Desynced {
-                                        log::debug!("⏭️ Skipping desynced follower {} (will use snapshot)", peer);
+                                for peer in &peers {
+                                    // Skip desynced followers - they'll get snapshots instead
+                                    if let Some(health) = health_summary.get(peer) {
+                                        if *health == crate::cluster::replication_batcher::FollowerHealth::Desynced {
+                                        log::debug!("Skipping desynced follower {} (will use snapshot)", peer);
                                         continue;
                                     }
+                                    }
+
+                                    // Get follower's last replicated index
+                                    let follower_index = if let Some(follower) =
+                                        batcher_clone.get_follower(peer).await
+                                    {
+                                        follower
+                                            .last_replicated_index
+                                            .load(std::sync::atomic::Ordering::SeqCst)
+                                    } else {
+                                        0
+                                    };
+
+                                    // Skip if follower is already in sync
+                                    if follower_index >= commit_index {
+                                        continue;
+                                    }
+
+                                    // Only get entries the follower is missing
+                                    let missing_entries = consensus_log_ref
+                                        .get_entries_from(follower_index + 1)
+                                        .await;
+                                    if missing_entries.is_empty() {
+                                        continue;
+                                    }
+
+                                    let peer = peer.clone();
+                                    let entries = missing_entries;
+                                    let batcher = Arc::clone(&batcher_clone);
+                                    let commit = commit_index;
+
+                                    tokio::spawn(async move {
+                                        let client = reqwest::Client::builder()
+                                            .timeout(Duration::from_secs(5))
+                                            .build()
+                                            .unwrap_or_else(|_| reqwest::Client::new());
+
+                                        let request =
+                                            crate::cluster::consensus_log::AppendEntriesRequest {
+                                                term,
+                                                leader_id: node_id,
+                                                prev_log_index: 0,
+                                                prev_log_term: 0,
+                                                entries: entries.clone(),
+                                                leader_commit: commit,
+                                            };
+
+                                        let start = std::time::Instant::now();
+                                        let url = format!("http://{}/_raft/append", peer);
+
+                                        match client.post(&url).json(&request).send().await {
+                                            Ok(resp) if resp.status().is_success() => {
+                                                let latency = start.elapsed().as_millis() as u64;
+                                                let last_index = entries
+                                                    .last()
+                                                    .map(|e| e.log_id.index)
+                                                    .unwrap_or(0);
+                                                batcher
+                                                    .record_success(&peer, last_index, latency)
+                                                    .await;
+                                                log::debug!(
+                                                "Background catch-up: {} entries to {} ({}ms)",
+                                                entries.len(),
+                                                peer,
+                                                latency
+                                            );
+                                            }
+                                            Ok(resp) => {
+                                                log::debug!(
+                                                    "Background catch-up to {} failed: {}",
+                                                    peer,
+                                                    resp.status()
+                                                );
+                                                batcher.record_failure(&peer).await;
+                                            }
+                                            Err(e) => {
+                                                log::debug!(
+                                                    "Background catch-up to {} error: {}",
+                                                    peer,
+                                                    e
+                                                );
+                                                batcher.record_failure(&peer).await;
+                                            }
+                                        }
+                                    });
                                 }
+                            }
 
-                                // Get follower's last replicated index
-                                let follower_index = if let Some(follower) =
-                                    batcher_clone.get_follower(peer).await
-                                {
-                                    follower
-                                        .last_replicated_index
-                                        .load(std::sync::atomic::Ordering::SeqCst)
-                                } else {
-                                    0
-                                };
+                            // Normal batch processing for new entries
+                            if !batcher_clone.should_send_batch().await {
+                                continue;
+                            }
 
-                                // Skip if follower is already in sync
-                                if follower_index >= commit_index {
-                                    continue;
-                                }
+                            let batch = batcher_clone.take_batch().await;
+                            if batch.is_empty() {
+                                continue;
+                            }
 
-                                // Only get entries the follower is missing
-                                let missing_entries =
-                                    consensus_log_ref.get_entries_from(follower_index + 1).await;
-                                if missing_entries.is_empty() {
-                                    continue;
-                                }
-
+                            // Send batch to all peers
+                            for peer in &peers {
                                 let peer = peer.clone();
-                                let entries = missing_entries;
+                                let entries = batch.clone();
                                 let batcher = Arc::clone(&batcher_clone);
-                                let commit = commit_index;
+                                let max_entry_index =
+                                    entries.iter().map(|e| e.log_id.index).max().unwrap_or(0);
 
                                 tokio::spawn(async move {
                                     let client = reqwest::Client::builder()
@@ -880,7 +965,7 @@ impl LithairServer {
                                             prev_log_index: 0,
                                             prev_log_term: 0,
                                             entries: entries.clone(),
-                                            leader_commit: commit,
+                                            leader_commit: max_entry_index,
                                         };
 
                                     let start = std::time::Instant::now();
@@ -895,23 +980,23 @@ impl LithairServer {
                                                 .record_success(&peer, last_index, latency)
                                                 .await;
                                             log::debug!(
-                                                "📤 Background catch-up: {} entries to {} ({}ms)",
+                                                "Background replicated {} entries to {} ({}ms)",
                                                 entries.len(),
                                                 peer,
                                                 latency
                                             );
                                         }
                                         Ok(resp) => {
-                                            log::debug!(
-                                                "Background catch-up to {} failed: {}",
+                                            log::warn!(
+                                                "Background replication to {} failed: {}",
                                                 peer,
                                                 resp.status()
                                             );
                                             batcher.record_failure(&peer).await;
                                         }
                                         Err(e) => {
-                                            log::debug!(
-                                                "Background catch-up to {} error: {}",
+                                            log::warn!(
+                                                "Background replication to {} error: {}",
                                                 peer,
                                                 e
                                             );
@@ -921,79 +1006,9 @@ impl LithairServer {
                                 });
                             }
                         }
-
-                        // Normal batch processing for new entries
-                        if !batcher_clone.should_send_batch().await {
-                            continue;
-                        }
-
-                        let batch = batcher_clone.take_batch().await;
-                        if batch.is_empty() {
-                            continue;
-                        }
-
-                        // Send batch to all peers
-                        for peer in &peers {
-                            let peer = peer.clone();
-                            let entries = batch.clone();
-                            let batcher = Arc::clone(&batcher_clone);
-                            let max_entry_index =
-                                entries.iter().map(|e| e.log_id.index).max().unwrap_or(0);
-
-                            tokio::spawn(async move {
-                                let client = reqwest::Client::builder()
-                                    .timeout(Duration::from_secs(5))
-                                    .build()
-                                    .unwrap_or_else(|_| reqwest::Client::new());
-
-                                let request = crate::cluster::consensus_log::AppendEntriesRequest {
-                                    term,
-                                    leader_id: node_id,
-                                    prev_log_index: 0,
-                                    prev_log_term: 0,
-                                    entries: entries.clone(),
-                                    leader_commit: max_entry_index,
-                                };
-
-                                let start = std::time::Instant::now();
-                                let url = format!("http://{}/_raft/append", peer);
-
-                                match client.post(&url).json(&request).send().await {
-                                    Ok(resp) if resp.status().is_success() => {
-                                        let latency = start.elapsed().as_millis() as u64;
-                                        let last_index =
-                                            entries.last().map(|e| e.log_id.index).unwrap_or(0);
-                                        batcher.record_success(&peer, last_index, latency).await;
-                                        log::debug!(
-                                            "📤 Background replicated {} entries to {} ({}ms)",
-                                            entries.len(),
-                                            peer,
-                                            latency
-                                        );
-                                    }
-                                    Ok(resp) => {
-                                        log::warn!(
-                                            "Background replication to {} failed: {}",
-                                            peer,
-                                            resp.status()
-                                        );
-                                        batcher.record_failure(&peer).await;
-                                    }
-                                    Err(e) => {
-                                        log::warn!(
-                                            "Background replication to {} error: {}",
-                                            peer,
-                                            e
-                                        );
-                                        batcher.record_failure(&peer).await;
-                                    }
-                                }
-                            });
-                        }
-                    }
-                });
-                log::info!("🔄 Background replication task started");
-            }
+                    });
+                    log::info!("Background replication task started");
+                }
             }
         }
 
@@ -1005,7 +1020,7 @@ impl LithairServer {
             .await
             .with_context(|| format!("Failed to bind to {}", addr))?;
 
-        log::info!("✅ Server listening on http://{}", addr);
+        log::info!("Server listening on http://{}", addr);
 
         // Start Raft background tasks if cluster mode enabled
         if let Some(ref raft_state) = self.raft_state {
@@ -1032,7 +1047,7 @@ impl LithairServer {
                         sleep(heartbeat_interval).await;
 
                         if !state_clone.is_leader() {
-                            log::info!("💔 No longer leader, stopping heartbeat sender");
+                            log::info!("No longer leader, stopping heartbeat sender");
                             break;
                         }
 
@@ -1176,7 +1191,7 @@ impl LithairServer {
 
         log::debug!("{} {}", method, path);
 
-        // 🗳️ Raft Cluster: Check for write redirection and Raft endpoints
+        // Raft Cluster: Check for write redirection and Raft endpoints
         if let Some(ref raft_state) = self.raft_state {
             let heartbeat_path = self.config.raft.heartbeat_path();
             let leader_path = self.config.raft.leader_path();
@@ -1214,7 +1229,7 @@ impl LithairServer {
                                 .load(std::sync::atomic::Ordering::Relaxed)
                     {
                         log::info!(
-                            "💓 Heartbeat: updating leader to node {} (port {})",
+                            "Heartbeat: updating leader to node {} (port {})",
                             leader_id,
                             leader_port
                         );
@@ -1270,7 +1285,7 @@ impl LithairServer {
                     req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or(&path)
                 );
 
-                log::debug!("🔀 Redirecting write to leader on port {}", leader_port);
+                log::debug!("Redirecting write to leader on port {}", leader_port);
 
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::TEMPORARY_REDIRECT)
@@ -1284,7 +1299,7 @@ impl LithairServer {
             }
         }
 
-        // 📦 Internal replication endpoints (for followers to receive data from leader)
+        // Internal replication endpoints (for followers to receive data from leader)
         if path == "/internal/replicate" && method == hyper::Method::POST {
             return self.handle_internal_replicate(req).await;
         }
@@ -1301,12 +1316,12 @@ impl LithairServer {
             return self.handle_internal_replicate_delete(req).await;
         }
 
-        // 📜 Raft consensus log append entries endpoint (for followers to receive log entries from leader)
+        // Raft consensus log append entries endpoint (for followers to receive log entries from leader)
         if path == "/_raft/append" && method == hyper::Method::POST {
             return self.handle_raft_append_entries(req).await;
         }
 
-        // 📸 Snapshot endpoints for resync of desynced followers
+        // Snapshot endpoints for resync of desynced followers
         if path == "/_raft/snapshot" && method == hyper::Method::GET {
             return self.handle_get_snapshot(req).await;
         }
@@ -1314,32 +1329,32 @@ impl LithairServer {
             return self.handle_install_snapshot(req).await;
         }
 
-        // 📊 Cluster health endpoint (follower status)
+        // Cluster health endpoint (follower status)
         if path == "/_raft/health" && method == hyper::Method::GET {
             return self.handle_cluster_health().await;
         }
 
-        // 📊 Resync stats endpoint (snapshot resync observability)
+        // Resync stats endpoint (snapshot resync observability)
         if path == "/_raft/resync_stats" && method == hyper::Method::GET {
             return self.handle_resync_stats().await;
         }
 
-        // 🔄 Migration operation endpoint (for rolling upgrades)
+        // Migration operation endpoint (for rolling upgrades)
         if path == "/_raft/migrate" && method == hyper::Method::POST {
             return self.handle_migrate_operation(req).await;
         }
 
-        // 📊 Sync status endpoint (detailed follower sync state for ops)
+        // Sync status endpoint (detailed follower sync state for ops)
         if path == "/_raft/sync-status" && method == hyper::Method::GET {
             return self.handle_sync_status().await;
         }
 
-        // 🔄 Force resync endpoint (manually trigger snapshot resync)
+        // Force resync endpoint (manually trigger snapshot resync)
         if path.starts_with("/_raft/force-resync") && method == hyper::Method::POST {
             return self.handle_force_resync(req).await;
         }
 
-        // 📋 Schema sync endpoints (cluster-internal)
+        // Schema sync endpoints (cluster-internal)
         if path == "/_raft/schema/propose" && method == hyper::Method::POST {
             return self.handle_schema_propose(req).await;
         }
@@ -1350,7 +1365,7 @@ impl LithairServer {
             return self.handle_schema_current(req).await;
         }
 
-        // 📋 Schema admin endpoints (external management)
+        // Schema admin endpoints (external management)
         if path == "/_admin/schema" && method == hyper::Method::GET {
             return self.handle_admin_schema_list().await;
         }
@@ -1390,21 +1405,21 @@ impl LithairServer {
             return self.handle_admin_schema_unlock(req).await;
         }
 
-        // 🛡️ Route Guards - Declarative protection (authentication, authorization, etc.)
+        // Route Guards - Declarative protection (authentication, authorization, etc.)
         for guard_matcher in &self.route_guards {
             if guard_matcher.matches(&req) {
-                log::debug!("🔐 Evaluating guard for pattern: {}", guard_matcher.pattern);
+                log::debug!("Evaluating guard for pattern: {}", guard_matcher.pattern);
                 match guard_matcher.guard.check(&req, self.session_manager.clone()).await {
                     Ok(crate::http::GuardResult::Allow) => {
-                        log::debug!("✅ Guard allowed request");
+                        log::debug!("Guard allowed request");
                         // Continue to next guard or routing
                     }
                     Ok(crate::http::GuardResult::Deny(response)) => {
-                        log::debug!("🚫 Guard denied request");
+                        log::debug!("Guard denied request");
                         return Ok(response);
                     }
                     Err(e) => {
-                        log::error!("❌ Guard check failed: {}", e);
+                        log::error!("Guard check failed: {}", e);
                         return Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
@@ -1557,7 +1572,7 @@ impl LithairServer {
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
         use http_body_util::Full;
 
-        // TODO: Implement admin panel
+        // Note: Admin panel is not yet implemented; returns a stub response
         Ok(hyper::Response::builder()
             .status(200)
             .header("Content-Type", "application/json")
@@ -1628,7 +1643,7 @@ impl LithairServer {
                         create_data.get("item").cloned().unwrap_or(serde_json::Value::Null);
                     match model.handler.apply_replicated_item_json(item_data).await {
                         Ok(()) => {
-                            log::debug!("📥 CREATE replication applied for model {}", model.name);
+                            log::debug!("CREATE replication applied for model {}", model.name);
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
@@ -1636,7 +1651,7 @@ impl LithairServer {
                                 .unwrap());
                         }
                         Err(e) => {
-                            log::error!("❌ CREATE replication failed: {}", e);
+                            log::error!("CREATE replication failed: {}", e);
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
@@ -1651,7 +1666,7 @@ impl LithairServer {
                         update_data.get("primary_key").and_then(|v| v.as_str()).unwrap_or("");
                     match model.handler.apply_replicated_update_json(primary_key, item_data).await {
                         Ok(()) => {
-                            log::debug!("📥 UPDATE replication applied for model {}", model.name);
+                            log::debug!("UPDATE replication applied for model {}", model.name);
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
@@ -1659,7 +1674,7 @@ impl LithairServer {
                                 .unwrap());
                         }
                         Err(e) => {
-                            log::error!("❌ UPDATE replication failed: {}", e);
+                            log::error!("UPDATE replication failed: {}", e);
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
@@ -1672,7 +1687,7 @@ impl LithairServer {
                         delete_data.get("primary_key").and_then(|v| v.as_str()).unwrap_or("");
                     match model.handler.apply_replicated_delete_json(primary_key).await {
                         Ok(_) => {
-                            log::debug!("📥 DELETE replication applied for model {}", model.name);
+                            log::debug!("DELETE replication applied for model {}", model.name);
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
@@ -1680,7 +1695,7 @@ impl LithairServer {
                                 .unwrap());
                         }
                         Err(e) => {
-                            log::error!("❌ DELETE replication failed: {}", e);
+                            log::error!("DELETE replication failed: {}", e);
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
@@ -1707,7 +1722,7 @@ impl LithairServer {
 
             match model.handler.apply_replicated_item_json(item_data).await {
                 Ok(()) => {
-                    log::debug!("📥 Replication applied for model {}", model.name);
+                    log::debug!("Replication applied for model {}", model.name);
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
@@ -1715,7 +1730,7 @@ impl LithairServer {
                         .unwrap())
                 }
                 Err(e) => {
-                    log::error!("❌ Replication failed: {}", e);
+                    log::error!("Replication failed: {}", e);
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
@@ -1796,7 +1811,7 @@ impl LithairServer {
             match model.handler.apply_replicated_items_json(items).await {
                 Ok(count) => {
                     log::debug!(
-                        "📥 Bulk replication applied: {} items for model {} (batch: {})",
+                        "Bulk replication applied: {} items for model {} (batch: {})",
                         count,
                         model.name,
                         batch_id
@@ -1811,7 +1826,7 @@ impl LithairServer {
                         .unwrap())
                 }
                 Err(e) => {
-                    log::error!("❌ Bulk replication failed: {}", e);
+                    log::error!("Bulk replication failed: {}", e);
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
@@ -1899,7 +1914,7 @@ impl LithairServer {
         if let Some(model) = handler {
             match model.handler.apply_replicated_update_json(&id, item_data).await {
                 Ok(()) => {
-                    log::debug!("📥 Replication UPDATE applied for {} in model {}", id, model.name);
+                    log::debug!("Replication UPDATE applied for {} in model {}", id, model.name);
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
@@ -1907,7 +1922,7 @@ impl LithairServer {
                         .unwrap())
                 }
                 Err(e) => {
-                    log::error!("❌ Replication UPDATE failed: {}", e);
+                    log::error!("Replication UPDATE failed: {}", e);
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
@@ -1985,7 +2000,7 @@ impl LithairServer {
             match model.handler.apply_replicated_delete_json(&id).await {
                 Ok(deleted) => {
                     log::debug!(
-                        "📥 Replication DELETE applied for {} in model {} (deleted: {})",
+                        "Replication DELETE applied for {} in model {} (deleted: {})",
                         id,
                         model.name,
                         deleted
@@ -2000,7 +2015,7 @@ impl LithairServer {
                         .unwrap())
                 }
                 Err(e) => {
-                    log::error!("❌ Replication DELETE failed: {}", e);
+                    log::error!("Replication DELETE failed: {}", e);
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
@@ -2095,7 +2110,7 @@ impl LithairServer {
             .await;
 
         log::debug!(
-            "📥 Received {} entries from leader {}, commit_index={}",
+            "Received {} entries from leader {}, commit_index={}",
             entries_count,
             request.leader_id,
             request.leader_commit
@@ -2123,18 +2138,18 @@ impl LithairServer {
                 crate::cluster::CrudOperation::MigrationCommit { .. } => "MIGRATION_COMMIT",
                 crate::cluster::CrudOperation::MigrationRollback { .. } => "MIGRATION_ROLLBACK",
             };
-            log::debug!("📥 FOLLOWER: Applying {} entry index={}", op_type, entry.log_id.index);
+            log::debug!("FOLLOWER: Applying {} entry index={}", op_type, entry.log_id.index);
             match self.apply_crud_operation(&entry.operation).await {
                 Ok(_) => {
                     consensus_log.mark_applied(entry.log_id.index);
-                    log::debug!("✅ Applied entry index={}", entry.log_id.index);
+                    log::debug!("Applied entry index={}", entry.log_id.index);
                 }
                 Err(e) => {
                     // CRITICAL: Stop processing here! If we continue, we'd skip this entry
                     // because mark_applied on later entries would advance applied_index past it.
                     // Mark as NOT all successful so leader knows to retry
                     log::error!(
-                        "❌ Failed to apply entry index={}: {} - stopping to prevent skip",
+                        "Failed to apply entry index={}: {} - stopping to prevent skip",
                         entry.log_id.index,
                         e
                     );
@@ -2305,7 +2320,7 @@ impl LithairServer {
         let mut mgr = snapshot_manager.write().await;
         match mgr.install_snapshot(meta.clone(), &body_bytes) {
             Ok(snapshot_data) => {
-                log::info!("📸 Snapshot installed: index={}, term={}", last_included_index, term);
+                log::info!("Snapshot installed: index={}, term={}", last_included_index, term);
 
                 // Record snapshot applied (for observability)
                 self.resync_stats.record_snapshot_applied();
@@ -2600,7 +2615,7 @@ impl LithairServer {
             }
         };
 
-        log::info!("🔄 Manual resync requested for follower: {}", target);
+        log::info!("Manual resync requested for follower: {}", target);
 
         // Mark follower as desynced
         let marked = if let Some(batcher) = &self.replication_batcher {
@@ -2633,7 +2648,7 @@ impl LithairServer {
         let (status, message) = match snapshot_result {
             Ok(()) => {
                 self.resync_stats.record_send_success();
-                log::info!("✅ Manual resync to {} completed successfully", target);
+                log::info!("Manual resync to {} completed successfully", target);
                 (
                     hyper::StatusCode::OK,
                     format!("Snapshot resync to {} completed successfully", target),
@@ -2641,7 +2656,7 @@ impl LithairServer {
             }
             Err(e) => {
                 self.resync_stats.record_send_failure();
-                log::error!("❌ Manual resync to {} failed: {}", target, e);
+                log::error!("Manual resync to {} failed: {}", target, e);
                 (hyper::StatusCode::INTERNAL_SERVER_ERROR, format!("Resync failed: {}", e))
             }
         };
@@ -2843,7 +2858,7 @@ impl LithairServer {
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
         use http_body_util::Full;
 
-        // TODO: Implement Prometheus metrics
+        // Note: Prometheus metrics are not yet implemented; returns a stub response
         Ok(hyper::Response::builder()
             .status(200)
             .header("Content-Type", "text/plain")
@@ -3242,333 +3257,347 @@ impl LithairServer {
 
         // ==================== CLUSTER MODE WITH CONSENSUS LOG ====================
         // If we have a consensus log (cluster mode), write operations go through Raft
-        if is_write && !self.cluster_peers.is_empty() { if let Some(ref consensus_log_ref) = self.consensus_log {
-            log::debug!(
-                "🔄 CLUSTER MODE: {} {} (create={}, update={}, delete={})",
-                method,
-                path,
-                is_create,
-                is_update,
-                is_delete
-            );
+        if is_write && !self.cluster_peers.is_empty() {
+            if let Some(ref consensus_log_ref) = self.consensus_log {
+                log::debug!(
+                    "CLUSTER MODE: {} {} (create={}, update={}, delete={})",
+                    method,
+                    path,
+                    is_create,
+                    is_update,
+                    is_delete
+                );
 
-            // Check if we are the leader
-            let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
+                // Check if we are the leader
+                let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
-            if !is_leader {
-                // Redirect to leader
-                if let Some(ref raft_state) = self.raft_state {
-                    let leader_port = raft_state.get_leader_port();
-                    return Ok(hyper::Response::builder()
+                if !is_leader {
+                    // Redirect to leader
+                    if let Some(ref raft_state) = self.raft_state {
+                        let leader_port = raft_state.get_leader_port();
+                        return Ok(hyper::Response::builder()
                         .status(307) // Temporary Redirect
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
                         .header("X-Raft-Leader", format!("{}", leader_port))
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"Not leader","leader_port":{}}}"#, leader_port))))
                         .unwrap());
+                    }
                 }
-            }
 
-            // We are the leader - process through consensus log
-            let consensus_log = consensus_log_ref;
+                // We are the leader - process through consensus log
+                let consensus_log = consensus_log_ref;
 
-            // Read request body for write operations
-            use http_body_util::BodyExt;
-            let (_parts, body) = req.into_parts();
-            let body_bytes = body.collect().await?.to_bytes();
-            let body_json: serde_json::Value =
-                serde_json::from_slice(&body_bytes).unwrap_or(serde_json::Value::Null);
+                // Read request body for write operations
+                use http_body_util::BodyExt;
+                let (_parts, body) = req.into_parts();
+                let body_bytes = body.collect().await?.to_bytes();
+                let body_json: serde_json::Value =
+                    serde_json::from_slice(&body_bytes).unwrap_or(serde_json::Value::Null);
 
-            // Create the CRUD operation
-            // For CREATE operations: generate ID on leader to ensure all nodes have same ID
-            // Also inject timestamps to ensure consistency across all nodes
-            let now = chrono::Utc::now().to_rfc3339();
-            let operation = if is_create {
-                let mut data = body_json.clone();
-                // Generate ID on leader if not provided, so followers get the same ID
-                if data.get("id").is_none() || data.get("id") == Some(&serde_json::Value::Null) {
-                    data["id"] = serde_json::Value::String(uuid::Uuid::new_v4().to_string());
-                }
-                // Add timestamps for consistency across all nodes
-                if data.get("created_at").is_none() {
-                    data["created_at"] = serde_json::Value::String(now.clone());
-                }
-                if data.get("updated_at").is_none() {
-                    data["updated_at"] = serde_json::Value::String(now.clone());
-                }
-                crate::cluster::CrudOperation::Create { model_path: model.base_path.clone(), data }
-            } else if is_update {
-                let id = resource_id.clone().unwrap_or_default();
-                log::info!("📝 CLUSTER: Creating UPDATE operation for id={}", id);
-                // For UPDATE: merge delta with existing item to send complete object
-                // This ensures followers can deserialize the full item
-                let existing = model.handler.get_item_json(&id).await;
-                let mut merged_data = if let Some(mut existing_json) = existing {
-                    // Merge delta into existing (delta overwrites existing fields)
-                    if let Some(obj) = existing_json.as_object_mut() {
-                        if let Some(delta_obj) = body_json.as_object() {
-                            for (key, value) in delta_obj {
-                                obj.insert(key.clone(), value.clone());
+                // Create the CRUD operation
+                // For CREATE operations: generate ID on leader to ensure all nodes have same ID
+                // Also inject timestamps to ensure consistency across all nodes
+                let now = chrono::Utc::now().to_rfc3339();
+                let operation = if is_create {
+                    let mut data = body_json.clone();
+                    // Generate ID on leader if not provided, so followers get the same ID
+                    if data.get("id").is_none() || data.get("id") == Some(&serde_json::Value::Null)
+                    {
+                        data["id"] = serde_json::Value::String(uuid::Uuid::new_v4().to_string());
+                    }
+                    // Add timestamps for consistency across all nodes
+                    if data.get("created_at").is_none() {
+                        data["created_at"] = serde_json::Value::String(now.clone());
+                    }
+                    if data.get("updated_at").is_none() {
+                        data["updated_at"] = serde_json::Value::String(now.clone());
+                    }
+                    crate::cluster::CrudOperation::Create {
+                        model_path: model.base_path.clone(),
+                        data,
+                    }
+                } else if is_update {
+                    let id = resource_id.clone().unwrap_or_default();
+                    log::info!("CLUSTER: Creating UPDATE operation for id={}", id);
+                    // For UPDATE: merge delta with existing item to send complete object
+                    // This ensures followers can deserialize the full item
+                    let existing = model.handler.get_item_json(&id).await;
+                    let mut merged_data = if let Some(mut existing_json) = existing {
+                        // Merge delta into existing (delta overwrites existing fields)
+                        if let Some(obj) = existing_json.as_object_mut() {
+                            if let Some(delta_obj) = body_json.as_object() {
+                                for (key, value) in delta_obj {
+                                    obj.insert(key.clone(), value.clone());
+                                }
                             }
                         }
+                        existing_json
+                    } else {
+                        // Item doesn't exist - use delta as-is (will likely fail on follower too)
+                        body_json.clone()
+                    };
+                    // Always update the updated_at timestamp for consistency
+                    merged_data["updated_at"] = serde_json::Value::String(now);
+                    crate::cluster::CrudOperation::Update {
+                        model_path: model.base_path.clone(),
+                        id,
+                        data: merged_data,
                     }
-                    existing_json
+                } else if is_delete {
+                    let id = resource_id.clone().unwrap_or_default();
+                    log::info!("CLUSTER: Creating DELETE operation for id={}", id);
+                    crate::cluster::CrudOperation::Delete {
+                        model_path: model.base_path.clone(),
+                        id,
+                    }
                 } else {
-                    // Item doesn't exist - use delta as-is (will likely fail on follower too)
-                    body_json.clone()
+                    // Bulk create - currently handled as a single operation
+                    // Note: Proper BatchOperation support is not yet available
+                    let mut data = body_json.clone();
+                    if data.get("id").is_none() || data.get("id") == Some(&serde_json::Value::Null)
+                    {
+                        data["id"] = serde_json::Value::String(uuid::Uuid::new_v4().to_string());
+                    }
+                    // Add timestamps for consistency across all nodes
+                    if data.get("created_at").is_none() {
+                        data["created_at"] = serde_json::Value::String(now.clone());
+                    }
+                    if data.get("updated_at").is_none() {
+                        data["updated_at"] = serde_json::Value::String(now);
+                    }
+                    crate::cluster::CrudOperation::Create {
+                        model_path: model.base_path.clone(),
+                        data,
+                    }
                 };
-                // Always update the updated_at timestamp for consistency
-                merged_data["updated_at"] = serde_json::Value::String(now);
-                crate::cluster::CrudOperation::Update {
-                    model_path: model.base_path.clone(),
-                    id,
-                    data: merged_data,
-                }
-            } else if is_delete {
-                let id = resource_id.clone().unwrap_or_default();
-                log::info!("🗑️ CLUSTER: Creating DELETE operation for id={}", id);
-                crate::cluster::CrudOperation::Delete { model_path: model.base_path.clone(), id }
-            } else {
-                // Bulk create - for now handle as single operation
-                // TODO: Handle bulk properly with BatchOperation
-                let mut data = body_json.clone();
-                if data.get("id").is_none() || data.get("id") == Some(&serde_json::Value::Null) {
-                    data["id"] = serde_json::Value::String(uuid::Uuid::new_v4().to_string());
-                }
-                // Add timestamps for consistency across all nodes
-                if data.get("created_at").is_none() {
-                    data["created_at"] = serde_json::Value::String(now.clone());
-                }
-                if data.get("updated_at").is_none() {
-                    data["updated_at"] = serde_json::Value::String(now);
-                }
-                crate::cluster::CrudOperation::Create { model_path: model.base_path.clone(), data }
-            };
 
-            // Step 1: Append to local consensus log (in-memory, fast)
-            let log_entry = consensus_log.append(operation.clone()).await;
-            let entry_index = log_entry.log_id.index;
-            let term = consensus_log.current_term();
-            let node_id = self.node_id.unwrap_or(0);
-            let _current_commit = consensus_log.commit_index(); // For debugging (window-based replication doesn't need this)
-            log::debug!("📝 Appended to log: index={}, term={}", entry_index, term);
+                // Step 1: Append to local consensus log (in-memory, fast)
+                let log_entry = consensus_log.append(operation.clone()).await;
+                let entry_index = log_entry.log_id.index;
+                let term = consensus_log.current_term();
+                let node_id = self.node_id.unwrap_or(0);
+                let _current_commit = consensus_log.commit_index(); // For debugging (window-based replication doesn't need this)
+                log::debug!("Appended to log: index={}, term={}", entry_index, term);
 
-            // Step 2: Queue for batcher (for lagging followers tracking)
-            if let Some(ref batcher) = self.replication_batcher {
-                batcher.queue_entry(log_entry.clone()).await;
-            }
-
-            // Step 3: PARALLEL - WAL durability + Replication to followers
-            // We use tokio::join! to run both concurrently and wait for both to complete.
-            // This reduces latency since WAL fsync and network I/O happen simultaneously.
-            let wal_clone = self.wal.clone();
-            let log_entry_clone = log_entry.clone();
-            let peers_clone = self.cluster_peers.clone();
-            let batcher_clone = self.replication_batcher.clone();
-
-            // WAL write task (uses group commit for batching)
-            let wal_future = async {
-                if let Some(ref wal) = wal_clone {
-                    // Use buffered append for group commit (higher throughput)
-                    wal.append_buffered(&log_entry_clone).await
-                } else {
-                    Ok(())
-                }
-            };
-
-            // Replication task (returns when majority responds)
-            // Send ALL entries from beginning to ensure lagging followers can always catch up.
-            // This is critical: if we use a window, followers stuck on entry N will never receive
-            // entries N+1 to window_start, causing permanent divergence.
-            let consensus_log_clone = consensus_log.clone();
-            let replication_future = async move {
-                // Always send ALL entries from index 1 to ensure no gaps
-                let entries_to_send = consensus_log_clone.get_entries_from(1).await;
-
-                if entries_to_send.is_empty() {
-                    return Ok(entry_index);
+                // Step 2: Queue for batcher (for lagging followers tracking)
+                if let Some(ref batcher) = self.replication_batcher {
+                    batcher.queue_entry(log_entry.clone()).await;
                 }
 
-                log::debug!(
-                    "📤 Replicating {} entries (window {} to {}), target_commit={}",
-                    entries_to_send.len(),
-                    entries_to_send.first().map(|e| e.log_id.index).unwrap_or(0),
-                    entries_to_send.last().map(|e| e.log_id.index).unwrap_or(0),
-                    entry_index
-                );
+                // Step 3: PARALLEL - WAL durability + Replication to followers
+                // We use tokio::join! to run both concurrently and wait for both to complete.
+                // This reduces latency since WAL fsync and network I/O happen simultaneously.
+                let wal_clone = self.wal.clone();
+                let log_entry_clone = log_entry.clone();
+                let peers_clone = self.cluster_peers.clone();
+                let batcher_clone = self.replication_batcher.clone();
 
-                Self::replicate_log_entries_to_followers(
-                    &peers_clone,
-                    entries_to_send,
-                    entry_index, // Commit up to this entry if majority responds
-                    term,
-                    node_id,
-                    batcher_clone,
-                )
-                .await
-            };
+                // WAL write task (uses group commit for batching)
+                let wal_future = async {
+                    if let Some(ref wal) = wal_clone {
+                        // Use buffered append for group commit (higher throughput)
+                        wal.append_buffered(&log_entry_clone).await
+                    } else {
+                        Ok(())
+                    }
+                };
 
-            // Run WAL and replication in parallel
-            let (wal_result, replication_result) = tokio::join!(wal_future, replication_future);
+                // Replication task (returns when majority responds)
+                // Send ALL entries from beginning to ensure lagging followers can always catch up.
+                // This is critical: if we use a window, followers stuck on entry N will never receive
+                // entries N+1 to window_start, causing permanent divergence.
+                let consensus_log_clone = consensus_log.clone();
+                let replication_future = async move {
+                    // Always send ALL entries from index 1 to ensure no gaps
+                    let entries_to_send = consensus_log_clone.get_entries_from(1).await;
 
-            // Check WAL result first (must succeed for durability)
-            if let Err(e) = wal_result {
-                log::error!("❌ WAL write failed: {}", e);
-                return Ok(hyper::Response::builder()
-                    .status(503)
-                    .body(Full::new(Bytes::from(format!(
-                        r#"{{"error":"WAL write failed: {}"}}"#,
-                        e
-                    ))))
-                    .unwrap());
-            }
-            log::debug!("💾 WAL entry durable: index={}", entry_index);
+                    if entries_to_send.is_empty() {
+                        return Ok(entry_index);
+                    }
 
-            // Check replication result
-            match replication_result {
-                Ok(new_commit_index) => {
-                    // Step 4: Commit the entry (majority achieved)
-                    consensus_log.commit(new_commit_index);
-                    log::debug!("✅ Committed index: {}", new_commit_index);
+                    log::debug!(
+                        "Replicating {} entries (window {} to {}), target_commit={}",
+                        entries_to_send.len(),
+                        entries_to_send.first().map(|e| e.log_id.index).unwrap_or(0),
+                        entries_to_send.last().map(|e| e.log_id.index).unwrap_or(0),
+                        entry_index
+                    );
 
-                    // Step 4.5: Send commit notification to followers IN PARALLEL (fire-and-forget)
-                    // Include the window of entries so followers get both data and commit in one shot
-                    let peers_for_notify = self.cluster_peers.clone();
-                    let commit_index_to_notify = new_commit_index;
-                    let term_for_notify = term;
-                    let node_id_for_notify = node_id;
-                    let consensus_log_for_notify = consensus_log.clone();
-                    tokio::spawn(async move {
-                        // Send ALL entries from index 1 to ensure followers can always catch up
-                        // This is critical: if we use a window, followers stuck on entry N will never
-                        // receive entries N+1 to window_start, causing permanent divergence
-                        let entries_for_notify = consensus_log_for_notify.get_entries_from(1).await;
+                    Self::replicate_log_entries_to_followers(
+                        &peers_clone,
+                        entries_to_send,
+                        entry_index, // Commit up to this entry if majority responds
+                        term,
+                        node_id,
+                        batcher_clone,
+                    )
+                    .await
+                };
 
-                        let client = reqwest::Client::builder()
-                            .timeout(std::time::Duration::from_secs(1))
-                            .build()
-                            .ok();
-                        if let Some(client) = client {
-                            let request = crate::cluster::consensus_log::AppendEntriesRequest {
-                                term: term_for_notify,
-                                leader_id: node_id_for_notify,
-                                prev_log_index: 0,
-                                prev_log_term: 0,
-                                entries: entries_for_notify, // Include entries for catch-up
-                                leader_commit: commit_index_to_notify,
-                            };
-                            // Send to ALL peers IN PARALLEL
-                            let futures: Vec<_> = peers_for_notify
-                                .iter()
-                                .map(|peer| {
-                                    let endpoint = format!("http://{}/_raft/append", peer);
-                                    let client = client.clone();
-                                    let request = request.clone();
-                                    async move {
-                                        let _ = client.post(&endpoint).json(&request).send().await;
-                                    }
-                                })
-                                .collect();
-                            futures::future::join_all(futures).await;
-                        }
-                    });
+                // Run WAL and replication in parallel
+                let (wal_result, replication_result) = tokio::join!(wal_future, replication_future);
 
-                    // Step 5: Apply to local state machine
-                    // CRITICAL: Wait for all earlier entries to be applied first.
-                    // Without this, entries can be applied out of order when commits happen
-                    // out of order, causing data inconsistency (e.g., DELETE before CREATE).
-                    //
-                    // Example race without this fix:
-                    // 1. Entry 100 (CREATE X) appended, replication starts
-                    // 2. Entry 101 (DELETE X) appended, replication starts
-                    // 3. Entry 101 replication completes, commits 101
-                    // 4. Entry 101 applies (DELETE X - but X doesn't exist yet!)
-                    // 5. Entry 100 replication completes, commits 100
-                    // 6. Entry 100 applies (CREATE X - X now exists!)
-                    // Result: Leader has X, but followers applied in correct order (no X)
+                // Check WAL result first (must succeed for durability)
+                if let Err(e) = wal_result {
+                    log::error!("WAL write failed: {}", e);
+                    return Ok(hyper::Response::builder()
+                        .status(503)
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"WAL write failed: {}"}}"#,
+                            e
+                        ))))
+                        .unwrap());
+                }
+                log::debug!("WAL entry durable: index={}", entry_index);
 
-                    // Wait for earlier entries to be COMMITTED first
-                    // This handles the case where entry N+1 commits before entry N
-                    // (due to faster replication). We must wait for N to commit before applying N+1.
-                    let expected_prior = entry_index.saturating_sub(1);
-                    let mut commit_waited = 0u32;
-                    while consensus_log.commit_index() < expected_prior {
-                        if commit_waited > 50000 {
-                            // 50000 * 100µs = 5 seconds max wait for commit
-                            log::error!(
-                                "❌ Waited 5s for earlier entry {} to commit (current commit={})",
+                // Check replication result
+                match replication_result {
+                    Ok(new_commit_index) => {
+                        // Step 4: Commit the entry (majority achieved)
+                        consensus_log.commit(new_commit_index);
+                        log::debug!("Committed index: {}", new_commit_index);
+
+                        // Step 4.5: Send commit notification to followers IN PARALLEL (fire-and-forget)
+                        // Include the window of entries so followers get both data and commit in one shot
+                        let peers_for_notify = self.cluster_peers.clone();
+                        let commit_index_to_notify = new_commit_index;
+                        let term_for_notify = term;
+                        let node_id_for_notify = node_id;
+                        let consensus_log_for_notify = consensus_log.clone();
+                        tokio::spawn(async move {
+                            // Send ALL entries from index 1 to ensure followers can always catch up
+                            // This is critical: if we use a window, followers stuck on entry N will never
+                            // receive entries N+1 to window_start, causing permanent divergence
+                            let entries_for_notify =
+                                consensus_log_for_notify.get_entries_from(1).await;
+
+                            let client = reqwest::Client::builder()
+                                .timeout(std::time::Duration::from_secs(1))
+                                .build()
+                                .ok();
+                            if let Some(client) = client {
+                                let request = crate::cluster::consensus_log::AppendEntriesRequest {
+                                    term: term_for_notify,
+                                    leader_id: node_id_for_notify,
+                                    prev_log_index: 0,
+                                    prev_log_term: 0,
+                                    entries: entries_for_notify, // Include entries for catch-up
+                                    leader_commit: commit_index_to_notify,
+                                };
+                                // Send to ALL peers IN PARALLEL
+                                let futures: Vec<_> = peers_for_notify
+                                    .iter()
+                                    .map(|peer| {
+                                        let endpoint = format!("http://{}/_raft/append", peer);
+                                        let client = client.clone();
+                                        let request = request.clone();
+                                        async move {
+                                            let _ =
+                                                client.post(&endpoint).json(&request).send().await;
+                                        }
+                                    })
+                                    .collect();
+                                futures::future::join_all(futures).await;
+                            }
+                        });
+
+                        // Step 5: Apply to local state machine
+                        // CRITICAL: Wait for all earlier entries to be applied first.
+                        // Without this, entries can be applied out of order when commits happen
+                        // out of order, causing data inconsistency (e.g., DELETE before CREATE).
+                        //
+                        // Example race without this fix:
+                        // 1. Entry 100 (CREATE X) appended, replication starts
+                        // 2. Entry 101 (DELETE X) appended, replication starts
+                        // 3. Entry 101 replication completes, commits 101
+                        // 4. Entry 101 applies (DELETE X - but X doesn't exist yet!)
+                        // 5. Entry 100 replication completes, commits 100
+                        // 6. Entry 100 applies (CREATE X - X now exists!)
+                        // Result: Leader has X, but followers applied in correct order (no X)
+
+                        // Wait for earlier entries to be COMMITTED first
+                        // This handles the case where entry N+1 commits before entry N
+                        // (due to faster replication). We must wait for N to commit before applying N+1.
+                        let expected_prior = entry_index.saturating_sub(1);
+                        let mut commit_waited = 0u32;
+                        while consensus_log.commit_index() < expected_prior {
+                            if commit_waited > 50000 {
+                                // 50000 * 100µs = 5 seconds max wait for commit
+                                log::error!(
+                                "Waited 5s for earlier entry {} to commit (current commit={})",
                                 expected_prior,
                                 consensus_log.commit_index()
                             );
-                            // Return error - something is seriously wrong if commit takes this long
-                            return Ok(hyper::Response::builder()
+                                // Return error - something is seriously wrong if commit takes this long
+                                return Ok(hyper::Response::builder()
                                 .status(503)
                                 .body(Full::new(Bytes::from(format!(
                                     r#"{{"error":"Commit ordering timeout: entry {} waiting for {}"}}"#,
                                     entry_index, expected_prior
                                 ))))
                                 .unwrap());
+                            }
+                            tokio::time::sleep(std::time::Duration::from_micros(100)).await;
+                            commit_waited += 1;
                         }
-                        tokio::time::sleep(std::time::Duration::from_micros(100)).await;
-                        commit_waited += 1;
-                    }
 
-                    // Now wait for earlier entry to be APPLIED
-                    // Once it's committed, its handler will apply it (no timeout - it WILL apply)
-                    let mut apply_waited = 0u32;
-                    while consensus_log.applied_index() < expected_prior {
-                        if apply_waited > 100000 {
-                            // 100000 * 100µs = 10 seconds max wait for apply
-                            // This should never happen if commit succeeded - log but continue waiting
-                            log::warn!(
-                                "⚠️ Slow apply: entry {} waiting for {} (commit={}, applied={})",
+                        // Now wait for earlier entry to be APPLIED
+                        // Once it's committed, its handler will apply it (no timeout - it WILL apply)
+                        let mut apply_waited = 0u32;
+                        while consensus_log.applied_index() < expected_prior {
+                            if apply_waited > 100000 {
+                                // 100000 * 100µs = 10 seconds max wait for apply
+                                // This should never happen if commit succeeded - log but continue waiting
+                                log::warn!(
+                                "Slow apply: entry {} waiting for {} (commit={}, applied={})",
                                 entry_index,
                                 expected_prior,
                                 consensus_log.commit_index(),
                                 consensus_log.applied_index()
                             );
-                            apply_waited = 0; // Reset counter to keep waiting
+                                apply_waited = 0; // Reset counter to keep waiting
+                            }
+                            tokio::time::sleep(std::time::Duration::from_micros(100)).await;
+                            apply_waited += 1;
                         }
-                        tokio::time::sleep(std::time::Duration::from_micros(100)).await;
-                        apply_waited += 1;
-                    }
 
-                    // Now safe to acquire lock and apply
-                    let _apply_guard = consensus_log.lock_apply().await;
+                        // Now safe to acquire lock and apply
+                        let _apply_guard = consensus_log.lock_apply().await;
 
-                    // Now apply our entry
-                    match self.apply_crud_operation(&operation).await {
-                        Ok(result) => {
-                            consensus_log.mark_applied(entry_index);
-                            // _apply_guard dropped here
-                            let response_body = serde_json::to_vec(&result).unwrap_or_default();
-                            return Ok(hyper::Response::builder()
-                                .status(if is_create { 201 } else { 200 })
-                                .header("Content-Type", "application/json")
-                                .header("X-Raft-Index", entry_index.to_string())
-                                .body(Full::new(Bytes::from(response_body)))
-                                .unwrap());
-                        }
-                        Err(e) => {
-                            log::error!("Failed to apply operation: {}", e);
-                            return Ok(hyper::Response::builder()
-                                .status(500)
-                                .body(Full::new(Bytes::from(format!(
-                                    r#"{{"error":"Apply failed: {}"}}"#,
-                                    e
-                                ))))
-                                .unwrap());
+                        // Now apply our entry
+                        match self.apply_crud_operation(&operation).await {
+                            Ok(result) => {
+                                consensus_log.mark_applied(entry_index);
+                                // _apply_guard dropped here
+                                let response_body = serde_json::to_vec(&result).unwrap_or_default();
+                                return Ok(hyper::Response::builder()
+                                    .status(if is_create { 201 } else { 200 })
+                                    .header("Content-Type", "application/json")
+                                    .header("X-Raft-Index", entry_index.to_string())
+                                    .body(Full::new(Bytes::from(response_body)))
+                                    .unwrap());
+                            }
+                            Err(e) => {
+                                log::error!("Failed to apply operation: {}", e);
+                                return Ok(hyper::Response::builder()
+                                    .status(500)
+                                    .body(Full::new(Bytes::from(format!(
+                                        r#"{{"error":"Apply failed: {}"}}"#,
+                                        e
+                                    ))))
+                                    .unwrap());
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    log::error!("Failed to replicate: {}", e);
-                    return Ok(hyper::Response::builder()
+                    Err(e) => {
+                        log::error!("Failed to replicate: {}", e);
+                        return Ok(hyper::Response::builder()
                         .status(503) // Service Unavailable
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"Replication failed: {}"}}"#, e))))
                         .unwrap());
+                    }
                 }
             }
-        }
         }
 
         // ==================== SINGLE-NODE MODE OR READ OPERATIONS ====================
@@ -3635,7 +3664,7 @@ impl LithairServer {
             // === Migration Operations (Phase 2: Full implementation) ===
             CrudOperation::MigrationBegin { from_version, to_version, migration_id } => {
                 log::info!(
-                    "🔄 MIGRATION_BEGIN: {} -> {} (id: {})",
+                    "MIGRATION_BEGIN: {} -> {} (id: {})",
                     from_version,
                     to_version,
                     migration_id
@@ -3648,7 +3677,7 @@ impl LithairServer {
                         .await
                     {
                         Ok(()) => {
-                            log::info!("✅ Migration {} registered successfully", migration_id);
+                            log::info!("Migration {} registered successfully", migration_id);
                             Ok(serde_json::json!({
                                 "status": "started",
                                 "migration_id": migration_id.to_string(),
@@ -3657,13 +3686,13 @@ impl LithairServer {
                             }))
                         }
                         Err(e) => {
-                            log::error!("❌ Failed to begin migration {}: {}", migration_id, e);
+                            log::error!("Failed to begin migration {}: {}", migration_id, e);
                             Err(e)
                         }
                     }
                 } else {
                     // No migration manager - acknowledge but warn
-                    log::warn!("⚠️ Migration manager not available, migration {} acknowledged but not tracked", migration_id);
+                    log::warn!("Migration manager not available, migration {} acknowledged but not tracked", migration_id);
                     Ok(serde_json::json!({
                         "status": "acknowledged",
                         "warning": "No migration manager available",
@@ -3675,7 +3704,7 @@ impl LithairServer {
             }
             CrudOperation::MigrationStep { migration_id, step_index, operation } => {
                 log::info!(
-                    "🔧 MIGRATION_STEP: migration={}, step={}, operation={:?}",
+                    "MIGRATION_STEP: migration={}, step={}, operation={:?}",
                     migration_id,
                     step_index,
                     operation
@@ -3692,7 +3721,7 @@ impl LithairServer {
                                 .record_step(migration_id, *step_index, rollback_op, None)
                                 .await
                             {
-                                log::warn!("⚠️ Failed to record migration step: {}", e);
+                                log::warn!("Failed to record migration step: {}", e);
                             }
                         }
                         Ok(serde_json::json!({
@@ -3702,14 +3731,14 @@ impl LithairServer {
                         }))
                     }
                     Err(e) => {
-                        log::error!("❌ Migration step {} failed: {}", step_index, e);
+                        log::error!("Migration step {} failed: {}", step_index, e);
                         Err(format!("Migration step {} failed: {}", step_index, e))
                     }
                 }
             }
             CrudOperation::MigrationCommit { migration_id, checksum } => {
                 log::info!(
-                    "✅ MIGRATION_COMMIT: migration={}, checksum={}",
+                    "MIGRATION_COMMIT: migration={}, checksum={}",
                     migration_id,
                     checksum
                 );
@@ -3721,7 +3750,7 @@ impl LithairServer {
                         match manager.commit_migration(migration_id, new_version).await {
                             Ok(()) => {
                                 log::info!(
-                                    "✅ Migration {} committed, checksum verified: {}",
+                                    "Migration {} committed, checksum verified: {}",
                                     migration_id,
                                     checksum
                                 );
@@ -3733,7 +3762,7 @@ impl LithairServer {
                             }
                             Err(e) => {
                                 log::error!(
-                                    "❌ Failed to commit migration {}: {}",
+                                    "Failed to commit migration {}: {}",
                                     migration_id,
                                     e
                                 );
@@ -3742,7 +3771,7 @@ impl LithairServer {
                         }
                     } else {
                         let msg = format!("Migration {} not found", migration_id);
-                        log::error!("❌ {}", msg);
+                        log::error!("{}", msg);
                         Err(msg)
                     }
                 } else {
@@ -3756,7 +3785,7 @@ impl LithairServer {
             }
             CrudOperation::MigrationRollback { migration_id, failed_step, reason } => {
                 log::warn!(
-                    "⚠️ MIGRATION_ROLLBACK: migration={}, failed_step={}, reason={}",
+                    "MIGRATION_ROLLBACK: migration={}, failed_step={}, reason={}",
                     migration_id,
                     failed_step,
                     reason
@@ -3768,15 +3797,15 @@ impl LithairServer {
                             // Apply rollback operations in reverse order
                             let mut rollback_errors = Vec::new();
                             for op in rollback_ops {
-                                log::info!("🔄 Rolling back step {}", op.step_index);
+                                log::info!("Rolling back step {}", op.step_index);
                                 if let Err(e) = self.apply_schema_change(&op.operation).await {
-                                    log::error!("❌ Rollback step {} failed: {}", op.step_index, e);
+                                    log::error!("Rollback step {} failed: {}", op.step_index, e);
                                     rollback_errors.push(format!("Step {}: {}", op.step_index, e));
                                 }
                             }
 
                             if rollback_errors.is_empty() {
-                                log::info!("✅ Migration {} fully rolled back", migration_id);
+                                log::info!("Migration {} fully rolled back", migration_id);
                                 Ok(serde_json::json!({
                                     "status": "rolled_back",
                                     "migration_id": migration_id.to_string(),
@@ -3785,7 +3814,7 @@ impl LithairServer {
                                 }))
                             } else {
                                 log::error!(
-                                    "⚠️ Migration {} partially rolled back with errors",
+                                    "Migration {} partially rolled back with errors",
                                     migration_id
                                 );
                                 Ok(serde_json::json!({
@@ -3798,7 +3827,7 @@ impl LithairServer {
                             }
                         }
                         Err(e) => {
-                            log::error!("❌ Failed to rollback migration {}: {}", migration_id, e);
+                            log::error!("Failed to rollback migration {}: {}", migration_id, e);
                             Err(e)
                         }
                     }
@@ -3827,14 +3856,14 @@ impl LithairServer {
 
         match change {
             SchemaChange::AddModel { name, schema: _ } => {
-                log::info!("📦 Applying AddModel: {}", name);
-                // TODO: Phase 3 - Register model in runtime schema registry
+                log::info!("Applying AddModel: {}", name);
+                // Phase 3 planned feature: register model in runtime schema registry
                 // For now, log and return the inverse operation
                 Ok(SchemaChange::RemoveModel { name: name.clone(), backup_path: None })
             }
             SchemaChange::RemoveModel { name, backup_path } => {
-                log::info!("🗑️ Applying RemoveModel: {} (backup: {:?})", name, backup_path);
-                // TODO: Phase 3 - Remove model from registry, backup data if path provided
+                log::info!("Applying RemoveModel: {} (backup: {:?})", name, backup_path);
+                // Phase 3 planned feature: remove model from registry, backup data if path provided
                 // For rollback, we need the original schema - this would be stored in migration context
                 Ok(SchemaChange::Custom {
                     description: format!("Restore model: {}", name),
@@ -3843,13 +3872,13 @@ impl LithairServer {
                 })
             }
             SchemaChange::AddField { model, field, default_value: _ } => {
-                log::info!("➕ Applying AddField: {}.{}", model, field.name);
-                // TODO: Phase 3 - Add field to model schema
+                log::info!("Applying AddField: {}.{}", model, field.name);
+                // Phase 3 planned feature: add field to model schema
                 Ok(SchemaChange::RemoveField { model: model.clone(), field: field.name.clone() })
             }
             SchemaChange::RemoveField { model, field } => {
-                log::info!("➖ Applying RemoveField: {}.{}", model, field);
-                // TODO: Phase 3 - Remove field from model, backup data
+                log::info!("Applying RemoveField: {}.{}", model, field);
+                // Phase 3 planned feature: remove field from model, backup data
                 // For rollback, we need the original field definition
                 Ok(SchemaChange::Custom {
                     description: format!("Restore field: {}.{}", model, field),
@@ -3858,8 +3887,8 @@ impl LithairServer {
                 })
             }
             SchemaChange::RenameField { model, old_name, new_name } => {
-                log::info!("✏️ Applying RenameField: {}.{} -> {}", model, old_name, new_name);
-                // TODO: Phase 3 - Update field name in schema and all data
+                log::info!("Applying RenameField: {}.{} -> {}", model, old_name, new_name);
+                // Phase 3 planned feature: update field name in schema and all data
                 // Inverse is simply swapping old and new names
                 Ok(SchemaChange::RenameField {
                     model: model.clone(),
@@ -3868,8 +3897,8 @@ impl LithairServer {
                 })
             }
             SchemaChange::ChangeFieldType { model, field, new_type, transform: _ } => {
-                log::info!("🔄 Applying ChangeFieldType: {}.{} -> {:?}", model, field, new_type);
-                // TODO: Phase 3 - Transform field data to new type
+                log::info!("Applying ChangeFieldType: {}.{} -> {:?}", model, field, new_type);
+                // Phase 3 planned feature: transform field data to new type
                 // For rollback, we need the original type - stored in migration context
                 Ok(SchemaChange::Custom {
                     description: format!("Restore field type: {}.{}", model, field),
@@ -3878,8 +3907,8 @@ impl LithairServer {
                 })
             }
             SchemaChange::AddIndex { model, fields, unique } => {
-                log::info!("📇 Applying AddIndex: {}.{:?} (unique: {})", model, fields, unique);
-                // TODO: Phase 3 - Create index on model fields
+                log::info!("Applying AddIndex: {}.{:?} (unique: {})", model, fields, unique);
+                // Phase 3 planned feature: create index on model fields
                 // Inverse: remove the index
                 Ok(SchemaChange::Custom {
                     description: format!("Remove index on {}.{:?}", model, fields),
@@ -3888,7 +3917,7 @@ impl LithairServer {
                 })
             }
             SchemaChange::Custom { description, forward, backward } => {
-                log::info!("⚙️ Applying Custom: {}", description);
+                log::info!("Applying Custom: {}", description);
                 // Custom operations define their own forward/backward
                 // Inverse swaps forward and backward
                 Ok(SchemaChange::Custom {
@@ -3971,7 +4000,7 @@ impl LithairServer {
 
         if response.status().is_success() {
             log::info!(
-                "📸 Snapshot sent successfully to {} (index={}, {}KB)",
+                "Snapshot sent successfully to {} (index={}, {}KB)",
                 peer,
                 meta.last_included_index,
                 meta.size_bytes / 1024
@@ -4024,7 +4053,7 @@ impl LithairServer {
 
         if response.status().is_success() {
             log::info!(
-                "📸 Snapshot sent successfully to {} (index={}, {}KB, timeout={}s)",
+                "Snapshot sent successfully to {} (index={}, {}KB, timeout={}s)",
                 peer,
                 meta.last_included_index,
                 meta.size_bytes / 1024,
@@ -4102,7 +4131,7 @@ impl LithairServer {
         let skipped_count = peers.len() - active_peers.len();
         if skipped_count > 0 {
             log::debug!(
-                "⏭️ Skipping {} desynced followers (will use snapshot resync)",
+                "Skipping {} desynced followers (will use snapshot resync)",
                 skipped_count
             );
         }
@@ -4130,14 +4159,14 @@ impl LithairServer {
                                 // Apply happens synchronously before response, so success means applied
                                 if response.applied_index < target_commit {
                                     log::debug!(
-                                        "📤 Log replicated to {} (applied_index={}, target={})",
+                                        "Log replicated to {} (applied_index={}, target={})",
                                         peer_name,
                                         response.applied_index,
                                         target_commit
                                     );
                                 } else {
                                     log::debug!(
-                                        "📤 Log replicated AND applied on {} (applied_index={})",
+                                        "Log replicated AND applied on {} (applied_index={})",
                                         peer_name,
                                         response.applied_index
                                     );
@@ -4152,14 +4181,14 @@ impl LithairServer {
                     }
                     Ok(resp) => {
                         log::warn!(
-                            "⚠️ Replicate log to {} failed: status {}",
+                            "Replicate log to {} failed: status {}",
                             peer_name,
                             resp.status()
                         );
                         (peer_name.clone(), false, 0)
                     }
                     Err(e) => {
-                        log::warn!("⚠️ Replicate log to {} error: {}", peer_name, e);
+                        log::warn!("Replicate log to {} error: {}", peer_name, e);
                         (peer_name.clone(), false, 0)
                     }
                 };
@@ -4196,7 +4225,7 @@ impl LithairServer {
             if let Ok((peer, success)) = result {
                 if success {
                     success_count += 1;
-                    log::debug!("✓ {}/{} followers acknowledged", success_count, peers.len());
+                    log::debug!("{}/{} followers acknowledged", success_count, peers.len());
 
                     // Track when majority is reached, but DON'T return early
                     if success_count >= needed_from_followers && !majority_reached {
@@ -4204,7 +4233,7 @@ impl LithairServer {
                         commit_index =
                             entries.last().map(|e| e.log_id.index).unwrap_or(leader_commit);
                         log::debug!(
-                            "✅ Majority reached ({}/{}), will commit index {}",
+                            "Majority reached ({}/{}), will commit index {}",
                             success_count + 1,
                             total_nodes,
                             commit_index
@@ -4212,7 +4241,7 @@ impl LithairServer {
                         // Continue waiting for remaining followers instead of returning
                     }
                 } else {
-                    log::debug!("✗ Follower {} failed", peer);
+                    log::debug!("Follower {} failed", peer);
                 }
             }
 
@@ -4223,7 +4252,7 @@ impl LithairServer {
         // Check if majority was reached (even if some followers timed out)
         if majority_reached {
             log::debug!(
-                "✅ Replication complete: {}/{} followers succeeded, committing {}",
+                "Replication complete: {}/{} followers succeeded, committing {}",
                 success_count,
                 peers.len(),
                 commit_index

@@ -31,7 +31,6 @@ pub struct FieldPolicy {
     pub fk_collection: Option<String>,
 }
 
-
 /// Trait que doivent implémenter les spécifications de modèle
 pub trait ModelSpec: Send + Sync {
     /// Retourne la politique pour un champ donné (par nom)

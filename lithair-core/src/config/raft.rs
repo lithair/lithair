@@ -120,15 +120,28 @@ impl RaftConfig {
     }
 
     /// Validate authentication token from request header
+    ///
+    /// Uses constant-time comparison to prevent timing attacks.
     pub fn validate_token(&self, token: Option<&str>) -> bool {
         if !self.auth_required {
             return true;
         }
 
         match (&self.auth_token, token) {
-            (Some(expected), Some(provided)) => expected == provided,
-            (None, _) => true,        // No token configured, allow
-            (Some(_), None) => false, // Token required but not provided
+            (Some(expected), Some(provided)) => {
+                // Constant-time comparison to prevent timing attacks
+                if expected.len() != provided.len() {
+                    return false;
+                }
+                expected
+                    .as_bytes()
+                    .iter()
+                    .zip(provided.as_bytes())
+                    .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                    == 0
+            }
+            (None, _) => true,
+            (Some(_), None) => false,
         }
     }
 

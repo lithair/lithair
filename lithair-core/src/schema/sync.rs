@@ -43,7 +43,6 @@ fn default_min_approvers() -> u32 {
     1
 }
 
-
 // =============================================================================
 // SCHEMA VOTE POLICY
 // =============================================================================
@@ -408,7 +407,6 @@ pub struct SchemaLockStatus {
     /// When was it unlocked
     pub unlocked_at: Option<u64>,
 }
-
 
 impl SchemaLockStatus {
     /// Check if currently locked (considering timeout)

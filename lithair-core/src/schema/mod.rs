@@ -154,7 +154,7 @@ impl SchemaChangeDetector {
                     change_type: SchemaChangeType::AddField,
                     field_name: Some(field_name.clone()),
                     old_type: None,
-                    new_type: Some("inferred".to_string()), // TODO: type inference
+                    new_type: Some("inferred".to_string()), // Note: actual type inference from Rust types is not yet supported
                     old_constraints: None,
                     new_constraints: Some(new_constraints.clone()),
                     migration_strategy: Self::determine_migration_strategy_for_add(new_constraints),
@@ -431,7 +431,7 @@ impl SchemaChangeDetector {
         Some(format!(
             "ALTER TABLE ADD COLUMN {} {} {}",
             field_name,
-            "TYPE", // TODO: inférer le type
+            "TYPE", // Note: SQL type inference from Rust types is not yet supported
             if constraints.nullable { "NULL" } else { "NOT NULL" }
         ))
     }

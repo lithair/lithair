@@ -158,7 +158,6 @@ impl<S> Clone for StateEngine<S> {
     }
 }
 
-// TODO: Implement more advanced features
 impl<S> StateEngine<S> {
     /// Create a state engine that shares the same underlying state
     ///
