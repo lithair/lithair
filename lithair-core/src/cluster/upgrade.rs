@@ -291,7 +291,7 @@ impl MigrationManager {
         let context = MigrationContext::new(id, from_version, to_version);
         active.insert(id, context);
 
-        log::info!("🔄 Migration {} started", id);
+        log::info!("Migration {} started", id);
         Ok(())
     }
 
@@ -313,7 +313,7 @@ impl MigrationManager {
         let context = active.get_mut(id).ok_or_else(|| format!("Migration {} not found", id))?;
 
         context.record_step(step_index, rollback_op, data_snapshot);
-        log::debug!("📝 Migration {} step {} recorded", id, step_index);
+        log::debug!("Migration {} step {} recorded", id, step_index);
         Ok(())
     }
 
@@ -333,7 +333,7 @@ impl MigrationManager {
         let mut completed = self.completed.write().await;
         completed.push(context);
 
-        log::info!("✅ Migration {} committed", id);
+        log::info!("Migration {} committed", id);
         Ok(())
     }
 
@@ -349,7 +349,7 @@ impl MigrationManager {
         let mut completed = self.completed.write().await;
         completed.push(context);
 
-        log::warn!("⚠️ Migration {} rolled back", id);
+        log::warn!("Migration {} rolled back", id);
         Ok(rollback_ops)
     }
 

@@ -173,10 +173,10 @@ impl<A: RaftstoneApplication> Engine<A> {
         // Note: fsync_on_append is configured via configure_batching usually, or not exposed on EventStore directly
         // except via configure_batching.
 
-        // Register deserializers - TODO: Fix type mismatch Box vs Arc
-        // For now we skip explicit registration and assume replaying works if deserializers are standard or handled elsewhere.
-        // Actually, EventStore uses deserializers for replay. If we don't register them, replay might fail for custom events.
-        // But standard Event trait deserialization uses serde_json::from_str which works without registration if payload is simple.
+        // Deserializer registration is skipped here due to a Box vs Arc type mismatch.
+        // Standard Event trait deserialization via serde_json::from_str works without
+        // explicit registration for simple payloads. Custom events that require registered
+        // deserializers may need an alternative replay path.
 
         let event_store_arc = Arc::new(RwLock::new(event_store));
 
@@ -314,7 +314,7 @@ impl<A: RaftstoneApplication> Engine<A> {
     /// Compact event log after snapshot (truncate)
     pub fn compact_after_snapshot(&self) -> EngineResult<()> {
         if let Some(store) = &self.event_store {
-            store.write().unwrap().truncate_events()
+            store.write().expect("event store lock poisoned").truncate_events()
         } else {
             Err(EngineError::InvalidOperation("No event store configured".into()))
         }

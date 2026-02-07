@@ -43,7 +43,7 @@ impl LithairServer {
 
     pub async fn serve(self, addr: std::net::SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let state = Arc::new(self.state);
-        println!("🚀 Lithair HTTP Server listening on http://{}", addr);
+        log::info!("Lithair HTTP Server listening on http://{}", addr);
 
         let listener = TcpListener::bind(addr).await?;
         loop {
@@ -58,7 +58,7 @@ impl LithairServer {
                     .serve_connection(stream, service)
                     .await
                 {
-                    eprintln!("Server connection error: {}", e);
+                    log::error!("Server connection error: {}", e);
                 }
             });
         }

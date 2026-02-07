@@ -105,7 +105,7 @@ impl RouteGuard {
                 self.check_role(req, session_store, roles, redirect_to).await
             }
             RouteGuard::RateLimit { .. } => {
-                // TODO: Implement rate limiting
+                // Note: rate limiting is not yet enforced; all requests are allowed
                 Ok(GuardResult::Allow)
             }
             RouteGuard::Custom(_checker) => {
@@ -202,7 +202,7 @@ impl RouteGuard {
         _roles: &[String],
         _redirect_to: &Option<String>,
     ) -> Result<GuardResult, anyhow::Error> {
-        // TODO: Implement role checking
+        // Note: role checking is not yet enforced; all requests are allowed
         Ok(GuardResult::Allow)
     }
 }

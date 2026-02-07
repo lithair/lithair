@@ -63,8 +63,7 @@ pub fn extract_client_ip<B>(req: &hyper::Request<B>) -> Option<String> {
 
 /// Helper to check if a URI matches a pattern
 pub fn matches_pattern(uri: &str, pattern: &str) -> bool {
-    // Simple wildcard matching for now
-    // TODO: Support more complex patterns (regex, CIDR for IPs, etc.)
+    // Simple wildcard matching; complex patterns (regex, CIDR for IPs) are not yet supported
 
     if pattern == "*" {
         return true;

@@ -31,7 +31,7 @@ impl<S: Send + Sync + 'static> AsyncHttpServer<S> {
         let addr: SocketAddr = addr.parse()?;
         let listener = TcpListener::bind(addr).await?;
 
-        println!("🚀 Async HTTP server listening on {}", addr);
+        log::info!("Async HTTP server listening on {}", addr);
 
         loop {
             let (stream, _) = listener.accept().await?;
@@ -52,7 +52,7 @@ impl<S: Send + Sync + 'static> AsyncHttpServer<S> {
                     )
                     .await
                 {
-                    eprintln!("Error serving connection: {:?}", err);
+                    log::error!("Error serving connection: {:?}", err);
                 }
             });
         }

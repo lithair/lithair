@@ -61,8 +61,7 @@ async fn create_articles_direct(world: &mut LithairWorld, count: usize) {
         let id = article.id.clone();
         world.scc2_articles.write(&id, |s| *s = article).ok();
 
-        if i > 0 && ((count >= 10_000 && i % 10_000 == 0)
-            || (count < 10_000 && i % 1_000 == 0)) {
+        if i > 0 && ((count >= 10_000 && i % 10_000 == 0) || (count < 10_000 && i % 1_000 == 0)) {
             println!("  ... {} articles created", i);
         }
     }
@@ -106,8 +105,7 @@ async fn update_articles_direct(world: &mut LithairWorld, count: usize) {
             world.scc2_articles.write(&article_id, |s| *s = article).ok();
         }
 
-        if i > 0 && ((count >= 10_000 && i % 10_000 == 0)
-            || (count < 10_000 && i % 1_000 == 0)) {
+        if i > 0 && ((count >= 10_000 && i % 10_000 == 0) || (count < 10_000 && i % 1_000 == 0)) {
             println!("  ... {} articles updated", i);
         }
     }
@@ -149,8 +147,7 @@ async fn delete_articles_direct(world: &mut LithairWorld, count: usize) {
             writer.write(event.to_string()).ok();
         }
 
-        if i > 0 && ((count >= 10_000 && i % 10_000 == 0)
-            || (count < 10_000 && i % 1_000 == 0)) {
+        if i > 0 && ((count >= 10_000 && i % 10_000 == 0) || (count < 10_000 && i % 1_000 == 0)) {
             println!("  ... {} articles deleted", i);
         }
     }

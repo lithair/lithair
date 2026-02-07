@@ -117,7 +117,7 @@ pub async fn handle_rbac_login(
     // Store session
     session_store.set(session).await?;
 
-    log::info!("✅ User logged in: {} as {}", user.username, user.role);
+    log::info!("User logged in: {} as {}", user.username, user.role);
 
     // Return session token
     Ok(json_response(
@@ -172,7 +172,7 @@ pub async fn handle_rbac_logout(
     // Delete session
     session_store.delete(session_token).await?;
 
-    log::info!("👋 User logged out: {} (session: {})", username, session_token);
+    log::info!("User logged out: {} (session: {})", username, session_token);
 
     Ok(json_response(
         StatusCode::OK,

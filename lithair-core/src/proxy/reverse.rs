@@ -16,7 +16,7 @@ type Body = BoxBody<Bytes, hyper::Error>;
 /// Implements a reverse proxy that forwards incoming requests to backend services.
 /// Supports load balancing, health checks, and SSL termination.
 pub struct ReverseProxyHandler {
-    // TODO: Add upstream config, load balancer, health checker
+    // Note: upstream config, load balancer, and health checker fields are not yet defined
 }
 
 impl ReverseProxyHandler {
@@ -38,11 +38,8 @@ impl ProxyHandler for ReverseProxyHandler {
         _req: Request<Body>,
     ) -> Pin<Box<dyn Future<Output = ProxyResult<Response<Body>>> + Send + 'static>> {
         Box::pin(async move {
-            // TODO: Implement reverse proxy logic
-            // 1. Match route
-            // 2. Select upstream
-            // 3. Forward request
-            // 4. Return response
+            // Note: reverse proxy logic (route matching, upstream selection, request
+            // forwarding, response relay) is not yet implemented
             unimplemented!("Reverse proxy not yet implemented")
         })
     }
@@ -52,7 +49,7 @@ impl ProxyHandler for ReverseProxyHandler {
         _req: &Request<Body>,
     ) -> Pin<Box<dyn Future<Output = ProxyResult<bool>> + Send + 'static>> {
         Box::pin(async move {
-            // TODO: Check firewall rules
+            // Note: firewall rule checking is not yet implemented; defaults to allow
             Ok(false)
         })
     }

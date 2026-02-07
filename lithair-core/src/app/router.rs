@@ -32,7 +32,7 @@ impl Router {
     /// Check if a path matches a route pattern
     fn path_matches(pattern: &str, path: &str) -> bool {
         // Simple exact match for now
-        // TODO: Add parameter matching (/api/products/:id)
+        // Note: Parameter matching (e.g., /api/products/:id) is not yet supported
         pattern == path
     }
 }

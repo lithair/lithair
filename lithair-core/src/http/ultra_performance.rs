@@ -6,38 +6,38 @@
 /// Pre-compiled static error responses for ultra-performance (zero allocation)
 pub mod static_errors {
     /// Generic parsing error (400 Bad Request)
-    pub const ERROR_PARSING: &str = r#"{"status":"error","message":"❌ Erreur parsing JSON"}"#;
+    pub const ERROR_PARSING: &str = r#"{"status":"error","message":"Erreur parsing JSON"}"#;
 
     /// Generic persistence error (500 Internal Server Error)
     pub const ERROR_PERSIST: &str =
-        r#"{"status":"error","message":"❌ Erreur persistance optimisée"}"#;
+        r#"{"status":"error","message":"Erreur persistance optimisée"}"#;
 
     /// Authentication error (401 Unauthorized)
-    pub const ERROR_AUTH: &str = r#"{"status":"error","message":"❌ Erreur authentification"}"#;
+    pub const ERROR_AUTH: &str = r#"{"status":"error","message":"Erreur authentification"}"#;
 
     /// Authorization error (403 Forbidden)
-    pub const ERROR_AUTHZ: &str = r#"{"status":"error","message":"❌ Accès refusé"}"#;
+    pub const ERROR_AUTHZ: &str = r#"{"status":"error","message":"Accès refusé"}"#;
 
     /// Not found error (404 Not Found)
-    pub const ERROR_NOT_FOUND: &str = r#"{"status":"error","message":"❌ Ressource non trouvée"}"#;
+    pub const ERROR_NOT_FOUND: &str = r#"{"status":"error","message":"Ressource non trouvée"}"#;
 
     /// Rate limit error (429 Too Many Requests)
     pub const ERROR_RATE_LIMIT: &str =
-        r#"{"status":"error","message":"❌ Limite de débit dépassée"}"#;
+        r#"{"status":"error","message":"Limite de débit dépassée"}"#;
 
     /// Service unavailable error (503 Service Unavailable)
     pub const ERROR_SERVICE_UNAVAILABLE: &str =
-        r#"{"status":"error","message":"❌ Service temporairement indisponible"}"#;
+        r#"{"status":"error","message":"Service temporairement indisponible"}"#;
 }
 
 /// Pre-compiled static success response templates for ultra-performance
 pub mod static_templates {
     /// Batch injection success template (IoT optimized)
-    pub const IOT_BATCH_SUCCESS: &str = r#"{"status":"success","message":"🔥 {COUNT} lectures injectées avec FORMAT BINAIRE ultra-optimisé !","readings_injected":{COUNT},"optimizations_active":{"parsing":"✅ Direct JSON → SensorReading","serialization":"🔥 Format binaire (bincode) ACTIVÉ","io":"⚡ Écriture asynchrone bufferisée (2MB, 50ms flush)"},"performance":"184K+ events/sec avec format binaire","binary_format":"ENABLED"}"#;
+    pub const IOT_BATCH_SUCCESS: &str = r#"{"status":"success","message":"{COUNT} lectures injectées avec FORMAT BINAIRE ultra-optimisé !","readings_injected":{COUNT},"optimizations_active":{"parsing":"Direct JSON → SensorReading","serialization":"Format binaire (bincode) ACTIVÉ","io":"Écriture asynchrone bufferisée (2MB, 50ms flush)"},"performance":"184K+ events/sec avec format binaire","binary_format":"ENABLED"}"#;
 
     /// Generic success template
     pub const GENERIC_SUCCESS: &str =
-        r#"{"status":"success","message":"✅ Opération réussie","count":{COUNT}}"#;
+        r#"{"status":"success","message":"Opération réussie","count":{COUNT}}"#;
 
     /// Stats response template
     pub const STATS_TEMPLATE: &str = r#"{"status":"success","total_readings":{TOTAL},"recent_readings_count":{RECENT},"memory_usage_mb":{MEMORY},"performance_ms":{PERF}}"#;

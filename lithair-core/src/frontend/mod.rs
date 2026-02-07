@@ -4,12 +4,12 @@
 //! for serving frontend files with zero disk I/O after initial load.
 //!
 //! ## Current Features (v1)
-//! - ✅ Load static files from filesystem into memory at startup
-//! - ✅ Zero disk I/O after initial load - all assets served from memory
-//! - ✅ Virtual host support for multi-site serving from single instance
-//! - ✅ Automatic MIME type detection and optimal cache headers
-//! - ✅ Thread-safe with Arc<RwLock> for concurrent access
-//! - ✅ SCC2 lock-free performance optimization
+//! - Load static files from filesystem into memory at startup
+//! - Zero disk I/O after initial load - all assets served from memory
+//! - Virtual host support for multi-site serving from single instance
+//! - Automatic MIME type detection and optimal cache headers
+//! - Thread-safe with Arc<RwLock> for concurrent access
+//! - SCC2 lock-free performance optimization
 //!
 //! ## Planned Features (v2)
 //! - ⏳ Event sourcing with .raftlog files for asset versioning
@@ -38,7 +38,7 @@
 //!         "./public"          // Directory with static files
 //!     ).await?;
 //!
-//!     println!("✅ Loaded {} assets into memory", count);
+//!     println!("Loaded {} assets into memory", count);
 //!
 //!     // Create asset server for serving
 //!     let asset_server = Arc::new(AssetServer::new(frontend_state));
@@ -252,7 +252,7 @@ async fn load_static_directory_to_memory_internal<P: AsRef<Path>>(
     for (web_path, content) in assets_vec {
         let asset = StaticAsset::new(web_path.clone(), content);
         log::info!(
-            "📄 [{}] {} ({} bytes, {})",
+            "[{}] {} ({} bytes, {})",
             host_id,
             web_path,
             asset.size_bytes,

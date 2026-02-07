@@ -57,16 +57,16 @@ impl AdminConfig {
             if path == "random" {
                 // Try to load existing random path from persistence file
                 if let Ok(persisted_path) = Self::load_random_path() {
-                    log::info!("📂 Loaded persisted random admin path");
+                    log::info!("Loaded persisted random admin path");
                     self.path = persisted_path;
                 } else {
                     // Generate new random path
                     let random_path = Self::generate_random_path();
-                    log::info!("🎲 Generated random admin path");
+                    log::info!("Generated random admin path");
 
                     // Persist it for future restarts
                     if let Err(e) = Self::save_random_path(&random_path) {
-                        log::warn!("⚠️ Failed to persist random admin path: {}", e);
+                        log::warn!("Failed to persist random admin path: {}", e);
                     }
 
                     self.path = random_path;
@@ -81,7 +81,7 @@ impl AdminConfig {
             if !token.is_empty() {
                 self.dev_reload_token = Some(token.clone());
                 log::warn!(
-                    "⚠️  DEV RELOAD TOKEN ENABLED: {} (DEVELOPMENT ONLY - NOT FOR PRODUCTION!)",
+                    "DEV RELOAD TOKEN ENABLED: {} (DEVELOPMENT ONLY - NOT FOR PRODUCTION!)",
                     token
                 );
             }
@@ -124,7 +124,7 @@ impl AdminConfig {
     /// Save random path to file for persistence across restarts
     fn save_random_path(admin_path: &str) -> Result<()> {
         fs::write(".admin-path", admin_path)?;
-        log::info!("💾 Persisted admin path to .admin-path");
+        log::info!("Persisted admin path to .admin-path");
         Ok(())
     }
 }

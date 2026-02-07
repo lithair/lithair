@@ -514,7 +514,7 @@ impl LithairServerBuilder {
         // Create permission checker from config
         let permission_checker = config.create_permission_checker();
 
-        // ⚠️ CRITICAL: Create SHARED session store for login AND models
+        // CRITICAL: Create SHARED session store for login AND models
         // This ensures all components use the SAME session storage
         let session_store_shared = {
             let path = std::path::PathBuf::from(session_path.clone());
@@ -638,13 +638,13 @@ impl LithairServerBuilder {
         });
 
         log::info!(
-            "✅ RBAC configured with {} roles and {} users",
+            "RBAC configured with {} roles and {} users",
             config.roles.len(),
             users_clone.len()
         );
-        log::info!("   🔐 POST /auth/login - Authentication endpoint");
-        log::info!("   👋 POST /auth/logout - Logout endpoint");
-        log::info!("   ✅ GET /auth/validate - Session validation endpoint");
+        log::info!("   POST /auth/login - Authentication endpoint");
+        log::info!("   POST /auth/logout - Logout endpoint");
+        log::info!("   GET /auth/validate - Session validation endpoint");
 
         self
     }
@@ -753,13 +753,13 @@ impl LithairServerBuilder {
             })
         });
 
-        log::info!("✅ MFA/TOTP configured");
+        log::info!("MFA/TOTP configured");
         log::info!("   Issuer: {}", config.issuer);
-        log::info!("   📊 GET /auth/mfa/status - Check MFA status");
-        log::info!("   🔧 POST /auth/mfa/setup - Generate secret + QR code");
-        log::info!("   ✅ POST /auth/mfa/enable - Activate MFA");
-        log::info!("   ❌ POST /auth/mfa/disable - Deactivate MFA");
-        log::info!("   🔐 POST /auth/mfa/verify - Validate TOTP code");
+        log::info!("   GET /auth/mfa/status - Check MFA status");
+        log::info!("   POST /auth/mfa/setup - Generate secret + QR code");
+        log::info!("   POST /auth/mfa/enable - Activate MFA");
+        log::info!("   POST /auth/mfa/disable - Deactivate MFA");
+        log::info!("   POST /auth/mfa/verify - Validate TOTP code");
         log::info!("   Storage: {}", config.storage_path);
 
         self
@@ -1039,7 +1039,7 @@ impl LithairServerBuilder {
         );
 
         let name = std::any::type_name::<T>().split("::").last().unwrap_or("Unknown");
-        log::info!("✅ Registered handler for {} at {}", name, base_path_normalized);
+        log::info!("Registered handler for {} at {}", name, base_path_normalized);
         log::info!("   GET {} - List all", base_path_normalized);
         log::info!("   POST {} - Create", base_path_normalized);
         log::info!("   GET {}/* - Get by ID", base_path_normalized);
@@ -1295,7 +1295,7 @@ impl LithairServerBuilder {
     ///     .await?;
     /// ```
     pub fn with_data_admin(mut self) -> Self {
-        log::info!("📊 Data Admin API enabled");
+        log::info!("Data Admin API enabled");
         log::info!("   GET  /_admin/data/models        - List models");
         log::info!("   GET  /_admin/data/models/{{name}} - Model data");
         log::info!("   GET  /_admin/data/routes        - List routes");
@@ -1334,7 +1334,7 @@ impl LithairServerBuilder {
     #[cfg(feature = "admin-ui")]
     pub fn with_data_admin_ui(mut self, path: impl Into<String>) -> Self {
         let ui_path = path.into();
-        log::info!("🖥️  Data Admin UI enabled at {}", ui_path);
+        log::info!("Data Admin UI enabled at {}", ui_path);
 
         // Also enable the API if not already enabled
         if !self.config.admin.data_admin_enabled {
@@ -1345,9 +1345,9 @@ impl LithairServerBuilder {
         // Store the UI path in admin config
         self.config.admin.data_admin_ui_path = Some(ui_path.clone());
 
-        // 🔐 Auto-apply authentication guard to data admin paths
+        // Auto-apply authentication guard to data admin paths
         // This protects both the UI and API endpoints
-        log::info!("   🔐 Auth protection enabled (RequireAuth)");
+        log::info!("   Auth protection enabled (RequireAuth)");
 
         // Protect the UI path
         self.route_guards.push(crate::http::RouteGuardMatcher {
@@ -1384,14 +1384,14 @@ impl LithairServerBuilder {
 
     /// Enable embedded data admin UI WITHOUT authentication (for development/internal use only)
     ///
-    /// ⚠️ WARNING: This exposes your data without any authentication!
+    /// WARNING: This exposes your data without any authentication!
     /// Only use this for local development or behind a VPN/firewall.
     ///
     /// For production, use `.with_data_admin_ui()` which auto-applies auth guards.
     #[cfg(feature = "admin-ui")]
     pub fn with_data_admin_ui_public(mut self, path: impl Into<String>) -> Self {
         let ui_path = path.into();
-        log::warn!("⚠️  Data Admin UI enabled at {} (NO AUTH - development only!)", ui_path);
+        log::warn!("Data Admin UI enabled at {} (NO AUTH - development only!)", ui_path);
 
         // Also enable the API if not already enabled
         if !self.config.admin.data_admin_enabled {
@@ -1446,11 +1446,11 @@ impl LithairServerBuilder {
                 let wal_path = format!("./data/raft/node_{}/wal", self.node_id.unwrap_or(0));
                 match crate::cluster::WriteAheadLog::new(&wal_path) {
                     Ok(wal) => {
-                        log::info!("📝 WAL initialized at {}", wal_path);
+                        log::info!("WAL initialized at {}", wal_path);
                         Some(Arc::new(wal))
                     }
                     Err(e) => {
-                        log::warn!("⚠️ Failed to initialize WAL: {}", e);
+                        log::warn!("Failed to initialize WAL: {}", e);
                         None
                     }
                 }
@@ -1470,11 +1470,11 @@ impl LithairServerBuilder {
                     format!("./data/raft/node_{}/snapshots", self.node_id.unwrap_or(0));
                 match crate::cluster::SnapshotManager::new(&snapshot_path) {
                     Ok(mgr) => {
-                        log::info!("📸 Snapshot manager initialized at {}", snapshot_path);
+                        log::info!("Snapshot manager initialized at {}", snapshot_path);
                         Some(Arc::new(tokio::sync::RwLock::new(mgr)))
                     }
                     Err(e) => {
-                        log::warn!("⚠️ Failed to initialize snapshot manager: {}", e);
+                        log::warn!("Failed to initialize snapshot manager: {}", e);
                         None
                     }
                 }
@@ -1483,7 +1483,7 @@ impl LithairServerBuilder {
             },
             // Initialize migration manager for rolling upgrades
             migration_manager: if !self.cluster_peers.is_empty() {
-                log::info!("🔄 Migration manager initialized for rolling upgrades");
+                log::info!("Migration manager initialized for rolling upgrades");
                 Some(Arc::new(crate::cluster::MigrationManager::default()))
             } else {
                 None

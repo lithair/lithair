@@ -181,8 +181,8 @@ impl SnapshotStore {
         })?;
 
         if self.log_verbose {
-            println!(
-                "📸 Snapshot saved for {:?}: {} events, {} bytes",
+            log::debug!(
+                "Snapshot saved for {:?}: {} events, {} bytes",
                 snapshot.metadata.aggregate_id,
                 snapshot.metadata.event_count,
                 json.len()
@@ -198,7 +198,7 @@ impl SnapshotStore {
 
         if !Path::new(&path).exists() {
             if self.log_verbose {
-                println!("📂 No snapshot found for {:?}", aggregate_id);
+                log::debug!("No snapshot found for {:?}", aggregate_id);
             }
             return Ok(None);
         }
@@ -215,8 +215,8 @@ impl SnapshotStore {
         let snapshot = Snapshot::from_json(&json)?;
 
         if self.log_verbose {
-            println!(
-                "📂 Loaded snapshot for {:?}: {} events",
+            log::debug!(
+                "Loaded snapshot for {:?}: {} events",
                 aggregate_id, snapshot.metadata.event_count
             );
         }
@@ -234,7 +234,7 @@ impl SnapshotStore {
             })?;
 
             if self.log_verbose {
-                println!("🗑️ Deleted snapshot for {:?}", aggregate_id);
+                log::debug!("Deleted snapshot for {:?}", aggregate_id);
             }
         }
 

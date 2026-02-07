@@ -36,7 +36,8 @@ impl RbacUser {
         role: impl Into<String>,
     ) -> Self {
         let password_str = password.into();
-        let hashed = hash_password(&password_str).unwrap_or_else(|_| password_str.clone()); // Fallback to plaintext if hashing fails
+        let hashed = hash_password(&password_str)
+            .expect("Argon2 password hashing should not fail with valid input");
 
         Self { username: username.into(), password_hash: hashed, role: role.into(), active: true }
     }
@@ -62,17 +63,7 @@ impl RbacUser {
     /// Returns true if the password matches, false otherwise.
     /// Uses constant-time comparison to prevent timing attacks.
     pub fn verify_password(&self, password: &str) -> bool {
-        // Check if it's an Argon2 hash
-        if self.password_hash.starts_with("$argon2") {
-            verify_password(password, &self.password_hash).unwrap_or(false)
-        } else {
-            // Legacy plaintext comparison for migration
-            log::warn!(
-                "User '{}' has plaintext password - please migrate to Argon2",
-                self.username
-            );
-            self.password_hash == password
-        }
+        verify_password(password, &self.password_hash).unwrap_or(false)
     }
 
     /// Check if password needs to be rehashed (e.g., still plaintext)

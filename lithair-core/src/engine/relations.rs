@@ -26,12 +26,12 @@ impl RelationRegistry {
 
     /// Register a data source for a specific collection name
     pub fn register(&self, collection_name: &str, source: Arc<dyn DataSource>) {
-        self.sources.write().unwrap().insert(collection_name.to_string(), source);
+        self.sources.write().expect("relation sources lock poisoned").insert(collection_name.to_string(), source);
     }
 
     /// Get a data source by name
     pub fn get(&self, collection_name: &str) -> Option<Arc<dyn DataSource>> {
-        self.sources.read().unwrap().get(collection_name).cloned()
+        self.sources.read().expect("relation sources lock poisoned").get(collection_name).cloned()
     }
 }
 

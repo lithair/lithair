@@ -159,7 +159,7 @@ pub async fn serve_dev_asset(path: &str, public_dir: &str, default_file: &str) -
         Ok(content) => {
             let mime_type = mime_guess::from_path(&file_path).first_or_octet_stream().to_string();
 
-            log::debug!("📄 [DEV] Serving {} from disk ({} bytes)", path, content.len());
+            log::debug!("[DEV] Serving {} from disk ({} bytes)", path, content.len());
 
             hyper::Response::builder()
                 .status(hyper::StatusCode::OK)
@@ -212,7 +212,7 @@ pub async fn load_assets_with_logging(
     public_dir: &str,
     context_name: &str,
 ) -> Result<usize, String> {
-    log::info!("📦 Loading {} from {}...", context_name, public_dir);
+    log::info!("Loading {} from {}...", context_name, public_dir);
 
     // Use core load function for memory-first serving
     match crate::frontend::load_static_directory_to_memory(
@@ -225,7 +225,7 @@ pub async fn load_assets_with_logging(
     {
         Ok(count) => {
             log::info!(
-                "✅ [{}] {} assets loaded from {} directory",
+                "[{}] {} assets loaded from {} directory",
                 virtual_host_id,
                 count,
                 public_dir
@@ -234,7 +234,7 @@ pub async fn load_assets_with_logging(
         }
         Err(e) => {
             let error_msg = format!("Could not load assets from {}: {}", public_dir, e);
-            log::warn!("⚠️ {}", error_msg);
+            log::warn!("{}", error_msg);
             Err(error_msg)
         }
     }

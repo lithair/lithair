@@ -244,7 +244,7 @@ impl Firewall {
     fn check_global_qps(&self) -> Result<(), RespErr> {
         if let Some(limit) = self.cfg.global_qps {
             let now = Self::now_sec();
-            let mut win = self.global_win.lock().unwrap();
+            let mut win = self.global_win.lock().expect("global rate limit lock poisoned");
             if win.second != now {
                 win.second = now;
                 win.count = 0;
@@ -264,7 +264,7 @@ impl Firewall {
     fn check_per_ip_qps(&self, ip: Option<&str>) -> Result<(), RespErr> {
         if let (Some(limit), Some(ip)) = (self.cfg.per_ip_qps, ip) {
             let now = Self::now_sec();
-            let mut map = self.per_ip_win.lock().unwrap();
+            let mut map = self.per_ip_win.lock().expect("per-ip rate limit lock poisoned");
             let win = map.entry(ip.to_string()).or_insert(Window { second: now, count: 0 });
             if win.second != now {
                 win.second = now;

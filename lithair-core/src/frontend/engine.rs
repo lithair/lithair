@@ -172,8 +172,7 @@ impl FrontendEngine {
     /// # Arguments
     /// * `path` - Web path
     pub async fn delete_asset(&self, path: &str) -> Result<()> {
-        // TODO: Implement delete with event sourcing
-        // For now, assets are immutable once loaded
+        // Note: delete with event sourcing is not yet supported; assets are immutable once loaded
         let _key = format!("{}:{}", self.host_id, path);
         Ok(())
     }

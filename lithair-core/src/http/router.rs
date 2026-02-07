@@ -591,7 +591,7 @@ impl<S> RouterBuilder<S> {
     pub fn api_version(self, version: &str) -> Self {
         // This would be used to prefix all routes with /api/v1, etc.
         // For now, just a placeholder
-        println!("API version: {}", version);
+        log::info!("API version: {}", version);
         self
     }
 

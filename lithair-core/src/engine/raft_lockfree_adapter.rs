@@ -123,8 +123,8 @@ where
     
     /// Apply a distributed event to the local lock-free engine
     async fn apply_distributed_event(&self, distributed_event: DistributedEvent<E>) -> EngineResult<()> {
-        println!("🔄 Applying distributed event {} to shard {}", 
-                 distributed_event.event_id, 
+        log::debug!("Applying distributed event {} to shard {}",
+                 distributed_event.event_id,
                  distributed_event.shard_key);
         
         // Apply to local lock-free engine
@@ -163,7 +163,7 @@ where
         self.raft.initialize(nodes).await
             .map_err(|e| EngineError::ConsensusError(e.to_string()))?;
         
-        println!("🚀 Raft cluster initialized with node {}", self.node_id);
+        log::info!("Raft cluster initialized with node {}", self.node_id);
         Ok(())
     }
     

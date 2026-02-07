@@ -72,7 +72,7 @@ where
     E: Event<State = S> + Send + 'static,
 {
     fn drop(&mut self) {
-        println!("🔄 Shutting down lock-free shard {}...", self.shard_id);
+        log::debug!("Shutting down lock-free shard {}...", self.shard_id);
         // Worker threads will shut down when command channels are dropped
     }
 }
@@ -160,10 +160,10 @@ where
         version_counter: Arc<AtomicU64>,
         shard_id: usize,
     ) {
-        println!("🚀 Lock-free shard {} worker started", shard_id);
+        log::info!("Lock-free shard {} worker started", shard_id);
 
         while let Ok(command) = cmd_rx.recv() {
-            println!("🔧 Shard {} processing command for key: {}", shard_id, command.shard_key);
+            log::debug!("Shard {} processing command for key: {}", shard_id, command.shard_key);
 
             // Load current state
             let current_ptr = state_ptr.load(Ordering::Acquire);
@@ -173,10 +173,10 @@ where
             let mut new_state = current_state.state.clone();
             let label =
                 if std::any::type_name::<S>().contains("BlogState") { "articles" } else { "items" };
-            println!("   📝 Before apply: state has {} items", label);
+            log::debug!("  Before apply: state has {} items", label);
 
             command.event.apply(&mut new_state);
-            println!("   ✅ After apply: event applied successfully");
+            log::debug!("  After apply: event applied successfully");
 
             // Create new versioned state
             let new_version = version_counter.fetch_add(1, Ordering::AcqRel);
@@ -185,7 +185,7 @@ where
 
             // Atomic swap to new state
             let old_ptr = state_ptr.swap(new_ptr, Ordering::AcqRel);
-            println!("   🔄 State swapped to version {}", new_version);
+            log::debug!("  State swapped to version {}", new_version);
 
             // Clean up old state (after a delay for safety)
             // Note: We need to ensure Send safety for the cleanup thread
@@ -202,7 +202,7 @@ where
             }
         }
 
-        println!("🔄 Lock-free shard {} worker shutting down", shard_id);
+        log::debug!("Lock-free shard {} worker shutting down", shard_id);
     }
 }
 
@@ -228,7 +228,7 @@ where
     pub fn new(initial_state: S, shard_count: Option<usize>) -> Self {
         let shard_count = shard_count.unwrap_or(DEFAULT_SHARD_COUNT);
 
-        println!("🚀 Initializing lock-free engine with {} shards", shard_count);
+        log::info!("Initializing lock-free engine with {} shards", shard_count);
 
         let mut shards = Vec::with_capacity(shard_count);
 
@@ -250,7 +250,7 @@ where
     /// Read from specific shard (lock-free)
     pub fn read<R>(&self, key: &str, reader: impl FnOnce(&S) -> R) -> R {
         let shard_id = self.hash_to_shard(key);
-        println!("🔍 LockFreeEngine: Reading key '{}' from shard {}", key, shard_id);
+        log::debug!("LockFreeEngine: Reading key '{}' from shard {}", key, shard_id);
         self.shards[shard_id].read_state(reader)
     }
 
@@ -263,9 +263,9 @@ where
     /// Write to specific shard (sync)
     pub fn write_sync(&self, key: String, event: E) -> EngineResult<()> {
         let shard_id = self.hash_to_shard(&key);
-        println!("🔧 LockFreeEngine: Writing key '{}' to shard {}", key, shard_id);
+        log::debug!("LockFreeEngine: Writing key '{}' to shard {}", key, shard_id);
         let result = self.shards[shard_id].submit_command_sync(event, key);
-        println!("🔧 LockFreeEngine: Write result: {:?}", result);
+        log::debug!("LockFreeEngine: Write result: {:?}", result);
         result
     }
 
@@ -290,7 +290,7 @@ where
     E: Event<State = S> + Send + 'static,
 {
     fn drop(&mut self) {
-        println!("🔄 Shutting down lock-free engine...");
+        log::debug!("Shutting down lock-free engine...");
         // Worker threads will shut down when command channels are dropped
     }
 }

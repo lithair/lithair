@@ -63,8 +63,7 @@ impl PatternMatcher {
                 value.starts_with(prefix) && value.ends_with(suffix)
             }
             _ => {
-                // Multiple wildcards - more complex matching
-                // TODO: Implement full wildcard matching
+                // Multiple wildcards are not yet supported; only single-wildcard patterns match
                 false
             }
         }
@@ -78,8 +77,7 @@ impl PatternMatcher {
             return false;
         }
 
-        // TODO: Implement proper CIDR matching
-        // For now, simple implementation
+        // Note: uses simplified prefix matching rather than full CIDR bit-masking
         let parts: Vec<&str> = pattern.split('/').collect();
         if parts.len() != 2 {
             return false;

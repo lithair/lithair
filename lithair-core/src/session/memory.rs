@@ -34,7 +34,7 @@ impl MemorySessionStore {
 
     /// Get the number of sessions currently stored
     pub fn session_count(&self) -> usize {
-        self.sessions.read().unwrap().len()
+        self.sessions.read().expect("sessions lock poisoned").len()
     }
 }
 
@@ -47,29 +47,29 @@ impl Default for MemorySessionStore {
 #[async_trait::async_trait]
 impl SessionStore for MemorySessionStore {
     async fn get(&self, id: &str) -> Result<Option<Session>> {
-        let sessions = self.sessions.read().unwrap();
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
         Ok(sessions.get(id).cloned())
     }
 
     async fn set(&self, session: Session) -> Result<()> {
-        let mut sessions = self.sessions.write().unwrap();
+        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
         sessions.insert(session.id.clone(), session);
         Ok(())
     }
 
     async fn delete(&self, id: &str) -> Result<()> {
-        let mut sessions = self.sessions.write().unwrap();
+        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
         sessions.remove(id);
         Ok(())
     }
 
     async fn exists(&self, id: &str) -> Result<bool> {
-        let sessions = self.sessions.read().unwrap();
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
         Ok(sessions.contains_key(id))
     }
 
     async fn cleanup_expired(&self) -> Result<usize> {
-        let mut sessions = self.sessions.write().unwrap();
+        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
         let initial_count = sessions.len();
 
         // Remove expired sessions
@@ -80,7 +80,7 @@ impl SessionStore for MemorySessionStore {
     }
 
     async fn count(&self) -> Result<usize> {
-        let sessions = self.sessions.read().unwrap();
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
         Ok(sessions.len())
     }
 }

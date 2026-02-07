@@ -87,23 +87,23 @@ pub async fn migrate_json_to_events(
     let event_log = if !dry_run {
         Some(MfaEventLog::new(&event_log_path)?)
     } else {
-        log::info!("🧪 DRY RUN MODE - No events will be written");
+        log::info!("DRY RUN MODE - No events will be written");
         None
     };
 
     // Process each JSON file
     for json_file in json_files {
         match migrate_file(&json_file, event_log.as_ref(), &mut stats).await {
-            Ok(_) => log::info!("✅ Migrated: {:?}", json_file),
+            Ok(_) => log::info!("Migrated: {:?}", json_file),
             Err(e) => {
                 let error_msg = format!("Failed to migrate {:?}: {}", json_file, e);
-                log::error!("❌ {}", error_msg);
+                log::error!("{}", error_msg);
                 stats.errors.push(error_msg);
             }
         }
     }
 
-    log::info!("📊 {}", stats.summary());
+    log::info!("{}", stats.summary());
 
     Ok(stats)
 }

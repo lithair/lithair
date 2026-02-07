@@ -104,14 +104,14 @@ impl<S: SessionStore + 'static> SessionManager<S> {
                     match cleanup_store.cleanup_expired().await {
                         Ok(count) if count > 0 => {
                             if log_cleanup {
-                                log::info!("🧹 Auto-cleaned {} expired sessions", count);
+                                log::info!("Auto-cleaned {} expired sessions", count);
                             }
                         }
                         Ok(_) => {
                             // No sessions to clean, silent
                         }
                         Err(e) => {
-                            log::error!("❌ Session cleanup failed: {}", e);
+                            log::error!("Session cleanup failed: {}", e);
                         }
                     }
                 }

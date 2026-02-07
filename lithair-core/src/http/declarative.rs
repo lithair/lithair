@@ -178,7 +178,7 @@ where
         }
 
         if Self::is_verbose() || replayed_count > 0 {
-            log::info!("📂 Replayed {} events into memory", replayed_count);
+            log::info!("Replayed {} events into memory", replayed_count);
         }
 
         Ok(replayed_count)
@@ -286,8 +286,8 @@ where
             storage.insert(actual_key, item);
         }
         if Self::is_verbose() {
-            println!(
-                "🔄 Reconcile: storage replaced with authoritative snapshot ({} items)",
+            log::debug!(
+                "Reconcile: storage replaced with authoritative snapshot ({} items)",
                 storage.len()
             );
         }
@@ -311,14 +311,14 @@ where
         // IMPORTANT: Storage is already updated, so operation must succeed for consistency
         if let Err(e) = self.persist_to_event_store("Replicated", &item).await {
             log::warn!(
-                "⚠️ Failed to persist replicated item event for {}: {:?} (storage already updated)",
+                "Failed to persist replicated item event for {}: {:?} (storage already updated)",
                 actual_key,
                 e
             );
         }
 
         if Self::is_verbose() {
-            println!("📥 Replicated item {} applied to follower", actual_key);
+            log::debug!("Replicated item {} applied to follower", actual_key);
         }
 
         Ok(())
@@ -331,7 +331,7 @@ where
             self.apply_replicated_item(item).await?;
         }
         if Self::is_verbose() {
-            println!("📥 Bulk replicated {} items applied to follower", count);
+            log::debug!("Bulk replicated {} items applied to follower", count);
         }
         Ok(count)
     }
@@ -344,7 +344,7 @@ where
             let storage = self.storage.read().await;
             let has_key = storage.contains_key(id);
             log::debug!(
-                "📝 APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}",
+                "APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}",
                 id,
                 has_key,
                 storage.len()
@@ -352,7 +352,7 @@ where
             if !has_key {
                 // If item doesn't exist, treat as create (eventual consistency)
                 drop(storage);
-                log::debug!("📝 APPLY UPDATE: item doesn't exist, creating instead");
+                log::debug!("APPLY UPDATE: item doesn't exist, creating instead");
                 return self.apply_replicated_item(item).await;
             }
         }
@@ -367,14 +367,14 @@ where
         // IMPORTANT: Storage is already updated, so we must succeed for consistency
         if let Err(e) = self.persist_to_event_store("Updated", &item).await {
             log::warn!(
-                "⚠️ Failed to persist update event for {}: {:?} (storage already updated)",
+                "Failed to persist update event for {}: {:?} (storage already updated)",
                 id,
                 e
             );
         }
 
         if Self::is_verbose() {
-            println!("📥 Replicated UPDATE for {} applied", id);
+            log::debug!("Replicated UPDATE for {} applied", id);
         }
 
         Ok(())
@@ -389,7 +389,7 @@ where
             let mut storage = self.storage.write().await;
             let has_key = storage.contains_key(id);
             log::debug!(
-                "🗑️ APPLY DELETE: id={}, exists_in_storage={}, storage_len={}",
+                "APPLY DELETE: id={}, exists_in_storage={}, storage_len={}",
                 id,
                 has_key,
                 storage.len()
@@ -402,20 +402,20 @@ where
             // This ensures idempotency: once item is removed from storage, operation succeeds
             if let Err(e) = self.persist_to_event_store("Deleted", &item).await {
                 log::warn!(
-                    "⚠️ Failed to persist delete event for {}: {:?} (storage already updated)",
+                    "Failed to persist delete event for {}: {:?} (storage already updated)",
                     id,
                     e
                 );
             }
 
             if Self::is_verbose() {
-                println!("📥 Replicated DELETE for {} applied", id);
+                log::debug!("Replicated DELETE for {} applied", id);
             }
 
             Ok(true)
         } else {
             // Item didn't exist (idempotent behavior - not an error)
-            log::debug!("📥 Replicated DELETE for {} - item not found (idempotent)", id);
+            log::debug!("Replicated DELETE for {} - item not found (idempotent)", id);
             Ok(false)
         }
     }
@@ -465,15 +465,15 @@ where
     pub async fn configure_declarative_persistence(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!("🔧 Analyzing declarative persistence configuration...");
+        log::info!("Analyzing declarative persistence configuration...");
 
         // For now, just log that we're using the conservative settings
         // The actual logic would analyze T::get_declarative_spec() when the trait bounds are fixed
-        println!(
-            "ℹ️  Using conservative persistence settings (enable_compaction: false by default)"
+        log::info!(
+            "Using conservative persistence settings (enable_compaction: false by default)"
         );
-        println!("ℹ️  Compaction will only be enabled if declarative attributes specify it");
-        println!("ℹ️  This prevents automatic deletion of .raftlog files");
+        log::info!("Compaction will only be enabled if declarative attributes specify it");
+        log::info!("This prevents automatic deletion of .raftlog files");
 
         Ok(())
     }
@@ -654,7 +654,7 @@ where
 
         // RAFT INTEGRATION: Check if consensus is required
         if let Some(consensus_arc) = &self.consensus {
-            println!("🔄 Raft: Proposing create operation for item {}", primary_key);
+            log::debug!("Raft: Proposing create operation for item {}", primary_key);
 
             // Real Raft consensus proposal
             match consensus_arc
@@ -664,7 +664,7 @@ where
                 .await
             {
                 Ok(_) => {
-                    println!("✅ Raft: Consensus achieved, applying operation locally");
+                    log::info!("Raft: Consensus achieved, applying operation locally");
 
                     // Apply to local storage after successful consensus
                     // Use the item's actual ID as key, not the placeholder
@@ -673,27 +673,27 @@ where
                         .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
                         .unwrap_or_else(|| primary_key.clone());
 
-                    println!(
-                        "🔍 DEBUG: primary_key = {}, actual_key = {}",
+                    log::debug!(
+                        "DEBUG: primary_key = {}, actual_key = {}",
                         primary_key, actual_key
                     );
-                    println!(
-                        "🔍 DEBUG: item JSON = {}",
+                    log::debug!(
+                        "DEBUG: item JSON = {}",
                         serde_json::to_string(&item).unwrap_or_default()
                     );
 
                     {
                         let mut storage = self.storage.write().await;
                         storage.insert(actual_key.clone(), item.clone());
-                        println!("🔍 DEBUG: Storage now has {} items", storage.len());
+                        log::debug!("DEBUG: Storage now has {} items", storage.len());
                     }
 
                     if (self.persist_to_event_store("Created", &item).await).is_err() {
                         return Ok(self.internal_error_response());
                     }
 
-                    println!(
-                        "✅ Raft: Successfully replicated item {} across cluster",
+                    log::info!(
+                        "Raft: Successfully replicated item {} across cluster",
                         primary_key
                     );
                 }
@@ -716,7 +716,7 @@ where
                 return Ok(self.internal_error_response());
             }
 
-            println!("📝 Local: Item {} stored locally only", primary_key);
+            log::debug!("Local: Item {} stored locally only", primary_key);
         }
 
         match serde_json::to_string(&item) {
@@ -958,7 +958,7 @@ where
 
         // RAFT INTEGRATION: Check if consensus is required for UPDATE
         if let Some(consensus_arc) = &self.consensus {
-            println!("🔄 Raft: Proposing UPDATE operation for item {}", id);
+            log::debug!("Raft: Proposing UPDATE operation for item {}", id);
             match consensus_arc
                 .read()
                 .await
@@ -1056,7 +1056,7 @@ where
 
         // RAFT INTEGRATION: Check if consensus is required for DELETE
         if let Some(consensus_arc) = &self.consensus {
-            println!("🔄 Raft: Proposing DELETE operation for item {}", id);
+            log::debug!("Raft: Proposing DELETE operation for item {}", id);
             match consensus_arc.read().await.propose_delete(id.to_string()).await {
                 Ok(_) => {
                     // Apply to local storage after successful consensus

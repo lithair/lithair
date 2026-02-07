@@ -43,7 +43,7 @@ use std::sync::Arc;
 
 /// Legacy admin handler trait - DEPRECATED
 ///
-/// **⚠️ DEPRECATED**: Use the automatic admin system instead.
+/// **DEPRECATED**: Use the automatic admin system instead.
 /// - Implement `ServerMetrics` trait
 /// - Configure `AutoAdminConfig`
 /// - Use `handle_auto_admin_endpoints` for automatic routing
@@ -77,10 +77,10 @@ pub async fn check_admin_firewall(
     if let Some(firewall) = firewall {
         if firewall.check(fake_addr, method, path).is_err() {
             if let Some(client_ip) = extract_client_ip(req) {
-                log::warn!("🚫 Admin access denied from IP: {} for path: {}", client_ip, path);
+                log::warn!("Admin access denied from IP: {} for path: {}", client_ip, path);
             } else {
                 log::warn!(
-                    "🚫 Admin access denied: Could not determine client IP for path: {}",
+                    "Admin access denied: Could not determine client IP for path: {}",
                     path
                 );
             }
@@ -89,7 +89,7 @@ pub async fn check_admin_firewall(
         }
 
         if let Some(client_ip) = extract_client_ip(req) {
-            log::debug!("✅ Admin access allowed from IP: {} for path: {}", client_ip, path);
+            log::debug!("Admin access allowed from IP: {} for path: {}", client_ip, path);
         }
     }
     Ok(())
@@ -140,7 +140,7 @@ pub fn build_status_response(status_data: serde_json::Value) -> Resp {
 
 /// Legacy admin route dispatcher - DEPRECATED
 ///
-/// **⚠️ DEPRECATED**: Use `handle_auto_admin_endpoints` instead.
+/// **DEPRECATED**: Use `handle_auto_admin_endpoints` instead.
 /// The automatic admin system provides better routing with zero boilerplate.
 ///
 /// This function is kept for backward compatibility but should not be used in new code.
@@ -179,13 +179,13 @@ where
 //  ╔═══════════════════════════════════════════════════════════╗
 //  ║                    NEW AUTOMATIC ADMIN API               ║
 //  ╠═══════════════════════════════════════════════════════════╣
-//  ║  🚀 CORE TRAIT: ServerMetrics - implement this only      ║
-//  ║  🎛️  CONFIGURATION: AutoAdminConfig - configure once      ║
-//  ║  🔄 ROUTER: handle_auto_admin_endpoints - call in routes ║
-//  ║  ✨ RESULT: Automatic /status, /health, /info endpoints   ║
+//  ║  CORE TRAIT: ServerMetrics - implement this only      ║
+//  ║  CONFIGURATION: AutoAdminConfig - configure once      ║
+//  ║  ROUTER: handle_auto_admin_endpoints - call in routes ║
+//  ║  RESULT: Automatic /status, /health, /info endpoints   ║
 //  ╚═══════════════════════════════════════════════════════════╝
 
-/// **🎯 CORE TRAIT** - Server metrics for automatic admin endpoints
+/// **CORE TRAIT** - Server metrics for automatic admin endpoints
 ///
 /// This is the ONLY trait you need to implement for the automatic admin system.
 /// Once implemented, you get `/status`, `/health`, and `/info` endpoints for free.
@@ -229,7 +229,7 @@ pub trait ServerMetrics {
     }
 }
 
-/// **⚡ RELOADABLE TRAIT** - Optional trait for servers with asset reloading capability
+/// **RELOADABLE TRAIT** - Optional trait for servers with asset reloading capability
 ///
 /// Implement this trait alongside ServerMetrics to get automatic `/reload` endpoint
 /// with validation, error handling, and async processing.
@@ -260,7 +260,7 @@ pub trait ReloadableServer: ServerMetrics {
     /// This enables simplified hot-reload in development mode via X-Reload-Token header.
     /// Returns None in production mode (default).
     ///
-    /// ⚠️ **WARNING**: This is for DEVELOPMENT ONLY! Do not use in production!
+    /// **WARNING**: This is for DEVELOPMENT ONLY! Do not use in production!
     fn get_dev_reload_token(&self) -> Option<&str> {
         None
     }
@@ -418,12 +418,12 @@ where
     use chrono::Utc;
     use serde_json::json;
 
-    log::info!("🔄 Admin auto reload request");
+    log::info!("Admin auto reload request");
 
     // Pre-flight validation
     match server.get_public_dir() {
         None => {
-            log::warn!("⚠️ Reload attempted but no public directory configured");
+            log::warn!("Reload attempted but no public directory configured");
             hyper::Response::builder()
                 .status(hyper::StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
@@ -441,7 +441,7 @@ where
         Some(public_dir) => {
             // Additional validation: check if directory exists
             if !std::path::Path::new(public_dir).exists() {
-                log::error!("❌ Public directory does not exist: {}", public_dir);
+                log::error!("Public directory does not exist: {}", public_dir);
                 hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
@@ -453,7 +453,7 @@ where
                     }).to_string()))
                     .unwrap()
             } else if !std::path::Path::new(public_dir).is_dir() {
-                log::error!("❌ Public path is not a directory: {}", public_dir);
+                log::error!("Public path is not a directory: {}", public_dir);
                 hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
@@ -479,7 +479,7 @@ where
 
                 tokio::spawn(async move {
                     let reload_start = Utc::now();
-                    log::info!("🔄 Starting assets reload from {}", public_dir_owned);
+                    log::info!("Starting assets reload from {}", public_dir_owned);
 
                     match load_assets_with_logging(
                         frontend_state,
@@ -493,13 +493,13 @@ where
                         Ok(count) => {
                             let duration = Utc::now().signed_duration_since(reload_start);
                             log::info!(
-                                "⚡ Auto reload completed: {} assets in {}ms",
+                                "Auto reload completed: {} assets in {}ms",
                                 count,
                                 duration.num_milliseconds()
                             );
                         }
                         Err(e) => {
-                            log::error!("❌ Auto reload failed: {}", e);
+                            log::error!("Auto reload failed: {}", e);
                         }
                     }
                 });
@@ -568,10 +568,10 @@ where
                 if let Some(provided_token) = req.headers().get("X-Reload-Token") {
                     if let Ok(provided_str) = provided_token.to_str() {
                         if provided_str == dev_token {
-                            log::info!("🔧 Dev reload token validated");
+                            log::info!("Dev reload token validated");
                             Some(handle_auto_reload_endpoint(server).await)
                         } else {
-                            log::warn!("⚠️ Invalid dev reload token provided");
+                            log::warn!("Invalid dev reload token provided");
                             Some(
                                 hyper::Response::builder()
                                     .status(hyper::StatusCode::UNAUTHORIZED)
@@ -597,7 +597,7 @@ where
                             .unwrap())
                     }
                 } else {
-                    log::warn!("⚠️ Dev reload token configured but X-Reload-Token header missing");
+                    log::warn!("Dev reload token configured but X-Reload-Token header missing");
                     Some(
                         hyper::Response::builder()
                             .status(hyper::StatusCode::UNAUTHORIZED)

@@ -195,7 +195,7 @@ impl FileStorage {
             self.writer = None;
             // Note: rotation still based on file size; async writer keeps file open which is fine
         } else {
-            eprintln!("⚠️ Failed to enable async writer, falling back to sync FileStorage");
+            log::warn!("Failed to enable async writer, falling back to sync FileStorage");
         }
     }
 
@@ -495,7 +495,7 @@ impl FileStorage {
                         ))
                     })?;
                 self.writer = Some(BufWriter::new(file));
-                println!("🔁 Log rotated: {} -> {}", &self.events_file, &seg1);
+                log::info!("Log rotated: {} -> {}", &self.events_file, &seg1);
             }
         }
         Ok(())
@@ -524,22 +524,22 @@ impl FileStorage {
                     Ok(json_data) => all.push(json_data),
                     Err(e) => {
                         corrupted_count += 1;
-                        eprintln!("⚠️ CRC32 validation error at {}:{}: {}", path, line_num + 1, e);
+                        log::error!("CRC32 validation error at {}:{}: {}", path, line_num + 1, e);
                         // Reject corrupted events - data integrity is critical
                     }
                 }
             }
         }
         if all.is_empty() && corrupted_count == 0 {
-            println!("📂 No events file found, starting with empty log");
+            log::debug!("No events file found, starting with empty log");
         } else if corrupted_count > 0 {
-            eprintln!(
-                "🚨 Loaded {} events from log, {} corrupted events REJECTED",
+            log::error!(
+                "Loaded {} events from log, {} corrupted events REJECTED",
                 all.len(),
                 corrupted_count
             );
         } else {
-            println!("📂 Loaded {} events from log (CRC32 validated ✓)", all.len());
+            log::debug!("Loaded {} events from log (CRC32 validated)", all.len());
         }
         Ok(all)
     }
@@ -562,7 +562,7 @@ impl FileStorage {
             while cursor < content.len() {
                 // Ensure we can read the length prefix
                 if cursor + 8 > content.len() {
-                    println!("⚠️ Warning: Incomplete length prefix at end of file {}", path);
+                    log::warn!("Incomplete length prefix at end of file {}", path);
                     break;
                 }
 
@@ -573,7 +573,7 @@ impl FileStorage {
 
                 // Ensure we can read the payload
                 if cursor + len > content.len() {
-                    println!("⚠️ Warning: Incomplete payload at end of file {} (expected {} bytes, found {})", path, len, content.len() - cursor);
+                    log::warn!("Incomplete payload at end of file {} (expected {} bytes, found {})", path, len, content.len() - cursor);
                     break;
                 }
 
@@ -584,9 +584,9 @@ impl FileStorage {
             }
         }
         if all.is_empty() {
-            println!("📂 No events file found (or empty), starting with empty log");
+            log::debug!("No events file found (or empty), starting with empty log");
         } else {
-            println!("📂 Loaded {} binary events from log (Length-Prefixed)", all.len());
+            log::debug!("Loaded {} binary events from log (Length-Prefixed)", all.len());
         }
         Ok(all)
     }
@@ -599,7 +599,7 @@ impl FileStorage {
             EngineError::PersistenceError(format!("Failed to write snapshot: {}", e))
         })?;
 
-        println!("📸 State snapshot saved: {} bytes", state_json.len());
+        log::debug!("State snapshot saved: {} bytes", state_json.len());
 
         Ok(())
     }
@@ -607,7 +607,7 @@ impl FileStorage {
     /// Load the latest state snapshot
     pub fn load_snapshot(&self) -> EngineResult<Option<String>> {
         if !Path::new(&self.snapshot_file).exists() {
-            println!("📂 No snapshot found, will use initial state");
+            log::debug!("No snapshot found, will use initial state");
             return Ok(None);
         }
 
@@ -615,7 +615,7 @@ impl FileStorage {
             EngineError::PersistenceError(format!("Failed to read snapshot: {}", e))
         })?;
 
-        println!("📂 Loaded state snapshot: {} bytes", content.len());
+        log::debug!("Loaded state snapshot: {} bytes", content.len());
 
         Ok(Some(content))
     }
@@ -703,17 +703,17 @@ impl Drop for FileStorage {
         // Flush any remaining events in the buffer
         if !self.event_batch.is_empty() || self.async_writer.is_some() {
             if let Err(e) = self.flush_batch() {
-                eprintln!("⚠️  Warning: Failed to flush events on drop: {}", e);
-                eprintln!("    {} buffered events may have been lost", self.event_batch.len());
+                log::error!("Failed to flush events on drop: {}", e);
+                log::error!("{} buffered events may have been lost", self.event_batch.len());
             } else if !self.event_batch.is_empty() {
-                println!("💾 Auto-flushed {} events on storage drop", self.event_batch.len());
+                log::debug!("Auto-flushed {} events on storage drop", self.event_batch.len());
             }
         }
 
         // Close the writer properly
         if let Some(mut writer) = self.writer.take() {
             if let Err(e) = writer.flush() {
-                eprintln!("⚠️  Warning: Failed to flush writer on drop: {}", e);
+                log::error!("Failed to flush writer on drop: {}", e);
             }
         }
     }

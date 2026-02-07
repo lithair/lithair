@@ -125,8 +125,7 @@ impl ExternalSourceFetcher {
 
     /// Parse JSON and extract array at JSONPath
     fn parse_json(&self, text: &str, path: &str) -> Result<Vec<String>, FetchError> {
-        // TODO: Implement JSONPath parsing
-        // For now, simple implementation
+        // Note: JSONPath traversal is not yet supported; currently parses the root value only
         let value: serde_json::Value =
             serde_json::from_str(text).map_err(|e| FetchError::ParseError(e.to_string()))?;
 

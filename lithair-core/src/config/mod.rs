@@ -72,7 +72,6 @@ pub struct LithairConfig {
     pub raft: RaftConfig,
 }
 
-
 impl LithairConfig {
     /// Load configuration with full supersedence chain
     ///

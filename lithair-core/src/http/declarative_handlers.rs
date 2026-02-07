@@ -263,10 +263,10 @@ impl<T> CustomHandlerRegistry<T> {
         config: &CustomHandlerConfig,
     ) -> Result<Resp, Infallible> {
         if let Some(callback) = self.get(name) {
-            log::debug!("🎯 Executing custom handler: {}", name);
+            log::debug!("Executing custom handler: {}", name);
             callback.call(req, server, config).await
         } else {
-            log::warn!("❌ Custom handler not found: {}", name);
+            log::warn!("Custom handler not found: {}", name);
             Ok(crate::http::not_found_response("custom handler"))
         }
     }
@@ -299,7 +299,7 @@ impl DeclarativeHandlerSystem {
 
         // Log request if enabled
         if self.config.global.enable_logging {
-            log::debug!("🌐 Declarative routing: {} {}", req.method(), path);
+            log::debug!("Declarative routing: {} {}", req.method(), path);
         }
 
         // Find matching handler by path prefix (first match wins)
@@ -310,7 +310,7 @@ impl DeclarativeHandlerSystem {
 
             if path.starts_with(&handler.path_prefix) {
                 if let Some(name) = &handler.name {
-                    log::debug!("📍 Matched handler: {} for path: {}", name, path);
+                    log::debug!("Matched handler: {} for path: {}", name, path);
                 }
 
                 return self.execute_handler(req, server, handler, firewall, custom_registry).await;
@@ -427,7 +427,7 @@ impl DeclarativeHandlerSystem {
         if let Some(registry) = custom_registry {
             registry.execute(&config.callback_name, req, server, config).await
         } else {
-            log::warn!("❌ No custom registry provided for handler: {}", config.callback_name);
+            log::warn!("No custom registry provided for handler: {}", config.callback_name);
             Ok(crate::http::not_found_response("custom handler"))
         }
     }

@@ -36,7 +36,7 @@ impl PersistentSessionStore {
 
         // Replay events to rebuild state
         let events = event_store.get_all_events()?;
-        let mut state_guard = state.write().unwrap();
+        let mut state_guard = state.write().expect("session state lock poisoned");
 
         for event_json in events {
             // Try to parse as SessionCreated, SessionUpdated or SessionDeleted
@@ -54,7 +54,7 @@ impl PersistentSessionStore {
         let count = state_guard.len();
         drop(state_guard);
 
-        log::info!("📂 Loaded {} sessions from event store", count);
+        log::info!("Loaded {} sessions from event store", count);
 
         Ok(Self { event_store: Arc::new(std::sync::Mutex::new(event_store)), state })
     }
@@ -62,12 +62,12 @@ impl PersistentSessionStore {
     /// Apply an event and persist it
     fn apply_event<E: Event<State = SessionState>>(&self, event: E) -> Result<()> {
         // Apply to state
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write().expect("session state lock poisoned");
         event.apply(&mut *state);
         drop(state);
 
         // Persist event
-        let mut store = self.event_store.lock().unwrap();
+        let mut store = self.event_store.lock().expect("event store lock poisoned");
         store.append_event(&event)?;
 
         // CRITICAL: Force flush to create .raftlog files immediately
@@ -80,7 +80,7 @@ impl PersistentSessionStore {
 #[async_trait::async_trait]
 impl SessionStore for PersistentSessionStore {
     async fn get(&self, session_id: &str) -> Result<Option<Session>> {
-        let state = self.state.read().unwrap();
+        let state = self.state.read().expect("session state lock poisoned");
 
         match state.get(session_id) {
             Some(data) => Ok(Some(data.clone().into())),
@@ -92,7 +92,7 @@ impl SessionStore for PersistentSessionStore {
         let session_data = SessionData::from(&session);
 
         // Check if session exists to determine event type
-        let state = self.state.read().unwrap();
+        let state = self.state.read().expect("session state lock poisoned");
         let exists = state.contains_key(&session.id);
         drop(state);
 
@@ -143,7 +143,7 @@ impl SessionStore for PersistentSessionStore {
         let mut removed = 0;
 
         let expired_ids: Vec<String> = {
-            let state = self.state.read().unwrap();
+            let state = self.state.read().expect("session state lock poisoned");
             state
                 .iter()
                 .filter(|(_, data)| data.expires_at <= now)
@@ -165,14 +165,14 @@ impl SessionStore for PersistentSessionStore {
         }
 
         if removed > 0 {
-            log::info!("🧹 Cleaned up {} expired sessions", removed);
+            log::info!("Cleaned up {} expired sessions", removed);
         }
 
         Ok(removed)
     }
 
     async fn count(&self) -> Result<usize> {
-        let state = self.state.read().unwrap();
+        let state = self.state.read().expect("session state lock poisoned");
         Ok(state.len())
     }
 }

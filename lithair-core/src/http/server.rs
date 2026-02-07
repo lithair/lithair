@@ -98,9 +98,9 @@ impl HttpServer {
         let listener = TcpListener::bind(addr)
             .map_err(|e| HttpError::ServerError(format!("Failed to bind to {}: {}", addr, e)))?;
 
-        println!("🌐 HTTP server listening on {}", addr);
-        println!("📊 Max connections: {}", self.config.max_connections);
-        println!("🔧 Keep-alive: {}", self.config.keep_alive);
+        log::info!("HTTP server listening on {}", addr);
+        log::info!("Max connections: {}", self.config.max_connections);
+        log::info!("Keep-alive: {}", self.config.keep_alive);
 
         // Clone configuration and router for sharing between threads
         let config = self.config.clone();
@@ -113,15 +113,15 @@ impl HttpServer {
                     let router = router.clone();
 
                     // Handle each connection in a separate thread
-                    // TODO: Consider using a thread pool for better performance
+                    // Note: currently spawns a thread per connection; a thread pool could improve performance
                     thread::spawn(move || {
                         if let Err(e) = handle_connection(stream, &config, router.as_deref()) {
-                            eprintln!("❌ Error handling connection: {}", e);
+                            log::error!("Error handling connection: {}", e);
                         }
                     });
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to accept connection: {}", e);
+                    log::error!("Failed to accept connection: {}", e);
                 }
             }
         }
@@ -159,7 +159,7 @@ fn handle_connection(
         .peer_addr()
         .map_err(|e| HttpError::ConnectionError(format!("Failed to get peer address: {}", e)))?;
 
-    // println!("🔗 New connection from {}", peer_addr); // Disabled for performance
+    // println!("New connection from {}", peer_addr); // Disabled for performance
 
     // Handle keep-alive connections
     loop {
@@ -177,7 +177,7 @@ fn handle_connection(
                         break;
                     }
                     _ => {
-                        eprintln!("❌ Error handling request from {}: {}", peer_addr, e);
+                        log::error!("Error handling request from {}: {}", peer_addr, e);
                         // Try to send an error response
                         let error_response =
                             HttpResponse::internal_server_error().text("Internal Server Error");
@@ -189,7 +189,7 @@ fn handle_connection(
         }
     }
 
-    // println!("👋 Connection closed: {}", peer_addr); // Disabled for performance
+    // println!("Connection closed: {}", peer_addr); // Disabled for performance
     Ok(())
 }
 
@@ -205,7 +205,7 @@ fn handle_request(
     let request = parse_request(stream, config)?;
 
     // println!(
-    //     "📨 {} {} from {}",
+    //     "{} {} from {}",
     //     request.method(),
     //     request.path(),
     //     stream
@@ -306,7 +306,7 @@ fn parse_request(stream: &mut TcpStream, config: &ServerConfig) -> HttpResult<Ht
     }
 
     // println!(
-    //     "📝 Parsed request: {} {} from {}",
+    //     "Parsed request: {} {} from {}",
     //     request.method(),
     //     request.path(),
     //     request
@@ -346,7 +346,7 @@ fn send_response(stream: &mut TcpStream, response: &HttpResponse) -> HttpResult<
         .flush()
         .map_err(|e| HttpError::ConnectionError(format!("Failed to flush response: {}", e)))?;
 
-    // println!("📤 Response sent: {} bytes", response_bytes.len()); // Disabled for performance
+    // println!("Response sent: {} bytes", response_bytes.len()); // Disabled for performance
     Ok(())
 }
 

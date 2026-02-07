@@ -46,7 +46,7 @@ impl<T> UrlHandlerRegistry<T> {
         let handler_name = format!("exact_{}", self.handlers.len());
         self.handlers.insert(handler_name.clone(), Box::new(handler));
         self.exact_matches.insert(url.to_string(), handler_name);
-        log::info!("🎯 Registered exact handler: {} → function", url);
+        log::info!("Registered exact handler: {} -> function", url);
     }
 
     /// Register prefix match: handle("/api/products/*", handler)
@@ -60,7 +60,7 @@ impl<T> UrlHandlerRegistry<T> {
 
         // Sort by length (longest first for precise matching)
         self.prefix_matches.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
-        log::info!("🎯 Registered prefix handler: {} → function", prefix);
+        log::info!("Registered prefix handler: {} -> function", prefix);
     }
 
     /// Route request to appropriate handler function
@@ -70,7 +70,7 @@ impl<T> UrlHandlerRegistry<T> {
         // 1. Check exact matches first
         if let Some(handler_name) = self.exact_matches.get(path) {
             if let Some(handler) = self.handlers.get(handler_name) {
-                log::debug!("🎯 Exact match: {} → executing function", path);
+                log::debug!("Exact match: {} -> executing function", path);
                 return Some(handler.handle(req, server).await);
             }
         }
@@ -80,7 +80,7 @@ impl<T> UrlHandlerRegistry<T> {
             if path.starts_with(prefix) {
                 if let Some(handler) = self.handlers.get(handler_name) {
                     log::debug!(
-                        "🎯 Prefix match: {} matches {} → executing function",
+                        "Prefix match: {} matches {} -> executing function",
                         path,
                         prefix
                     );
