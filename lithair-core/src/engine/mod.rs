@@ -249,12 +249,15 @@ impl<A: RaftstoneApplication> Engine<A> {
                 event.apply(&mut guard);
                 Ok(())
             }
-            StateStorage::Scc2(scc) => tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current()
-                    .block_on(async { scc.apply_event(key, event, true).await })
-            })
-            .map(|_| ())
-            .map_err(EngineError::from),
+            StateStorage::Scc2(scc) => {
+                let handle = tokio::runtime::Handle::try_current()
+                    .map_err(|_| EngineError::EngineError("No Tokio runtime available".into()))?;
+                tokio::task::block_in_place(|| {
+                    handle.block_on(async { scc.apply_event(key, event, true).await })
+                })
+                .map(|_| ())
+                .map_err(EngineError::from)
+            }
         }
     }
 
@@ -294,10 +297,12 @@ impl<A: RaftstoneApplication> Engine<A> {
     pub fn flush(&self) -> EngineResult<()> {
         match &self.state_storage {
             StateStorage::RwLock(_) => Ok(()),
-            StateStorage::Scc2(scc) => tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async { scc.flush().await })
-            })
-            .map_err(EngineError::from),
+            StateStorage::Scc2(scc) => {
+                let handle = tokio::runtime::Handle::try_current()
+                    .map_err(|_| EngineError::EngineError("No Tokio runtime available".into()))?;
+                tokio::task::block_in_place(|| handle.block_on(async { scc.flush().await }))
+                    .map_err(EngineError::from)
+            }
         }
     }
 
@@ -314,7 +319,10 @@ impl<A: RaftstoneApplication> Engine<A> {
     /// Compact event log after snapshot (truncate)
     pub fn compact_after_snapshot(&self) -> EngineResult<()> {
         if let Some(store) = &self.event_store {
-            store.write().expect("event store lock poisoned").truncate_events()
+            store
+                .write()
+                .map_err(|_| EngineError::EngineError("Event store lock poisoned".into()))?
+                .truncate_events()
         } else {
             Err(EngineError::InvalidOperation("No event store configured".into()))
         }

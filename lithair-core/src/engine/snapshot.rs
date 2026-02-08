@@ -217,7 +217,8 @@ impl SnapshotStore {
         if self.log_verbose {
             log::debug!(
                 "Loaded snapshot for {:?}: {} events",
-                aggregate_id, snapshot.metadata.event_count
+                aggregate_id,
+                snapshot.metadata.event_count
             );
         }
 

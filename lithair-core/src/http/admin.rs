@@ -79,10 +79,7 @@ pub async fn check_admin_firewall(
             if let Some(client_ip) = extract_client_ip(req) {
                 log::warn!("Admin access denied from IP: {} for path: {}", client_ip, path);
             } else {
-                log::warn!(
-                    "Admin access denied: Could not determine client IP for path: {}",
-                    path
-                );
+                log::warn!("Admin access denied: Could not determine client IP for path: {}", path);
             }
 
             return Err(forbidden_admin_response());

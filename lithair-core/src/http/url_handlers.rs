@@ -79,11 +79,7 @@ impl<T> UrlHandlerRegistry<T> {
         for (prefix, handler_name) in &self.prefix_matches {
             if path.starts_with(prefix) {
                 if let Some(handler) = self.handlers.get(handler_name) {
-                    log::debug!(
-                        "Prefix match: {} matches {} -> executing function",
-                        path,
-                        prefix
-                    );
+                    log::debug!("Prefix match: {} matches {} -> executing function", path, prefix);
                     return Some(handler.handle(req, server).await);
                 }
             }

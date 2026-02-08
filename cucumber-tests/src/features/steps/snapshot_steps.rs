@@ -41,7 +41,7 @@ async fn when_create_snapshot_for_aggregate(
     println!(
         "📸 Création snapshot pour '{}' avec état: {}",
         aggregate_id,
-        &state[..std::cmp::min(50, state.len())]
+        state.chars().take(50).collect::<String>()
     );
 
     {

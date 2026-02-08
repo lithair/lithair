@@ -173,7 +173,9 @@ where
 
         log::debug!(
             "T021 STATS: JSON {} bytes -> Bincode {} bytes ({:.1}% savings)",
-            json_size, bincode_size, size_savings
+            json_size,
+            bincode_size,
+            size_savings
         );
 
         // Store the item with its primary key

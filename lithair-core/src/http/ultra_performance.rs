@@ -22,8 +22,7 @@ pub mod static_errors {
     pub const ERROR_NOT_FOUND: &str = r#"{"status":"error","message":"Ressource non trouvée"}"#;
 
     /// Rate limit error (429 Too Many Requests)
-    pub const ERROR_RATE_LIMIT: &str =
-        r#"{"status":"error","message":"Limite de débit dépassée"}"#;
+    pub const ERROR_RATE_LIMIT: &str = r#"{"status":"error","message":"Limite de débit dépassée"}"#;
 
     /// Service unavailable error (503 Service Unavailable)
     pub const ERROR_SERVICE_UNAVAILABLE: &str =

@@ -9,8 +9,9 @@ no-default-features = false
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# Temporarily ignore bincode unmaintained advisory - TODO: migrate to alternative
-ignore = ["RUSTSEC-2025-0141"]
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.x is unmaintained; migration to bincode 2.x or alternative is planned" },
+]
 
 [licenses]
 # List of allowed licenses

@@ -198,8 +198,8 @@ mod tests {
         // Should validate current code
         assert!(TotpValidator::validate(&secret, &code).unwrap());
 
-        // Should reject invalid code
-        assert!(!TotpValidator::validate(&secret, "000000").unwrap());
+        // Should reject invalid code (use a non-numeric string that can never be a valid TOTP)
+        assert!(!TotpValidator::validate(&secret, "XXXXXX").unwrap());
     }
 
     #[test]

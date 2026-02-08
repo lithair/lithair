@@ -159,7 +159,9 @@ impl RaftLeadershipState {
         self.update_heartbeat();
         log::info!(
             "Node {} is now a FOLLOWER (leader: node {} on port {})",
-            self.node_id, new_leader_id, new_leader_port
+            self.node_id,
+            new_leader_id,
+            new_leader_port
         );
     }
 

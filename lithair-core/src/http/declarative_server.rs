@@ -664,11 +664,13 @@ where
                     log::info!("   POST   {}/perf/echo{:<11} - Latency testing", cfg.base_path, "");
                     log::info!(
                         "   GET    {}/perf/json{:<11} - JSON throughput testing",
-                        cfg.base_path, ""
+                        cfg.base_path,
+                        ""
                     );
                     log::info!(
                         "   GET    {}/perf/bytes{:<10} - Raw throughput testing",
-                        cfg.base_path, ""
+                        cfg.base_path,
+                        ""
                     );
                 }
             }
@@ -682,7 +684,8 @@ where
                 if cfg.enabled {
                     log::warn!(
                         "   *      {}/...{:<17} - Use /observe/perf/... instead",
-                        cfg.base_path, ""
+                        cfg.base_path,
+                        ""
                     );
                 }
             }
@@ -838,11 +841,7 @@ where
     ///     .with_rbac(rbac_config);
     /// ```
     pub fn with_rbac(mut self, config: RbacConfig) -> Self {
-        log::info!(
-            "Configuring RBAC: enabled={}, provider={:?}",
-            config.enabled,
-            config.provider
-        );
+        log::info!("Configuring RBAC: enabled={}", config.enabled);
 
         // Create middleware if provider is configured
         if let Some(provider) = config.provider.create_provider() {

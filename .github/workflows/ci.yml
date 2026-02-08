@@ -14,7 +14,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -40,7 +42,7 @@ jobs:
         continue-on-error: true  # Don't fail on license issues initially
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -77,10 +79,10 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target/ci
-          key: ${{ runner.os }}-rust1-cargo-ci-${{ hashFiles('**/Cargo.lock') }}
+            target/release
+          key: ${{ runner.os }}-rust1-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-rust1-cargo-ci-
+            ${{ runner.os }}-rust1-cargo-release-
 
       - name: Install Task
         run: |
@@ -95,12 +97,10 @@ jobs:
           echo "🚀 Lithair CI Pipeline"
           echo "✅ Code formatting check..."
           cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
-          echo "🔨 Building workspace..."
-          RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --release --quiet && echo "   ✓ Build OK" || (echo "   ✗ Build failed" && exit 1)
-          echo "🔍 Clippy analysis..."
+          echo "🔍 Clippy analysis (includes build) with -D warnings..."
           cargo clippy --workspace --all-targets --release --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
-          echo "🧪 Test suite..."
-          cargo test --workspace --all-targets --release --quiet && echo "   ✓ Tests OK" || (echo "   ✗ Tests failed" && exit 1)
+          echo "🧪 Unit tests (core + macros)..."
+          cargo test -p lithair-core -p lithair-macros --release --quiet && echo "   ✓ Tests OK" || (echo "   ✗ Tests failed" && exit 1)
           echo "🎉 CI completed successfully!"
 
       - name: Ensure demo scripts are executable

@@ -156,7 +156,7 @@ impl RouteGuard {
                         cookies
                             .split(';')
                             .find(|c| c.trim().starts_with("session_token="))
-                            .and_then(|c| c.split('=').nth(1))
+                            .and_then(|c| c.trim().strip_prefix("session_token="))
                     },
                 )
             });

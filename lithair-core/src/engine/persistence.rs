@@ -573,7 +573,12 @@ impl FileStorage {
 
                 // Ensure we can read the payload
                 if cursor + len > content.len() {
-                    log::warn!("Incomplete payload at end of file {} (expected {} bytes, found {})", path, len, content.len() - cursor);
+                    log::warn!(
+                        "Incomplete payload at end of file {} (expected {} bytes, found {})",
+                        path,
+                        len,
+                        content.len() - cursor
+                    );
                     break;
                 }
 
