@@ -260,9 +260,7 @@ where
                 Ok(())
             }
             None => {
-                log::warn!(
-                    "HTTP replicator not initialized - UPDATE proceeding without consensus"
-                );
+                log::warn!("HTTP replicator not initialized - UPDATE proceeding without consensus");
                 Ok(())
             }
         }
@@ -293,9 +291,7 @@ where
                 Ok(())
             }
             None => {
-                log::warn!(
-                    "HTTP replicator not initialized - DELETE proceeding without consensus"
-                );
+                log::warn!("HTTP replicator not initialized - DELETE proceeding without consensus");
                 Ok(())
             }
         }
@@ -414,8 +410,12 @@ impl HyperReplicationCoordinator {
         let event_store = EventStore::new(event_store_path)?;
         let http_client = HttpClient::new();
 
-        log::info!("HYPER Replication Coordinator initialized: EventStore={}, Node ID={}, Peers={:?}",
-                 event_store_path, node_id, peers);
+        log::info!(
+            "HYPER Replication Coordinator initialized: EventStore={}, Node ID={}, Peers={:?}",
+            event_store_path,
+            node_id,
+            peers
+        );
 
         let coordinator = Self {
             event_store: Arc::new(RwLock::new(event_store)),

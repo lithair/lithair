@@ -287,7 +287,8 @@ where
                 if attempt >= max_retries {
                     log::error!(
                         "Giving up BULK replicate to {} after {} attempts",
-                        peer, max_retries
+                        peer,
+                        max_retries
                     );
                     break;
                 }

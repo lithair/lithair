@@ -110,6 +110,11 @@ where
         Ok(Self { handler, model_name, base_path })
     }
 
+    /// Override the base path used in metadata and JSON responses (e.g., `export_json`).
+    ///
+    /// Note: This does NOT change HTTP routing. Routing is determined by
+    /// `ModelRegistrationInfo::base_path` set during `LithairServerBuilder` setup.
+    /// To change routing, configure the base path in the builder instead.
     pub fn with_base_path(mut self, path: impl Into<String>) -> Self {
         self.base_path = path.into();
         self

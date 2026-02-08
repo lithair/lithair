@@ -469,9 +469,7 @@ where
 
         // For now, just log that we're using the conservative settings
         // The actual logic would analyze T::get_declarative_spec() when the trait bounds are fixed
-        log::info!(
-            "Using conservative persistence settings (enable_compaction: false by default)"
-        );
+        log::info!("Using conservative persistence settings (enable_compaction: false by default)");
         log::info!("Compaction will only be enabled if declarative attributes specify it");
         log::info!("This prevents automatic deletion of .raftlog files");
 
@@ -675,7 +673,8 @@ where
 
                     log::debug!(
                         "DEBUG: primary_key = {}, actual_key = {}",
-                        primary_key, actual_key
+                        primary_key,
+                        actual_key
                     );
                     log::debug!(
                         "DEBUG: item JSON = {}",
@@ -692,10 +691,7 @@ where
                         return Ok(self.internal_error_response());
                     }
 
-                    log::info!(
-                        "Raft: Successfully replicated item {} across cluster",
-                        primary_key
-                    );
+                    log::info!("Raft: Successfully replicated item {} across cluster", primary_key);
                 }
                 Err(e) => {
                     return Ok(Response::builder()

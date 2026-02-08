@@ -61,21 +61,21 @@ tasks:
             task loadgen:json PORT=18321 CONC=1024 BYTES=65536 ACCEPT_ENCODING=gzip
 
           📋 CI/Testing Tasks:
-          task ci           - Fast CI for development (fmt + clippy + test) ~30s
-          task ci:full      - Core CI pipeline (format + build + clippy + tests with -D warnings) ~2-3min
-          task ci:bdd       - Full CI with BDD tests (ci:full + bdd:all) ~5-6min
+          task ci           - Quick CI (fmt + clippy + test) ~30s
+          task ci:full      - Fast CI: fmt + clippy + unit tests (~30s cached)
+          task ci:bdd       - ci:full + BDD tests (~5-6min)
           task bdd:all      - Run all BDD test suites
           task bdd:setup    - Install Cucumber dependencies
-          task ci:smoke     - Functional validation (firewall demos, performance benchmarks) ~5-10min
-          task ci:github    - Complete GitHub pipeline (ci:full + ci:smoke) ~10-15min
+          task ci:smoke     - Functional validation (firewall demos, benchmarks) ~5-10min
+          task ci:github    - Complete pipeline: ci:full + ci:smoke (~10-15min)
           task docs:lint    - Lint Markdown documentation files
           task docs:lint:fix - Auto-fix Markdown documentation files
 
           🔍 CI Task Differences:
-          • ci:full    = Code quality only (build, lint, test)
-          • ci:github  = Code quality + functional validation (mirrors GitHub Actions exactly)
+          • ci:full    = fmt + clippy(-D warnings) + unit tests (fast, no BDD/stress)
+          • ci:github  = ci:full + smoke tests (mirrors GitHub Actions)
 
-          💡 Use 'task ci:full' for fast development, 'task ci:github' before pushing!
+          💡 Use 'task ci:full' for fast dev, 'task ci:github' before pushing!
           EOF
 
   default:
@@ -116,23 +116,22 @@ tasks:
       - task: test
 
   ci:full:
-    desc: Full CI pipeline (simulates GitHub CI with deny warnings)
+    desc: "Fast CI pipeline: fmt + clippy (includes build) + unit tests (~30s cached, ~2min clean)"
     cmds:
       - echo "🚀 Lithair CI Pipeline Starting..."
       - echo "✅ Code formatting check..."
       - cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
-      - echo "🔨 Building workspace with deny warnings..."
-      - RUSTFLAGS="-D warnings" cargo build --workspace --all-targets --quiet && echo "   ✓ Build OK" || (echo "   ✗ Build failed" && exit 1)
-      - echo "🔍 Clippy analysis with deny warnings..."
+      - echo "🔍 Clippy analysis (includes build) with -D warnings..."
       - cargo clippy --workspace --all-targets --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
-      - echo "🧪 Test suite execution..."
+      - echo "🧪 Unit tests (core + macros)..."
       - |
-        TEST_OUTPUT=$(cargo test --workspace --all-targets --quiet 2>&1)
+        TEST_OUTPUT=$(cargo test -p lithair-core -p lithair-macros --quiet 2>&1)
         if [ $? -eq 0 ]; then
           TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "test result:" | sed 's/.*ok\. \([0-9]*\) passed.*/\1/' | paste -sd+ | bc 2>/dev/null || echo "0")
           echo "   ✓ All tests passed ($TOTAL_TESTS tests)"
         else
           echo "   ✗ Tests failed"
+          echo "$TEST_OUTPUT"
           exit 1
         fi
       - echo "🎉 CI pipeline completed successfully!"

@@ -8,7 +8,6 @@
 //! Stack: DeclarativeModel + LithairServer + Scc2Engine + Event Sourcing
 
 #![allow(dead_code)]
-#![allow(unused_must_use)]
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -529,7 +528,10 @@ async fn seed_products(
     let mut rng = rand::rngs::StdRng::from_entropy();
 
     for _ in 0..count {
-        handler.apply_replicated_item(generate_product(&mut rng)).await;
+        handler
+            .apply_replicated_item(generate_product(&mut rng))
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
     }
 
     json_response(&serde_json::json!({
@@ -550,7 +552,10 @@ async fn seed_consumers(
     let mut rng = rand::rngs::StdRng::from_entropy();
 
     for _ in 0..count {
-        handler.apply_replicated_item(generate_consumer(&mut rng)).await;
+        handler
+            .apply_replicated_item(generate_consumer(&mut rng))
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
     }
 
     json_response(&serde_json::json!({
@@ -592,7 +597,7 @@ async fn seed_orders(
     let mut inserted = 0;
     for _ in 0..count {
         if let Some(order) = generate_order(&mut rng, &consumer_ids, &product_ids) {
-            handler.apply_replicated_item(order).await;
+            handler.apply_replicated_item(order).await.map_err(|e| anyhow::anyhow!(e))?;
             inserted += 1;
         }
     }
@@ -644,10 +649,18 @@ async fn get_order_expanded(
     let order = match order_handler.get_by_id(&order_id).await {
         Some(o) => o,
         None => {
-            return json_response(&serde_json::json!({
-                "error": "Order not found",
-                "order_id": order_id
-            }))
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "application/json")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": "Order not found",
+                        "order_id": order_id
+                    })
+                    .to_string(),
+                )))
+                .unwrap())
         }
     };
 

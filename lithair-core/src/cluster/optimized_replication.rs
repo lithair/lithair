@@ -388,14 +388,19 @@ impl<T: BincodeSerializable> OptimizedReplicator<T> {
     pub async fn print_performance_summary(&self) {
         let metrics = self.get_performance_metrics().await;
         
+        let total_replications = metrics.successful_replications + metrics.failed_replications;
+        let success_rate = if total_replications > 0 {
+            metrics.successful_replications as f64 / total_replications as f64 * 100.0
+        } else {
+            0.0
+        };
         log::info!("T021 PERFORMANCE SUMMARY: total_ops={}, avg_speedup={:.2}x, avg_size_reduction={:.1}%, successful={}, failed={}, success_rate={:.1}%",
                  metrics.total_operations,
                  metrics.average_speedup(),
                  metrics.average_size_reduction(),
                  metrics.successful_replications,
                  metrics.failed_replications,
-                 metrics.successful_replications as f64 /
-                 (metrics.successful_replications + metrics.failed_replications) as f64 * 100.0);
+                 success_rate);
     }
 }
 

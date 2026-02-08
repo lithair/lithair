@@ -90,17 +90,17 @@ impl Default for MfaConfig {
 /// TOTP algorithm
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TotpAlgorithm {
-    /// SHA1 (most compatible, default)
-    #[default]
+    /// SHA1 (most compatible)
     SHA1,
-    /// SHA256
+    /// SHA256 (default - more secure than SHA1 and widely supported)
+    #[default]
     SHA256,
     /// SHA512
     SHA512,
 }
 
 fn default_algorithm() -> TotpAlgorithm {
-    TotpAlgorithm::SHA256 // SHA256 is more secure than SHA1 and widely supported
+    TotpAlgorithm::default()
 }
 
 fn default_digits() -> u32 {

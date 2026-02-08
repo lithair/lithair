@@ -98,17 +98,20 @@ impl RotatingWriter {
                 current_size + incoming_size as u64 > *max_size
             }
             FileRotation::Daily => {
-                let last_rotation = *self.last_rotation.lock().expect("last rotation lock poisoned");
+                let last_rotation =
+                    *self.last_rotation.lock().expect("last rotation lock poisoned");
                 let now = Utc::now();
                 now.date_naive() > last_rotation.date_naive()
             }
             FileRotation::Hourly => {
-                let last_rotation = *self.last_rotation.lock().expect("last rotation lock poisoned");
+                let last_rotation =
+                    *self.last_rotation.lock().expect("last rotation lock poisoned");
                 let now = Utc::now();
                 now.format("%Y%m%d%H").to_string() != last_rotation.format("%Y%m%d%H").to_string()
             }
             FileRotation::Weekly => {
-                let last_rotation = *self.last_rotation.lock().expect("last rotation lock poisoned");
+                let last_rotation =
+                    *self.last_rotation.lock().expect("last rotation lock poisoned");
                 let now = Utc::now();
                 now.iso_week() != last_rotation.iso_week()
             }
@@ -126,7 +129,8 @@ impl RotatingWriter {
     fn rotate(&self) -> anyhow::Result<()> {
         // Close current writer
         {
-            let mut writer_guard = self.current_writer.lock().expect("current writer lock poisoned");
+            let mut writer_guard =
+                self.current_writer.lock().expect("current writer lock poisoned");
             if let Some(mut writer) = writer_guard.take() {
                 writer.flush()?;
             }
@@ -223,7 +227,8 @@ impl RotatingWriter {
     fn ensure_writer(&self) -> anyhow::Result<()> {
         let mut writer_guard = self.current_writer.lock().expect("current writer lock poisoned");
         if writer_guard.is_none() {
-            let current_path = self.current_path.lock().expect("current path lock poisoned").clone();
+            let current_path =
+                self.current_path.lock().expect("current path lock poisoned").clone();
             let file = OpenOptions::new().create(true).append(true).open(&current_path)?;
 
             // Update current size based on existing file

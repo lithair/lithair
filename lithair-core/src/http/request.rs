@@ -319,7 +319,8 @@ impl HttpRequest {
     }
 }
 
-/// URL decoding for query parameters (RFC 3986)
+/// URL decoding for query parameters (RFC 3986).
+/// Also decodes `+` as space per HTML form encoding (application/x-www-form-urlencoded).
 fn urlcode_decode(s: &str) -> String {
     let mut result = Vec::with_capacity(s.len());
     let bytes = s.as_bytes();
@@ -332,10 +333,7 @@ fn urlcode_decode(s: &str) -> String {
                 i += 1;
             }
             b'%' if i + 2 < bytes.len() => {
-                if let (Some(hi), Some(lo)) = (
-                    hex_digit(bytes[i + 1]),
-                    hex_digit(bytes[i + 2]),
-                ) {
+                if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
                     result.push((hi << 4) | lo);
                     i += 3;
                 } else {

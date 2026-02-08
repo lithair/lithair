@@ -739,9 +739,9 @@ impl LithairServer {
 
                                         if !eligible_for_resync.is_empty() {
                                             log::info!(
-                                        "Found {} desynced followers eligible for resync",
-                                        eligible_for_resync.len()
-                                    );
+                                                "Found {} desynced followers eligible for resync",
+                                                eligible_for_resync.len()
+                                            );
 
                                             let snapshot_mgr = snap_mgr_inner.clone();
                                             let models_clone = Arc::clone(&models);
@@ -907,11 +907,11 @@ impl LithairServer {
                                                     .record_success(&peer, last_index, latency)
                                                     .await;
                                                 log::debug!(
-                                                "Background catch-up: {} entries to {} ({}ms)",
-                                                entries.len(),
-                                                peer,
-                                                latency
-                                            );
+                                                    "Background catch-up: {} entries to {} ({}ms)",
+                                                    entries.len(),
+                                                    peer,
+                                                    latency
+                                                );
                                             }
                                             Ok(resp) => {
                                                 log::debug!(
@@ -3524,10 +3524,10 @@ impl LithairServer {
                             if commit_waited > 50000 {
                                 // 50000 * 100µs = 5 seconds max wait for commit
                                 log::error!(
-                                "Waited 5s for earlier entry {} to commit (current commit={})",
-                                expected_prior,
-                                consensus_log.commit_index()
-                            );
+                                    "Waited 5s for earlier entry {} to commit (current commit={})",
+                                    expected_prior,
+                                    consensus_log.commit_index()
+                                );
                                 // Return error - something is seriously wrong if commit takes this long
                                 return Ok(hyper::Response::builder()
                                 .status(503)
@@ -3549,12 +3549,12 @@ impl LithairServer {
                                 // 100000 * 100µs = 10 seconds max wait for apply
                                 // This should never happen if commit succeeded - log but continue waiting
                                 log::warn!(
-                                "Slow apply: entry {} waiting for {} (commit={}, applied={})",
-                                entry_index,
-                                expected_prior,
-                                consensus_log.commit_index(),
-                                consensus_log.applied_index()
-                            );
+                                    "Slow apply: entry {} waiting for {} (commit={}, applied={})",
+                                    entry_index,
+                                    expected_prior,
+                                    consensus_log.commit_index(),
+                                    consensus_log.applied_index()
+                                );
                                 apply_waited = 0; // Reset counter to keep waiting
                             }
                             tokio::time::sleep(std::time::Duration::from_micros(100)).await;
@@ -3737,11 +3737,7 @@ impl LithairServer {
                 }
             }
             CrudOperation::MigrationCommit { migration_id, checksum } => {
-                log::info!(
-                    "MIGRATION_COMMIT: migration={}, checksum={}",
-                    migration_id,
-                    checksum
-                );
+                log::info!("MIGRATION_COMMIT: migration={}, checksum={}", migration_id, checksum);
 
                 if let Some(ref manager) = self.migration_manager {
                     // Get migration context to get the target version
@@ -3761,11 +3757,7 @@ impl LithairServer {
                                 }))
                             }
                             Err(e) => {
-                                log::error!(
-                                    "Failed to commit migration {}: {}",
-                                    migration_id,
-                                    e
-                                );
+                                log::error!("Failed to commit migration {}: {}", migration_id, e);
                                 Err(e)
                             }
                         }
@@ -4130,10 +4122,7 @@ impl LithairServer {
 
         let skipped_count = peers.len() - active_peers.len();
         if skipped_count > 0 {
-            log::debug!(
-                "Skipping {} desynced followers (will use snapshot resync)",
-                skipped_count
-            );
+            log::debug!("Skipping {} desynced followers (will use snapshot resync)", skipped_count);
         }
 
         // Spawn parallel requests to active (non-desynced) followers only

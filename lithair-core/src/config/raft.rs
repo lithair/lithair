@@ -129,14 +129,30 @@ impl RaftConfig {
 
         match (&self.auth_token, token) {
             (Some(expected), Some(provided)) => {
-                // Constant-time comparison to prevent timing attacks
-                if expected.len() != provided.len() {
-                    return false;
-                }
-                expected
-                    .as_bytes()
+                // HMAC-based constant-time comparison to prevent timing attacks
+                // (including length-based side channels).
+                // By computing HMAC(key, provided) vs HMAC(key, expected),
+                // the comparison is constant-time regardless of input lengths.
+                use hmac::{Hmac, Mac};
+                use sha2::Sha256;
+                type HmacSha256 = Hmac<Sha256>;
+
+                let key = expected.as_bytes();
+                let mut mac_provided =
+                    HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+                mac_provided.update(provided.as_bytes());
+                let hash_provided = mac_provided.finalize().into_bytes();
+
+                let mut mac_expected =
+                    HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+                mac_expected.update(expected.as_bytes());
+                let hash_expected = mac_expected.finalize().into_bytes();
+
+                // Constant-time comparison of fixed-size hashes
+                hash_provided
+                    .as_slice()
                     .iter()
-                    .zip(provided.as_bytes())
+                    .zip(hash_expected.as_slice())
                     .fold(0u8, |acc, (a, b)| acc | (a ^ b))
                     == 0
             }

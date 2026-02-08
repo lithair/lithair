@@ -114,6 +114,8 @@ path = "/tmp/lithair-test-{}"
     /// Arrête le serveur proprement
     pub fn stop(&mut self) -> Result<(), String> {
         self.process.kill().map_err(|e| format!("Failed to stop server: {}", e))?;
+        // Reap the child process to avoid zombies
+        self.process.wait().map_err(|e| format!("Failed to wait for server: {}", e))?;
 
         // Nettoyer la config
         std::fs::remove_file(&self.config_path).ok();
