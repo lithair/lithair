@@ -81,7 +81,7 @@ impl RbacUser {
 
 /// Declarative Server-wide RBAC configuration
 pub struct ServerRbacConfig {
-    /// Role definitions: role_name -> Vec<permissions>
+    /// Role definitions: role_name -> `Vec<permissions>`
     pub roles: Vec<(String, Vec<String>)>,
 
     /// Users for authentication

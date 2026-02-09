@@ -43,7 +43,7 @@ impl TotpSecret {
         step: u64,
         issuer: &str,
         account_name: &str,
-    ) -> Self {
+    ) -> Result<Self> {
         // Convert our algorithm to totp-rs algorithm
         let algo = match algorithm {
             TotpAlgorithm::SHA1 => Algorithm::SHA1,
@@ -55,18 +55,22 @@ impl TotpSecret {
         let secret = Secret::generate_secret();
         let secret_str = secret.to_encoded().to_string();
 
+        let secret_bytes = secret
+            .to_bytes()
+            .map_err(|e| anyhow!("failed to convert TOTP secret to bytes: {}", e))?;
+
         let totp = TOTP::new(
             algo,
             digits as usize,
             1, // skew (time drift tolerance)
             step,
-            secret.to_bytes().unwrap(),
+            secret_bytes,
             Some(issuer.to_string()),
             account_name.to_string(),
         )
-        .unwrap();
+        .map_err(|e| anyhow!("failed to create TOTP instance: {}", e))?;
 
-        Self {
+        Ok(Self {
             totp: Some(totp),
             secret: secret_str,
             algorithm,
@@ -74,11 +78,11 @@ impl TotpSecret {
             step,
             issuer: Some(issuer.to_string()),
             account_name: Some(account_name.to_string()),
-        }
+        })
     }
 
     /// Generate without account info (for backwards compat / tests)
-    pub fn generate(algorithm: TotpAlgorithm, digits: u32, step: u64) -> Self {
+    pub fn generate(algorithm: TotpAlgorithm, digits: u32, step: u64) -> Result<Self> {
         Self::generate_with_account(algorithm, digits, step, "Lithair", "user")
     }
 
@@ -182,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_totp_generation() {
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA1, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA1, 6, 30).unwrap();
 
         // Should generate a 6-digit code
         let code = secret.current_code().unwrap();
@@ -192,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_totp_validation() {
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA1, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA1, 6, 30).unwrap();
         let code = secret.current_code().unwrap();
 
         // Should validate current code
@@ -205,7 +209,8 @@ mod tests {
     #[test]
     fn test_totp_uri() {
         let secret =
-            TotpSecret::generate_with_account(TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin");
+            TotpSecret::generate_with_account(TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin")
+                .unwrap();
         let uri = secret.to_uri().unwrap();
 
         assert!(uri.starts_with("otpauth://totp/"));
@@ -215,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_serialization() {
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA1, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA1, 6, 30).unwrap();
         let code1 = secret.current_code().unwrap();
 
         // Serialize and deserialize

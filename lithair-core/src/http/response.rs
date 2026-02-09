@@ -260,15 +260,15 @@ impl HttpResponse {
         let mut cookie = format!("{}={}", name, value);
 
         if let Some(max_age) = max_age {
-            write!(&mut cookie, "; Max-Age={}", max_age).unwrap();
+            write!(&mut cookie, "; Max-Age={}", max_age).expect("write to String is infallible");
         }
 
         if let Some(path) = path {
-            write!(&mut cookie, "; Path={}", path).unwrap();
+            write!(&mut cookie, "; Path={}", path).expect("write to String is infallible");
         }
 
         if let Some(domain) = domain {
-            write!(&mut cookie, "; Domain={}", domain).unwrap();
+            write!(&mut cookie, "; Domain={}", domain).expect("write to String is infallible");
         }
 
         if secure {
@@ -347,11 +347,13 @@ impl HttpResponse {
         let mut response = String::new();
 
         // Status line
-        write!(&mut response, "HTTP/1.1 {}{}", self.status, CRLF).unwrap();
+        write!(&mut response, "HTTP/1.1 {}{}", self.status, CRLF)
+            .expect("write to String is infallible");
 
         // Headers
         for (name, value) in &self.headers {
-            write!(&mut response, "{}: {}{}", name, value, CRLF).unwrap();
+            write!(&mut response, "{}: {}{}", name, value, CRLF)
+                .expect("write to String is infallible");
         }
 
         // Empty line to separate headers from body

@@ -65,7 +65,7 @@ pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 's
     }
 
     /// Apply lifecycle rules before persisting
-    /// Based on #[lifecycle] attributes
+    /// Based on `#[lifecycle]` attributes
     fn apply_lifecycle(&mut self) -> Result<(), String> {
         Ok(()) // Default: no lifecycle rules
     }

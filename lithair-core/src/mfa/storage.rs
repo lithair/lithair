@@ -128,7 +128,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let storage = MfaStorage::new(temp_dir.path()).unwrap();
 
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30).unwrap();
         let data = UserMfaData {
             secret: secret.clone(),
             status: MfaStatus {

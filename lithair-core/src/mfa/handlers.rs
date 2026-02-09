@@ -107,7 +107,7 @@ pub async fn handle_mfa_setup(
         config.step,
         &config.issuer,
         &setup_req.username,
-    );
+    )?;
 
     // Generate QR code
     let qr_code = secret.get_qr_code().map_err(|e| anyhow!("Failed to generate QR code: {}", e))?;

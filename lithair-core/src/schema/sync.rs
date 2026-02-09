@@ -593,7 +593,7 @@ fn current_timestamp() -> u64 {
         .as_millis() as u64
 }
 
-/// Custom serde module for Option<Duration>
+/// Custom serde module for `Option<Duration>`
 mod option_duration_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::time::Duration;

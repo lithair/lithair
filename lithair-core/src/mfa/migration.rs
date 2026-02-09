@@ -232,7 +232,7 @@ mod tests {
         fs::create_dir_all(&json_dir).unwrap();
 
         // Create legacy JSON file
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30).unwrap();
         let mut users = HashMap::new();
         users.insert(
             "alice".to_string(),
@@ -268,7 +268,7 @@ mod tests {
         fs::create_dir_all(&json_dir).unwrap();
 
         // Create legacy JSON file
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30).unwrap();
         let mut users = HashMap::new();
         users.insert(
             "bob".to_string(),

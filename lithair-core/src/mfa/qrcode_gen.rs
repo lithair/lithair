@@ -15,7 +15,7 @@ use anyhow::Result;
 /// ```ignore
 /// let secret = TotpSecret::generate_with_account(
 ///     TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin"
-/// );
+/// )?;
 /// let qr_base64 = generate_qr_code(&secret)?;
 /// // Display in HTML: <img src="data:image/png;base64,{qr_base64}" />
 /// ```
@@ -32,7 +32,8 @@ mod tests {
     #[test]
     fn test_qr_code_generation() {
         let secret =
-            TotpSecret::generate_with_account(TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin");
+            TotpSecret::generate_with_account(TotpAlgorithm::SHA1, 6, 30, "Lithair", "admin")
+                .unwrap();
         let qr = generate_qr_code(&secret).unwrap();
 
         // totp-rs returns base64-encoded image

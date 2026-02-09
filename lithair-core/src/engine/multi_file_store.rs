@@ -3,7 +3,7 @@
 //! Routes events to separate files based on aggregate_id.
 //!
 //! Architecture:
-//! ```
+//! ```text
 //! MultiFileEventStore
 //! ├── aggregate_id: "block_target_hosts" → data/block_target_hosts/events.raftlog
 //! ├── aggregate_id: "block_source_ips"   → data/block_source_ips/events.raftlog
@@ -67,10 +67,14 @@ impl MultiFileEventStore {
         // It will internally create `events.raftlog` inside this directory. Passing a path
         // ending with "events.raftlog" would cause FileStorage to create a nested
         // `events.raftlog/` directory and then `events.raftlog` file inside it.
-        let global_store = EventStore::new(global_dir.to_str().unwrap())?;
+        let global_store = EventStore::new(global_dir.to_str().ok_or_else(|| {
+            EngineError::PersistenceError("global dir path contains invalid UTF-8".to_string())
+        })?)?;
 
         // Create snapshot store
-        let snapshot_store = SnapshotStore::new(base_dir.to_str().unwrap())?;
+        let snapshot_store = SnapshotStore::new(base_dir.to_str().ok_or_else(|| {
+            EngineError::PersistenceError("base dir path contains invalid UTF-8".to_string())
+        })?)?;
 
         Ok(Self {
             base_dir,
@@ -127,7 +131,12 @@ impl MultiFileEventStore {
         // Create EventStore for this aggregate.
         // As with the global store, we pass the aggregate directory as base_path;
         // FileStorage will then create `<aggregate_dir>/events.raftlog` internally.
-        let store = EventStore::new(aggregate_dir.to_str().unwrap())?;
+        let store = EventStore::new(aggregate_dir.to_str().ok_or_else(|| {
+            EngineError::PersistenceError(format!(
+                "aggregate dir path for '{}' contains invalid UTF-8",
+                aggregate_id
+            ))
+        })?)?;
 
         if self.log_verbose {
             log::debug!(

@@ -149,7 +149,8 @@ mod tests {
         let log = MfaEventLog::new(&log_path).unwrap();
 
         let secret =
-            TotpSecret::generate_with_account(TotpAlgorithm::SHA256, 6, 30, "Test", "alice");
+            TotpSecret::generate_with_account(TotpAlgorithm::SHA256, 6, 30, "Test", "alice")
+                .unwrap();
 
         // Append events
         log.append(MfaEvent::MfaSetupInitiated {

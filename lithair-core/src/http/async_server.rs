@@ -133,5 +133,5 @@ fn convert_response(resp: &LithairResponse) -> Response<Full<Bytes>> {
         .status(status)
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(body)))
-        .unwrap()
+        .expect("valid HTTP response")
 }

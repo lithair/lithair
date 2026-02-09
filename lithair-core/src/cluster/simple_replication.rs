@@ -157,7 +157,7 @@ where
                 leader_node_id: self.node_id,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_millis() as u64,
             };
 
@@ -313,7 +313,7 @@ where
         if self.is_leader {
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis() as u64;
             let batch_id = format!("bulk-{}-{}-{}", self.node_id, now_ms, items.len());
             let message = ReplicationBulkMessage {
@@ -346,7 +346,7 @@ where
                 leader_node_id: self.node_id,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_millis() as u64,
             };
 
@@ -373,7 +373,7 @@ where
                 leader_node_id: self.node_id,
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_millis() as u64,
             };
 
@@ -504,7 +504,7 @@ where
             "unknown_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis()
         )
     }

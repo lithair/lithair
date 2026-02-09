@@ -94,7 +94,7 @@ pub fn json_error_response(
             })
             .to_string(),
         ))
-        .unwrap()
+        .expect("valid HTTP response")
 }
 
 /// Create a standard 404 Not Found JSON response
@@ -167,7 +167,7 @@ pub async fn serve_dev_asset(path: &str, public_dir: &str, default_file: &str) -
                 .header("X-Served-From", "Disk-Dev-Mode")
                 .header("Cache-Control", "no-cache") // No cache in dev
                 .body(body_from(content))
-                .unwrap()
+                .expect("valid HTTP response")
         }
         Err(_) => not_found_response("asset"),
     }

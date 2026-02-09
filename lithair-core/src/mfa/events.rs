@@ -186,7 +186,8 @@ mod tests {
             30,
             "Test",
             "user",
-        );
+        )
+        .unwrap();
 
         let events = vec![
             MfaEvent::MfaSetupInitiated {

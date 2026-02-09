@@ -201,14 +201,14 @@ impl SerializationBenchmark {
         // JSON benchmark
         let start = Instant::now();
         for _ in 0..iterations {
-            let _ = value.to_json_bytes().unwrap();
+            let _ = value.to_json_bytes().expect("serialization of known type");
         }
         let json_time = start.elapsed().as_secs_f64();
 
         // Bincode benchmark
         let start = Instant::now();
         for _ in 0..iterations {
-            let _ = value.to_bincode_bytes().unwrap();
+            let _ = value.to_bincode_bytes().expect("serialization of known type");
         }
         let bincode_time = start.elapsed().as_secs_f64();
 
@@ -220,8 +220,8 @@ impl SerializationBenchmark {
 
     /// Get size comparison between formats
     pub fn compare_sizes<T: BincodeSerializable>(value: &T) -> (usize, usize, f64) {
-        let json_data = value.to_json_bytes().unwrap();
-        let bincode_data = value.to_bincode_bytes().unwrap();
+        let json_data = value.to_json_bytes().expect("serialization of known type");
+        let bincode_data = value.to_bincode_bytes().expect("serialization of known type");
 
         let json_size = json_data.len();
         let bincode_size = bincode_data.len();

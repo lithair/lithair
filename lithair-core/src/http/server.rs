@@ -159,8 +159,6 @@ fn handle_connection(
         .peer_addr()
         .map_err(|e| HttpError::ConnectionError(format!("Failed to get peer address: {}", e)))?;
 
-    // println!("New connection from {}", peer_addr); // Disabled for performance
-
     // Handle keep-alive connections
     loop {
         match handle_request(&mut stream, config, router) {
@@ -189,7 +187,6 @@ fn handle_connection(
         }
     }
 
-    // println!("Connection closed: {}", peer_addr); // Disabled for performance
     Ok(())
 }
 
@@ -203,15 +200,6 @@ fn handle_request(
 ) -> HttpResult<bool> {
     // Parse the HTTP request
     let request = parse_request(stream, config)?;
-
-    // println!(
-    //     "{} {} from {}",
-    //     request.method(),
-    //     request.path(),
-    //     stream
-    //         .peer_addr()
-    //         .unwrap_or_else(|_| "unknown".parse().unwrap())
-    // );
 
     // Route the request and generate response
     let response = if let Some(router) = router {
@@ -305,16 +293,6 @@ fn parse_request(stream: &mut TcpStream, config: &ServerConfig) -> HttpResult<Ht
         request.set_remote_addr(addr);
     }
 
-    // println!(
-    //     "Parsed request: {} {} from {}",
-    //     request.method(),
-    //     request.path(),
-    //     request
-    //         .remote_addr()
-    //         .map(|a| a.to_string())
-    //         .unwrap_or_else(|| "unknown".to_string())
-    // );
-
     Ok(request)
 }
 
@@ -346,7 +324,6 @@ fn send_response(stream: &mut TcpStream, response: &HttpResponse) -> HttpResult<
         .flush()
         .map_err(|e| HttpError::ConnectionError(format!("Failed to flush response: {}", e)))?;
 
-    // println!("Response sent: {} bytes", response_bytes.len()); // Disabled for performance
     Ok(())
 }
 

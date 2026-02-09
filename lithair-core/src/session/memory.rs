@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 
 /// In-memory session store
 ///
-/// Thread-safe session storage using RwLock<HashMap>.
+/// Thread-safe session storage using `RwLock<HashMap>`.
 /// Sessions are stored in memory and will be lost on server restart.
 ///
 /// # Example
