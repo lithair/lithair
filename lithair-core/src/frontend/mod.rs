@@ -8,7 +8,7 @@
 //! - Zero disk I/O after initial load - all assets served from memory
 //! - Virtual host support for multi-site serving from single instance
 //! - Automatic MIME type detection and optimal cache headers
-//! - Thread-safe with Arc<RwLock> for concurrent access
+//! - Thread-safe with `Arc<RwLock>` for concurrent access
 //! - SCC2 lock-free performance optimization
 //!
 //! ## Planned Features (v2)
@@ -175,7 +175,7 @@ impl Event for FrontendEvent {
 /// enabling zero-disk-I/O serving after initial load. Files are served via AssetServer.
 ///
 /// # Arguments
-/// * `state` - Shared frontend state (thread-safe with Arc<RwLock>)
+/// * `state` - Shared frontend state (thread-safe with `Arc<RwLock>`)
 /// * `host_id` - Virtual host identifier (e.g., "main_site", "blog")
 /// * `base_path` - HTTP base path for routing (e.g., "/", "/blog")
 /// * `directory` - Filesystem directory containing static files

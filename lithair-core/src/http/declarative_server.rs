@@ -185,7 +185,9 @@ async fn finalize_response_async(
 ) -> Resp {
     let (mut parts, body) = resp.into_parts();
     if no_store {
-        parts.headers.insert("cache-control", "no-store".parse().unwrap());
+        parts
+            .headers
+            .insert("cache-control", "no-store".parse().expect("valid header value"));
     }
     // If compression is enabled and accepted, compress when body size >= min_bytes
     if let Some(cfg) = gzip_cfg {
@@ -197,11 +199,15 @@ async fn finalize_response_async(
                     let mut enc = BrotliCompressor::new(Vec::new(), 4096, 5, 22);
                     if enc.write_all(&bytes).is_ok() {
                         let compressed = enc.into_inner();
-                        parts.headers.insert("content-encoding", "br".parse().unwrap());
-                        parts.headers.insert("vary", "Accept-Encoding".parse().unwrap());
+                        parts
+                            .headers
+                            .insert("content-encoding", "br".parse().expect("valid header value"));
+                        parts
+                            .headers
+                            .insert("vary", "Accept-Encoding".parse().expect("valid header value"));
                         parts.headers.insert(
                             "content-length",
-                            compressed.len().to_string().parse().unwrap(),
+                            compressed.len().to_string().parse().expect("valid header value"),
                         );
                         let resp = Response::from_parts(parts, body_from(compressed));
                         return add_common_headers(resp);
@@ -211,11 +217,17 @@ async fn finalize_response_async(
                     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
                     if encoder.write_all(&bytes).is_ok() {
                         if let Ok(compressed) = encoder.finish() {
-                            parts.headers.insert("content-encoding", "gzip".parse().unwrap());
-                            parts.headers.insert("vary", "Accept-Encoding".parse().unwrap());
+                            parts.headers.insert(
+                                "content-encoding",
+                                "gzip".parse().expect("valid header value"),
+                            );
+                            parts.headers.insert(
+                                "vary",
+                                "Accept-Encoding".parse().expect("valid header value"),
+                            );
                             parts.headers.insert(
                                 "content-length",
-                                compressed.len().to_string().parse().unwrap(),
+                                compressed.len().to_string().parse().expect("valid header value"),
                             );
                             let resp = Response::from_parts(parts, body_from(compressed));
                             return add_common_headers(resp);
@@ -224,7 +236,10 @@ async fn finalize_response_async(
                 }
             }
             // Fallback to original body if not compressing
-            parts.headers.insert("content-length", bytes.len().to_string().parse().unwrap());
+            parts.headers.insert(
+                "content-length",
+                bytes.len().to_string().parse().expect("valid header value"),
+            );
             let resp = Response::from_parts(parts, body_from(bytes));
             return add_common_headers(resp);
         }
@@ -275,18 +290,23 @@ fn find_route_policy<'a>(
 fn add_common_headers(resp: Resp) -> Resp {
     let (mut parts, body) = resp.into_parts();
     let headers = &mut parts.headers;
-    headers.insert("access-control-allow-origin", "*".parse().unwrap());
+    headers.insert("access-control-allow-origin", "*".parse().expect("valid header value"));
     headers.insert(
         "access-control-allow-methods",
-        "GET, POST, PUT, DELETE, OPTIONS".parse().unwrap(),
+        "GET, POST, PUT, DELETE, OPTIONS".parse().expect("valid header value"),
     );
-    headers.insert("access-control-allow-headers", "Content-Type, Authorization".parse().unwrap());
-    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
-    headers.insert("x-frame-options", "DENY".parse().unwrap());
-    headers.insert("referrer-policy", "no-referrer".parse().unwrap());
+    headers.insert(
+        "access-control-allow-headers",
+        "Content-Type, Authorization".parse().expect("valid header value"),
+    );
+    headers.insert("x-content-type-options", "nosniff".parse().expect("valid header value"));
+    headers.insert("x-frame-options", "DENY".parse().expect("valid header value"));
+    headers.insert("referrer-policy", "no-referrer".parse().expect("valid header value"));
     headers.insert(
         "content-security-policy",
-        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'".parse().unwrap(),
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            .parse()
+            .expect("valid header value"),
     );
     Response::from_parts(parts, body)
 }
@@ -324,7 +344,7 @@ fn serve_static_file(
                         } else {
                             b = b.header("cache-control", "no-cache");
                         }
-                        return Some(b.body(body_from(Bytes::new())).unwrap());
+                        return Some(b.body(body_from(Bytes::new())).expect("valid HTTP response"));
                     }
                 }
             }
@@ -338,7 +358,7 @@ fn serve_static_file(
             } else {
                 b = b.header("cache-control", "no-cache");
             }
-            Some(b.body(body_from(bytes)).unwrap())
+            Some(b.body(body_from(bytes)).expect("valid HTTP response"))
         }
         Err(_) => None,
     }
@@ -910,7 +930,7 @@ where
             Response::builder()
                 .status(StatusCode::NO_CONTENT)
                 .body(body_from(Bytes::new()))
-                .unwrap(),
+                .expect("valid HTTP response"),
             accept_br,
             accept_gzip,
             effective_gzip.as_ref(),
@@ -937,7 +957,7 @@ where
                 .header("content-type", "application/json")
                 .header("retry-after", "60") // Suggest retry after 60 seconds
                 .body(body_from(r#"{"error":"Rate limit exceeded","retry_after_seconds":60}"#))
-                .unwrap();
+                .expect("valid HTTP response");
             return Ok(resp);
         }
     }
@@ -972,7 +992,7 @@ where
                 .status(StatusCode::OK)
                 .header("content-type", "application/json")
                 .body(body_from(r#"{"status":"healthy"}"#))
-                .unwrap(),
+                .expect("valid HTTP response"),
             accept_br,
             accept_gzip,
             effective_gzip.as_ref(),
@@ -1017,7 +1037,7 @@ where
                         .status(StatusCode::OK)
                         .header("content-type", "application/json")
                         .body(body_from(json_body))
-                        .unwrap(),
+                        .expect("valid HTTP response"),
                     accept_br,
                     accept_gzip,
                     effective_gzip.as_ref(),
@@ -1099,7 +1119,7 @@ where
                 .status(StatusCode::OK)
                 .header("content-type", "application/json")
                 .body(body_from(info_json))
-                .unwrap(),
+                .expect("valid HTTP response"),
             accept_br,
             accept_gzip,
             effective_gzip.as_ref(),
@@ -1129,7 +1149,7 @@ where
                         .status(StatusCode::OK)
                         .header("content-type", "text/plain; charset=utf-8")
                         .body(body_from(metrics_body))
-                        .unwrap(),
+                        .expect("valid HTTP response"),
                     accept_br,
                     accept_gzip,
                     effective_gzip.as_ref(),
@@ -1150,7 +1170,7 @@ where
                             .status(StatusCode::OK)
                             .header("content-type", "application/octet-stream")
                             .body(body_from(bytes))
-                            .unwrap();
+                            .expect("valid HTTP response");
                         let resp = finalize_response_async(
                             resp,
                             accept_br,
@@ -1169,7 +1189,7 @@ where
                             .status(StatusCode::BAD_REQUEST)
                             .header("content-type", "application/json")
                             .body(body_from(r#"{"error":"invalid body"}"#))
-                            .unwrap();
+                            .expect("valid HTTP response");
                         let resp = finalize_response_async(
                             resp,
                             accept_br,
@@ -1208,7 +1228,7 @@ where
                     .status(StatusCode::OK)
                     .header("content-type", "application/json")
                     .body(body_from(body))
-                    .unwrap();
+                    .expect("valid HTTP response");
                 let resp = finalize_response_async(
                     resp,
                     accept_br,
@@ -1244,7 +1264,7 @@ where
                     .status(StatusCode::OK)
                     .header("content-type", "application/octet-stream")
                     .body(body_from(data))
-                    .unwrap();
+                    .expect("valid HTTP response");
                 let resp = finalize_response_async(
                     resp,
                     accept_br,
@@ -1274,7 +1294,7 @@ where
             .status(StatusCode::OK)
             .header("content-type", "application/json")
             .body(body_from(format!(r#"{{"status":"ready","model":"{}","service":"pure-lithair-declarative","base_path":"/api/{}","deprecated":true,"use_instead":"/ready"}}"#, model_name, T::http_base_path())))
-            .unwrap(), accept_br, accept_gzip, effective_gzip.as_ref(), no_store).await;
+            .expect("valid HTTP response"), accept_br, accept_gzip, effective_gzip.as_ref(), no_store).await;
         if config.access_log {
             log_access(remote_addr, &method, &uri, &resp, start_time);
         }
@@ -1298,7 +1318,7 @@ where
                             .status(StatusCode::OK)
                             .header("content-type", "application/octet-stream")
                             .body(body_from(bytes))
-                            .unwrap();
+                            .expect("valid HTTP response");
                         let resp = finalize_response_async(
                             resp,
                             accept_br,
@@ -1317,7 +1337,7 @@ where
                             .status(StatusCode::BAD_REQUEST)
                             .header("content-type", "application/json")
                             .body(body_from(r#"{"error":"invalid body"}"#))
-                            .unwrap();
+                            .expect("valid HTTP response");
                         let resp = finalize_response_async(
                             resp,
                             accept_br,
@@ -1357,7 +1377,7 @@ where
                     .status(StatusCode::OK)
                     .header("content-type", "application/json")
                     .body(body_from(body))
-                    .unwrap();
+                    .expect("valid HTTP response");
                 let resp = finalize_response_async(
                     resp,
                     accept_br,
@@ -1394,7 +1414,7 @@ where
                     .status(StatusCode::OK)
                     .header("content-type", "application/octet-stream")
                     .body(body_from(payload))
-                    .unwrap();
+                    .expect("valid HTTP response");
                 let resp = finalize_response_async(
                     resp,
                     accept_br,
@@ -1444,7 +1464,9 @@ where
             let auth_req =
                 if let Some(r) = role { auth_req.header("x-auth-role", r) } else { auth_req };
 
-            let auth_req = auth_req.body(http_body_util::Full::new(bytes::Bytes::new())).unwrap();
+            let auth_req = auth_req
+                .body(http_body_util::Full::new(bytes::Bytes::new()))
+                .expect("valid HTTP request");
 
             // Authenticate
             let auth_result = middleware.authenticate(&auth_req);
@@ -1461,7 +1483,7 @@ where
                     .status(StatusCode::UNAUTHORIZED)
                     .header("content-type", "application/json")
                     .body(body_from(r#"{"error":"Authentication required"}"#))
-                    .unwrap();
+                    .expect("valid HTTP response");
                 return Ok(resp);
             }
 
@@ -1477,7 +1499,7 @@ where
                             .body(body_from(
                                 r#"{"error":"Insufficient permissions for DELETE operation"}"#,
                             ))
-                            .unwrap();
+                            .expect("valid HTTP response");
                         return Ok(resp);
                     }
                 }
@@ -1498,7 +1520,7 @@ where
                     .status(StatusCode::GATEWAY_TIMEOUT)
                     .header("content-type", "application/json")
                     .body(body_from(r#"{"error":"request timeout"}"#))
-                    .unwrap(),
+                    .expect("valid HTTP response"),
             };
 
         let resp = finalize_response_async(
@@ -1559,7 +1581,7 @@ where
         .status(StatusCode::NOT_FOUND)
         .header("content-type", "application/json")
         .body(body_from(r#"{"error":"Not found","hint":"Use /api/{model_base_path} for model operations, /status for server status"}"#))
-        .unwrap(), accept_br, accept_gzip, effective_gzip.as_ref(), no_store).await;
+        .expect("valid HTTP response"), accept_br, accept_gzip, effective_gzip.as_ref(), no_store).await;
     if config.access_log {
         log_access(remote_addr, &method, &uri, &resp, start_time);
     }

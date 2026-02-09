@@ -26,7 +26,11 @@ impl PersistentSessionStore {
         std::fs::create_dir_all(&data_path)?;
 
         // Create FileStorage for .raftlog files
-        let storage = FileStorage::new(data_path.to_str().unwrap())?;
+        let storage = FileStorage::new(
+            data_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("session data path contains invalid UTF-8"))?,
+        )?;
 
         // Create EventStore
         let event_store = EventStore::with_storage(storage)?;

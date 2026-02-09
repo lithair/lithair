@@ -162,7 +162,7 @@ where
                         v.version += 1;
                         v.last_updated = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
+                            .unwrap_or_default()
                             .as_secs();
 
                         if let Some(old) = old_values {
@@ -179,7 +179,7 @@ where
                             version: 1,
                             last_updated: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
+                                .unwrap_or_default()
                                 .as_secs(),
                             data: state.clone(),
                         };
@@ -223,7 +223,7 @@ where
                     v.version += 1;
                     v.last_updated = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs();
                     self.update_indexes(&key, &old_values, &v.data);
                 }
@@ -234,7 +234,7 @@ where
                         version: 1,
                         last_updated: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
+                            .unwrap_or_default()
                             .as_secs(),
                         data: state.clone(),
                     };

@@ -177,7 +177,7 @@ pub mod binary_mode {
     }
 
     /// Helper macro for serializing rkyv types
-    /// Returns DualModeResult<Vec<u8>>
+    /// Returns `DualModeResult<Vec<u8>>`
     #[macro_export]
     macro_rules! rkyv_serialize {
         ($value:expr) => {
@@ -188,7 +188,7 @@ pub mod binary_mode {
     }
 
     /// Helper macro for deserializing rkyv types
-    /// Returns DualModeResult<T>
+    /// Returns `DualModeResult<T>`
     #[macro_export]
     macro_rules! rkyv_deserialize {
         ($type:ty, $data:expr) => {
@@ -200,7 +200,7 @@ pub mod binary_mode {
     }
 
     /// Helper macro for zero-copy access to archived data
-    /// Returns DualModeResult<&Archived<T>>
+    /// Returns `DualModeResult<&Archived<T>>`
     #[macro_export]
     macro_rules! rkyv_access {
         ($type:ty, $data:expr) => {
@@ -298,13 +298,14 @@ where
     let start = Instant::now();
     let mut json_bytes = Vec::new();
     for _ in 0..iterations {
-        json_bytes = json_mode::serialize_bytes(value).unwrap();
+        json_bytes = json_mode::serialize_bytes(value).expect("serialization of known type");
     }
     let serialize_time = start.elapsed().as_nanos() as u64 / iterations as u64;
 
     let deser_start = Instant::now();
     for _ in 0..iterations {
-        let _: T = json_mode::deserialize_immutable(&json_bytes).unwrap();
+        let _: T =
+            json_mode::deserialize_immutable(&json_bytes).expect("deserialization of known type");
     }
     let deserialize_time = deser_start.elapsed().as_nanos() as u64 / iterations as u64;
 

@@ -40,7 +40,7 @@
 //! - [`http`] - Custom HTTP server with zero external dependencies
 //! - [`engine`] - Event sourcing and state management
 //! - [`serialization`] - JSON and binary serialization
-//! - [`macros`] - Helper types for procedural macros
+//! - `macros` - Helper types for procedural macros (in `lithair-macros` crate)
 //!
 //! # Features
 //!

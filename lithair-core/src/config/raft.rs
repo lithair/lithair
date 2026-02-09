@@ -16,7 +16,7 @@ pub struct RaftConfig {
     /// Require authentication for Raft endpoints
     pub auth_required: bool,
     /// Secret token for Raft endpoint authentication
-    /// If set, all Raft requests must include header: X-Raft-Token: <token>
+    /// If set, all Raft requests must include header: `X-Raft-Token: <token>`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_token: Option<String>,
     /// Heartbeat interval in seconds (leader sends heartbeats to followers)

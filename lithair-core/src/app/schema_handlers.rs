@@ -184,7 +184,18 @@ impl LithairServer {
         }
 
         // Now we can safely mutate
-        let pending = state.pending_changes.get_mut(&vote.change_id).unwrap();
+        let pending = match state.pending_changes.get_mut(&vote.change_id) {
+            Some(p) => p,
+            None => {
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        r#"{"error":"Schema change disappeared unexpectedly"}"#,
+                    )))
+                    .unwrap());
+            }
+        };
 
         if vote.approve {
             pending.add_approval(vote.node_id);
@@ -413,7 +424,18 @@ impl LithairServer {
         }
 
         // Now we can safely mutate
-        let pending = state.pending_changes.get_mut(&change_id).unwrap();
+        let pending = match state.pending_changes.get_mut(&change_id) {
+            Some(p) => p,
+            None => {
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        r#"{"error":"Schema change disappeared unexpectedly"}"#,
+                    )))
+                    .unwrap());
+            }
+        };
 
         pending.add_human_approval(user_id.clone(), user_name.clone());
         log::info!(

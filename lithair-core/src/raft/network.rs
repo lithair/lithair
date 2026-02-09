@@ -31,7 +31,7 @@ impl LithairNetworkFactory {
     pub fn add_node(&self, node_id: NodeId, address: String) {
         let mut nodes = self.cluster_nodes.write().expect("cluster nodes lock poisoned");
         nodes.insert(node_id, address);
-        log::info!("Lithair: Registered node {} at {}", node_id, nodes.get(&node_id).unwrap());
+        log::info!("Lithair: Registered node {} at {}", node_id, &nodes[&node_id]);
     }
     
     fn get_node_address(&self, node_id: NodeId) -> Option<String> {

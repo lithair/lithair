@@ -171,7 +171,10 @@ where
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
         LithairSnapshotBuilder::new(Arc::new(LithairStorage {
-            event_store: Arc::new(EventStore::new(&format!("{}/events", self.data_dir())).unwrap()),
+            event_store: Arc::new(
+                EventStore::new(&format!("{}/events", self.data_dir()))
+                    .expect("failed to create EventStore for snapshot builder"),
+            ),
             state_machine: Arc::new(RwLock::new(App::initial_state())),
             data_dir: self.data_dir().to_string(),
         }))

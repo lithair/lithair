@@ -1206,7 +1206,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::UNAUTHORIZED)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                 }
 
                 // Update heartbeat timestamp
@@ -1241,7 +1241,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
 
             // Raft leader discovery endpoint
@@ -1254,7 +1254,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::UNAUTHORIZED)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                 }
 
                 let response = serde_json::json!({
@@ -1268,7 +1268,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(response.to_string())))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
 
             // Redirect writes to leader if we're a follower
@@ -1295,7 +1295,7 @@ impl LithairServer {
                         r#"{{"message":"Redirected to leader","leader_url":"{}"}}"#,
                         redirect_url
                     ))))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         }
 
@@ -1424,7 +1424,7 @@ impl LithairServer {
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
                             .body(Full::new(Bytes::from(r#"{"error":"Internal server error"}"#)))
-                            .unwrap());
+                            .expect("valid HTTP response"));
                     }
                 }
             }
@@ -1453,7 +1453,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(status.to_string())))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Metrics endpoint
@@ -1513,7 +1513,7 @@ impl LithairServer {
                                 .header("Content-Type", asset.mime_type)
                                 .header("Cache-Control", "public, max-age=31536000, immutable")
                                 .body(Full::new(Bytes::from(asset.content)))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                     }
                 }
@@ -1537,7 +1537,7 @@ impl LithairServer {
 
                             // Create modified request with stripped path
                             let (mut parts, body) = req.into_parts();
-                            parts.uri = asset_path.parse().unwrap();
+                            parts.uri = asset_path.parse().expect("valid URI path");
                             let modified_req = hyper::Request::from_parts(parts, body);
 
                             // Call frontend server (returns BoxBody, Infallible error)
@@ -1545,7 +1545,11 @@ impl LithairServer {
                             // Convert BoxBody to Full<Bytes>
                             use http_body_util::BodyExt;
                             let (parts, body) = response.into_parts();
-                            let bytes = body.collect().await.unwrap().to_bytes();
+                            let bytes = body
+                                .collect()
+                                .await
+                                .map_err(|e| anyhow::anyhow!("failed to collect body: {}", e))?
+                                .to_bytes();
                             let full_response =
                                 hyper::Response::from_parts(parts, Full::new(bytes));
                             return Ok(full_response);
@@ -1561,7 +1565,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(404)
             .body(Full::new(Bytes::from(r#"{"error":"Not found"}"#)))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle admin panel request
@@ -1577,7 +1581,7 @@ impl LithairServer {
             .status(200)
             .header("Content-Type", "application/json")
             .body(Full::new(Bytes::from(r#"{"status":"ok","admin":"panel"}"#)))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle internal replication request from leader
@@ -1597,7 +1601,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1608,7 +1612,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1648,7 +1652,7 @@ impl LithairServer {
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                         Err(e) => {
                             log::error!("CREATE replication failed: {}", e);
@@ -1656,7 +1660,7 @@ impl LithairServer {
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                     }
                 } else if let Some(update_data) = op.get("Update") {
@@ -1671,7 +1675,7 @@ impl LithairServer {
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                         Err(e) => {
                             log::error!("UPDATE replication failed: {}", e);
@@ -1679,7 +1683,7 @@ impl LithairServer {
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                     }
                 } else if let Some(delete_data) = op.get("Delete") {
@@ -1692,7 +1696,7 @@ impl LithairServer {
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                         Err(e) => {
                             log::error!("DELETE replication failed: {}", e);
@@ -1700,7 +1704,7 @@ impl LithairServer {
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                     }
                 }
@@ -1716,7 +1720,7 @@ impl LithairServer {
                         .body(Full::new(Bytes::from(
                             r#"{"error":"Missing 'data' or 'operation' field"}"#,
                         )))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                 }
             };
 
@@ -1727,7 +1731,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
                 Err(e) => {
                     log::error!("Replication failed: {}", e);
@@ -1735,7 +1739,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
         } else {
@@ -1743,7 +1747,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .unwrap())
+                .expect("valid HTTP response"))
         }
     }
 
@@ -1764,7 +1768,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1775,7 +1779,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1790,7 +1794,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Missing or invalid 'items' field"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1823,7 +1827,7 @@ impl LithairServer {
                             r#"{{"status":"ok","count":{}}}"#,
                             count
                         ))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
                 Err(e) => {
                     log::error!("Bulk replication failed: {}", e);
@@ -1831,7 +1835,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
         } else {
@@ -1839,7 +1843,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .unwrap())
+                .expect("valid HTTP response"))
         }
     }
 
@@ -1860,7 +1864,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1871,7 +1875,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1885,7 +1889,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1896,7 +1900,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Missing 'data' field"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1919,7 +1923,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
                 Err(e) => {
                     log::error!("Replication UPDATE failed: {}", e);
@@ -1927,7 +1931,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
         } else {
@@ -1935,7 +1939,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .unwrap())
+                .expect("valid HTTP response"))
         }
     }
 
@@ -1956,7 +1960,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1967,7 +1971,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -1981,7 +1985,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2012,7 +2016,7 @@ impl LithairServer {
                             r#"{{"status":"ok","deleted":{}}}"#,
                             deleted
                         ))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
                 Err(e) => {
                     log::error!("Replication DELETE failed: {}", e);
@@ -2020,7 +2024,7 @@ impl LithairServer {
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
         } else {
@@ -2028,7 +2032,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .unwrap())
+                .expect("valid HTTP response"))
         }
     }
 
@@ -2063,7 +2067,7 @@ impl LithairServer {
                             r#"{{"error":"Invalid request: {}"}}"#,
                             e
                         ))))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                 }
             };
 
@@ -2075,7 +2079,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Consensus log not initialized"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2095,7 +2099,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Update heartbeat (if we have raft_state)
@@ -2173,7 +2177,7 @@ impl LithairServer {
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle GET /_raft/snapshot - Return current snapshot for resync
@@ -2194,7 +2198,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Snapshot manager not initialized"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2207,7 +2211,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"No snapshot available"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2223,7 +2227,7 @@ impl LithairServer {
                     .header("X-Snapshot-Checksum", meta.checksum.to_string())
                     .header("X-Snapshot-Size", meta.size_bytes.to_string())
                     .body(Full::new(Bytes::from(bytes)))
-                    .unwrap())
+                    .expect("valid HTTP response"))
             }
             Err(e) => {
                 log::error!("Failed to read snapshot: {}", e);
@@ -2234,7 +2238,7 @@ impl LithairServer {
                         r#"{{"error":"Failed to read snapshot: {}"}}"#,
                         e
                     ))))
-                    .unwrap())
+                    .expect("valid HTTP response"))
             }
         }
     }
@@ -2257,7 +2261,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Snapshot manager not initialized"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2297,7 +2301,7 @@ impl LithairServer {
                         r#"{{"error":"Failed to read body: {}"}}"#,
                         e
                     ))))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2354,7 +2358,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
-                    .unwrap())
+                    .expect("valid HTTP response"))
             }
             Err(e) => {
                 log::error!("Failed to install snapshot: {}", e);
@@ -2368,7 +2372,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
-                    .unwrap())
+                    .expect("valid HTTP response"))
             }
         }
     }
@@ -2466,7 +2470,7 @@ impl LithairServer {
             .body(Full::new(Bytes::from(
                 serde_json::to_string_pretty(&health_data).unwrap_or_default(),
             )))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle GET /_raft/resync_stats - Return snapshot resync statistics
@@ -2494,7 +2498,7 @@ impl LithairServer {
             .body(Full::new(Bytes::from(
                 serde_json::to_string_pretty(&response_data).unwrap_or_default(),
             )))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle GET /_raft/sync-status - Return detailed sync status for each follower
@@ -2523,7 +2527,7 @@ impl LithairServer {
                     "is_leader": false,
                     "message": "This node is not the leader. Sync status is only available on the leader."
                 })).unwrap_or_default())))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Get commit index from consensus log
@@ -2567,7 +2571,7 @@ impl LithairServer {
             .body(Full::new(Bytes::from(
                 serde_json::to_string_pretty(&response_data).unwrap_or_default(),
             )))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle POST /_raft/force-resync - Manually trigger snapshot resync to a follower
@@ -2590,7 +2594,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(r#"{"error":"This node is not the leader. Force resync must be called on the leader."}"#)))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Parse target from query string
@@ -2611,7 +2615,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
                     .body(Full::new(Bytes::from(r#"{"error":"Missing 'target' query parameter. Use /_raft/force-resync?target=127.0.0.1:8081"}"#)))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2632,7 +2636,7 @@ impl LithairServer {
                     r#"{{"error":"Follower '{}' not found in cluster"}}"#,
                     target
                 ))))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Trigger immediate snapshot send
@@ -2672,7 +2676,7 @@ impl LithairServer {
                 }))
                 .unwrap_or_default(),
             )))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle POST /_raft/migrate - Submit migration operations through consensus
@@ -2701,7 +2705,7 @@ impl LithairServer {
                     })
                     .to_string(),
                 )))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Parse the operation from request body
@@ -2724,7 +2728,7 @@ impl LithairServer {
                         })
                         .to_string(),
                     )))
-                    .unwrap());
+                    .expect("valid HTTP response"));
             }
         };
 
@@ -2747,7 +2751,7 @@ impl LithairServer {
                     })
                     .to_string(),
                 )))
-                .unwrap());
+                .expect("valid HTTP response"));
         }
 
         // Create log entry and replicate
@@ -2797,7 +2801,7 @@ impl LithairServer {
                                 })
                                 .to_string(),
                             )))
-                            .unwrap()),
+                            .expect("valid HTTP response")),
                         Err(e) => Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
@@ -2808,7 +2812,7 @@ impl LithairServer {
                                 })
                                 .to_string(),
                             )))
-                            .unwrap()),
+                            .expect("valid HTTP response")),
                     }
                 }
                 Err(e) => Ok(hyper::Response::builder()
@@ -2820,7 +2824,7 @@ impl LithairServer {
                         })
                         .to_string(),
                     )))
-                    .unwrap()),
+                    .expect("valid HTTP response")),
             }
         } else {
             // Single node mode - just apply
@@ -2836,7 +2840,7 @@ impl LithairServer {
                         })
                         .to_string(),
                     )))
-                    .unwrap()),
+                    .expect("valid HTTP response")),
                 Err(e) => Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
@@ -2846,7 +2850,7 @@ impl LithairServer {
                         })
                         .to_string(),
                     )))
-                    .unwrap()),
+                    .expect("valid HTTP response")),
             }
         }
     }
@@ -2863,7 +2867,7 @@ impl LithairServer {
             .status(200)
             .header("Content-Type", "text/plain")
             .body(Full::new(Bytes::from("# Metrics endpoint\n")))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle data admin API requests (/_admin/data/*)
@@ -2915,8 +2919,10 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(200)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response).unwrap())))
-                    .unwrap())
+                    .body(Full::new(Bytes::from(
+                        serde_json::to_string_pretty(&response).expect("serializable response"),
+                    )))
+                    .expect("valid HTTP response"))
             }
 
             // GET /_admin/data/models/{name} - Get model data
@@ -2938,9 +2944,9 @@ impl LithairServer {
                         .status(200)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(
-                            serde_json::to_string_pretty(&response).unwrap(),
+                            serde_json::to_string_pretty(&response).expect("serializable response"),
                         )))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
@@ -2949,7 +2955,7 @@ impl LithairServer {
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
 
@@ -2968,9 +2974,9 @@ impl LithairServer {
                             format!("attachment; filename=\"{}_export.json\"", name),
                         )
                         .body(Full::new(Bytes::from(
-                            serde_json::to_string_pretty(&export).unwrap(),
+                            serde_json::to_string_pretty(&export).expect("serializable response"),
                         )))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
@@ -2979,7 +2985,7 @@ impl LithairServer {
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
 
@@ -2994,9 +3000,9 @@ impl LithairServer {
                         .status(200)
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(
-                            serde_json::to_string_pretty(&history).unwrap(),
+                            serde_json::to_string_pretty(&history).expect("serializable response"),
                         )))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 } else {
                     Ok(hyper::Response::builder()
                         .status(404)
@@ -3005,7 +3011,7 @@ impl LithairServer {
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
 
@@ -3024,7 +3030,7 @@ impl LithairServer {
                                 .status(400)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(r#"{"error":"Invalid request body"}"#)))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                     };
 
@@ -3035,7 +3041,7 @@ impl LithairServer {
                                 .status(400)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(r#"{"error":"Invalid JSON"}"#)))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                         }
                     };
 
@@ -3053,15 +3059,16 @@ impl LithairServer {
                                 .status(200)
                                 .header("Content-Type", "application/json")
                                 .body(Full::new(Bytes::from(
-                                    serde_json::to_string_pretty(&response).unwrap(),
+                                    serde_json::to_string_pretty(&response)
+                                        .expect("serializable response"),
                                 )))
-                                .unwrap())
+                                .expect("valid HTTP response"))
                         }
                         Err(e) => Ok(hyper::Response::builder()
                             .status(400)
                             .header("Content-Type", "application/json")
                             .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
-                            .unwrap()),
+                            .expect("valid HTTP response")),
                     }
                 } else {
                     Ok(hyper::Response::builder()
@@ -3071,7 +3078,7 @@ impl LithairServer {
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
-                        .unwrap())
+                        .expect("valid HTTP response"))
                 }
             }
 
@@ -3161,8 +3168,10 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(200)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response).unwrap())))
-                    .unwrap())
+                    .body(Full::new(Bytes::from(
+                        serde_json::to_string_pretty(&response).expect("serializable response"),
+                    )))
+                    .expect("valid HTTP response"))
             }
 
             // POST /_admin/data/backup - Backup all models
@@ -3186,8 +3195,10 @@ impl LithairServer {
                     .status(200)
                     .header("Content-Type", "application/json")
                     .header("Content-Disposition", "attachment; filename=\"lithair_backup.json\"")
-                    .body(Full::new(Bytes::from(serde_json::to_string_pretty(&backup).unwrap())))
-                    .unwrap())
+                    .body(Full::new(Bytes::from(
+                        serde_json::to_string_pretty(&backup).expect("serializable response"),
+                    )))
+                    .expect("valid HTTP response"))
             }
 
             // 404 for unknown data admin paths
@@ -3195,7 +3206,7 @@ impl LithairServer {
                 .status(404)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(r#"{"error":"Unknown data admin endpoint"}"#)))
-                .unwrap()),
+                .expect("valid HTTP response")),
         }
     }
 
@@ -3213,7 +3224,7 @@ impl LithairServer {
             .header("Content-Type", "text/html; charset=utf-8")
             .header("Cache-Control", "no-cache")
             .body(Full::new(Bytes::from(crate::admin_ui::DASHBOARD_HTML)))
-            .unwrap())
+            .expect("valid HTTP response"))
     }
 
     /// Handle model request
@@ -3280,7 +3291,7 @@ impl LithairServer {
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
                         .header("X-Raft-Leader", format!("{}", leader_port))
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"Not leader","leader_port":{}}}"#, leader_port))))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                     }
                 }
 
@@ -3446,7 +3457,7 @@ impl LithairServer {
                             r#"{{"error":"WAL write failed: {}"}}"#,
                             e
                         ))))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                 }
                 log::debug!("WAL entry durable: index={}", entry_index);
 
@@ -3535,7 +3546,7 @@ impl LithairServer {
                                     r#"{{"error":"Commit ordering timeout: entry {} waiting for {}"}}"#,
                                     entry_index, expected_prior
                                 ))))
-                                .unwrap());
+                                .expect("valid HTTP response"));
                             }
                             tokio::time::sleep(std::time::Duration::from_micros(100)).await;
                             commit_waited += 1;
@@ -3575,7 +3586,7 @@ impl LithairServer {
                                     .header("Content-Type", "application/json")
                                     .header("X-Raft-Index", entry_index.to_string())
                                     .body(Full::new(Bytes::from(response_body)))
-                                    .unwrap());
+                                    .expect("valid HTTP response"));
                             }
                             Err(e) => {
                                 log::error!("Failed to apply operation: {}", e);
@@ -3585,7 +3596,7 @@ impl LithairServer {
                                         r#"{{"error":"Apply failed: {}"}}"#,
                                         e
                                     ))))
-                                    .unwrap());
+                                    .expect("valid HTTP response"));
                             }
                         }
                     }
@@ -3594,7 +3605,7 @@ impl LithairServer {
                         return Ok(hyper::Response::builder()
                         .status(503) // Service Unavailable
                         .body(Full::new(Bytes::from(format!(r#"{{"error":"Replication failed: {}"}}"#, e))))
-                        .unwrap());
+                        .expect("valid HTTP response"));
                     }
                 }
             }
@@ -3613,7 +3624,7 @@ impl LithairServer {
             Err(_) => Ok(hyper::Response::builder()
                 .status(500)
                 .body(Full::new(Bytes::from(r#"{"error":"Internal error"}"#)))
-                .unwrap()),
+                .expect("valid HTTP response")),
         }
     }
 

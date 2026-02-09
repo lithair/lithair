@@ -82,23 +82,23 @@ fn macro_nets(name: &str) -> Vec<IpNet> {
     let mut out = Vec::new();
     match n.as_str() {
         "private_v4" => {
-            out.push("10.0.0.0/8".parse().unwrap());
-            out.push("172.16.0.0/12".parse().unwrap());
-            out.push("192.168.0.0/16".parse().unwrap());
+            out.push("10.0.0.0/8".parse().expect("valid CIDR literal"));
+            out.push("172.16.0.0/12".parse().expect("valid CIDR literal"));
+            out.push("192.168.0.0/16".parse().expect("valid CIDR literal"));
         }
         "private" | "internal" | "internal_private" | "internal_private_ip" => {
-            out.push("10.0.0.0/8".parse().unwrap());
-            out.push("172.16.0.0/12".parse().unwrap());
-            out.push("192.168.0.0/16".parse().unwrap());
-            out.push("fc00::/7".parse().unwrap()); // IPv6 ULA
+            out.push("10.0.0.0/8".parse().expect("valid CIDR literal"));
+            out.push("172.16.0.0/12".parse().expect("valid CIDR literal"));
+            out.push("192.168.0.0/16".parse().expect("valid CIDR literal"));
+            out.push("fc00::/7".parse().expect("valid CIDR literal")); // IPv6 ULA
         }
         "loopback" => {
-            out.push("127.0.0.0/8".parse().unwrap());
-            out.push("::1/128".parse().unwrap());
+            out.push("127.0.0.0/8".parse().expect("valid CIDR literal"));
+            out.push("::1/128".parse().expect("valid CIDR literal"));
         }
         "link_local" => {
-            out.push("169.254.0.0/16".parse().unwrap());
-            out.push("fe80::/10".parse().unwrap());
+            out.push("169.254.0.0/16".parse().expect("valid CIDR literal"));
+            out.push("fe80::/10".parse().expect("valid CIDR literal"));
         }
         _ => {}
     }
@@ -191,7 +191,7 @@ impl Firewall {
             .status(status)
             .header("content-type", "application/json")
             .body(body_from(body))
-            .unwrap()
+            .expect("valid HTTP response")
     }
 
     fn check_ip_lists(&self, ip: Option<&str>) -> Result<(), RespErr> {

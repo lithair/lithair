@@ -216,7 +216,7 @@ where
                     node_id: self.config.node_id,
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 };
 
@@ -249,7 +249,7 @@ where
                     node_id: self.config.node_id,
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 };
 
@@ -280,7 +280,7 @@ where
                     node_id: self.config.node_id,
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 };
 

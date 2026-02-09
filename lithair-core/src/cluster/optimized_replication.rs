@@ -157,7 +157,7 @@ impl<T: BincodeSerializable> OptimizedReplicationMessage<T> {
             bincode_payload,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
             t021_stats: Some(t021_stats),
             _phantom: std::marker::PhantomData,

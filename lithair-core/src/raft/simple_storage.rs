@@ -140,7 +140,7 @@ impl RaftStorage<TypeConfig> for SimpleLogStore {
                     event_id: uuid::Uuid::new_v4().to_string(),
                     applied_at: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 });
             }

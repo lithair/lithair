@@ -35,7 +35,7 @@ pub trait Event: Send + Sync {
             std::any::type_name::<Self>(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs()
         )
     }
