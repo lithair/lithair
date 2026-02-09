@@ -105,8 +105,17 @@ impl RouteGuard {
                 self.check_role(req, session_store, roles, redirect_to).await
             }
             RouteGuard::RateLimit { .. } => {
-                // Note: rate limiting is not yet enforced; all requests are allowed
-                Ok(GuardResult::Allow)
+                // Fail closed: rate limiting is not yet enforced, deny all rate-limited routes
+                log::warn!("RateLimit guard is not yet implemented; denying request");
+                Ok(GuardResult::Deny(
+                    Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .header("Content-Type", "application/json")
+                        .body(Full::new(Bytes::from(
+                            r#"{"error":"Rate limiting not yet available"}"#,
+                        )))
+                        .unwrap(),
+                ))
             }
             RouteGuard::Custom(_checker) => {
                 // Custom policies handle their own logic
@@ -200,10 +209,29 @@ impl RouteGuard {
         _req: &Req,
         _session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
         _roles: &[String],
-        _redirect_to: &Option<String>,
+        redirect_to: &Option<String>,
     ) -> Result<GuardResult, anyhow::Error> {
-        // Note: role checking is not yet enforced; all requests are allowed
-        Ok(GuardResult::Allow)
+        // Fail closed: role checking is not yet enforced, deny all role-protected routes
+        log::warn!("RequireRole guard is not yet implemented; denying request");
+        if let Some(redirect_url) = redirect_to {
+            Ok(GuardResult::Deny(
+                Response::builder()
+                    .status(StatusCode::FOUND)
+                    .header("Location", redirect_url)
+                    .body(Full::new(Bytes::from("Redirecting...")))
+                    .unwrap(),
+            ))
+        } else {
+            Ok(GuardResult::Deny(
+                Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .header("Content-Type", "application/json")
+                    .body(Full::new(Bytes::from(
+                        r#"{"error":"Role-based access control not yet available"}"#,
+                    )))
+                    .unwrap(),
+            ))
+        }
     }
 }
 
