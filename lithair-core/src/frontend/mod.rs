@@ -206,6 +206,10 @@ pub async fn load_static_directory_to_memory<P: AsRef<Path>>(
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
+                // Skip symlinks to prevent infinite recursion from symlink cycles
+                if path.is_symlink() {
+                    continue;
+                }
                 if path.is_dir() {
                     walk_dir(&path, base_path_disk, assets)?;
                 } else if path.is_file() {
@@ -229,6 +233,14 @@ pub async fn load_static_directory_to_memory<P: AsRef<Path>>(
     let mut state_guard = state.write().await;
     let host_id_str = host_id.to_string();
     let base_path_str = base_path.to_string();
+
+    // Clear stale assets if reloading an existing host
+    if let Some(existing) = state_guard.virtual_hosts.get_mut(&host_id_str) {
+        existing.assets.clear();
+        existing.path_index.clear();
+        existing.base_path = base_path_str.clone();
+        existing.static_root = dir_display.clone();
+    }
 
     let location = state_guard.virtual_hosts.entry(host_id_str.clone()).or_insert_with(|| {
         VirtualHostLocation {
