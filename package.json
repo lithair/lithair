@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "@playwright/test": "^1.55.1",
-    "playwright": "^1.55.1"
-  },
-  "scripts": {
-    "test:frontend": "playwright test tests/frontend_benchmark/playwright"
-  }
-}
