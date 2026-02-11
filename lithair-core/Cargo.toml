@@ -5,8 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Core framework for Lithair - Hyper-based HTTP server"
-keywords = ["web", "framework", "event-sourcing", "distributed", "performance"]
+readme = "README.md"
+description = "Declarative memory-first web framework with built-in event sourcing, RBAC, and distributed consensus"
+keywords = ["web", "framework", "event-sourcing", "declarative", "performance"]
 categories = ["web-programming::http-server", "database-implementations"]
 
 [lib]
@@ -28,10 +29,9 @@ serde_json = "1.0"
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing (~3GB/s)
 rkyv = { version = "0.8", features = ["bytecheck", "std"] }       # Zero-copy serialization (~10GB/s)
 toml = "0.8"
-# Optimizations ultra-performantes
-bincode = { version = "2", features = ["serde"] }        # Sérialisation binaire (3-5x plus rapide)
-chrono = { version = "0.4", features = ["serde"] }  # Timestamps pour metadata
-tempfile = "3"       # Tests des optimisations
+# High-performance serialization
+bincode = { version = "2", features = ["serde"] }        # Binary serialization (3-5x faster than JSON)
+chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metadata
 scc = "3"            # SCC2 HashMap ultra-performant (40M+ ops/sec)
 reqwest = { version = "0.13", features = ["json", "rustls", "form"], default-features = false }  # HTTP client with rustls
 uuid = { version = "1", features = ["v4", "serde"] }  # For generating unique IDs with Serde
@@ -61,16 +61,20 @@ crc32fast = "1.4"  # CRC32 checksums for data integrity validation
 # MFA/TOTP support
 totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"] }  # Battle-tested TOTP implementation
 # OpenAPI documentation support (optional)
-utoipa = { git = "https://github.com/juhaku/utoipa.git", rev = "cecda0531bf7d90800af66b186055932ee730526", optional = true }
+utoipa = { version = "5", optional = true }
 thiserror = "2.0.17"
 futures.workspace = true
+lithair-macros = { version = "0.1", path = "../lithair-macros", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
 # Only for testing - not included in final binary
 
 [features]
-default = []
+default = ["macros"]
+
+# Re-export derive macros from lithair-macros (recommended)
+macros = ["lithair-macros"]
 
 # OpenAPI/Swagger documentation support
 openapi = ["utoipa"]
@@ -79,6 +83,3 @@ openapi = ["utoipa"]
 # Adds ~30KB to binary when enabled
 admin-ui = []
 
-# Future features (disabled by default)
-clustering = []      # Raft consensus for multi-node
-real-time = []       # WebSocket support

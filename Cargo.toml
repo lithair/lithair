@@ -48,7 +48,7 @@ lto = true
 codegen-units = 1
 debug = true
 
-# Dépendances pour le stress test et optimisations
+# Shared dependencies for stress tests and optimizations
 [workspace.dependencies]
 reqwest = { version = "0.13", features = ["json", "blocking", "rustls", "form"], default-features = false }
 tokio = { version = "1.47", features = ["full"] }
