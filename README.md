@@ -98,8 +98,18 @@ each field directly on the struct.
 **Distributed consensus** -- OpenRaft integration for multi-node clusters with
 leader election and data replication.
 
-**HTTP server** -- Built on Hyper. Includes health checks, firewall with IP
-filtering and rate limiting, and gzip compression.
+**HTTP server** -- Built on Hyper. Includes firewall with IP filtering and
+rate limiting, gzip compression, and CORS.
+
+**Built-in operations** -- Every Lithair server comes with `/health`, `/ready`,
+and `/info` endpoints out of the box. Enable `/observe/metrics` for
+Prometheus-compatible monitoring. No sidecar, no extra service.
+
+**Admin interface** -- Optional data admin API (`/_admin/data/*`) lets you
+browse models, export data, inspect event history, and trigger backups. Schema
+management (`/_admin/schema/*`) handles migrations with approval workflows,
+diffs, and rollback. Enable the `admin-ui` feature for an embedded HTML
+dashboard.
 
 **Memory-first static serving** -- Static assets load into memory at startup.
 No disk I/O per request.
