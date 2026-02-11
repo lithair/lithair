@@ -1,31 +1,52 @@
+# Build artifacts
 target/
 Cargo.lock
-examples/ecommerce/data/
-examples/**/nodes/**/
+
+# Runtime data
+data/
+test_data/
 events.raftlog
 state.raftsnap
 events.raftidx
 meta.raftmeta
-node_modules
-site-packages
+examples/ecommerce/data/
+examples/**/nodes/**/
+
+# Logs
+logs/
 *.log
 *.pid
-data/
-test_data/
-benchmark_*.md
-benchmark_results
-.playwright-mcp
 
-# Configuration files (keep .example files)
+# Test output
+test-results/
+robot-venv/
+*.html
+*.xml
+
+# Benchmark output
+benchmark_*.md
+benchmark_results/
+
+# Node.js (Playwright)
+node_modules/
+package.json
+package-lock.json
+.playwright-mcp/
+
+# IDE and editor files
+*.code-workspace
+.vscode/
+
+# Configuration (keep .example files)
 config.toml
 .env
 !.env.example
 !config.example.toml
 
-# Logs and backups
-logs/
+# Backups
 backups/
 
-# tests results
-robot-tests/results/
-*.txt
+# Python
+__pycache__/
+*.pyc
+site-packages/
