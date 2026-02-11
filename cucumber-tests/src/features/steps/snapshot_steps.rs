@@ -1,9 +1,7 @@
 use cucumber::{given, then, when};
-use std::path::Path;
 use std::time::Instant;
 
 use crate::features::world::LithairWorld;
-use lithair_core::engine::events::EventEnvelope;
 use lithair_core::engine::MultiFileEventStore;
 
 // ==================== SETUP ====================
@@ -40,7 +38,11 @@ async fn when_create_snapshot_for_aggregate(
     aggregate_id: String,
     state: String,
 ) {
-    println!("📸 Création snapshot pour '{}' avec état: {}", aggregate_id, &state[..std::cmp::min(50, state.len())]);
+    println!(
+        "📸 Création snapshot pour '{}' avec état: {}",
+        aggregate_id,
+        state.chars().take(50).collect::<String>()
+    );
 
     {
         let mut store_guard = world.multi_file_store.lock().await;
@@ -60,9 +62,7 @@ async fn when_create_global_snapshot(world: &mut LithairWorld, state: String) {
     {
         let mut store_guard = world.multi_file_store.lock().await;
         let store = store_guard.as_mut().expect("MultiFileEventStore not initialized");
-        store
-            .save_snapshot(None, state, None)
-            .expect("Failed to save global snapshot");
+        store.save_snapshot(None, state, None).expect("Failed to save global snapshot");
     }
 
     println!("✅ Snapshot global créé");
@@ -87,7 +87,8 @@ async fn when_create_snapshot_complex_state(world: &mut LithairWorld, aggregate_
             "total_value": 59.97,
             "average_price": 19.99
         }
-    }).to_string();
+    })
+    .to_string();
 
     println!("📸 Création snapshot complexe pour '{}'", aggregate_id);
 
@@ -114,11 +115,7 @@ async fn then_snapshot_must_exist(world: &mut LithairWorld, aggregate_id: String
     let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
 
     let snapshot = store.load_snapshot(Some(&aggregate_id)).expect("Failed to load snapshot");
-    assert!(
-        snapshot.is_some(),
-        "❌ Snapshot pour '{}' n'existe pas",
-        aggregate_id
-    );
+    assert!(snapshot.is_some(), "❌ Snapshot pour '{}' n'existe pas", aggregate_id);
 
     println!("✅ Snapshot pour '{}' existe", aggregate_id);
 }
@@ -169,10 +166,7 @@ async fn then_snapshot_must_contain_events(
         snapshot.metadata.event_count, expected_count
     );
 
-    println!(
-        "✅ Snapshot pour '{}' contient {} événements",
-        aggregate_id, expected_count
-    );
+    println!("✅ Snapshot pour '{}' contient {} événements", aggregate_id, expected_count);
 }
 
 #[then(expr = "le snapshot global doit contenir {int} événements")]
@@ -255,7 +249,7 @@ async fn then_total_events_must_be(
 }
 
 #[then("tous ces événements doivent avoir un CRC32 valide")]
-async fn then_all_events_must_have_valid_crc32(world: &mut LithairWorld) {
+async fn then_all_events_must_have_valid_crc32(_world: &mut LithairWorld) {
     // Déjà validé lors de la lecture
     println!("✅ Tous les événements ont un CRC32 valide");
 }
@@ -277,15 +271,15 @@ async fn when_corrupt_snapshot_file(world: &mut LithairWorld, aggregate_id: Stri
 }
 
 #[then(expr = "le chargement du snapshot pour {string} doit échouer avec erreur de corruption")]
-async fn then_snapshot_load_must_fail_with_corruption(world: &mut LithairWorld, aggregate_id: String) {
+async fn then_snapshot_load_must_fail_with_corruption(
+    world: &mut LithairWorld,
+    aggregate_id: String,
+) {
     let store_guard = world.multi_file_store.lock().await;
     let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
 
     let result = store.load_snapshot(Some(&aggregate_id));
-    assert!(
-        result.is_err(),
-        "❌ Le chargement du snapshot corrompu aurait dû échouer"
-    );
+    assert!(result.is_err(), "❌ Le chargement du snapshot corrompu aurait dû échouer");
 
     let error = result.unwrap_err().to_string();
     assert!(
@@ -339,9 +333,7 @@ async fn when_measure_read_time(world: &mut LithairWorld, aggregate_id: String) 
     {
         let store_guard = world.multi_file_store.lock().await;
         let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
-        let _events = store
-            .read_aggregate_envelopes(&aggregate_id)
-            .expect("Failed to read events");
+        let _events = store.read_aggregate_envelopes(&aggregate_id).expect("Failed to read events");
     }
 
     let elapsed = start.elapsed();
@@ -379,10 +371,8 @@ async fn then_snapshot_must_be_faster(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
 
     let full_read = metrics.total_duration.as_secs_f64();
-    let snapshot_read = metrics
-        .snapshot_read_duration
-        .expect("No snapshot read duration")
-        .as_secs_f64();
+    let snapshot_read =
+        metrics.snapshot_read_duration.expect("No snapshot read duration").as_secs_f64();
 
     // Le ratio devrait être au moins 10x (lecture 100 events vs 10000)
     // Mais on accepte 5x pour tenir compte des variations
@@ -433,11 +423,7 @@ async fn then_snapshot_should_be_needed(world: &mut LithairWorld, aggregate_id: 
         .should_create_snapshot(Some(&aggregate_id))
         .expect("Failed to check snapshot threshold");
 
-    assert!(
-        should_create,
-        "❌ Un snapshot devrait être nécessaire pour '{}'",
-        aggregate_id
-    );
+    assert!(should_create, "❌ Un snapshot devrait être nécessaire pour '{}'", aggregate_id);
 
     println!("✅ Snapshot nécessaire pour '{}' (attendu)", aggregate_id);
 }
@@ -468,9 +454,7 @@ async fn when_delete_snapshot(world: &mut LithairWorld, aggregate_id: String) {
     {
         let store_guard = world.multi_file_store.lock().await;
         let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
-        store
-            .delete_snapshot(Some(&aggregate_id))
-            .expect("Failed to delete snapshot");
+        store.delete_snapshot(Some(&aggregate_id)).expect("Failed to delete snapshot");
     }
 
     println!("✅ Snapshot supprimé pour '{}'", aggregate_id);

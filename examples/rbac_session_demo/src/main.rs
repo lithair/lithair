@@ -21,7 +21,9 @@ use http::{Method, Request, Response, StatusCode};
 use http_body_util::Full;
 use lithair_core::app::LithairServer;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
-use lithair_core::session::{PersistentSessionStore, Session, SessionConfig, SessionMiddleware, SessionManager, SessionStore};
+use lithair_core::session::{
+    PersistentSessionStore, Session, SessionConfig, SessionManager, SessionMiddleware, SessionStore,
+};
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -60,16 +62,16 @@ impl lithair_core::rbac::PermissionChecker for RolePermissionChecker {
         match (role, permission) {
             // Customer: read only
             ("Customer", "ProductRead") => true,
-            
+
             // Employee: read + write (no delete)
             ("Employee", "ProductRead") => true,
             ("Employee", "ProductWrite") => true,
-            
+
             // Administrator: all permissions
             ("Administrator", "ProductRead") => true,
             ("Administrator", "ProductWrite") => true,
             ("Administrator", "ProductDelete") => true,
-            
+
             // Deny everything else
             _ => false,
         }
@@ -96,18 +98,15 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    
+
     // Create Lithair event-sourced session store
     let session_store = Arc::new(PersistentSessionStore::new(args.sessions_dir.clone())?);
     let _session_manager = SessionManager::new(session_store.clone());
 
     // Create session middleware
-    let session_config = SessionConfig::hybrid()
-        .with_max_age(std::time::Duration::from_secs(3600));
-    let session_middleware = Arc::new(SessionMiddleware::new(
-        session_store.clone(),
-        session_config,
-    ));
+    let session_config = SessionConfig::hybrid().with_max_age(std::time::Duration::from_secs(3600));
+    let session_middleware =
+        Arc::new(SessionMiddleware::new(session_store.clone(), session_config));
 
     // Clone for handlers
     let sm_login = session_middleware.clone();
@@ -149,12 +148,16 @@ async fn main() -> Result<()> {
 
     // ✨ Lithair Frontend (SCC2): Load static assets with event sourcing
     let frontend_engine = Arc::new(
-        FrontendEngine::new("rbac_demo", "./data").await
-            .expect("Failed to create frontend engine")
+        FrontendEngine::new("rbac_demo", "./data")
+            .await
+            .expect("Failed to create frontend engine"),
     );
 
     match frontend_engine.load_directory("examples/rbac_session_demo/frontend").await {
-        Ok(count) => println!("✅ Loaded {} frontend assets into SCC2 memory (lock-free + event sourcing)\n", count),
+        Ok(count) => println!(
+            "✅ Loaded {} frontend assets into SCC2 memory (lock-free + event sourcing)\n",
+            count
+        ),
         Err(e) => println!("⚠️  Warning: Could not load frontend assets: {}\n", e),
     }
 
@@ -212,7 +215,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-
 /// Login endpoint - creates a session
 async fn login(
     mut req: Request<hyper::body::Incoming>,
@@ -220,42 +222,48 @@ async fn login(
     session_store: Arc<PersistentSessionStore>,
 ) -> Result<Response<Full<Bytes>>> {
     use http_body_util::BodyExt;
-    
+
     // Parse request body
     let body = req.body_mut().collect().await?.to_bytes();
     let login_req: LoginRequest = serde_json::from_slice(&body)?;
-    
+
     // Authenticate (simple demo - in production use proper password hashing)
     let role = match (login_req.username.as_str(), login_req.password.as_str()) {
         ("alice", "password123") => Role::Customer,
         ("bob", "password123") => Role::Employee,
         ("admin", "password123") => Role::Administrator,
         _ => {
-            return Ok(json_response(StatusCode::UNAUTHORIZED, serde_json::json!({
-                "error": "Invalid credentials"
-            })));
+            return Ok(json_response(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({
+                    "error": "Invalid credentials"
+                }),
+            ));
         }
     };
-    
+
     // Create session
     let session_id = Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now() + Duration::hours(1);
-    
+
     let mut session = Session::new(session_id.clone(), expires_at);
     session.set("user_id", &login_req.username)?;
     session.set("role", format!("{:?}", role))?;
-    
+
     // Store session
     session_store.set(session).await?;
 
     log::info!("✅ User logged in: {} as {:?}", login_req.username, role);
-    
+
     // Return session token
-    Ok(json_response(StatusCode::OK, serde_json::json!({
-        "session_token": session_id,
-        "role": format!("{:?}", role),
-        "expires_in": 3600
-    })))
+    Ok(json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "session_token": session_id,
+            "role": format!("{:?}", role),
+            "expires_in": 3600
+        }),
+    ))
 }
 
 /// Logout endpoint - destroys the session
@@ -267,24 +275,30 @@ async fn logout(
     let session = match session_middleware.extract_session(&req).await? {
         Some(s) => s,
         None => {
-            return Ok(json_response(StatusCode::UNAUTHORIZED, serde_json::json!({
-                "error": "No active session"
-            })));
+            return Ok(json_response(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({
+                    "error": "No active session"
+                }),
+            ));
         }
     };
-    
+
     let user_id: String = session.get("user_id").unwrap_or_default();
     let session_id = session.id.clone();
-    
+
     // Delete session
     let store = session_middleware.store();
     store.delete(&session_id).await?;
-    
+
     log::info!("👋 User logged out: {} (session: {})", user_id, session_id);
-    
-    Ok(json_response(StatusCode::OK, serde_json::json!({
-        "message": "Logged out successfully"
-    })))
+
+    Ok(json_response(
+        StatusCode::OK,
+        serde_json::json!({
+            "message": "Logged out successfully"
+        }),
+    ))
 }
 
 /// Helper to create JSON response

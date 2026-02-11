@@ -169,12 +169,7 @@ where
         let idx = self.get_node_index();
         let entry = CacheEntry::new(value);
 
-        self.nodes[idx] = Some(LruNode {
-            key: key.clone(),
-            entry,
-            prev: None,
-            next: self.head,
-        });
+        self.nodes[idx] = Some(LruNode { key: key.clone(), entry, prev: None, next: self.head });
 
         if let Some(old_head) = self.head {
             if let Some(old_head_node) = &mut self.nodes[old_head] {

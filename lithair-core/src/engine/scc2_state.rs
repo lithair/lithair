@@ -71,7 +71,7 @@ where
         }).await;
         
         // Extraire les résultats
-        let final_vec = results.lock().unwrap().clone();
+        let final_vec = results.lock().expect("iter results lock poisoned").clone();
         final_vec
     }
 
@@ -205,7 +205,7 @@ mod tests {
         let duration = start.elapsed();
         let ops_per_sec = (iterations as f64 / duration.as_secs_f64()) as u64;
         
-        println!("🚀 SCC2 Read Performance: {} ops/sec", ops_per_sec);
+        println!("SCC2 Read Performance: {} ops/sec", ops_per_sec);
         
         // On s'attend à > 1M ops/sec en mode async
         assert!(ops_per_sec > 100_000, "Performance trop faible: {} ops/sec", ops_per_sec);

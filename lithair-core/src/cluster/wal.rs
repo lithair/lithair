@@ -12,13 +12,13 @@
 //! - `flush()` - Force flush buffer to disk with single fsync
 //! - Background task flushes every `group_commit_interval_ms` or when buffer is full
 
-use rkyv::{Archive, Deserialize, Serialize, rancor::Error as RkyvError};
+use rkyv::{rancor::Error as RkyvError, Archive, Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, Notify};
+use tokio::sync::{Notify, RwLock};
 
 use super::consensus_log::{CrudOperation, LogEntry, LogId};
 
@@ -68,49 +68,40 @@ pub enum WalOperation {
 impl From<&CrudOperation> for WalOperation {
     fn from(op: &CrudOperation) -> Self {
         match op {
-            CrudOperation::Create { model_path, data } => WalOperation::Create {
-                model_path: model_path.clone(),
-                data: data.to_string(),
-            },
+            CrudOperation::Create { model_path, data } => {
+                WalOperation::Create { model_path: model_path.clone(), data: data.to_string() }
+            }
             CrudOperation::Update { model_path, id, data } => WalOperation::Update {
                 model_path: model_path.clone(),
                 id: id.clone(),
                 data: data.to_string(),
             },
-            CrudOperation::Delete { model_path, id } => WalOperation::Delete {
-                model_path: model_path.clone(),
-                id: id.clone(),
-            },
-            CrudOperation::MigrationBegin {
-                from_version,
-                to_version,
-                migration_id,
-            } => WalOperation::Migration {
-                migration_type: "begin".to_string(),
-                payload: serde_json::json!({
-                    "from_version": from_version,
-                    "to_version": to_version,
-                    "migration_id": migration_id.to_string(),
-                })
-                .to_string(),
-            },
-            CrudOperation::MigrationStep {
-                migration_id,
-                step_index,
-                operation,
-            } => WalOperation::Migration {
-                migration_type: "step".to_string(),
-                payload: serde_json::json!({
-                    "migration_id": migration_id.to_string(),
-                    "step_index": step_index,
-                    "operation": operation,
-                })
-                .to_string(),
-            },
-            CrudOperation::MigrationCommit {
-                migration_id,
-                checksum,
-            } => WalOperation::Migration {
+            CrudOperation::Delete { model_path, id } => {
+                WalOperation::Delete { model_path: model_path.clone(), id: id.clone() }
+            }
+            CrudOperation::MigrationBegin { from_version, to_version, migration_id } => {
+                WalOperation::Migration {
+                    migration_type: "begin".to_string(),
+                    payload: serde_json::json!({
+                        "from_version": from_version,
+                        "to_version": to_version,
+                        "migration_id": migration_id.to_string(),
+                    })
+                    .to_string(),
+                }
+            }
+            CrudOperation::MigrationStep { migration_id, step_index, operation } => {
+                WalOperation::Migration {
+                    migration_type: "step".to_string(),
+                    payload: serde_json::json!({
+                        "migration_id": migration_id.to_string(),
+                        "step_index": step_index,
+                        "operation": operation,
+                    })
+                    .to_string(),
+                }
+            }
+            CrudOperation::MigrationCommit { migration_id, checksum } => WalOperation::Migration {
                 migration_type: "commit".to_string(),
                 payload: serde_json::json!({
                     "migration_id": migration_id.to_string(),
@@ -118,19 +109,17 @@ impl From<&CrudOperation> for WalOperation {
                 })
                 .to_string(),
             },
-            CrudOperation::MigrationRollback {
-                migration_id,
-                failed_step,
-                reason,
-            } => WalOperation::Migration {
-                migration_type: "rollback".to_string(),
-                payload: serde_json::json!({
-                    "migration_id": migration_id.to_string(),
-                    "failed_step": failed_step,
-                    "reason": reason,
-                })
-                .to_string(),
-            },
+            CrudOperation::MigrationRollback { migration_id, failed_step, reason } => {
+                WalOperation::Migration {
+                    migration_type: "rollback".to_string(),
+                    payload: serde_json::json!({
+                        "migration_id": migration_id.to_string(),
+                        "failed_step": failed_step,
+                        "reason": reason,
+                    })
+                    .to_string(),
+                }
+            }
         }
     }
 }
@@ -147,14 +136,10 @@ impl WalOperation {
                 id: id.clone(),
                 data: serde_json::from_str(data).unwrap_or(serde_json::Value::Null),
             },
-            WalOperation::Delete { model_path, id } => CrudOperation::Delete {
-                model_path: model_path.clone(),
-                id: id.clone(),
-            },
-            WalOperation::Migration {
-                migration_type,
-                payload,
-            } => {
+            WalOperation::Delete { model_path, id } => {
+                CrudOperation::Delete { model_path: model_path.clone(), id: id.clone() }
+            }
+            WalOperation::Migration { migration_type, payload } => {
                 let json: serde_json::Value =
                     serde_json::from_str(payload).unwrap_or(serde_json::Value::Null);
 
@@ -241,11 +226,7 @@ pub struct GroupCommitConfig {
 
 impl Default for GroupCommitConfig {
     fn default() -> Self {
-        Self {
-            flush_interval_ms: 5,
-            max_buffer_size: 100,
-            enabled: true,
-        }
+        Self { flush_interval_ms: 5, max_buffer_size: 100, enabled: true }
     }
 }
 
@@ -287,7 +268,10 @@ impl WriteAheadLog {
     }
 
     /// Create WAL with custom group commit configuration
-    pub fn with_config<P: AsRef<Path>>(path: P, config: GroupCommitConfig) -> std::io::Result<Self> {
+    pub fn with_config<P: AsRef<Path>>(
+        path: P,
+        config: GroupCommitConfig,
+    ) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
 
         // Create parent directory if needed
@@ -347,10 +331,7 @@ impl WriteAheadLog {
 
         {
             let mut buffer = self.pending_buffer.write().await;
-            buffer.push(PendingEntry {
-                entry: entry.clone(),
-                notify: notify.clone(),
-            });
+            buffer.push(PendingEntry { entry: entry.clone(), notify: notify.clone() });
 
             // Update last buffered index
             self.last_buffered_index.store(entry.log_id.index, Ordering::SeqCst);
@@ -475,16 +456,13 @@ impl WriteAheadLog {
 
         // Serialize with rkyv
         let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         // Calculate checksum (simple FNV-1a for speed)
         let checksum = Self::fnv1a_hash(&bytes);
 
         // Open file for append
-        let mut file = OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&self.path)?;
+        let mut file = OpenOptions::new().append(true).open(&self.path)?;
 
         // Write header: length (8 bytes) + checksum (8 bytes)
         file.write_all(&(bytes.len() as u64).to_le_bytes())?;
@@ -514,10 +492,7 @@ impl WriteAheadLog {
 
         let _guard = self.write_lock.write().await;
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&self.path)?;
+        let mut file = OpenOptions::new().append(true).open(&self.path)?;
 
         let mut total_written = 0u64;
         let mut last_index = 0u64;
@@ -525,7 +500,7 @@ impl WriteAheadLog {
         for entry in entries {
             let wal_entry = WalEntry::from_log_entry(entry);
             let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             let checksum = Self::fnv1a_hash(&bytes);
 
@@ -610,10 +585,7 @@ impl WriteAheadLog {
     /// Read entries from a specific index
     pub fn read_from(&self, from_index: u64) -> std::io::Result<Vec<LogEntry>> {
         let all_entries = self.read_all()?;
-        Ok(all_entries
-            .into_iter()
-            .filter(|e| e.log_id.index >= from_index)
-            .collect())
+        Ok(all_entries.into_iter().filter(|e| e.log_id.index >= from_index).collect())
     }
 
     /// Truncate WAL after a specific index (for rollback)
@@ -624,10 +596,8 @@ impl WriteAheadLog {
         let entries = self.read_all()?;
 
         // Filter entries to keep
-        let entries_to_keep: Vec<_> = entries
-            .into_iter()
-            .filter(|e| e.log_id.index <= index)
-            .collect();
+        let entries_to_keep: Vec<_> =
+            entries.into_iter().filter(|e| e.log_id.index <= index).collect();
 
         // Rewrite WAL
         let mut file = File::create(&self.path)?;
@@ -639,7 +609,7 @@ impl WriteAheadLog {
         for entry in &entries_to_keep {
             let wal_entry = WalEntry::from_log_entry(entry);
             let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             let checksum = Self::fnv1a_hash(&bytes);
 
@@ -653,10 +623,8 @@ impl WriteAheadLog {
         file.sync_all()?;
 
         self.write_position.store(position, Ordering::SeqCst);
-        self.last_synced_index.store(
-            entries_to_keep.last().map(|e| e.log_id.index).unwrap_or(0),
-            Ordering::SeqCst,
-        );
+        self.last_synced_index
+            .store(entries_to_keep.last().map(|e| e.log_id.index).unwrap_or(0), Ordering::SeqCst);
 
         Ok(())
     }

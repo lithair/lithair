@@ -21,22 +21,24 @@ pub struct RelationRegistry {
 
 impl RelationRegistry {
     pub fn new() -> Self {
-        Self {
-            sources: Arc::new(RwLock::new(HashMap::new())),
-        }
+        Self { sources: Arc::new(RwLock::new(HashMap::new())) }
     }
 
     /// Register a data source for a specific collection name
     pub fn register(&self, collection_name: &str, source: Arc<dyn DataSource>) {
         self.sources
             .write()
-            .unwrap()
+            .expect("relation sources lock poisoned")
             .insert(collection_name.to_string(), source);
     }
 
     /// Get a data source by name
     pub fn get(&self, collection_name: &str) -> Option<Arc<dyn DataSource>> {
-        self.sources.read().unwrap().get(collection_name).cloned()
+        self.sources
+            .read()
+            .expect("relation sources lock poisoned")
+            .get(collection_name)
+            .cloned()
     }
 }
 
@@ -162,20 +164,11 @@ mod tests {
     fn test_auto_joiner_expand() {
         let registry = RelationRegistry::new();
         let mut role_data = HashMap::new();
-        role_data.insert(
-            "r1".to_string(),
-            serde_json::json!({ "id": "r1", "title": "Admin" }),
-        );
-        registry.register(
-            "roles",
-            Arc::new(MockDataSource { data: role_data }),
-        );
+        role_data.insert("r1".to_string(), serde_json::json!({ "id": "r1", "title": "Admin" }));
+        registry.register("roles", Arc::new(MockDataSource { data: role_data }));
 
-        let user = TestUser {
-            id: "u1".to_string(),
-            name: "Alice".to_string(),
-            role_id: "r1".to_string(),
-        };
+        let user =
+            TestUser { id: "u1".to_string(), name: "Alice".to_string(), role_id: "r1".to_string() };
 
         let expanded = AutoJoiner::expand(&user, &TestModelSpec, &registry).unwrap();
 

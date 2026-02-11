@@ -58,12 +58,7 @@ impl GoogleProvider {
         redirect_uri: String,
         default_role: String,
     ) -> Self {
-        Self {
-            client_id,
-            client_secret,
-            redirect_uri,
-            default_role,
-        }
+        Self { client_id, client_secret, redirect_uri, default_role }
     }
 
     /// Get the OAuth2 authorization URL
@@ -129,10 +124,8 @@ impl GoogleProvider {
             return Err(anyhow!("User info request failed: {}", error_text));
         }
 
-        let user_info: GoogleUserInfo = response
-            .json()
-            .await
-            .map_err(|e| anyhow!("Failed to parse user info: {}", e))?;
+        let user_info: GoogleUserInfo =
+            response.json().await.map_err(|e| anyhow!("Failed to parse user info: {}", e))?;
 
         Ok(user_info)
     }
@@ -143,32 +136,14 @@ impl AuthProvider for GoogleProvider {
         "google"
     }
 
-    fn authenticate(&self, request: &Request<Full<Bytes>>) -> Result<AuthContext> {
-        // Extract access token from Authorization header
-        let token = request
-            .headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "))
-            .ok_or_else(|| anyhow!("Missing or invalid Authorization header"))?;
-
-        // In a real implementation, you would:
-        // 1. Validate the token with Google
-        // 2. Get user info
-        // 3. Map user to roles
-        //
-        // For now, we'll accept any Bearer token as valid
-        // and return a basic auth context
-
-        Ok(AuthContext {
-            user_id: Some(token.to_string()),
-            roles: vec![self.default_role.clone()],
-            groups: vec![],
-            authenticated: true,
-            provider: "google".to_string(),
-            mfa_verified: false,
-            metadata: std::collections::HashMap::new(),
-        })
+    fn authenticate(&self, _request: &Request<Full<Bytes>>) -> Result<AuthContext> {
+        // Google OAuth2 requires async token validation via the Google API.
+        // Use the async methods (exchange_code + get_user_info) instead.
+        // The synchronous AuthProvider trait cannot perform HTTP calls to Google.
+        Err(anyhow!(
+            "Google OAuth2 requires async authentication. \
+             Use GoogleProvider::exchange_code() and get_user_info() directly."
+        ))
     }
 }
 

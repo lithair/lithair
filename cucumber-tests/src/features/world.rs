@@ -131,16 +131,10 @@ pub struct TestData {
 }
 
 // État de test pour le moteur Lithair
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TestAppState {
     pub data: TestData,
     pub version: u64,
-}
-
-impl Default for TestAppState {
-    fn default() -> Self {
-        Self { data: TestData::default(), version: 0 }
-    }
 }
 
 impl lithair_core::model_inspect::Inspectable for TestAppState {
@@ -354,7 +348,7 @@ impl lithair_core::RaftstoneApplication for TestEngineApp {
 
     fn event_deserializers(
     ) -> Vec<Box<dyn lithair_core::engine::EventDeserializer<State = Self::State>>> {
-        vec![Box::new(VersionedArticleCreatedDeserializer::default())]
+        vec![Box::new(VersionedArticleCreatedDeserializer)]
     }
 }
 
@@ -414,17 +408,23 @@ impl Default for LithairWorld {
             engine: Arc::new(StateEngine::new(TestAppState::default())),
             storage: Arc::new(Mutex::new(None)),
             async_writer: Arc::new(Mutex::new(None)),
-            scc2_articles: Arc::new(lithair_core::engine::Scc2Engine::new(
-                        Arc::new(std::sync::RwLock::new(lithair_core::engine::EventStore::new("test_scc2").expect("Failed to create EventStore"))),
-                lithair_core::engine::Scc2EngineConfig {
-                    verbose_logging: false,
-                    enable_snapshots: true,
-                    snapshot_interval: 1000,
-                    enable_deduplication: true,
-                    auto_persist_writes: true,
-                    force_immediate_persistence: false,
-                }
-            ).unwrap()),
+            scc2_articles: Arc::new(
+                lithair_core::engine::Scc2Engine::new(
+                    Arc::new(std::sync::RwLock::new(
+                        lithair_core::engine::EventStore::new("test_scc2")
+                            .expect("Failed to create EventStore"),
+                    )),
+                    lithair_core::engine::Scc2EngineConfig {
+                        verbose_logging: false,
+                        enable_snapshots: true,
+                        snapshot_interval: 1000,
+                        enable_deduplication: true,
+                        auto_persist_writes: true,
+                        force_immediate_persistence: false,
+                    },
+                )
+                .unwrap(),
+            ),
             temp_dir: Arc::new(Mutex::new(None)),
             server_handle: Arc::new(Mutex::new(None)),
             cluster_nodes: Arc::new(Mutex::new(Vec::new())),
@@ -578,8 +578,7 @@ impl LithairWorld {
     pub async fn start_server(&mut self, requested_port: u16, _binary: &str) -> Result<(), String> {
         // Pick port (0 = random)
         let port = if requested_port == 0 {
-            portpicker::pick_unused_port()
-                .ok_or_else(|| "No available port".to_string())?
+            portpicker::pick_unused_port().ok_or_else(|| "No available port".to_string())?
         } else {
             requested_port
         };
@@ -1037,19 +1036,20 @@ impl LithairWorld {
 
         // Allouer les ports d'abord
         for _ in 0..node_count {
-            let port = portpicker::pick_unused_port()
-                .ok_or_else(|| "No port available".to_string())?;
+            let port =
+                portpicker::pick_unused_port().ok_or_else(|| "No port available".to_string())?;
             ports.push(port);
         }
 
         // Construire les listes de peers pour chaque nœud
         for i in 0..node_count {
-            let temp_dir = tempfile::tempdir()
-                .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+            let temp_dir =
+                tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
             let data_dir = temp_dir.path().to_path_buf();
 
             // Les peers sont tous les autres nœuds
-            let peers: Vec<u16> = ports.iter()
+            let peers: Vec<u16> = ports
+                .iter()
                 .enumerate()
                 .filter(|(idx, _)| *idx != i)
                 .map(|(_, port)| *port)
@@ -1059,31 +1059,29 @@ impl LithairWorld {
             let node_id = i as u64;
 
             // Construire les arguments --peers
-            let peers_args: Vec<String> = peers.iter()
-                .flat_map(|p| vec!["--peers".to_string(), p.to_string()])
-                .collect();
+            let peers_args: Vec<String> =
+                peers.iter().flat_map(|p| vec!["--peers".to_string(), p.to_string()]).collect();
 
-            println!("🚀 Starting real node {} on port {} with peers {:?}...", node_id, port, peers);
+            println!(
+                "🚀 Starting real node {} on port {} with peers {:?}...",
+                node_id, port, peers
+            );
 
             // Démarrer le processus
             let mut cmd = Command::new(&binary_path);
-            cmd.arg("--node-id").arg(node_id.to_string())
-                .arg("--port").arg(port.to_string())
+            cmd.arg("--node-id")
+                .arg(node_id.to_string())
+                .arg("--port")
+                .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
-            let process = cmd.spawn()
-                .map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
+            let process =
+                cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
 
-            let node = RealClusterNode {
-                node_id,
-                port,
-                process: Some(process),
-                data_dir,
-                peers,
-            };
+            let node = RealClusterNode { node_id, port, process: Some(process), data_dir, peers };
 
             nodes.push(node);
             temp_dirs.push(temp_dir);
@@ -1102,28 +1100,38 @@ impl LithairWorld {
 
             // LithairServer uses /status endpoint, not /health
             let url = format!("http://127.0.0.1:{}/status", port);
-            let mut retries = 20;  // More retries with longer total wait
+            let mut retries = 20; // More retries with longer total wait
 
             while retries > 0 {
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         let body = resp.text().await.unwrap_or_default();
-                        println!("✅ Node {} ready on port {} - status: {}", i, port,
-                                 body.chars().take(100).collect::<String>());
+                        println!(
+                            "✅ Node {} ready on port {} - status: {}",
+                            i,
+                            port,
+                            body.chars().take(100).collect::<String>()
+                        );
                         break;
                     }
                     Ok(resp) => {
                         let status = resp.status();
                         retries -= 1;
                         if retries == 0 {
-                            return Err(format!("Node {} returned status {} on port {}", i, status, port));
+                            return Err(format!(
+                                "Node {} returned status {} on port {}",
+                                i, status, port
+                            ));
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     }
                     Err(e) => {
                         retries -= 1;
                         if retries == 0 {
-                            return Err(format!("Node {} failed to start on port {}: {}", i, port, e));
+                            return Err(format!(
+                                "Node {} failed to start on port {}: {}",
+                                i, port, e
+                            ));
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     }
@@ -1163,7 +1171,10 @@ impl LithairWorld {
     /// Démarre un vrai cluster LithairServer avec répertoire de données persistant
     ///
     /// Les données sont stockées dans /tmp/lithair-stress-test/ et nettoyées au démarrage
-    pub async fn start_real_cluster_persistent(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
+    pub async fn start_real_cluster_persistent(
+        &mut self,
+        node_count: usize,
+    ) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
         // Répertoire persistant pour les données de test
@@ -1197,8 +1208,8 @@ impl LithairWorld {
 
         // Allouer les ports d'abord
         for _ in 0..node_count {
-            let port = portpicker::pick_unused_port()
-                .ok_or_else(|| "No port available".to_string())?;
+            let port =
+                portpicker::pick_unused_port().ok_or_else(|| "No port available".to_string())?;
             ports.push(port);
         }
 
@@ -1209,7 +1220,8 @@ impl LithairWorld {
                 .map_err(|e| format!("Failed to create node data dir: {}", e))?;
 
             // Les peers sont tous les autres nœuds
-            let peers: Vec<u16> = ports.iter()
+            let peers: Vec<u16> = ports
+                .iter()
                 .enumerate()
                 .filter(|(idx, _)| *idx != i)
                 .map(|(_, port)| *port)
@@ -1219,32 +1231,29 @@ impl LithairWorld {
             let node_id = i as u64;
 
             // Construire les arguments --peers
-            let peers_args: Vec<String> = peers.iter()
-                .flat_map(|p| vec!["--peers".to_string(), p.to_string()])
-                .collect();
+            let peers_args: Vec<String> =
+                peers.iter().flat_map(|p| vec!["--peers".to_string(), p.to_string()]).collect();
 
-            println!("🚀 Starting real node {} on port {} with peers {:?} (data: {:?})...",
-                     node_id, port, peers, data_dir);
+            println!(
+                "🚀 Starting real node {} on port {} with peers {:?} (data: {:?})...",
+                node_id, port, peers, data_dir
+            );
 
             // Démarrer le processus
             let mut cmd = Command::new(&binary_path);
-            cmd.arg("--node-id").arg(node_id.to_string())
-                .arg("--port").arg(port.to_string())
+            cmd.arg("--node-id")
+                .arg(node_id.to_string())
+                .arg("--port")
+                .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
-            let process = cmd.spawn()
-                .map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
+            let process =
+                cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
 
-            let node = RealClusterNode {
-                node_id,
-                port,
-                process: Some(process),
-                data_dir,
-                peers,
-            };
+            let node = RealClusterNode { node_id, port, process: Some(process), data_dir, peers };
 
             nodes.push(node);
         }
@@ -1268,21 +1277,33 @@ impl LithairWorld {
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         let body = resp.text().await.unwrap_or_default();
-                        println!("✅ Node {} ready on port {} - status: {}", i, port,
-                                 body.chars().take(100).collect::<String>());
+                        println!(
+                            "✅ Node {} ready on port {} - status: {}",
+                            i,
+                            port,
+                            body.chars().take(100).collect::<String>()
+                        );
                         break;
                     }
                     Ok(resp) => {
                         retries -= 1;
                         if retries == 0 {
-                            return Err(format!("Node {} returned status {} on port {}", i, resp.status(), port));
+                            return Err(format!(
+                                "Node {} returned status {} on port {}",
+                                i,
+                                resp.status(),
+                                port
+                            ));
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     }
                     Err(e) => {
                         retries -= 1;
                         if retries == 0 {
-                            return Err(format!("Node {} failed to start on port {}: {}", i, port, e));
+                            return Err(format!(
+                                "Node {} failed to start on port {}: {}",
+                                i, port, e
+                            ));
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     }
@@ -1330,11 +1351,7 @@ impl LithairWorld {
             _ => return Err(format!("Unsupported method: {}", method)),
         };
 
-        let request = if let Some(body) = body {
-            request.json(&body)
-        } else {
-            request
-        };
+        let request = if let Some(body) = body { request.json(&body) } else { request };
 
         match request.send().await {
             Ok(response) => {
@@ -1344,11 +1361,13 @@ impl LithairWorld {
                 self.last_response = Some(format!("Status: {}, Body: {}", status.as_u16(), text));
 
                 // Try to parse as JSON, or wrap in a simple object
-                let json_result: serde_json::Value = serde_json::from_str(&text)
-                    .unwrap_or_else(|_| serde_json::json!({
-                        "status": status.as_u16(),
-                        "body": text
-                    }));
+                let json_result: serde_json::Value =
+                    serde_json::from_str(&text).unwrap_or_else(|_| {
+                        serde_json::json!({
+                            "status": status.as_u16(),
+                            "body": text
+                        })
+                    });
 
                 Ok(json_result)
             }
@@ -1372,9 +1391,6 @@ impl LithairWorld {
     /// Retourne le port du leader (node_id = 0)
     pub async fn get_real_leader_port(&self) -> u16 {
         let nodes = self.real_cluster_nodes.lock().await;
-        nodes.iter()
-            .find(|n| n.node_id == 0)
-            .map(|n| n.port)
-            .unwrap_or(0)
+        nodes.iter().find(|n| n.node_id == 0).map(|n| n.port).unwrap_or(0)
     }
 }

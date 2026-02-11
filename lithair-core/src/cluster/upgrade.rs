@@ -23,13 +23,7 @@ pub struct Version {
 impl Version {
     /// Create a new Version
     pub fn new(major: u32, minor: u32, patch: u32, schema_hash: String, build_id: String) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-            schema_hash,
-            build_id,
-        }
+        Self { major, minor, patch, schema_hash, build_id }
     }
 
     /// Check if this version can read data from another version
@@ -50,8 +44,6 @@ impl std::fmt::Display for Version {
     }
 }
 
-
-
 /// Extended node operating mode for upgrade coordination
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum NodeMode {
@@ -69,8 +61,6 @@ pub enum NodeMode {
     /// Ready mode - upgrade complete, waiting for cluster coordination
     Ready,
 }
-
-
 
 /// Field type for schema definitions
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,11 +118,7 @@ pub enum SchemaChange {
     /// Remove field from model
     RemoveField { model: String, field: String },
     /// Rename field
-    RenameField {
-        model: String,
-        old_name: String,
-        new_name: String,
-    },
+    RenameField { model: String, old_name: String, new_name: String },
     /// Change field type (with transformation)
     ChangeFieldType {
         model: String,
@@ -149,11 +135,7 @@ pub enum SchemaChange {
         unique: bool,
     },
     /// Custom operation for complex migrations
-    Custom {
-        description: String,
-        forward: String,
-        backward: String,
-    },
+    Custom { description: String, forward: String, backward: String },
 }
 
 /// Status of a migration
@@ -214,12 +196,14 @@ impl MigrationContext {
     }
 
     /// Record a completed step with its rollback operation
-    pub fn record_step(&mut self, step_index: u32, rollback_op: SchemaChange, data_snapshot: Option<serde_json::Value>) {
-        self.rollback_log.push(RollbackOp {
-            step_index,
-            operation: rollback_op,
-            data_snapshot,
-        });
+    pub fn record_step(
+        &mut self,
+        step_index: u32,
+        rollback_op: SchemaChange,
+        data_snapshot: Option<serde_json::Value>,
+    ) {
+        self.rollback_log
+            .push(RollbackOp { step_index, operation: rollback_op, data_snapshot });
         self.current_step = step_index + 1;
         self.updated_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -307,7 +291,7 @@ impl MigrationManager {
         let context = MigrationContext::new(id, from_version, to_version);
         active.insert(id, context);
 
-        log::info!("🔄 Migration {} started", id);
+        log::info!("Migration {} started", id);
         Ok(())
     }
 
@@ -326,21 +310,17 @@ impl MigrationManager {
         data_snapshot: Option<serde_json::Value>,
     ) -> Result<(), String> {
         let mut active = self.active.write().await;
-        let context = active
-            .get_mut(id)
-            .ok_or_else(|| format!("Migration {} not found", id))?;
+        let context = active.get_mut(id).ok_or_else(|| format!("Migration {} not found", id))?;
 
         context.record_step(step_index, rollback_op, data_snapshot);
-        log::debug!("📝 Migration {} step {} recorded", id, step_index);
+        log::debug!("Migration {} step {} recorded", id, step_index);
         Ok(())
     }
 
     /// Commit a migration
     pub async fn commit_migration(&self, id: &Uuid, new_version: Version) -> Result<(), String> {
         let mut active = self.active.write().await;
-        let mut context = active
-            .remove(id)
-            .ok_or_else(|| format!("Migration {} not found", id))?;
+        let mut context = active.remove(id).ok_or_else(|| format!("Migration {} not found", id))?;
 
         context.commit();
 
@@ -353,16 +333,14 @@ impl MigrationManager {
         let mut completed = self.completed.write().await;
         completed.push(context);
 
-        log::info!("✅ Migration {} committed", id);
+        log::info!("Migration {} committed", id);
         Ok(())
     }
 
     /// Rollback a migration
     pub async fn rollback_migration(&self, id: &Uuid) -> Result<Vec<RollbackOp>, String> {
         let mut active = self.active.write().await;
-        let mut context = active
-            .remove(id)
-            .ok_or_else(|| format!("Migration {} not found", id))?;
+        let mut context = active.remove(id).ok_or_else(|| format!("Migration {} not found", id))?;
 
         let rollback_ops: Vec<RollbackOp> = context.rollback_log.drain(..).rev().collect();
         context.rollback();
@@ -371,7 +349,7 @@ impl MigrationManager {
         let mut completed = self.completed.write().await;
         completed.push(context);
 
-        log::warn!("⚠️ Migration {} rolled back", id);
+        log::warn!("Migration {} rolled back", id);
         Ok(rollback_ops)
     }
 
@@ -479,10 +457,8 @@ mod tests {
         let mut ctx = MigrationContext::new(id, from, to);
 
         // Record a step with rollback operation
-        let rollback_op = SchemaChange::RemoveField {
-            model: "User".to_string(),
-            field: "email".to_string(),
-        };
+        let rollback_op =
+            SchemaChange::RemoveField { model: "User".to_string(), field: "email".to_string() };
         ctx.record_step(0, rollback_op.clone(), None);
 
         assert_eq!(ctx.current_step, 1);
@@ -560,14 +536,10 @@ mod tests {
         manager.begin_migration(id, initial_version.clone(), to_version).await.unwrap();
 
         // Record some steps
-        let rollback_op1 = SchemaChange::RemoveField {
-            model: "User".to_string(),
-            field: "email".to_string(),
-        };
-        let rollback_op2 = SchemaChange::RemoveField {
-            model: "User".to_string(),
-            field: "phone".to_string(),
-        };
+        let rollback_op1 =
+            SchemaChange::RemoveField { model: "User".to_string(), field: "email".to_string() };
+        let rollback_op2 =
+            SchemaChange::RemoveField { model: "User".to_string(), field: "phone".to_string() };
         manager.record_step(&id, 0, rollback_op1, None).await.unwrap();
         manager.record_step(&id, 1, rollback_op2, None).await.unwrap();
 

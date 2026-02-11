@@ -246,10 +246,7 @@ async fn when_create_snapshot_with_count(
     aggregate_id: String,
     _num_elements: usize,
 ) {
-    println!(
-        "📸 Création snapshot pour '{}' ({} événements)...",
-        aggregate_id, _num_elements
-    );
+    println!("📸 Création snapshot pour '{}' ({} événements)...", aggregate_id, _num_elements);
 
     let state = serde_json::json!({
         "count": _num_elements,
@@ -314,9 +311,7 @@ async fn when_measure_full_recovery_time(world: &mut LithairWorld, aggregate_id:
     {
         let store_guard = world.multi_file_store.lock().await;
         let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
-        let _events = store
-            .read_aggregate_envelopes(&aggregate_id)
-            .expect("Failed to read events");
+        let _events = store.read_aggregate_envelopes(&aggregate_id).expect("Failed to read events");
     }
 
     let elapsed = start.elapsed();
@@ -324,18 +319,12 @@ async fn when_measure_full_recovery_time(world: &mut LithairWorld, aggregate_id:
     let mut metrics = world.metrics.lock().await;
     metrics.total_duration = elapsed;
 
-    println!(
-        "✅ Récupération complète en {:.2}ms",
-        elapsed.as_secs_f64() * 1000.0
-    );
+    println!("✅ Récupération complète en {:.2}ms", elapsed.as_secs_f64() * 1000.0);
 }
 
 #[when(expr = "je mesure le temps de récupération après snapshot pour {string}")]
 async fn when_measure_snapshot_recovery_time(world: &mut LithairWorld, aggregate_id: String) {
-    println!(
-        "⏱️ Mesure temps de récupération après snapshot pour '{}'...",
-        aggregate_id
-    );
+    println!("⏱️ Mesure temps de récupération après snapshot pour '{}'...", aggregate_id);
 
     let start = Instant::now();
 
@@ -344,9 +333,7 @@ async fn when_measure_snapshot_recovery_time(world: &mut LithairWorld, aggregate
         let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
 
         // Charger le snapshot
-        let _snapshot = store
-            .load_snapshot(Some(&aggregate_id))
-            .expect("Failed to load snapshot");
+        let _snapshot = store.load_snapshot(Some(&aggregate_id)).expect("Failed to load snapshot");
 
         // Lire les événements après le snapshot
         let _events = store
@@ -359,10 +346,7 @@ async fn when_measure_snapshot_recovery_time(world: &mut LithairWorld, aggregate
     let mut metrics = world.metrics.lock().await;
     metrics.snapshot_read_duration = Some(elapsed);
 
-    println!(
-        "✅ Récupération avec snapshot en {:.2}ms",
-        elapsed.as_secs_f64() * 1000.0
-    );
+    println!("✅ Récupération avec snapshot en {:.2}ms", elapsed.as_secs_f64() * 1000.0);
 }
 
 // ==================== VALIDATIONS EVENTS ====================
@@ -410,10 +394,7 @@ async fn then_average_throughput_must_be_above(world: &mut LithairWorld, min_thr
         min_throughput
     );
 
-    println!(
-        "✅ Throughput moyen validé: {:.0} evt/s >= {} evt/s",
-        actual, min_throughput
-    );
+    println!("✅ Throughput moyen validé: {:.0} evt/s >= {} evt/s", actual, min_throughput);
 }
 
 #[then(expr = "le temps total de création doit être inférieur à {int} secondes")]
@@ -436,17 +417,11 @@ async fn then_snapshot_recovery_must_be_faster(world: &mut LithairWorld, min_rat
     let metrics = world.metrics.lock().await;
 
     let full_read = metrics.total_duration.as_secs_f64();
-    let snapshot_read = metrics
-        .snapshot_read_duration
-        .expect("No snapshot read duration")
-        .as_secs_f64();
+    let snapshot_read =
+        metrics.snapshot_read_duration.expect("No snapshot read duration").as_secs_f64();
 
     // Éviter division par zéro
-    let ratio = if snapshot_read > 0.0 {
-        full_read / snapshot_read
-    } else {
-        f64::INFINITY
-    };
+    let ratio = if snapshot_read > 0.0 { full_read / snapshot_read } else { f64::INFINITY };
 
     println!(
         "📊 Performance recovery: complète={:.2}ms, snapshot={:.2}ms, ratio={:.1}x",
@@ -462,19 +437,13 @@ async fn then_snapshot_recovery_must_be_faster(world: &mut LithairWorld, min_rat
         min_ratio
     );
 
-    println!(
-        "✅ Performance recovery validée: {:.1}x >= {}x",
-        ratio, min_ratio
-    );
+    println!("✅ Performance recovery validée: {:.1}x >= {}x", ratio, min_ratio);
 }
 
 #[then(expr = "le temps de récupération avec snapshot doit être inférieur à {int} secondes")]
 async fn then_snapshot_recovery_time_must_be_below(world: &mut LithairWorld, max_seconds: u64) {
     let metrics = world.metrics.lock().await;
-    let elapsed = metrics
-        .snapshot_read_duration
-        .expect("No snapshot read duration")
-        .as_secs_f64();
+    let elapsed = metrics.snapshot_read_duration.expect("No snapshot read duration").as_secs_f64();
 
     assert!(
         elapsed < max_seconds as f64,
@@ -582,11 +551,7 @@ async fn then_each_aggregate_must_have_events(world: &mut LithairWorld, expected
         );
     }
 
-    println!(
-        "✅ Tous les {} aggregates ont {} événements",
-        aggregates.len(),
-        expected_count
-    );
+    println!("✅ Tous les {} aggregates ont {} événements", aggregates.len(), expected_count);
 }
 
 #[then("la récupération distribuée doit utiliser les snapshots")]
@@ -617,8 +582,5 @@ async fn then_distributed_recovery_must_use_snapshots(world: &mut LithairWorld) 
         elapsed.as_secs_f64()
     );
 
-    println!(
-        "✅ Récupération distribuée avec snapshots en {:.2}s",
-        elapsed.as_secs_f64()
-    );
+    println!("✅ Récupération distribuée avec snapshots en {:.2}s", elapsed.as_secs_f64());
 }

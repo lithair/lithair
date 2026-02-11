@@ -30,17 +30,16 @@ impl RbacUser {
     ///
     /// The password will be hashed using Argon2id before storage.
     /// This is the recommended way to create users.
-    pub fn new(username: impl Into<String>, password: impl Into<String>, role: impl Into<String>) -> Self {
+    pub fn new(
+        username: impl Into<String>,
+        password: impl Into<String>,
+        role: impl Into<String>,
+    ) -> Self {
         let password_str = password.into();
         let hashed = hash_password(&password_str)
-            .unwrap_or_else(|_| password_str.clone()); // Fallback to plaintext if hashing fails
+            .expect("Argon2 password hashing should not fail with valid input");
 
-        Self {
-            username: username.into(),
-            password_hash: hashed,
-            role: role.into(),
-            active: true,
-        }
+        Self { username: username.into(), password_hash: hashed, role: role.into(), active: true }
     }
 
     /// Create a new user with a pre-hashed password
@@ -49,7 +48,7 @@ impl RbacUser {
     pub fn new_with_hashed_password(
         username: impl Into<String>,
         password_hash: impl Into<String>,
-        role: impl Into<String>
+        role: impl Into<String>,
     ) -> Self {
         Self {
             username: username.into(),
@@ -64,14 +63,7 @@ impl RbacUser {
     /// Returns true if the password matches, false otherwise.
     /// Uses constant-time comparison to prevent timing attacks.
     pub fn verify_password(&self, password: &str) -> bool {
-        // Check if it's an Argon2 hash
-        if self.password_hash.starts_with("$argon2") {
-            verify_password(password, &self.password_hash).unwrap_or(false)
-        } else {
-            // Legacy plaintext comparison for migration
-            log::warn!("User '{}' has plaintext password - please migrate to Argon2", self.username);
-            self.password_hash == password
-        }
+        verify_password(password, &self.password_hash).unwrap_or(false)
     }
 
     /// Check if password needs to be rehashed (e.g., still plaintext)
@@ -81,23 +73,23 @@ impl RbacUser {
 
     /// Rehash password if needed (for migration)
     pub fn rehash_password(&mut self, password: &str) -> Result<(), String> {
-        self.password_hash = hash_password(password)
-            .map_err(|e| format!("Failed to hash password: {}", e))?;
+        self.password_hash =
+            hash_password(password).map_err(|e| format!("Failed to hash password: {}", e))?;
         Ok(())
     }
 }
 
 /// Declarative Server-wide RBAC configuration
 pub struct ServerRbacConfig {
-    /// Role definitions: role_name -> Vec<permissions>
+    /// Role definitions: role_name -> `Vec<permissions>`
     pub roles: Vec<(String, Vec<String>)>,
-    
+
     /// Users for authentication
     pub users: Vec<RbacUser>,
-    
+
     /// Session store directory path
     pub session_store_path: Option<String>,
-    
+
     /// Session duration in seconds (default: 8 hours)
     pub session_duration: u64,
 }
@@ -121,43 +113,43 @@ impl ServerRbacConfig {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Add a role with permissions
     pub fn with_role(mut self, role: impl Into<String>, permissions: Vec<String>) -> Self {
         self.roles.push((role.into(), permissions));
         self
     }
-    
+
     /// Add multiple roles from definitions
     pub fn with_roles(mut self, roles: Vec<(String, Vec<String>)>) -> Self {
         self.roles = roles;
         self
     }
-    
+
     /// Add a user
     pub fn with_user(mut self, user: RbacUser) -> Self {
         self.users.push(user);
         self
     }
-    
+
     /// Add multiple users
     pub fn with_users(mut self, users: Vec<RbacUser>) -> Self {
         self.users = users;
         self
     }
-    
+
     /// Set session store path
     pub fn with_session_store(mut self, path: impl Into<String>) -> Self {
         self.session_store_path = Some(path.into());
         self
     }
-    
+
     /// Set session duration in seconds
     pub fn with_session_duration(mut self, duration: u64) -> Self {
         self.session_duration = duration;
         self
     }
-    
+
     /// Create Role objects from definitions
     pub fn create_roles(&self) -> Vec<Role> {
         self.roles
@@ -171,7 +163,7 @@ impl ServerRbacConfig {
             })
             .collect()
     }
-    
+
     /// Create a permission checker from role definitions
     pub fn create_permission_checker(&self) -> Arc<dyn PermissionChecker> {
         Arc::new(DeclarativePermissionChecker::new(self.create_roles()))
@@ -185,11 +177,8 @@ pub struct DeclarativePermissionChecker {
 
 impl DeclarativePermissionChecker {
     pub fn new(roles: Vec<Role>) -> Self {
-        let role_map = roles
-            .into_iter()
-            .map(|role| (role.name.clone(), role))
-            .collect();
-        
+        let role_map = roles.into_iter().map(|role| (role.name.clone(), role)).collect();
+
         Self { roles: role_map }
     }
 }
@@ -200,12 +189,12 @@ impl PermissionChecker for DeclarativePermissionChecker {
             Some(r) => r,
             None => return false,
         };
-        
+
         // Check for wildcard permission (admin has everything)
         if role_obj.has_permission("*") {
             return true;
         }
-        
+
         // Check for specific permission
         role_obj.has_permission(permission)
     }
@@ -214,7 +203,7 @@ impl PermissionChecker for DeclarativePermissionChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_rbac_config() {
         let config = ServerRbacConfig::new()
@@ -227,17 +216,16 @@ mod tests {
         assert_eq!(config.roles.len(), 4);
         assert_eq!(config.users.len(), 1);
     }
-    
+
     #[test]
     fn test_permission_checker() {
-        let config = ServerRbacConfig::new()
-            .with_roles(vec![
-                ("Admin".to_string(), vec!["*".to_string()]),
-                ("Editor".to_string(), vec!["Read".to_string(), "Write".to_string()]),
-            ]);
-        
+        let config = ServerRbacConfig::new().with_roles(vec![
+            ("Admin".to_string(), vec!["*".to_string()]),
+            ("Editor".to_string(), vec!["Read".to_string(), "Write".to_string()]),
+        ]);
+
         let checker = config.create_permission_checker();
-        
+
         assert!(checker.has_permission("Admin", "Anything"));
         assert!(checker.has_permission("Editor", "Read"));
         assert!(checker.has_permission("Editor", "Write"));

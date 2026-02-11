@@ -30,10 +30,12 @@
 //! // Handle custom endpoints here...
 //! ```
 
+use crate::http::firewall::Firewall;
+use crate::http::{
+    body_from, extract_client_ip, json_error_response, not_found_response, Req, Resp,
+};
 #[allow(unused_imports)]
 use http_body_util::BodyExt;
-use crate::http::firewall::Firewall;
-use crate::http::{body_from, extract_client_ip, json_error_response, not_found_response, Req, Resp};
 use hyper::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -41,7 +43,7 @@ use std::sync::Arc;
 
 /// Legacy admin handler trait - DEPRECATED
 ///
-/// **⚠️ DEPRECATED**: Use the automatic admin system instead.
+/// **DEPRECATED**: Use the automatic admin system instead.
 /// - Implement `ServerMetrics` trait
 /// - Configure `AutoAdminConfig`
 /// - Use `handle_auto_admin_endpoints` for automatic routing
@@ -50,10 +52,18 @@ use std::sync::Arc;
 #[deprecated(since = "0.2.0", note = "Use automatic admin system with ServerMetrics trait instead")]
 pub trait AdminHandler: Send + Sync {
     /// Handle admin GET requests (status, info, etc.)
-    fn handle_admin_get(&self, path: &str, req: &Req) -> impl std::future::Future<Output = Resp> + Send;
+    fn handle_admin_get(
+        &self,
+        path: &str,
+        req: &Req,
+    ) -> impl std::future::Future<Output = Resp> + Send;
 
     /// Handle admin POST requests (actions, configuration, etc.)
-    fn handle_admin_post(&self, path: &str, req: Req) -> impl std::future::Future<Output = Resp> + Send;
+    fn handle_admin_post(
+        &self,
+        path: &str,
+        req: Req,
+    ) -> impl std::future::Future<Output = Resp> + Send;
 }
 
 /// Generic admin firewall protection with logging
@@ -67,16 +77,16 @@ pub async fn check_admin_firewall(
     if let Some(firewall) = firewall {
         if firewall.check(fake_addr, method, path).is_err() {
             if let Some(client_ip) = extract_client_ip(req) {
-                log::warn!("🚫 Admin access denied from IP: {} for path: {}", client_ip, path);
+                log::warn!("Admin access denied from IP: {} for path: {}", client_ip, path);
             } else {
-                log::warn!("🚫 Admin access denied: Could not determine client IP for path: {}", path);
+                log::warn!("Admin access denied: Could not determine client IP for path: {}", path);
             }
 
             return Err(forbidden_admin_response());
         }
 
         if let Some(client_ip) = extract_client_ip(req) {
-            log::debug!("✅ Admin access allowed from IP: {} for path: {}", client_ip, path);
+            log::debug!("Admin access allowed from IP: {} for path: {}", client_ip, path);
         }
     }
     Ok(())
@@ -90,11 +100,14 @@ pub fn forbidden_admin_response() -> Resp {
     hyper::Response::builder()
         .status(StatusCode::FORBIDDEN)
         .header("Content-Type", "application/json")
-        .body(body_from(json!({
-            "error": "access_denied",
-            "message": "Access to admin endpoints is restricted",
-            "timestamp": Utc::now().to_rfc3339()
-        }).to_string()))
+        .body(body_from(
+            json!({
+                "error": "access_denied",
+                "message": "Access to admin endpoints is restricted",
+                "timestamp": Utc::now().to_rfc3339()
+            })
+            .to_string(),
+        ))
         .unwrap()
 }
 
@@ -124,7 +137,7 @@ pub fn build_status_response(status_data: serde_json::Value) -> Resp {
 
 /// Legacy admin route dispatcher - DEPRECATED
 ///
-/// **⚠️ DEPRECATED**: Use `handle_auto_admin_endpoints` instead.
+/// **DEPRECATED**: Use `handle_auto_admin_endpoints` instead.
 /// The automatic admin system provides better routing with zero boilerplate.
 ///
 /// This function is kept for backward compatibility but should not be used in new code.
@@ -142,18 +155,20 @@ where
 {
     // Check firewall protection first
     let fake_addr: Option<SocketAddr> = "127.0.0.1:0".parse().ok();
-    if let Err(forbidden_response) = check_admin_firewall(firewall, method, path, &req, fake_addr).await {
+    if let Err(forbidden_response) =
+        check_admin_firewall(firewall, method, path, &req, fake_addr).await
+    {
         return forbidden_response;
     }
 
     // Route based on HTTP method
-    match method {
-        &Method::GET => handler.handle_admin_get(path, &req).await,
-        &Method::POST => handler.handle_admin_post(path, req).await,
+    match *method {
+        Method::GET => handler.handle_admin_get(path, &req).await,
+        Method::POST => handler.handle_admin_post(path, req).await,
         _ => json_error_response(
             StatusCode::METHOD_NOT_ALLOWED,
             "method_not_allowed",
-            "Only GET and POST methods are supported for admin endpoints"
+            "Only GET and POST methods are supported for admin endpoints",
         ),
     }
 }
@@ -161,13 +176,13 @@ where
 //  ╔═══════════════════════════════════════════════════════════╗
 //  ║                    NEW AUTOMATIC ADMIN API               ║
 //  ╠═══════════════════════════════════════════════════════════╣
-//  ║  🚀 CORE TRAIT: ServerMetrics - implement this only      ║
-//  ║  🎛️  CONFIGURATION: AutoAdminConfig - configure once      ║
-//  ║  🔄 ROUTER: handle_auto_admin_endpoints - call in routes ║
-//  ║  ✨ RESULT: Automatic /status, /health, /info endpoints   ║
+//  ║  CORE TRAIT: ServerMetrics - implement this only      ║
+//  ║  CONFIGURATION: AutoAdminConfig - configure once      ║
+//  ║  ROUTER: handle_auto_admin_endpoints - call in routes ║
+//  ║  RESULT: Automatic /status, /health, /info endpoints   ║
 //  ╚═══════════════════════════════════════════════════════════╝
 
-/// **🎯 CORE TRAIT** - Server metrics for automatic admin endpoints
+/// **CORE TRAIT** - Server metrics for automatic admin endpoints
 ///
 /// This is the ONLY trait you need to implement for the automatic admin system.
 /// Once implemented, you get `/status`, `/health`, and `/info` endpoints for free.
@@ -211,7 +226,7 @@ pub trait ServerMetrics {
     }
 }
 
-/// **⚡ RELOADABLE TRAIT** - Optional trait for servers with asset reloading capability
+/// **RELOADABLE TRAIT** - Optional trait for servers with asset reloading capability
 ///
 /// Implement this trait alongside ServerMetrics to get automatic `/reload` endpoint
 /// with validation, error handling, and async processing.
@@ -220,13 +235,19 @@ pub trait ReloadableServer: ServerMetrics {
     fn get_public_dir(&self) -> Option<&str>;
 
     /// Get the frontend state for asset loading
-    fn get_frontend_state(&self) -> std::sync::Arc<tokio::sync::RwLock<crate::frontend::FrontendState>>;
+    fn get_frontend_state(
+        &self,
+    ) -> std::sync::Arc<tokio::sync::RwLock<crate::frontend::FrontendState>>;
 
     /// Get the virtual host ID for assets (e.g., "blog", "app")
-    fn get_virtual_host_id(&self) -> &str { "app" }
+    fn get_virtual_host_id(&self) -> &str {
+        "app"
+    }
 
     /// Get the base path for assets (usually "/")
-    fn get_base_path(&self) -> &str { "/" }
+    fn get_base_path(&self) -> &str {
+        "/"
+    }
 
     /// Update the last reload timestamp
     fn update_reload_timestamp(&self);
@@ -236,8 +257,10 @@ pub trait ReloadableServer: ServerMetrics {
     /// This enables simplified hot-reload in development mode via X-Reload-Token header.
     /// Returns None in production mode (default).
     ///
-    /// ⚠️ **WARNING**: This is for DEVELOPMENT ONLY! Do not use in production!
-    fn get_dev_reload_token(&self) -> Option<&str> { None }
+    /// **WARNING**: This is for DEVELOPMENT ONLY! Do not use in production!
+    fn get_dev_reload_token(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Build a standardized status response from server metrics
@@ -292,7 +315,7 @@ impl Default for AutoAdminConfig {
             enable_status: true,
             enable_health: true,
             enable_info: true,
-            enable_reload: false,  // Disabled by default - requires ReloadableServer trait
+            enable_reload: false, // Disabled by default - requires ReloadableServer trait
             admin_prefix: "/admin".to_string(),
         }
     }
@@ -317,7 +340,9 @@ where
 
     // Check firewall protection
     let fake_addr: Option<SocketAddr> = "127.0.0.1:0".parse().ok();
-    if let Err(forbidden_response) = check_admin_firewall(firewall, method, path, req, fake_addr).await {
+    if let Err(forbidden_response) =
+        check_admin_firewall(firewall, method, path, req, fake_addr).await
+    {
         return Some(forbidden_response);
     }
 
@@ -386,31 +411,34 @@ pub async fn handle_auto_reload_endpoint<T>(server: &T) -> Resp
 where
     T: ReloadableServer,
 {
+    use crate::http::utils::load_assets_with_logging;
     use chrono::Utc;
     use serde_json::json;
-    use crate::http::utils::load_assets_with_logging;
 
-    log::info!("🔄 Admin auto reload request");
+    log::info!("Admin auto reload request");
 
     // Pre-flight validation
     match server.get_public_dir() {
         None => {
-            log::warn!("⚠️ Reload attempted but no public directory configured");
+            log::warn!("Reload attempted but no public directory configured");
             hyper::Response::builder()
                 .status(hyper::StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
-                .body(body_from(json!({
-                    "error": "reload_failed",
-                    "message": "No public directory configured for asset serving",
-                    "details": "Server was started without a valid public directory",
-                    "timestamp": Utc::now().to_rfc3339()
-                }).to_string()))
+                .body(body_from(
+                    json!({
+                        "error": "reload_failed",
+                        "message": "No public directory configured for asset serving",
+                        "details": "Server was started without a valid public directory",
+                        "timestamp": Utc::now().to_rfc3339()
+                    })
+                    .to_string(),
+                ))
                 .unwrap()
         }
         Some(public_dir) => {
             // Additional validation: check if directory exists
             if !std::path::Path::new(public_dir).exists() {
-                log::error!("❌ Public directory does not exist: {}", public_dir);
+                log::error!("Public directory does not exist: {}", public_dir);
                 hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
@@ -422,16 +450,19 @@ where
                     }).to_string()))
                     .unwrap()
             } else if !std::path::Path::new(public_dir).is_dir() {
-                log::error!("❌ Public path is not a directory: {}", public_dir);
+                log::error!("Public path is not a directory: {}", public_dir);
                 hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(body_from(json!({
-                        "error": "invalid_directory",
-                        "message": format!("Public path '{}' is not a directory", public_dir),
-                        "details": "The configured public path exists but is not a directory",
-                        "timestamp": Utc::now().to_rfc3339()
-                    }).to_string()))
+                    .body(body_from(
+                        json!({
+                            "error": "invalid_directory",
+                            "message": format!("Public path '{}' is not a directory", public_dir),
+                            "details": "The configured public path exists but is not a directory",
+                            "timestamp": Utc::now().to_rfc3339()
+                        })
+                        .to_string(),
+                    ))
                     .unwrap()
             } else {
                 // Directory is valid, proceed with reload
@@ -445,22 +476,27 @@ where
 
                 tokio::spawn(async move {
                     let reload_start = Utc::now();
-                    log::info!("🔄 Starting assets reload from {}", public_dir_owned);
+                    log::info!("Starting assets reload from {}", public_dir_owned);
 
                     match load_assets_with_logging(
                         frontend_state,
                         &virtual_host_id,
                         &base_path,
                         &public_dir_owned,
-                        "Assets (Auto Reload)"
-                    ).await {
+                        "Assets (Auto Reload)",
+                    )
+                    .await
+                    {
                         Ok(count) => {
                             let duration = Utc::now().signed_duration_since(reload_start);
-                            log::info!("⚡ Auto reload completed: {} assets in {}ms",
-                                count, duration.num_milliseconds());
+                            log::info!(
+                                "Auto reload completed: {} assets in {}ms",
+                                count,
+                                duration.num_milliseconds()
+                            );
                         }
                         Err(e) => {
-                            log::error!("❌ Auto reload failed: {}", e);
+                            log::error!("Auto reload failed: {}", e);
                         }
                     }
                 });
@@ -468,13 +504,16 @@ where
                 hyper::Response::builder()
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
-                    .body(body_from(json!({
-                        "status": "initiated",
-                        "message": "Assets reload initiated successfully",
-                        "public_dir": public_dir,
-                        "note": "Check server logs for actual reload results",
-                        "timestamp": Utc::now().to_rfc3339()
-                    }).to_string()))
+                    .body(body_from(
+                        json!({
+                            "status": "initiated",
+                            "message": "Assets reload initiated successfully",
+                            "public_dir": public_dir,
+                            "note": "Check server logs for actual reload results",
+                            "timestamp": Utc::now().to_rfc3339()
+                        })
+                        .to_string(),
+                    ))
                     .unwrap()
             }
         }
@@ -500,7 +539,9 @@ where
 
     // Check firewall protection
     let fake_addr: Option<std::net::SocketAddr> = "127.0.0.1:0".parse().ok();
-    if let Err(forbidden_response) = check_admin_firewall(firewall, method, path, req, fake_addr).await {
+    if let Err(forbidden_response) =
+        check_admin_firewall(firewall, method, path, req, fake_addr).await
+    {
         return Some(forbidden_response);
     }
 
@@ -524,18 +565,23 @@ where
                 if let Some(provided_token) = req.headers().get("X-Reload-Token") {
                     if let Ok(provided_str) = provided_token.to_str() {
                         if provided_str == dev_token {
-                            log::info!("🔧 Dev reload token validated");
+                            log::info!("Dev reload token validated");
                             Some(handle_auto_reload_endpoint(server).await)
                         } else {
-                            log::warn!("⚠️ Invalid dev reload token provided");
-                            Some(hyper::Response::builder()
-                                .status(hyper::StatusCode::UNAUTHORIZED)
-                                .header("Content-Type", "application/json")
-                                .body(body_from(serde_json::json!({
-                                    "error": "invalid_token",
-                                    "message": "Invalid reload token"
-                                }).to_string()))
-                                .unwrap())
+                            log::warn!("Invalid dev reload token provided");
+                            Some(
+                                hyper::Response::builder()
+                                    .status(hyper::StatusCode::UNAUTHORIZED)
+                                    .header("Content-Type", "application/json")
+                                    .body(body_from(
+                                        serde_json::json!({
+                                            "error": "invalid_token",
+                                            "message": "Invalid reload token"
+                                        })
+                                        .to_string(),
+                                    ))
+                                    .unwrap(),
+                            )
                         }
                     } else {
                         Some(hyper::Response::builder()
@@ -548,15 +594,20 @@ where
                             .unwrap())
                     }
                 } else {
-                    log::warn!("⚠️ Dev reload token configured but X-Reload-Token header missing");
-                    Some(hyper::Response::builder()
-                        .status(hyper::StatusCode::UNAUTHORIZED)
-                        .header("Content-Type", "application/json")
-                        .body(body_from(serde_json::json!({
-                            "error": "missing_token",
-                            "message": "X-Reload-Token header required (dev mode enabled)"
-                        }).to_string()))
-                        .unwrap())
+                    log::warn!("Dev reload token configured but X-Reload-Token header missing");
+                    Some(
+                        hyper::Response::builder()
+                            .status(hyper::StatusCode::UNAUTHORIZED)
+                            .header("Content-Type", "application/json")
+                            .body(body_from(
+                                serde_json::json!({
+                                    "error": "missing_token",
+                                    "message": "X-Reload-Token header required (dev mode enabled)"
+                                })
+                                .to_string(),
+                            ))
+                            .unwrap(),
+                    )
                 }
             } else {
                 // Production mode: requires proper authentication (handled by route guard)
@@ -605,7 +656,9 @@ where
     }
 
     // First, try automatic admin endpoints
-    if let Some(auto_response) = handle_auto_admin_endpoints(method, path, req, server, config, firewall).await {
+    if let Some(auto_response) =
+        handle_auto_admin_endpoints(method, path, req, server, config, firewall).await
+    {
         return Some(auto_response);
     }
 
@@ -613,7 +666,9 @@ where
     if let Some(handler_fn) = custom_handler {
         // Check firewall protection for custom endpoints
         let fake_addr: Option<std::net::SocketAddr> = "127.0.0.1:0".parse().ok();
-        if let Err(forbidden_response) = check_admin_firewall(firewall, method, path, req, fake_addr).await {
+        if let Err(forbidden_response) =
+            check_admin_firewall(firewall, method, path, req, fake_addr).await
+        {
             return Some(forbidden_response);
         }
 
@@ -658,9 +713,9 @@ where
     Fut: std::future::Future<Output = Option<Resp>>,
 {
     // First try automatic admin endpoints with reload support
-    if let Some(auto_response) = handle_auto_admin_endpoints_with_reload(
-        method, path, req, server, config, firewall
-    ).await {
+    if let Some(auto_response) =
+        handle_auto_admin_endpoints_with_reload(method, path, req, server, config, firewall).await
+    {
         return auto_response;
     }
 
@@ -668,9 +723,9 @@ where
     if path.starts_with(&config.admin_prefix) {
         // Check firewall protection for custom endpoints
         let fake_addr: Option<std::net::SocketAddr> = "127.0.0.1:0".parse().ok();
-        if let Err(forbidden_response) = check_admin_firewall(
-            firewall, method, path, req, fake_addr
-        ).await {
+        if let Err(forbidden_response) =
+            check_admin_firewall(firewall, method, path, req, fake_addr).await
+        {
             return forbidden_response;
         }
 
@@ -704,18 +759,23 @@ mod tests {
     }
 
     impl ServerMetrics for MockServer {
-        fn get_uptime_seconds(&self) -> i64 { self.uptime }
-        fn get_server_mode(&self) -> &str { self.mode }
-        fn get_last_reload_at(&self) -> Option<String> { None }
-        fn get_server_start_time(&self) -> String { "2025-01-01T00:00:00Z".to_string() }
+        fn get_uptime_seconds(&self) -> i64 {
+            self.uptime
+        }
+        fn get_server_mode(&self) -> &str {
+            self.mode
+        }
+        fn get_last_reload_at(&self) -> Option<String> {
+            None
+        }
+        fn get_server_start_time(&self) -> String {
+            "2025-01-01T00:00:00Z".to_string()
+        }
     }
 
     #[test]
     fn test_build_standard_status() {
-        let mock_server = MockServer {
-            uptime: 3661,
-            mode: "test",
-        };
+        let mock_server = MockServer { uptime: 3661, mode: "test" };
 
         let response = build_standard_status(&mock_server);
         assert_eq!(response.status(), StatusCode::OK);

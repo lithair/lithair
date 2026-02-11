@@ -9,23 +9,20 @@ use syn::{parse2, Data, DeriveInput, Error, Fields, Meta, Result};
 pub fn derive_rbac_role(input: TokenStream) -> Result<TokenStream> {
     let input: DeriveInput = parse2(input)?;
     let name = &input.ident;
-    
+
     // Extract permission type from attributes or use default
     let permission_type = extract_permission_type(&input)?;
-    
+
     let Data::Enum(data_enum) = &input.data else {
-        return Err(Error::new_spanned(
-            &input,
-            "RbacRole can only be derived for enums",
-        ));
+        return Err(Error::new_spanned(&input, "RbacRole can only be derived for enums"));
     };
-    
+
     // Generate match arms for each variant
     let mut match_arms = Vec::new();
-    
+
     for variant in &data_enum.variants {
         let variant_name = &variant.ident;
-        
+
         // Check if variant has fields (we don't support that yet)
         if !matches!(variant.fields, Fields::Unit) {
             return Err(Error::new_spanned(
@@ -33,15 +30,15 @@ pub fn derive_rbac_role(input: TokenStream) -> Result<TokenStream> {
                 "RbacRole only supports unit variants (no fields)",
             ));
         }
-        
+
         // Extract permissions from attributes
         let permissions = extract_permissions(&variant.attrs)?;
-        
+
         if permissions.is_empty() {
             // No permissions specified - deny all
             continue;
         }
-        
+
         // Check for "all" permission
         if permissions.iter().any(|p| p == "all") {
             // This role has all permissions
@@ -50,22 +47,25 @@ pub fn derive_rbac_role(input: TokenStream) -> Result<TokenStream> {
             });
         } else {
             // Generate pattern match for specific permissions
-            let perm_patterns: Vec<_> = permissions.iter().map(|p| {
-                let perm_ident = syn::Ident::new(p, proc_macro2::Span::call_site());
-                quote! { #permission_type::#perm_ident }
-            }).collect();
-            
+            let perm_patterns: Vec<_> = permissions
+                .iter()
+                .map(|p| {
+                    let perm_ident = syn::Ident::new(p, proc_macro2::Span::call_site());
+                    quote! { #permission_type::#perm_ident }
+                })
+                .collect();
+
             match_arms.push(quote! {
                 #name::#variant_name => matches!(permission, #(#perm_patterns)|*),
             });
         }
     }
-    
+
     // Add catch-all for variants without permissions
     match_arms.push(quote! {
         _ => false,
     });
-    
+
     Ok(quote! {
         impl #name {
             /// Check if this role has the given permission
@@ -91,7 +91,7 @@ fn extract_permission_type(input: &DeriveInput) -> Result<syn::Path> {
             }
         }
     }
-    
+
     // Default permission type
     Ok(syn::parse_str("ProductPermission").unwrap())
 }
@@ -99,7 +99,7 @@ fn extract_permission_type(input: &DeriveInput) -> Result<syn::Path> {
 /// Extract permissions from variant attributes
 fn extract_permissions(attrs: &[syn::Attribute]) -> Result<Vec<String>> {
     let mut permissions = Vec::new();
-    
+
     for attr in attrs {
         if attr.path().is_ident("permissions") {
             // Parse #[permissions(PermA, PermB, PermC)]
@@ -126,6 +126,6 @@ fn extract_permissions(attrs: &[syn::Attribute]) -> Result<Vec<String>> {
             continue;
         }
     }
-    
+
     Ok(permissions)
 }

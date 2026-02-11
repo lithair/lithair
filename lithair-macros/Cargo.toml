@@ -5,8 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Procedural macros for Lithair framework"
-keywords = ["macros", "proc-macro", "lithair"]
+readme = "README.md"
+description = "Derive macros for Lithair framework (DeclarativeModel, LifecycleAware, Page, RbacRole)"
+keywords = ["macros", "proc-macro", "lithair", "declarative"]
 categories = ["development-tools::procedural-macro-helpers"]
 
 [lib]

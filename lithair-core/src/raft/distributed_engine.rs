@@ -3,7 +3,7 @@
 //! This module demonstrates the distributed architecture for Lithair.
 //! Full OpenRaft integration is planned for future releases.
 //!
-//! Current Status: Architecture established, consensus implementation TODO
+//! Current Status: Architecture established; full consensus integration is not yet complete
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -107,7 +107,7 @@ impl<App: RaftstoneApplication> LithairStorage<App> {
         node_id: NodeId,
         data_dir: String,
     ) -> Self {
-        println!("💾 T022: Initializing Lithair storage for node {}", node_id);
+        log::info!("T022: Initializing Lithair storage for node {}", node_id);
         Self {
             event_store,
             app_state,
@@ -120,7 +120,7 @@ impl<App: RaftstoneApplication> LithairStorage<App> {
     pub async fn apply_request(&self, request: &LithairRequest) -> LithairResponse {
         match request {
             LithairRequest::ApplyEvent { event_type, event_data, aggregate_id } => {
-                println!("🔄 T022: Applying {} event to state machine", event_type);
+                log::debug!("T022: Applying {} event to state machine", event_type);
                 
                 // Create event from request data (using simple structure for T022)
                 let event_json = serde_json::json!({
@@ -129,7 +129,7 @@ impl<App: RaftstoneApplication> LithairStorage<App> {
                     "aggregate_id": aggregate_id,
                     "timestamp": std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_millis()
                 });
                 
@@ -144,7 +144,7 @@ impl<App: RaftstoneApplication> LithairStorage<App> {
                             let mut _state = self.app_state.write().await;
                             // Apply the event to business logic state
                             // This would be implemented by the specific application
-                            println!("✅ T022: Event {} applied to state machine", event_id);
+                            log::debug!("T022: Event {} applied to state machine", event_id);
                         }
                         
                         LithairResponse::EventApplied {
@@ -158,7 +158,7 @@ impl<App: RaftstoneApplication> LithairStorage<App> {
                 }
             }
             LithairRequest::ReadQuery { query_type, query_data: _ } => {
-                println!("🔍 T022: Processing {} read query", query_type);
+                log::debug!("T022: Processing {} read query", query_type);
                 // Read-only queries don't need consensus
                 LithairResponse::QueryResult {
                     result_data: b"query result".to_vec(),
@@ -175,7 +175,7 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
         event_store: Arc<EventStore>,
         app: Arc<App>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        println!("🚀 T022: Initializing Full OpenRaft Integration for node {}", cluster_config.node_id);
+        log::info!("T022: Initializing Full OpenRaft Integration for node {}", cluster_config.node_id);
 
         // Create network factory for peer communication
         let mut network = super::network::LithairNetworkFactory::new();
@@ -213,7 +213,7 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
 
     /// Start the Raft consensus protocol (T022)
     pub async fn start_raft(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("🚀 T022: Starting Raft consensus for node {}", self.cluster_config.node_id);
+        log::info!("T022: Starting Raft consensus for node {}", self.cluster_config.node_id);
 
         // Use openraft-memstore for now (we'll integrate with LithairStorage later)
         let memstore = MemStore::new_async().await;
@@ -237,7 +237,7 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
 
         self.raft = Some(raft);
         
-        println!("✅ T022: Raft consensus initialized successfully for node {}", self.cluster_config.node_id);
+        log::info!("T022: Raft consensus initialized successfully for node {}", self.cluster_config.node_id);
         Ok(())
     }
 
@@ -245,7 +245,7 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
     pub async fn submit_request(&self, request: LithairRequest) -> Result<LithairResponse, Box<dyn std::error::Error>> {
         let raft = self.raft.as_ref().ok_or("T022: Raft not initialized")?;
         
-        println!("📝 T022: Submitting request for consensus: {:?}", request);
+        log::debug!("T022: Submitting request for consensus: {:?}", request);
 
         // Convert LithairRequest to ClientRequest for OpenRaft
         let client_request = ClientRequest::Set {
@@ -256,12 +256,12 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
         // Submit to Raft consensus
         match raft.client_write(client_request).await {
             Ok(response) => {
-                println!("✅ T022: Request accepted by consensus");
+                log::info!("T022: Request accepted by consensus");
                 // Apply the request to our state machine
                 Ok(self.storage.apply_request(&request).await)
             }
             Err(e) => {
-                println!("❌ T022: Consensus failed: {:?}", e);
+                log::error!("T022: Consensus failed: {:?}", e);
                 Err(format!("T022 Consensus error: {:?}", e).into())
             }
         }
@@ -272,7 +272,7 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
         let raft = self.raft.as_ref().ok_or("T022: Raft not initialized")?;
         
         if !self.cluster_config.peers.is_empty() {
-            println!("🌐 T022: Initializing cluster with {} peers", self.cluster_config.peers.len());
+            log::info!("T022: Initializing cluster with {} peers", self.cluster_config.peers.len());
 
             // Create membership with all nodes
             let mut nodes = std::collections::BTreeSet::new();
@@ -285,9 +285,9 @@ impl<App: RaftstoneApplication> DistributedEngine<App> {
             
             // Initialize the cluster
             raft.initialize(membership).await?;
-            println!("✅ T022: Cluster initialized successfully");
+            log::info!("T022: Cluster initialized successfully");
         } else {
-            println!("🔍 T022: Single node cluster, no initialization needed");
+            log::info!("T022: Single node cluster, no initialization needed");
         }
 
         Ok(())

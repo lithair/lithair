@@ -1,6 +1,6 @@
 //! Builder pattern for LithairServer
 
-use super::{LithairServer, CustomRoute};
+use super::{CustomRoute, LithairServer};
 use crate::config::LithairConfig;
 use crate::session::{PersistentSessionStore, SessionManager};
 use anyhow::Result;
@@ -150,9 +150,9 @@ impl LithairServerBuilder {
     // ========================================================================
 
     /// Add session manager
-    pub fn with_sessions<S: 'static + Send + Sync>(mut self, manager: SessionManager<S>) -> Self
+    pub fn with_sessions<S>(mut self, manager: SessionManager<S>) -> Self
     where
-        S: crate::session::SessionStore,
+        S: crate::session::SessionStore + 'static + Send + Sync,
     {
         self.config.sessions.enabled = true;
         self.session_manager = Some(Arc::new(manager));
@@ -397,19 +397,28 @@ impl LithairServerBuilder {
     }
 
     /// Configure readiness checks
-    pub fn with_readiness_config(mut self, config: crate::http::declarative_server::ReadinessConfig) -> Self {
+    pub fn with_readiness_config(
+        mut self,
+        config: crate::http::declarative_server::ReadinessConfig,
+    ) -> Self {
         self.readiness_config = Some(config);
         self
     }
 
     /// Configure observability endpoints
-    pub fn with_observe_config(mut self, config: crate::http::declarative_server::ObserveConfig) -> Self {
+    pub fn with_observe_config(
+        mut self,
+        config: crate::http::declarative_server::ObserveConfig,
+    ) -> Self {
         self.observe_config = Some(config);
         self
     }
 
     /// Configure performance endpoints
-    pub fn with_perf_endpoints(mut self, config: crate::http::declarative_server::PerfEndpointsConfig) -> Self {
+    pub fn with_perf_endpoints(
+        mut self,
+        config: crate::http::declarative_server::PerfEndpointsConfig,
+    ) -> Self {
         self.perf_config = Some(config);
         self
     }
@@ -421,7 +430,11 @@ impl LithairServerBuilder {
     }
 
     /// Set route-specific policy
-    pub fn with_route_policy(mut self, path: impl Into<String>, policy: crate::http::declarative_server::RoutePolicy) -> Self {
+    pub fn with_route_policy(
+        mut self,
+        path: impl Into<String>,
+        policy: crate::http::declarative_server::RoutePolicy,
+    ) -> Self {
         self.route_policies.insert(path.into(), policy);
         self
     }
@@ -445,7 +458,10 @@ impl LithairServerBuilder {
     }
 
     /// Configure anti-DDoS protection
-    pub fn with_anti_ddos_config(mut self, config: crate::security::anti_ddos::AntiDDoSConfig) -> Self {
+    pub fn with_anti_ddos_config(
+        mut self,
+        config: crate::security::anti_ddos::AntiDDoSConfig,
+    ) -> Self {
         self.anti_ddos_config = Some(config);
         self
     }
@@ -483,7 +499,9 @@ impl LithairServerBuilder {
         use std::sync::Arc;
 
         // Create session store path (default if not provided)
-        let session_path = config.session_store_path.clone()
+        let session_path = config
+            .session_store_path
+            .clone()
             .unwrap_or_else(|| "./data/sessions".to_string());
 
         // Store session duration for handlers
@@ -496,7 +514,7 @@ impl LithairServerBuilder {
         // Create permission checker from config
         let permission_checker = config.create_permission_checker();
 
-        // ⚠️ CRITICAL: Create SHARED session store for login AND models
+        // CRITICAL: Create SHARED session store for login AND models
         // This ensures all components use the SAME session storage
         let session_store_shared = {
             let path = std::path::PathBuf::from(session_path.clone());
@@ -535,7 +553,10 @@ impl LithairServerBuilder {
                         log::error!("Login error: {}", e);
                         Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from(format!("Internal error: {}", e))))
+                            .body(http_body_util::Full::new(bytes::Bytes::from(format!(
+                                "Internal error: {}",
+                                e
+                            ))))
                             .unwrap())
                     }
                 }
@@ -559,7 +580,10 @@ impl LithairServerBuilder {
                         log::error!("Logout error: {}", e);
                         Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from(format!("Internal error: {}", e))))
+                            .body(http_body_util::Full::new(bytes::Bytes::from(format!(
+                                "Internal error: {}",
+                                e
+                            ))))
                             .unwrap())
                     }
                 }
@@ -572,9 +596,9 @@ impl LithairServerBuilder {
             let store_clone = session_store_validate.clone();
 
             Box::pin(async move {
-                use http_body_util::Full;
-                use bytes::Bytes;
                 use crate::session::SessionStore;
+                use bytes::Bytes;
+                use http_body_util::Full;
 
                 // Use shared session store
                 let session_store: Arc<PersistentSessionStore> = store_clone
@@ -582,7 +606,8 @@ impl LithairServerBuilder {
                     .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
 
                 // Extract token from Authorization header or Cookie
-                let token = req.headers()
+                let token = req
+                    .headers()
                     .get(hyper::header::AUTHORIZATION)
                     .and_then(|h| h.to_str().ok())
                     .and_then(|h| h.strip_prefix("Bearer "))
@@ -591,7 +616,8 @@ impl LithairServerBuilder {
                             .get(hyper::header::COOKIE)
                             .and_then(|h| h.to_str().ok())
                             .and_then(|cookies| {
-                                cookies.split(';')
+                                cookies
+                                    .split(';')
                                     .find(|c| c.trim().starts_with("session_token="))
                                     .and_then(|c| c.split('=').nth(1))
                             })
@@ -611,11 +637,14 @@ impl LithairServerBuilder {
             })
         });
 
-        log::info!("✅ RBAC configured with {} roles and {} users",
-            config.roles.len(), users_clone.len());
-        log::info!("   🔐 POST /auth/login - Authentication endpoint");
-        log::info!("   👋 POST /auth/logout - Logout endpoint");
-        log::info!("   ✅ GET /auth/validate - Session validation endpoint");
+        log::info!(
+            "RBAC configured with {} roles and {} users",
+            config.roles.len(),
+            users_clone.len()
+        );
+        log::info!("   POST /auth/login - Authentication endpoint");
+        log::info!("   POST /auth/logout - Logout endpoint");
+        log::info!("   GET /auth/validate - Session validation endpoint");
 
         self
     }
@@ -645,12 +674,11 @@ impl LithairServerBuilder {
     ///     .await?;
     /// ```
     pub fn with_mfa_totp(mut self, config: crate::mfa::MfaConfig) -> Self {
-        use crate::mfa::{MfaStorage, handlers};
+        use crate::mfa::{handlers, MfaStorage};
         use std::sync::Arc;
 
         // Create MFA storage
-        let storage = MfaStorage::new(&config.storage_path)
-            .expect("Failed to create MFA storage");
+        let storage = MfaStorage::new(&config.storage_path).expect("Failed to create MFA storage");
         let storage_arc = Arc::new(storage);
 
         // Store for use in other routes
@@ -667,7 +695,8 @@ impl LithairServerBuilder {
             let storage = storage_status.clone();
             let config = config_status.clone();
             Box::pin(async move {
-                handlers::handle_mfa_status(storage, config, req).await
+                handlers::handle_mfa_status(storage, config, req)
+                    .await
                     .map_err(|e| anyhow::anyhow!("MFA status error: {}", e))
             })
         });
@@ -679,7 +708,8 @@ impl LithairServerBuilder {
             let storage = storage_setup.clone();
             let config = config_setup.clone();
             Box::pin(async move {
-                handlers::handle_mfa_setup(storage, config, req).await
+                handlers::handle_mfa_setup(storage, config, req)
+                    .await
                     .map_err(|e| anyhow::anyhow!("MFA setup error: {}", e))
             })
         });
@@ -691,7 +721,8 @@ impl LithairServerBuilder {
             let storage = storage_enable.clone();
             let config = config_enable.clone();
             Box::pin(async move {
-                handlers::handle_mfa_enable(storage, config, req).await
+                handlers::handle_mfa_enable(storage, config, req)
+                    .await
                     .map_err(|e| anyhow::anyhow!("MFA enable error: {}", e))
             })
         });
@@ -703,7 +734,8 @@ impl LithairServerBuilder {
             let storage = storage_disable.clone();
             let config = config_disable.clone();
             Box::pin(async move {
-                handlers::handle_mfa_disable(storage, config, req).await
+                handlers::handle_mfa_disable(storage, config, req)
+                    .await
                     .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
             })
         });
@@ -715,18 +747,19 @@ impl LithairServerBuilder {
             let storage = storage_verify.clone();
             let config = config_verify.clone();
             Box::pin(async move {
-                handlers::handle_mfa_verify(storage, config, req).await
+                handlers::handle_mfa_verify(storage, config, req)
+                    .await
                     .map_err(|e| anyhow::anyhow!("MFA verify error: {}", e))
             })
         });
 
-        log::info!("✅ MFA/TOTP configured");
+        log::info!("MFA/TOTP configured");
         log::info!("   Issuer: {}", config.issuer);
-        log::info!("   📊 GET /auth/mfa/status - Check MFA status");
-        log::info!("   🔧 POST /auth/mfa/setup - Generate secret + QR code");
-        log::info!("   ✅ POST /auth/mfa/enable - Activate MFA");
-        log::info!("   ❌ POST /auth/mfa/disable - Deactivate MFA");
-        log::info!("   🔐 POST /auth/mfa/verify - Validate TOTP code");
+        log::info!("   GET /auth/mfa/status - Check MFA status");
+        log::info!("   POST /auth/mfa/setup - Generate secret + QR code");
+        log::info!("   POST /auth/mfa/enable - Activate MFA");
+        log::info!("   POST /auth/mfa/disable - Deactivate MFA");
+        log::info!("   POST /auth/mfa/verify - Validate TOTP code");
         log::info!("   Storage: {}", config.storage_path);
 
         self
@@ -770,7 +803,11 @@ impl LithairServerBuilder {
     ///     .serve()
     ///     .await?;
     /// ```
-    pub fn with_frontend_at(mut self, route_prefix: impl Into<String>, static_dir: impl Into<String>) -> Self {
+    pub fn with_frontend_at(
+        mut self,
+        route_prefix: impl Into<String>,
+        static_dir: impl Into<String>,
+    ) -> Self {
         self.frontend_configs.push((route_prefix.into(), static_dir.into()));
         self
     }
@@ -813,9 +850,19 @@ impl LithairServerBuilder {
     ///     .serve()
     ///     .await?;
     /// ```
-    pub fn with_handler<T>(mut self, handler: std::sync::Arc<crate::http::DeclarativeHttpHandler<T>>, base_path: impl Into<String>) -> Self
+    pub fn with_handler<T>(
+        mut self,
+        handler: std::sync::Arc<crate::http::DeclarativeHttpHandler<T>>,
+        base_path: impl Into<String>,
+    ) -> Self
     where
-        T: Clone + Send + Sync + crate::http::HttpExposable + crate::lifecycle::LifecycleAware + crate::consensus::ReplicatedModel + 'static,
+        T: Clone
+            + Send
+            + Sync
+            + crate::http::HttpExposable
+            + crate::lifecycle::LifecycleAware
+            + crate::consensus::ReplicatedModel
+            + 'static,
     {
         let base_path_str = base_path.into();
         let base_path_normalized = base_path_str.trim_end_matches('/').to_string();
@@ -876,108 +923,123 @@ impl LithairServerBuilder {
         // GET /base_path/* - Get single
         let handler_get = handler.clone();
         let base_for_get = base_path_normalized.clone();
-        self = self.with_route(http::Method::GET, format!("{}/*", base_path_normalized), move |req| {
-            let h = handler_get.clone();
-            let bp = base_for_get.clone();
-            Box::pin(async move {
-                // Extract path segment (ID) from URL
-                let path = req.uri().path().to_string();
-                let segments: Vec<&str> = path
-                    .strip_prefix(&bp)
-                    .unwrap_or("")
-                    .trim_start_matches('/')
-                    .split('/')
-                    .filter(|s| !s.is_empty())
-                    .collect();
+        self =
+            self.with_route(http::Method::GET, format!("{}/*", base_path_normalized), move |req| {
+                let h = handler_get.clone();
+                let bp = base_for_get.clone();
+                Box::pin(async move {
+                    // Extract path segment (ID) from URL
+                    let path = req.uri().path().to_string();
+                    let segments: Vec<&str> = path
+                        .strip_prefix(&bp)
+                        .unwrap_or("")
+                        .trim_start_matches('/')
+                        .split('/')
+                        .filter(|s| !s.is_empty())
+                        .collect();
 
-                match h.handle_request(req, &segments).await {
-                    Ok(resp) => {
-                        use http_body_util::BodyExt;
-                        let (parts, body) = resp.into_parts();
-                        let bytes = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                        Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
+                    match h.handle_request(req, &segments).await {
+                        Ok(resp) => {
+                            use http_body_util::BodyExt;
+                            let (parts, body) = resp.into_parts();
+                            let bytes =
+                                body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
+                            Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
+                        }
+                        Err(_infallible) => {
+                            log::error!("Handler error for GET {}/*", bp);
+                            Ok(hyper::Response::builder()
+                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(http_body_util::Full::new(bytes::Bytes::from(
+                                    "Internal error",
+                                )))
+                                .unwrap())
+                        }
                     }
-                    Err(_infallible) => {
-                        log::error!("Handler error for GET {}/*", bp);
-                        Ok(hyper::Response::builder()
-                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from("Internal error")))
-                            .unwrap())
-                    }
-                }
-            })
-        });
+                })
+            });
 
         // PUT /base_path/* - Update
         let handler_put = handler.clone();
         let base_for_put = base_path_normalized.clone();
-        self = self.with_route(http::Method::PUT, format!("{}/*", base_path_normalized), move |req| {
-            let h = handler_put.clone();
-            let bp = base_for_put.clone();
-            Box::pin(async move {
-                let path = req.uri().path().to_string();
-                let segments: Vec<&str> = path
-                    .strip_prefix(&bp)
-                    .unwrap_or("")
-                    .trim_start_matches('/')
-                    .split('/')
-                    .filter(|s| !s.is_empty())
-                    .collect();
+        self =
+            self.with_route(http::Method::PUT, format!("{}/*", base_path_normalized), move |req| {
+                let h = handler_put.clone();
+                let bp = base_for_put.clone();
+                Box::pin(async move {
+                    let path = req.uri().path().to_string();
+                    let segments: Vec<&str> = path
+                        .strip_prefix(&bp)
+                        .unwrap_or("")
+                        .trim_start_matches('/')
+                        .split('/')
+                        .filter(|s| !s.is_empty())
+                        .collect();
 
-                match h.handle_request(req, &segments).await {
-                    Ok(resp) => {
-                        use http_body_util::BodyExt;
-                        let (parts, body) = resp.into_parts();
-                        let bytes = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                        Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
+                    match h.handle_request(req, &segments).await {
+                        Ok(resp) => {
+                            use http_body_util::BodyExt;
+                            let (parts, body) = resp.into_parts();
+                            let bytes =
+                                body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
+                            Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
+                        }
+                        Err(_infallible) => {
+                            log::error!("Handler error for PUT {}/*", bp);
+                            Ok(hyper::Response::builder()
+                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(http_body_util::Full::new(bytes::Bytes::from(
+                                    "Internal error",
+                                )))
+                                .unwrap())
+                        }
                     }
-                    Err(_infallible) => {
-                        log::error!("Handler error for PUT {}/*", bp);
-                        Ok(hyper::Response::builder()
-                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from("Internal error")))
-                            .unwrap())
-                    }
-                }
-            })
-        });
+                })
+            });
 
         // DELETE /base_path/* - Delete
         let handler_del = handler.clone();
         let base_for_del = base_path_normalized.clone();
-        self = self.with_route(http::Method::DELETE, format!("{}/*", base_path_normalized), move |req| {
-            let h = handler_del.clone();
-            let bp = base_for_del.clone();
-            Box::pin(async move {
-                let path = req.uri().path().to_string();
-                let segments: Vec<&str> = path
-                    .strip_prefix(&bp)
-                    .unwrap_or("")
-                    .trim_start_matches('/')
-                    .split('/')
-                    .filter(|s| !s.is_empty())
-                    .collect();
+        self = self.with_route(
+            http::Method::DELETE,
+            format!("{}/*", base_path_normalized),
+            move |req| {
+                let h = handler_del.clone();
+                let bp = base_for_del.clone();
+                Box::pin(async move {
+                    let path = req.uri().path().to_string();
+                    let segments: Vec<&str> = path
+                        .strip_prefix(&bp)
+                        .unwrap_or("")
+                        .trim_start_matches('/')
+                        .split('/')
+                        .filter(|s| !s.is_empty())
+                        .collect();
 
-                match h.handle_request(req, &segments).await {
-                    Ok(resp) => {
-                        use http_body_util::BodyExt;
-                        let (parts, body) = resp.into_parts();
-                        let bytes = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                        Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
+                    match h.handle_request(req, &segments).await {
+                        Ok(resp) => {
+                            use http_body_util::BodyExt;
+                            let (parts, body) = resp.into_parts();
+                            let bytes =
+                                body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
+                            Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
+                        }
+                        Err(_infallible) => {
+                            log::error!("Handler error for DELETE {}/*", bp);
+                            Ok(hyper::Response::builder()
+                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(http_body_util::Full::new(bytes::Bytes::from(
+                                    "Internal error",
+                                )))
+                                .unwrap())
+                        }
                     }
-                    Err(_infallible) => {
-                        log::error!("Handler error for DELETE {}/*", bp);
-                        Ok(hyper::Response::builder()
-                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from("Internal error")))
-                            .unwrap())
-                    }
-                }
-            })
-        });
+                })
+            },
+        );
 
         let name = std::any::type_name::<T>().split("::").last().unwrap_or("Unknown");
-        log::info!("✅ Registered handler for {} at {}", name, base_path_normalized);
+        log::info!("Registered handler for {} at {}", name, base_path_normalized);
         log::info!("   GET {} - List all", base_path_normalized);
         log::info!("   POST {} - Create", base_path_normalized);
         log::info!("   GET {}/* - Get by ID", base_path_normalized);
@@ -988,10 +1050,22 @@ impl LithairServerBuilder {
     }
 
     /// Add a custom route with async handler
-    pub fn with_route<F>(mut self, method: http::Method, path: impl Into<String>, handler: F) -> Self
+    pub fn with_route<F>(
+        mut self,
+        method: http::Method,
+        path: impl Into<String>,
+        handler: F,
+    ) -> Self
     where
-        F: Fn(hyper::Request<hyper::body::Incoming>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>> + Send>>
-            + Send
+        F: Fn(
+                hyper::Request<hyper::body::Incoming>,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>,
+                        > + Send,
+                >,
+            > + Send
             + Sync
             + 'static,
     {
@@ -1049,7 +1123,10 @@ impl LithairServerBuilder {
         session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
     ) -> Self
     where
-        T: crate::http::HttpExposable + crate::lifecycle::LifecycleAware + crate::consensus::ReplicatedModel + 'static,
+        T: crate::http::HttpExposable
+            + crate::lifecycle::LifecycleAware
+            + crate::consensus::ReplicatedModel
+            + 'static,
     {
         use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo};
         use std::sync::Arc;
@@ -1060,14 +1137,16 @@ impl LithairServerBuilder {
 
         // Use provided OR fallback to builder's values
         let effective_session_store = session_store.or_else(|| self.session_manager.clone());
-        let effective_permission_checker = permission_checker.or_else(|| self.permission_checker.clone());
+        let effective_permission_checker =
+            permission_checker.or_else(|| self.permission_checker.clone());
 
         // Create factory that will create the handler async in serve()
         let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
             let pc = effective_permission_checker.clone();
             let ss = effective_session_store.clone();
             Box::pin(async move {
-                let mut handler = DeclarativeModelHandler::<T>::new(data_path).await
+                let mut handler = DeclarativeModelHandler::<T>::new(data_path)
+                    .await
                     .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
 
                 // Configure permission checker and session store
@@ -1096,9 +1175,16 @@ impl LithairServerBuilder {
     /// Register a model with automatic CRUD generation (simple version without RBAC)
     ///
     /// For schema migration support, use `with_declarative_model` instead.
-    pub fn with_model<T>(mut self, data_path: impl Into<String>, base_path: impl Into<String>) -> Self
+    pub fn with_model<T>(
+        mut self,
+        data_path: impl Into<String>,
+        base_path: impl Into<String>,
+    ) -> Self
     where
-        T: crate::http::HttpExposable + crate::lifecycle::LifecycleAware + crate::consensus::ReplicatedModel + 'static,
+        T: crate::http::HttpExposable
+            + crate::lifecycle::LifecycleAware
+            + crate::consensus::ReplicatedModel
+            + 'static,
     {
         use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo};
         use std::sync::Arc;
@@ -1110,7 +1196,8 @@ impl LithairServerBuilder {
         // Create factory that will create the handler async in serve()
         let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
             Box::pin(async move {
-                let handler = DeclarativeModelHandler::<T>::new(data_path).await
+                let handler = DeclarativeModelHandler::<T>::new(data_path)
+                    .await
                     .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
                 Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
             })
@@ -1141,7 +1228,11 @@ impl LithairServerBuilder {
     ///     .serve()
     ///     .await?;
     /// ```
-    pub fn with_declarative_model<T>(mut self, data_path: impl Into<String>, base_path: impl Into<String>) -> Self
+    pub fn with_declarative_model<T>(
+        mut self,
+        data_path: impl Into<String>,
+        base_path: impl Into<String>,
+    ) -> Self
     where
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
@@ -1159,7 +1250,8 @@ impl LithairServerBuilder {
         // Create factory that will create the handler async in serve()
         let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
             Box::pin(async move {
-                let handler = DeclarativeModelHandler::<T>::new(data_path).await
+                let handler = DeclarativeModelHandler::<T>::new(data_path)
+                    .await
                     .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
                 Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
             })
@@ -1182,18 +1274,18 @@ impl LithairServerBuilder {
     // ========================================================================
     // DATA ADMIN - Database management API for admin dashboards
     // ========================================================================
-    
+
     /// Enable data admin endpoints for database management
-    /// 
+    ///
     /// This adds the following admin endpoints:
     /// - `GET /_admin/data/models` - List all registered models with stats
     /// - `GET /_admin/data/models/{name}` - Get model info and data
     /// - `GET /_admin/data/models/{name}/export` - Export model data as JSON
     /// - `GET /_admin/data/routes` - List all registered API routes
     /// - `POST /_admin/data/backup` - Trigger full data backup
-    /// 
+    ///
     /// These endpoints require authentication if RBAC is configured.
-    /// 
+    ///
     /// # Example
     /// ```rust,ignore
     /// LithairServer::new()
@@ -1203,16 +1295,16 @@ impl LithairServerBuilder {
     ///     .await?;
     /// ```
     pub fn with_data_admin(mut self) -> Self {
-        log::info!("📊 Data Admin API enabled");
+        log::info!("Data Admin API enabled");
         log::info!("   GET  /_admin/data/models        - List models");
         log::info!("   GET  /_admin/data/models/{{name}} - Model data");
         log::info!("   GET  /_admin/data/routes        - List routes");
         log::info!("   POST /_admin/data/backup        - Backup all");
-        
+
         // Note: The actual endpoint handlers are registered in LithairServer::serve()
         // after models are initialized. Here we just set a flag.
         self.config.admin.data_admin_enabled = true;
-        
+
         self
     }
 
@@ -1242,7 +1334,7 @@ impl LithairServerBuilder {
     #[cfg(feature = "admin-ui")]
     pub fn with_data_admin_ui(mut self, path: impl Into<String>) -> Self {
         let ui_path = path.into();
-        log::info!("🖥️  Data Admin UI enabled at {}", ui_path);
+        log::info!("Data Admin UI enabled at {}", ui_path);
 
         // Also enable the API if not already enabled
         if !self.config.admin.data_admin_enabled {
@@ -1253,9 +1345,9 @@ impl LithairServerBuilder {
         // Store the UI path in admin config
         self.config.admin.data_admin_ui_path = Some(ui_path.clone());
 
-        // 🔐 Auto-apply authentication guard to data admin paths
+        // Auto-apply authentication guard to data admin paths
         // This protects both the UI and API endpoints
-        log::info!("   🔐 Auth protection enabled (RequireAuth)");
+        log::info!("   Auth protection enabled (RequireAuth)");
 
         // Protect the UI path
         self.route_guards.push(crate::http::RouteGuardMatcher {
@@ -1292,14 +1384,14 @@ impl LithairServerBuilder {
 
     /// Enable embedded data admin UI WITHOUT authentication (for development/internal use only)
     ///
-    /// ⚠️ WARNING: This exposes your data without any authentication!
+    /// WARNING: This exposes your data without any authentication!
     /// Only use this for local development or behind a VPN/firewall.
     ///
     /// For production, use `.with_data_admin_ui()` which auto-applies auth guards.
     #[cfg(feature = "admin-ui")]
     pub fn with_data_admin_ui_public(mut self, path: impl Into<String>) -> Self {
         let ui_path = path.into();
-        log::warn!("⚠️  Data Admin UI enabled at {} (NO AUTH - development only!)", ui_path);
+        log::warn!("Data Admin UI enabled at {} (NO AUTH - development only!)", ui_path);
 
         // Also enable the API if not already enabled
         if !self.config.admin.data_admin_enabled {
@@ -1341,7 +1433,7 @@ impl LithairServerBuilder {
             // Raft cluster
             cluster_peers: self.cluster_peers.clone(),
             node_id: self.node_id,
-            raft_state: None, // Initialized in serve() if cluster mode enabled
+            raft_state: None,       // Initialized in serve() if cluster mode enabled
             raft_crud_sender: None, // Initialized in serve() if cluster mode enabled
             // Initialize consensus log only if cluster mode is enabled
             consensus_log: if !self.cluster_peers.is_empty() {
@@ -1354,11 +1446,11 @@ impl LithairServerBuilder {
                 let wal_path = format!("./data/raft/node_{}/wal", self.node_id.unwrap_or(0));
                 match crate::cluster::WriteAheadLog::new(&wal_path) {
                     Ok(wal) => {
-                        log::info!("📝 WAL initialized at {}", wal_path);
+                        log::info!("WAL initialized at {}", wal_path);
                         Some(Arc::new(wal))
                     }
                     Err(e) => {
-                        log::warn!("⚠️ Failed to initialize WAL: {}", e);
+                        log::warn!("Failed to initialize WAL: {}", e);
                         None
                     }
                 }
@@ -1374,14 +1466,15 @@ impl LithairServerBuilder {
             },
             // Initialize snapshot manager for resync
             snapshot_manager: if !self.cluster_peers.is_empty() {
-                let snapshot_path = format!("./data/raft/node_{}/snapshots", self.node_id.unwrap_or(0));
+                let snapshot_path =
+                    format!("./data/raft/node_{}/snapshots", self.node_id.unwrap_or(0));
                 match crate::cluster::SnapshotManager::new(&snapshot_path) {
                     Ok(mgr) => {
-                        log::info!("📸 Snapshot manager initialized at {}", snapshot_path);
+                        log::info!("Snapshot manager initialized at {}", snapshot_path);
                         Some(Arc::new(tokio::sync::RwLock::new(mgr)))
                     }
                     Err(e) => {
-                        log::warn!("⚠️ Failed to initialize snapshot manager: {}", e);
+                        log::warn!("Failed to initialize snapshot manager: {}", e);
                         None
                     }
                 }
@@ -1390,7 +1483,7 @@ impl LithairServerBuilder {
             },
             // Initialize migration manager for rolling upgrades
             migration_manager: if !self.cluster_peers.is_empty() {
-                log::info!("🔄 Migration manager initialized for rolling upgrades");
+                log::info!("Migration manager initialized for rolling upgrades");
                 Some(Arc::new(crate::cluster::MigrationManager::default()))
             } else {
                 None
@@ -1400,8 +1493,8 @@ impl LithairServerBuilder {
             // Schema sync state for cluster-wide schema consensus
             schema_sync_state: Arc::new(tokio::sync::RwLock::new(
                 self.schema_vote_policy
-                    .map(|p| crate::schema::SchemaSyncState::with_policy(p))
-                    .unwrap_or_default()
+                    .map(crate::schema::SchemaSyncState::with_policy)
+                    .unwrap_or_default(),
             )),
         })
     }

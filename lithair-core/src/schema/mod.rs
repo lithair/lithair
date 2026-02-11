@@ -7,14 +7,14 @@ pub mod relations;
 
 // Module pour la synchronisation de schéma en cluster
 pub mod sync;
-pub use sync::{
-    AppliedSchemaChange, HumanApproval, PendingSchemaChange, SchemaApproval,
-    SchemaChangeStatus, SchemaLockStatus, SchemaRejection, SchemaSyncMessage,
-    SchemaSyncState, SchemaVotePolicy, VoteStrategy,
-};
 pub use relations::{
     CascadeStrategy, ModelRelationSpec, RelationRegistry, RelationSpec, RelationSpecExtractor,
     RelationType,
+};
+pub use sync::{
+    AppliedSchemaChange, HumanApproval, PendingSchemaChange, SchemaApproval, SchemaChangeStatus,
+    SchemaLockStatus, SchemaRejection, SchemaSyncMessage, SchemaSyncState, SchemaVotePolicy,
+    VoteStrategy,
 };
 // Import avec alias pour éviter conflit avec l'ancien ForeignKeySpec
 pub use relations::ForeignKeySpec as RelationForeignKeySpec;
@@ -154,7 +154,7 @@ impl SchemaChangeDetector {
                     change_type: SchemaChangeType::AddField,
                     field_name: Some(field_name.clone()),
                     old_type: None,
-                    new_type: Some("inferred".to_string()), // TODO: type inference
+                    new_type: Some("inferred".to_string()), // Note: actual type inference from Rust types is not yet supported
                     old_constraints: None,
                     new_constraints: Some(new_constraints.clone()),
                     migration_strategy: Self::determine_migration_strategy_for_add(new_constraints),
@@ -431,7 +431,7 @@ impl SchemaChangeDetector {
         Some(format!(
             "ALTER TABLE ADD COLUMN {} {} {}",
             field_name,
-            "TYPE", // TODO: inférer le type
+            "TYPE", // Note: SQL type inference from Rust types is not yet supported
             if constraints.nullable { "NULL" } else { "NOT NULL" }
         ))
     }
@@ -598,7 +598,10 @@ pub fn load_schema_history(base_path: &Path) -> std::io::Result<SchemaHistoryDat
 /// Append a single change to history (atomic operation)
 ///
 /// Loads existing history, appends change, saves back
-pub fn append_schema_history(change: &AppliedSchemaChange, base_path: &Path) -> std::io::Result<()> {
+pub fn append_schema_history(
+    change: &AppliedSchemaChange,
+    base_path: &Path,
+) -> std::io::Result<()> {
     let mut history = load_schema_history(base_path)?;
     history.changes.push(change.clone());
     save_schema_history(&history, base_path)

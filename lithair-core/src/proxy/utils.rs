@@ -7,19 +7,19 @@ use std::fmt;
 pub enum ProxyError {
     /// Request was blocked by filter
     Blocked { reason: String },
-    
+
     /// Upstream connection failed
     UpstreamError { message: String },
-    
+
     /// Invalid request
     InvalidRequest { message: String },
-    
+
     /// Authentication required
     AuthRequired,
-    
+
     /// Rate limit exceeded
     RateLimitExceeded,
-    
+
     /// Generic error
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -50,26 +50,25 @@ pub fn extract_client_ip<B>(req: &hyper::Request<B>) -> Option<String> {
             return Some(value.split(',').next()?.trim().to_string());
         }
     }
-    
+
     // Try X-Real-IP
     if let Some(real_ip) = req.headers().get("x-real-ip") {
         if let Ok(value) = real_ip.to_str() {
             return Some(value.to_string());
         }
     }
-    
+
     None
 }
 
 /// Helper to check if a URI matches a pattern
 pub fn matches_pattern(uri: &str, pattern: &str) -> bool {
-    // Simple wildcard matching for now
-    // TODO: Support more complex patterns (regex, CIDR for IPs, etc.)
-    
+    // Simple wildcard matching; complex patterns (regex, CIDR for IPs) are not yet supported
+
     if pattern == "*" {
         return true;
     }
-    
+
     if pattern.contains('*') {
         let parts: Vec<&str> = pattern.split('*').collect();
         if parts.len() == 2 {
@@ -78,7 +77,7 @@ pub fn matches_pattern(uri: &str, pattern: &str) -> bool {
             return uri.starts_with(prefix) && uri.ends_with(suffix);
         }
     }
-    
+
     uri == pattern
 }
 

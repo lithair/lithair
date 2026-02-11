@@ -2,7 +2,7 @@
 //!
 //! This module provides Raft-based distributed consensus for Lithair
 
-// TODO: Re-enable these modules after fixing OpenRaft API compatibility
+// These modules are disabled pending OpenRaft API compatibility updates
 // pub mod distributed_engine;
 // pub mod network;
 // pub mod simple_storage;

@@ -23,7 +23,7 @@ pub fn json_error(status: StatusCode, code: &str, message: &str) -> Resp {
         .status(status)
         .header("content-type", "application/json")
         .body(body_from(body))
-        .unwrap()
+        .expect("valid HTTP response")
 }
 
 /// 405 Method Not Allowed with Allow header
@@ -34,5 +34,5 @@ pub fn method_not_allowed(allowed: &str) -> Resp {
         .header("content-type", "application/json")
         .header("allow", allowed)
         .body(body_from(body))
-        .unwrap()
+        .expect("valid HTTP response")
 }

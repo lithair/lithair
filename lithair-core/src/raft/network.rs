@@ -29,13 +29,13 @@ impl LithairNetworkFactory {
     }
     
     pub fn add_node(&self, node_id: NodeId, address: String) {
-        let mut nodes = self.cluster_nodes.write().unwrap();
+        let mut nodes = self.cluster_nodes.write().expect("cluster nodes lock poisoned");
         nodes.insert(node_id, address);
-        println!("📡 Lithair: Registered node {} at {}", node_id, nodes.get(&node_id).unwrap());
+        log::info!("Lithair: Registered node {} at {}", node_id, &nodes[&node_id]);
     }
     
     fn get_node_address(&self, node_id: NodeId) -> Option<String> {
-        let nodes = self.cluster_nodes.read().unwrap();
+        let nodes = self.cluster_nodes.read().expect("cluster nodes lock poisoned");
         nodes.get(&node_id).cloned()
     }
 }
@@ -48,7 +48,7 @@ impl RaftNetworkFactory<TypeConfig> for LithairNetworkFactory {
         let address = self.get_node_address(target)
             .unwrap_or_else(|| format!("127.0.0.1:808{}", target));
         
-        println!("🔗 Lithair: Creating network connection to node {} at {}", target, address);
+        log::debug!("Lithair: Creating network connection to node {} at {}", target, address);
         
         LithairConnection {
             target_id: target,
@@ -73,7 +73,7 @@ impl LithairConnection {
     {
         let url = format!("http://{}{}", self.target_addr, endpoint);
         
-        println!("🌐 Lithair HTTP: {} to node {} at {}", endpoint, self.target_id, url);
+        log::debug!("Lithair HTTP: {} to node {} at {}", endpoint, self.target_id, url);
 
         // Use reqwest for real HTTP requests (already in dependencies)
         let client = reqwest::Client::new();
@@ -140,7 +140,7 @@ impl RaftNetwork<TypeConfig> for LithairConnection {
         req: raft::AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<raft::AppendEntriesResponse<NodeId>, RPCError<NodeId, (), RaftError<NodeId>>> {
-        println!("📝 Lithair: AppendEntries to node {} with {} entries", 
+        log::debug!("Lithair: AppendEntries to node {} with {} entries",
                 self.target_id, req.entries.len());
         
         // Use existing Lithair HTTP patterns for real RPC
@@ -156,7 +156,7 @@ impl RaftNetwork<TypeConfig> for LithairConnection {
         req: raft::VoteRequest<NodeId>,
         _option: RPCOption,
     ) -> Result<raft::VoteResponse<NodeId>, RPCError<NodeId, (), RaftError<NodeId>>> {
-        println!("🗳️ Lithair: Vote to node {} for term {}", 
+        log::debug!("Lithair: Vote to node {} for term {}",
                 self.target_id, req.vote.leader_id.term);
         
         // Use existing Lithair HTTP patterns for real RPC
@@ -172,7 +172,7 @@ impl RaftNetwork<TypeConfig> for LithairConnection {
         req: raft::InstallSnapshotRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<raft::InstallSnapshotResponse<NodeId>, RPCError<NodeId, (), RaftError<NodeId>>> {
-        println!("📸 Lithair: InstallSnapshot to node {} for term {}", 
+        log::debug!("Lithair: InstallSnapshot to node {} for term {}",
                 self.target_id, req.vote.leader_id.term);
         
         // Use existing Lithair HTTP patterns for real RPC
@@ -199,12 +199,12 @@ pub mod handlers {
     where
         App::State: Clone + Send + Sync + 'static,
     {
-        println!("📥 Lithair: Handling AppendEntries RPC");
+        log::debug!("Lithair: Handling AppendEntries RPC");
         
         // Parse request body
         match serde_json::from_slice::<raft::AppendEntriesRequest<super::TypeConfig>>(&request.body) {
             Ok(req) => {
-                println!("📝 Processing {} entries from leader {}", req.entries.len(), req.leader_id);
+                log::debug!("Processing {} entries from leader {}", req.entries.len(), req.leader_id);
                 
                 // Create success response (simplified for initial implementation)  
                 use openraft::raft::AppendEntriesResponse;
@@ -219,14 +219,14 @@ pub mod handlers {
                         .header("Content-Type", "application/json")
                         .body(json.into_bytes()),
                     Err(e) => {
-                        println!("❌ Failed to serialize AppendEntries response: {}", e);
+                        log::error!("Failed to serialize AppendEntries response: {}", e);
                         HttpResponse::new(StatusCode::InternalServerError)
                             .body(b"Serialization error".to_vec())
                     }
                 }
             }
             Err(e) => {
-                println!("❌ Failed to parse AppendEntries request: {}", e);
+                log::error!("Failed to parse AppendEntries request: {}", e);
                 HttpResponse::new(StatusCode::BadRequest)
                     .body(format!("Parse error: {}", e).into_bytes())
             }
@@ -241,19 +241,19 @@ pub mod handlers {
     where
         App::State: Clone + Send + Sync + 'static,
     {
-        println!("🗳️ Lithair: Handling Vote RPC");
+        log::debug!("Lithair: Handling Vote RPC");
         
         // Parse request body
         match serde_json::from_slice::<raft::VoteRequest<super::NodeId>>(&request.body) {
             Ok(req) => {
-                println!("🗳️ Processing vote request from candidate {} for term {}", 
+                log::debug!("Processing vote request from candidate {} for term {}",
                         req.vote.leader_id.node_id, req.vote.leader_id.term);
                 
                 // Create vote response (simplified for initial implementation)
                 let response = raft::VoteResponse {
                     vote: Vote::new_committed(req.vote.leader_id.term, 0), // Grant vote
                     vote_granted: true,
-                    last_log_id: None, // TODO: Get from storage
+                    last_log_id: None, // Not yet retrieved from storage
                 };
                 
                 match serde_json::to_string(&response) {
@@ -261,14 +261,14 @@ pub mod handlers {
                         .header("Content-Type", "application/json")
                         .body(json.into_bytes()),
                     Err(e) => {
-                        println!("❌ Failed to serialize Vote response: {}", e);
+                        log::error!("Failed to serialize Vote response: {}", e);
                         HttpResponse::new(StatusCode::InternalServerError)
                             .body(b"Serialization error".to_vec())
                     }
                 }
             }
             Err(e) => {
-                println!("❌ Failed to parse Vote request: {}", e);
+                log::error!("Failed to parse Vote request: {}", e);
                 HttpResponse::new(StatusCode::BadRequest)
                     .body(format!("Parse error: {}", e).into_bytes())
             }
@@ -283,12 +283,12 @@ pub mod handlers {
     where
         App::State: Clone + Send + Sync + 'static,
     {
-        println!("📸 Lithair: Handling InstallSnapshot RPC");
+        log::debug!("Lithair: Handling InstallSnapshot RPC");
         
         // Parse request body
         match serde_json::from_slice::<raft::InstallSnapshotRequest<super::TypeConfig>>(&request.body) {
             Ok(req) => {
-                println!("📸 Processing snapshot installation from leader {}", req.leader_id);
+                log::debug!("Processing snapshot installation from leader {}", req.leader_id);
                 
                 // Create install snapshot response (simplified for initial implementation)
                 let response = raft::InstallSnapshotResponse {
@@ -300,14 +300,14 @@ pub mod handlers {
                         .header("Content-Type", "application/json")
                         .body(json.into_bytes()),
                     Err(e) => {
-                        println!("❌ Failed to serialize InstallSnapshot response: {}", e);
+                        log::error!("Failed to serialize InstallSnapshot response: {}", e);
                         HttpResponse::new(StatusCode::InternalServerError)
                             .body(b"Serialization error".to_vec())
                     }
                 }
             }
             Err(e) => {
-                println!("❌ Failed to parse InstallSnapshot request: {}", e);
+                log::error!("Failed to parse InstallSnapshot request: {}", e);
                 HttpResponse::new(StatusCode::BadRequest)
                     .body(format!("Parse error: {}", e).into_bytes())
             }

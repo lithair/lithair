@@ -1,13 +1,12 @@
 #![allow(dead_code)]
+use std::path::Path;
 /// # Helpers pour Tests de Build
 ///
 /// Ce module fournit des utilitaires réutilisables pour tester le binaire final.
 /// C'est l'équivalent des "steps" Cucumber mais pour les tests de build.
-
-use std::process::{Command, Child, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use tokio::time::sleep;
-use std::path::Path;
 
 /// Structure pour gérer un serveur Lithair de test
 pub struct TestServer {
@@ -29,7 +28,7 @@ impl TestServer {
 
         // 3. Lancer le serveur
         let process = Command::new("../target/release/lithair")
-            .args(&["--config", &config_path])
+            .args(["--config", &config_path])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -38,23 +37,22 @@ impl TestServer {
         // 4. Attendre qu'il démarre
         sleep(Duration::from_secs(2)).await;
 
-        Ok(TestServer {
-            process,
-            port,
-            config_path,
-        })
+        Ok(TestServer { process, port, config_path })
     }
 
     /// Démarre avec config par défaut
     pub async fn start_default(port: u16) -> Result<Self, String> {
-        let config = format!(r#"
+        let config = format!(
+            r#"
 [server]
 port = {}
 
 [persistence]
 enabled = true
 path = "/tmp/lithair-test-{}"
-"#, port, port);
+"#,
+            port, port
+        );
 
         Self::start(port, &config).await
     }
@@ -66,7 +64,7 @@ path = "/tmp/lithair-test-{}"
         if !binary_path.exists() {
             println!("⚠️ Binary not found, compiling...");
             let status = Command::new("cargo")
-                .args(&["build", "--release", "--bin", "lithair"])
+                .args(["build", "--release", "--bin", "lithair"])
                 .current_dir("../")
                 .status()
                 .map_err(|e| format!("Failed to compile: {}", e))?;
@@ -82,28 +80,24 @@ path = "/tmp/lithair-test-{}"
     /// Fait une requête GET au serveur
     pub async fn get(&self, path: &str) -> Result<String, String> {
         let url = format!("http://127.0.0.1:{}{}", self.port, path);
-        let response = reqwest::get(&url)
-            .await
-            .map_err(|e| format!("GET {} failed: {}", url, e))?;
+        let response =
+            reqwest::get(&url).await.map_err(|e| format!("GET {} failed: {}", url, e))?;
 
-        response.text()
-            .await
-            .map_err(|e| format!("Failed to read response: {}", e))
+        response.text().await.map_err(|e| format!("Failed to read response: {}", e))
     }
 
     /// Fait une requête POST au serveur
     pub async fn post(&self, path: &str, body: serde_json::Value) -> Result<String, String> {
         let url = format!("http://127.0.0.1:{}{}", self.port, path);
         let client = reqwest::Client::new();
-        let response = client.post(&url)
+        let response = client
+            .post(&url)
             .json(&body)
             .send()
             .await
             .map_err(|e| format!("POST {} failed: {}", url, e))?;
 
-        response.text()
-            .await
-            .map_err(|e| format!("Failed to read response: {}", e))
+        response.text().await.map_err(|e| format!("Failed to read response: {}", e))
     }
 
     /// Vérifie que le serveur répond
@@ -119,8 +113,9 @@ path = "/tmp/lithair-test-{}"
 
     /// Arrête le serveur proprement
     pub fn stop(&mut self) -> Result<(), String> {
-        self.process.kill()
-            .map_err(|e| format!("Failed to stop server: {}", e))?;
+        self.process.kill().map_err(|e| format!("Failed to stop server: {}", e))?;
+        // Reap the child process to avoid zombies
+        self.process.wait().map_err(|e| format!("Failed to wait for server: {}", e))?;
 
         // Nettoyer la config
         std::fs::remove_file(&self.config_path).ok();
@@ -142,9 +137,7 @@ pub struct LoadTester {
 
 impl LoadTester {
     pub fn new() -> Self {
-        LoadTester {
-            client: reqwest::Client::new(),
-        }
+        LoadTester { client: reqwest::Client::new() }
     }
 
     /// Lance N requêtes concurrentes
@@ -159,17 +152,14 @@ impl LoadTester {
         for _ in 0..count {
             let client = self.client.clone();
             let url = url.to_string();
-            tasks.push(tokio::spawn(async move {
-                client.get(&url).send().await
-            }));
+            tasks.push(tokio::spawn(async move { client.get(&url).send().await }));
         }
 
         let results = futures::future::join_all(tasks).await;
         let duration = start.elapsed();
 
-        let success_count = results.iter()
-            .filter(|r| r.is_ok() && r.as_ref().unwrap().is_ok())
-            .count();
+        let success_count =
+            results.iter().filter(|r| r.is_ok() && r.as_ref().unwrap().is_ok()).count();
 
         Ok(LoadTestResult {
             total: count,
@@ -208,16 +198,16 @@ impl PersistenceChecker {
 
     /// Vérifie le contenu d'un fichier de persistence
     pub fn check_file_contains(path: &str, text: &str) -> Result<bool, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read {}: {}", path, e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {}", path, e))?;
 
         Ok(content.contains(text))
     }
 
     /// Compte le nombre d'événements dans le log
     pub fn count_events(path: &str) -> Result<usize, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read {}: {}", path, e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {}", path, e))?;
 
         Ok(content.lines().count())
     }
@@ -238,8 +228,7 @@ impl CliTester {
             return Err("--help command failed".to_string());
         }
 
-        String::from_utf8(output.stdout)
-            .map_err(|e| format!("Invalid UTF-8: {}", e))
+        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8: {}", e))
     }
 
     /// Teste la commande --version
@@ -253,7 +242,6 @@ impl CliTester {
             return Err("--version command failed".to_string());
         }
 
-        String::from_utf8(output.stdout)
-            .map_err(|e| format!("Invalid UTF-8: {}", e))
+        String::from_utf8(output.stdout).map_err(|e| format!("Invalid UTF-8: {}", e))
     }
 }

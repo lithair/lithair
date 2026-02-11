@@ -68,11 +68,7 @@ impl FollowerState {
 
         // Update health based on latency
         let mut health = self.health.write().await;
-        *health = if latency_ms < 500 {
-            FollowerHealth::Healthy
-        } else {
-            FollowerHealth::Lagging
-        };
+        *health = if latency_ms < 500 { FollowerHealth::Healthy } else { FollowerHealth::Lagging };
 
         // Clear pending entries that were replicated
         let mut pending = self.pending_entries.write().await;

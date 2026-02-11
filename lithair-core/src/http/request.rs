@@ -319,11 +319,46 @@ impl HttpRequest {
     }
 }
 
-/// Simple URL decoding for query parameters
+/// URL decoding for query parameters (RFC 3986).
+/// Also decodes `+` as space per HTML form encoding (application/x-www-form-urlencoded).
 fn urlcode_decode(s: &str) -> String {
-    // TODO: Implement proper URL decoding
-    // For now, just handle basic cases
-    s.replace("+", " ").replace("%20", " ").replace("%3D", "=").replace("%26", "&")
+    let mut result = Vec::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                result.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+                    result.push((hi << 4) | lo);
+                    i += 3;
+                } else {
+                    result.push(b'%');
+                    i += 1;
+                }
+            }
+            b => {
+                result.push(b);
+                i += 1;
+            }
+        }
+    }
+
+    String::from_utf8(result).unwrap_or_else(|_| s.to_string())
+}
+
+/// Convert a hex character to its numeric value
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 name = "blog_replicated_demo"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Lithair Blog with Raft Replication - Multi-node blog with RBAC and sessions"
 authors = ["Yoan Roblet (Arcker)"]
 

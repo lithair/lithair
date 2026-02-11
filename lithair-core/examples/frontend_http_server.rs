@@ -1,13 +1,13 @@
 //! Lithair Frontend HTTP Server for MCP Playwright testing
 
-use lithair_core::frontend::{FrontendServer, FrontendState, StaticAsset};
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
+use lithair_core::frontend::{FrontendServer, FrontendState, StaticAsset};
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,10 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         tokio::task::spawn(async move {
             let _ = http1::Builder::new()
-                .serve_connection(io, service_fn(move |req| {
-                    let frontend_server = frontend_server.clone();
-                    async move { frontend_server.handle_request(req).await }
-                }))
+                .serve_connection(
+                    io,
+                    service_fn(move |req| {
+                        let frontend_server = frontend_server.clone();
+                        async move { frontend_server.handle_request(req).await }
+                    }),
+                )
                 .await;
         });
     }
@@ -46,9 +49,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn create_demo_assets(state: Arc<RwLock<FrontendState>>) {
     let assets = vec![
-        ("/index.html", r#"<!DOCTYPE html>
+        (
+            "/index.html",
+            r#"<!DOCTYPE html>
 <html><head><title>Lithair Demo</title></head>
-<body><h1>🚀 Lithair Frontend</h1><p>Served from memory!</p></body></html>"#),
+<body><h1>🚀 Lithair Frontend</h1><p>Served from memory!</p></body></html>"#,
+        ),
         ("/style.css", "body { font-family: Arial; margin: 20px; }"),
         ("/app.js", "console.log('Lithair frontend loaded!');"),
     ];
@@ -59,7 +65,7 @@ async fn create_demo_assets(state: Arc<RwLock<FrontendState>>) {
     let host_id = "main".to_string();
     let location = state_guard.virtual_hosts.entry(host_id.clone()).or_insert_with(|| {
         lithair_core::frontend::VirtualHostLocation {
-            host_id: host_id,
+            host_id,
             base_path: "/".to_string(),
             assets: std::collections::HashMap::new(),
             path_index: std::collections::HashMap::new(),

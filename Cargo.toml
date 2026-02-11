@@ -7,12 +7,10 @@ members = [
     "examples/blog_replicated_demo",
     "examples/lithair_playground",
     "examples/raft_consistency_test",
-    "examples/scc2_server_demo",
     "examples/rbac_sso_demo",
     "examples/rbac_session_demo",
     "examples/minimal_server",
     "examples/blog_server",
-    "examples/test_server",
     "examples/ecommerce_app",
     "examples/datatable_demo",
     "examples/replication_stress_test",
@@ -38,13 +36,19 @@ lto = true
 codegen-units = 1
 panic = "abort"
 
+# Fast release profile for CI - no LTO, more codegen units
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 [profile.bench]
 opt-level = 3
 lto = true
 codegen-units = 1
 debug = true
 
-# Dépendances pour le stress test et optimisations
+# Shared dependencies for stress tests and optimizations
 [workspace.dependencies]
 reqwest = { version = "0.13", features = ["json", "blocking", "rustls", "form"], default-features = false }
 tokio = { version = "1.47", features = ["full"] }

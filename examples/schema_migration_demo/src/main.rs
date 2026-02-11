@@ -63,6 +63,9 @@
 //! - Add `pub sku: String` → Breaking change (rejected in strict mode)
 //! - Add `#[db(default = 0)] pub rating: i32` → Safe migration
 
+#![allow(dead_code)]
+#![allow(unused_assignments)]
+
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use lithair_core::app::LithairServer;
@@ -147,7 +150,6 @@ pub struct Product {
     // #[http(expose)]
     // #[permission(read = "Public")]
     // pub sku: String,
-
     /// Priority level - SAFE MIGRATION (has default value!)
     /// Old events will get priority=0 automatically at deserialization
     #[db(default = 0)]
@@ -284,10 +286,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Start server with schema validation
     let server = LithairServer::with_config(config)
-        .with_declarative_model::<Product>(
-            format!("{}/products", cli.data_dir),
-            "/api/products",
-        );
+        .with_declarative_model::<Product>(format!("{}/products", cli.data_dir), "/api/products");
 
     log::info!("");
     log::info!("Starting server...");
@@ -321,11 +320,21 @@ fn show_stored_schema(data_dir: &str) -> anyhow::Result<()> {
 
             for (name, constraints) in fields {
                 let mut attrs = Vec::new();
-                if constraints.primary_key { attrs.push("PK"); }
-                if constraints.unique { attrs.push("UNIQUE"); }
-                if constraints.indexed { attrs.push("INDEX"); }
-                if constraints.nullable { attrs.push("NULL"); }
-                if constraints.immutable { attrs.push("IMMUTABLE"); }
+                if constraints.primary_key {
+                    attrs.push("PK");
+                }
+                if constraints.unique {
+                    attrs.push("UNIQUE");
+                }
+                if constraints.indexed {
+                    attrs.push("INDEX");
+                }
+                if constraints.nullable {
+                    attrs.push("NULL");
+                }
+                if constraints.immutable {
+                    attrs.push("IMMUTABLE");
+                }
 
                 let attrs_str = if attrs.is_empty() {
                     String::new()
@@ -339,7 +348,8 @@ fn show_stored_schema(data_dir: &str) -> anyhow::Result<()> {
             if !spec.indexes.is_empty() {
                 println!("\nIndexes ({}):", spec.indexes.len());
                 for idx in &spec.indexes {
-                    println!("  - {} on ({}){}",
+                    println!(
+                        "  - {} on ({}){}",
                         idx.name,
                         idx.fields.join(", "),
                         if idx.unique { " UNIQUE" } else { "" }
@@ -389,9 +399,10 @@ fn show_history(data_dir: &str) -> anyhow::Result<()> {
                 println!("  Total changes: {}\n", history.changes.len());
                 for (i, change) in history.changes.iter().enumerate() {
                     // Convert timestamp to readable format
-                    let applied_time = chrono::DateTime::from_timestamp(change.applied_at as i64, 0)
-                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                        .unwrap_or_else(|| change.applied_at.to_string());
+                    let applied_time =
+                        chrono::DateTime::from_timestamp(change.applied_at as i64, 0)
+                            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            .unwrap_or_else(|| change.applied_at.to_string());
 
                     println!("  {}. Model: {}", i + 1, change.model_name);
                     println!("     ID: {}", change.id);
@@ -412,10 +423,9 @@ fn show_history(data_dir: &str) -> anyhow::Result<()> {
                             SchemaChangeType::RemoveForeignKey => "✂️",
                         };
                         let field_name = field_change.field_name.as_deref().unwrap_or("(unnamed)");
-                        println!("       {} {} ({:?})",
-                            change_icon,
-                            field_name,
-                            field_change.migration_strategy
+                        println!(
+                            "       {} {} ({:?})",
+                            change_icon, field_name, field_change.migration_strategy
                         );
                     }
                     println!();
@@ -585,7 +595,7 @@ async fn run_tests(base_url: &str) -> anyhow::Result<()> {
         Ok(resp) if resp.status().is_success() => {
             let json: serde_json::Value = resp.json().await?;
             if json.get("status").and_then(|s| s.as_str()) == Some("unlocked")
-               && json.get("duration_seconds").is_some()
+                && json.get("duration_seconds").is_some()
             {
                 println!("✅ OK (expires in 300s)");
                 passed += 1;
@@ -667,12 +677,7 @@ async fn run_tests(base_url: &str) -> anyhow::Result<()> {
         "category": "test",
         "featured": false
     });
-    match client
-        .post(format!("{}/api/products", base_url))
-        .json(&product)
-        .send()
-        .await
-    {
+    match client.post(format!("{}/api/products", base_url)).json(&product).send().await {
         Ok(resp) if resp.status().is_success() || resp.status() == 201 => {
             println!("✅ OK");
             passed += 1;
@@ -891,10 +896,8 @@ async fn run_migration_test(client: &reqwest::Client, base_url: &str) -> anyhow:
     fs::copy(baseline_path, &schema_path)?;
 
     // Call revalidate endpoint
-    let revalidate_result = client
-        .post(format!("{}/_admin/schema/revalidate", base_url))
-        .send()
-        .await?;
+    let revalidate_result =
+        client.post(format!("{}/_admin/schema/revalidate", base_url)).send().await?;
 
     let revalidate_json: serde_json::Value = revalidate_result.json().await?;
 
@@ -913,7 +916,10 @@ async fn run_migration_test(client: &reqwest::Client, base_url: &str) -> anyhow:
     }
 
     if total_changes != 3 {
-        return Err(anyhow::anyhow!("Expected 3 changes (priority, category, featured), got {}", total_changes));
+        return Err(anyhow::anyhow!(
+            "Expected 3 changes (priority, category, featured), got {}",
+            total_changes
+        ));
     }
 
     // Verify history was updated
@@ -924,16 +930,22 @@ async fn run_migration_test(client: &reqwest::Client, base_url: &str) -> anyhow:
     };
 
     if final_count <= initial_count {
-        return Err(anyhow::anyhow!("History count should have increased (was {}, now {})", initial_count, final_count));
+        return Err(anyhow::anyhow!(
+            "History count should have increased (was {}, now {})",
+            initial_count,
+            final_count
+        ));
     }
 
     Ok(format!("{} changes detected, history updated", total_changes))
 }
 
-
 /// Test breaking change detection (RemoveField)
 /// Uses Product_v2_with_legacy.json which has a 'legacy_sku' field not in current model
-async fn run_breaking_change_test(client: &reqwest::Client, base_url: &str) -> anyhow::Result<String> {
+async fn run_breaking_change_test(
+    client: &reqwest::Client,
+    base_url: &str,
+) -> anyhow::Result<String> {
     use std::fs;
     use std::path::Path;
 
@@ -956,10 +968,8 @@ async fn run_breaking_change_test(client: &reqwest::Client, base_url: &str) -> a
     fs::copy(baseline_path, &schema_path)?;
 
     // Call revalidate endpoint
-    let revalidate_result = client
-        .post(format!("{}/_admin/schema/revalidate", base_url))
-        .send()
-        .await?;
+    let revalidate_result =
+        client.post(format!("{}/_admin/schema/revalidate", base_url)).send().await?;
 
     let revalidate_json: serde_json::Value = revalidate_result.json().await?;
 
@@ -971,7 +981,7 @@ async fn run_breaking_change_test(client: &reqwest::Client, base_url: &str) -> a
 
     // Verify results - should detect RemoveField for legacy_sku
     let status = revalidate_json["status"].as_str().unwrap_or("");
-    
+
     if status != "changes_detected" {
         return Err(anyhow::anyhow!("Expected 'changes_detected', got '{}'", status));
     }
@@ -983,8 +993,8 @@ async fn run_breaking_change_test(client: &reqwest::Client, base_url: &str) -> a
         .and_then(|model| model["changes"].as_array())
         .map(|changes| {
             changes.iter().any(|c| {
-                c["type"].as_str() == Some("RemoveField") &&
-                c["field"].as_str() == Some("legacy_sku")
+                c["type"].as_str() == Some("RemoveField")
+                    && c["field"].as_str() == Some("legacy_sku")
             })
         })
         .unwrap_or(false);
@@ -999,8 +1009,8 @@ async fn run_breaking_change_test(client: &reqwest::Client, base_url: &str) -> a
         .and_then(|model| model["changes"].as_array())
         .map(|changes| {
             changes.iter().any(|c| {
-                c["field"].as_str() == Some("legacy_sku") &&
-                c["strategy"].as_str() == Some("Breaking")
+                c["field"].as_str() == Some("legacy_sku")
+                    && c["strategy"].as_str() == Some("Breaking")
             })
         })
         .unwrap_or(false);
@@ -1040,10 +1050,8 @@ async fn run_lock_blocks_test(client: &reqwest::Client, base_url: &str) -> anyho
     fs::copy(baseline_path, &schema_path)?;
 
     // Try to revalidate - should be blocked
-    let revalidate_result = client
-        .post(format!("{}/_admin/schema/revalidate", base_url))
-        .send()
-        .await?;
+    let revalidate_result =
+        client.post(format!("{}/_admin/schema/revalidate", base_url)).send().await?;
 
     let status_code = revalidate_result.status();
     let revalidate_json: serde_json::Value = revalidate_result.json().await?;
@@ -1080,7 +1088,10 @@ async fn run_lock_blocks_test(client: &reqwest::Client, base_url: &str) -> anyho
 /// 3. Get pending ID via GET /_admin/schema/pending
 /// 4. Call POST /_admin/schema/approve/{id}
 /// 5. Verify schema persisted to disk (should now have 10 fields)
-async fn run_approve_persistence_test(client: &reqwest::Client, base_url: &str) -> anyhow::Result<String> {
+async fn run_approve_persistence_test(
+    client: &reqwest::Client,
+    base_url: &str,
+) -> anyhow::Result<String> {
     use std::fs;
     use std::path::Path;
 
@@ -1103,10 +1114,8 @@ async fn run_approve_persistence_test(client: &reqwest::Client, base_url: &str) 
     fs::copy(baseline_path, &schema_path)?;
 
     // Call revalidate - in Manual mode, this creates pending changes
-    let revalidate_result = client
-        .post(format!("{}/_admin/schema/revalidate", base_url))
-        .send()
-        .await?;
+    let revalidate_result =
+        client.post(format!("{}/_admin/schema/revalidate", base_url)).send().await?;
 
     let revalidate_json: serde_json::Value = revalidate_result.json().await?;
     let status = revalidate_json["status"].as_str().unwrap_or("");
@@ -1122,19 +1131,14 @@ async fn run_approve_persistence_test(client: &reqwest::Client, base_url: &str) 
     }
 
     // Get pending changes
-    let pending_resp = client
-        .get(format!("{}/_admin/schema/pending", base_url))
-        .send()
-        .await?;
+    let pending_resp = client.get(format!("{}/_admin/schema/pending", base_url)).send().await?;
 
     let pending_json: serde_json::Value = pending_resp.json().await?;
     let pending_changes = pending_json["pending_changes"].as_array();
 
     // Find the pending ID for Product
     let pending_id = pending_changes
-        .and_then(|changes| {
-            changes.iter().find(|c| c["model"].as_str() == Some("Product"))
-        })
+        .and_then(|changes| changes.iter().find(|c| c["model"].as_str() == Some("Product")))
         .and_then(|c| c["id"].as_str())
         .map(String::from);
 

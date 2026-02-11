@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Cette structure permet de définir déclarativement le comportement
 /// du moteur Lithair pour chaque attribut de vos entités.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FieldPolicy {
     /// Nombre d'événements historiques à conserver pour ce champ
     /// 0 = Pas d'historique (juste l'état actuel snapshoté)
@@ -29,19 +29,6 @@ pub struct FieldPolicy {
     /// Nom de la collection/table ciblée par la clé étrangère
     /// Ex: "products", "users", "categories"
     pub fk_collection: Option<String>,
-}
-
-impl Default for FieldPolicy {
-    fn default() -> Self {
-        Self {
-            retention_limit: 0,
-            unique: false,
-            indexed: false,
-            snapshot_only: false,
-            fk: false,
-            fk_collection: None,
-        }
-    }
 }
 
 /// Trait que doivent implémenter les spécifications de modèle

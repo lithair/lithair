@@ -1,6 +1,6 @@
 //! Asset Server for Lithair Frontend
 
-use super::{FrontendState, FrontendEngine};
+use super::{FrontendEngine, FrontendState};
 use anyhow::Result;
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
@@ -20,32 +20,20 @@ fn body_from<T: Into<Bytes>>(data: T) -> RespBody {
 /// Asset Server for serving static assets from Lithair memory
 pub enum AssetServer {
     /// Legacy RwLock-based server (deprecated, use Scc2 variant)
-    Legacy {
-        state: Arc<RwLock<FrontendState>>,
-        fallback_path: Option<String>,
-    },
+    Legacy { state: Arc<RwLock<FrontendState>>, fallback_path: Option<String> },
     /// SCC2-based lock-free server (40M+ ops/sec)
-    Scc2 {
-        engine: Arc<FrontendEngine>,
-        fallback_path: Option<String>,
-    },
+    Scc2 { engine: Arc<FrontendEngine>, fallback_path: Option<String> },
 }
 
 impl AssetServer {
     /// Create legacy RwLock-based asset server (deprecated)
     pub fn new(state: Arc<RwLock<FrontendState>>) -> Self {
-        Self::Legacy {
-            state,
-            fallback_path: Some("/index.html".to_string()),
-        }
+        Self::Legacy { state, fallback_path: Some("/index.html".to_string()) }
     }
 
     /// Create SCC2-based lock-free asset server (recommended)
     pub fn new_scc2(engine: Arc<FrontendEngine>) -> Self {
-        Self::Scc2 {
-            engine,
-            fallback_path: Some("/index.html".to_string()),
-        }
+        Self::Scc2 { engine, fallback_path: Some("/index.html".to_string()) }
     }
 
     /// Serve asset from memory with virtual host routing
@@ -57,21 +45,28 @@ impl AssetServer {
 
                 // Try direct asset lookup
                 if let Some(asset) = engine.get_asset(&clean_path).await {
-                    log::info!("🚀 [{}] Serving {} from SCC2 memory ({} bytes)",
-                        engine.host_id(), clean_path, asset.size_bytes);
+                    log::info!(
+                        "[{}] Serving {} from SCC2 memory ({} bytes)",
+                        engine.host_id(),
+                        clean_path,
+                        asset.size_bytes
+                    );
                     return Some((asset.content, asset.mime_type));
                 }
 
                 // Try fallback for root/empty path
                 if (clean_path == "/" || clean_path.is_empty()) && fallback_path.is_some() {
                     if let Some(asset) = engine.get_asset("/index.html").await {
-                        log::info!("🚀 [{}] Serving fallback /index.html from SCC2 memory", engine.host_id());
+                        log::info!(
+                            "[{}] Serving fallback /index.html from SCC2 memory",
+                            engine.host_id()
+                        );
                         return Some((asset.content, asset.mime_type));
                     }
                 }
 
                 None
-            },
+            }
             AssetServer::Legacy { state, fallback_path } => {
                 // Legacy RwLock path (deprecated)
                 let clean_path = Self::clean_path_static(request_path);
@@ -92,7 +87,8 @@ impl AssetServer {
                         let asset_path = if vhost.base_path == "/" {
                             clean_path.clone()
                         } else {
-                            clean_path.strip_prefix(&vhost.base_path)
+                            clean_path
+                                .strip_prefix(&vhost.base_path)
                                 .map(|p| if p.is_empty() { "/".to_string() } else { p.to_string() })
                                 .unwrap_or_else(|| "/".to_string())
                         };
@@ -100,7 +96,12 @@ impl AssetServer {
                         // Try to find asset in this virtual host
                         if let Some(asset_id) = vhost.path_index.get(&asset_path) {
                             if let Some(asset) = vhost.assets.get(asset_id) {
-                                log::info!("🚀 [{}] Serving {} from memory ({} bytes)", vhost.host_id, clean_path, asset.size_bytes);
+                                log::info!(
+                                    "[{}] Serving {} from memory ({} bytes)",
+                                    vhost.host_id,
+                                    clean_path,
+                                    asset.size_bytes
+                                );
                                 return Some((asset.content.clone(), asset.mime_type.clone()));
                             }
                         }
@@ -109,7 +110,10 @@ impl AssetServer {
                         if (asset_path == "/" || asset_path.is_empty()) && fallback_path.is_some() {
                             if let Some(fallback_id) = vhost.path_index.get("/index.html") {
                                 if let Some(asset) = vhost.assets.get(fallback_id) {
-                                    log::info!("🚀 [{}] Serving fallback /index.html from memory", vhost.host_id);
+                                    log::info!(
+                                        "[{}] Serving fallback /index.html from memory",
+                                        vhost.host_id
+                                    );
                                     return Some((asset.content.clone(), asset.mime_type.clone()));
                                 }
                             }
@@ -139,16 +143,12 @@ pub struct FrontendServer {
 impl FrontendServer {
     /// Create frontend server with legacy RwLock (deprecated)
     pub fn new(state: Arc<RwLock<FrontendState>>) -> Self {
-        Self {
-            asset_server: AssetServer::new(state),
-        }
+        Self { asset_server: AssetServer::new(state) }
     }
 
     /// Create frontend server with SCC2 lock-free engine (recommended)
     pub fn new_scc2(engine: Arc<FrontendEngine>) -> Self {
-        Self {
-            asset_server: AssetServer::new_scc2(engine),
-        }
+        Self { asset_server: AssetServer::new_scc2(engine) }
     }
 
     /// Handle HTTP request for assets
@@ -173,16 +173,14 @@ impl FrontendServer {
                     let path_with_slash = format!("{}/index.html", path);
                     result = self.asset_server.serve_asset(&path_with_slash).await;
                 }
-                
+
                 match result {
-                    Some((content, mime_type)) => {
-                        Ok(Response::builder()
-                            .status(StatusCode::OK)
-                            .header("Content-Type", mime_type)
-                            .header("X-Served-From", "Lithair-Memory")
-                            .body(body_from(content))
-                            .unwrap())
-                    }
+                    Some((content, mime_type)) => Ok(Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", mime_type)
+                        .header("X-Served-From", "Lithair-Memory")
+                        .body(body_from(content))
+                        .unwrap()),
                     None => {
                         // Return beautiful 404 HTML page with terminal style
                         let html_404 = r#"<!DOCTYPE html>
@@ -228,12 +226,10 @@ impl FrontendServer {
                     }
                 }
             }
-            _ => {
-                Ok(Response::builder()
-                    .status(StatusCode::METHOD_NOT_ALLOWED)
-                    .body(body_from("Method not allowed"))
-                    .unwrap())
-            }
+            _ => Ok(Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .body(body_from("Method not allowed"))
+                .unwrap()),
         }
     }
 
@@ -255,19 +251,23 @@ impl FrontendServer {
         let path = req.uri().path();
 
         // All admin logic is now completely automatic and declarative
-        if let Some(auto_response) = handle_auto_admin_endpoints_with_reload(
-            method, path, &req, server, config, firewall
-        ).await {
+        if let Some(auto_response) =
+            handle_auto_admin_endpoints_with_reload(method, path, &req, server, config, firewall)
+                .await
+        {
             Ok(auto_response)
         } else {
             // If no automatic endpoint matches, return not found
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(body_from(serde_json::json!({
-                    "error": "not_found",
-                    "message": "Admin endpoint not found"
-                }).to_string()))
+                .body(body_from(
+                    serde_json::json!({
+                        "error": "not_found",
+                        "message": "Admin endpoint not found"
+                    })
+                    .to_string(),
+                ))
                 .unwrap())
         }
     }

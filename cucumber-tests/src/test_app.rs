@@ -130,6 +130,6 @@ mod tests {
         let router = app.router();
 
         // Vérifier qu'on a des routes
-        assert!(router.routes().len() > 0);
+        assert!(!router.routes().is_empty());
     }
 }

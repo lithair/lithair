@@ -50,8 +50,8 @@ impl Default for OptimizedPersistenceConfig {
             flush_interval_ms: 100,      // 100ms flush interval
             max_events_buffer: 1000,     // Max 1000 events in buffer
             enable_binary_format: false, // JSON par défaut pour compatibilité
-            fsync_enabled: true,         // 🛡️ DURABILITÉ MAXIMALE par défaut
-            enable_checksums: true,      // 🛡️ CRC32 checksums par défaut
+            fsync_enabled: true,         // DURABILITÉ MAXIMALE par défaut
+            enable_checksums: true,      // CRC32 checksums par défaut
         }
     }
 }
@@ -122,7 +122,7 @@ impl AsyncEventWriter {
     /// Shutdown the async writer
     pub fn shutdown(mut self) -> EngineResult<()> {
         if let Err(e) = self.sender.send(AsyncWriteCommand::Shutdown) {
-            eprintln!("Warning: Failed to send shutdown command: {}", e);
+            log::warn!("Failed to send shutdown command: {}", e);
         }
 
         if let Some(handle) = self.thread_handle.take() {
@@ -149,17 +149,17 @@ impl AsyncEventWriter {
         let mut file = match fs::OpenOptions::new().create(true).append(true).open(&events_file) {
             Ok(f) => BufWriter::with_capacity(config.buffer_size, f),
             Err(e) => {
-                eprintln!("❌ Failed to open events file {}: {}", events_file, e);
+                log::error!("Failed to open events file {}: {}", events_file, e);
                 return;
             }
         };
 
-        println!("🚀 Async event writer started");
-        println!("   • Buffer size: {} bytes", config.buffer_size);
-        println!("   • Flush interval: {}ms", config.flush_interval_ms);
-        println!("   • Max events buffer: {}", config.max_events_buffer);
-        println!("   • Fsync enabled: {} {}", fsync_enabled, if fsync_enabled { "🛡️" } else { "⚡" });
-        println!("   • CRC32 checksums: {} {}", enable_checksums, if enable_checksums { "🛡️" } else { "⚡" });
+        log::info!("Async event writer started");
+        log::info!("  Buffer size: {} bytes", config.buffer_size);
+        log::info!("  Flush interval: {}ms", config.flush_interval_ms);
+        log::info!("  Max events buffer: {}", config.max_events_buffer);
+        log::info!("  Fsync enabled: {}", fsync_enabled);
+        log::info!("  CRC32 checksums: {}", enable_checksums);
 
         loop {
             // Check for incoming commands with timeout
@@ -180,29 +180,34 @@ impl AsyncEventWriter {
                             event_json
                         };
                         if let Err(e) = writeln!(file, "{}", line) {
-                            eprintln!("❌ Failed to write event: {}", e);
+                            log::error!("Failed to write event: {}", e);
                             continue;
                         }
                         event_count += 1;
                     }
                     AsyncWriteCommand::WriteBinary(event_data) => {
                         if let Err(e) = file.write_all(&event_data) {
-                            eprintln!("❌ Failed to write binary event: {}", e);
+                            log::error!("Failed to write binary event: {}", e);
                             continue;
                         }
                         if let Err(e) = file.write_all(b"\n") {
-                            eprintln!("❌ Failed to write newline: {}", e);
+                            log::error!("Failed to write newline: {}", e);
                             continue;
                         }
                         event_count += 1;
                     }
                     AsyncWriteCommand::Flush => {
-                        Self::flush_buffer(&mut file, &mut event_count, &mut last_flush, fsync_enabled);
+                        Self::flush_buffer(
+                            &mut file,
+                            &mut event_count,
+                            &mut last_flush,
+                            fsync_enabled,
+                        );
                     }
                     AsyncWriteCommand::Shutdown => {
                         // Always fsync on shutdown for safety
                         Self::flush_buffer(&mut file, &mut event_count, &mut last_flush, true);
-                        println!("🛑 Async event writer shutting down");
+                        log::info!("Async event writer shutting down");
                         break;
                     }
                 }
@@ -231,21 +236,21 @@ impl AsyncEventWriter {
         if *event_count > 0 {
             // Step 1: Flush Rust buffer → OS buffer
             if let Err(e) = file.flush() {
-                eprintln!("❌ Failed to flush events buffer: {}", e);
+                log::error!("Failed to flush events buffer: {}", e);
                 return;
             }
 
             // Step 2: Fsync OS buffer → Physical disk (if enabled)
             if fsync {
                 if let Err(e) = file.get_ref().sync_all() {
-                    eprintln!("❌ Failed to fsync events to disk: {}", e);
+                    log::error!("Failed to fsync events to disk: {}", e);
                     return;
                 }
             }
 
             // Only log in debug builds to avoid performance impact
             #[cfg(debug_assertions)]
-            println!("💾 Flushed {} events to disk (fsync: {})", *event_count, fsync);
+            log::debug!("Flushed {} events to disk (fsync: {})", *event_count, fsync);
 
             *event_count = 0;
             *last_flush = Instant::now();
@@ -291,12 +296,12 @@ impl OptimizedFileStorage {
         // Create metadata file if it doesn't exist
         storage.ensure_metadata_file()?;
 
-        println!("🚀 OPTIMIZED Database initialized at: {}", base_path);
-        println!("   • Events: {}", storage.events_file);
-        println!("   • Snapshots: {}", storage.snapshot_file);
-        println!("   • Metadata: {}", storage.metadata_file);
-        println!("   • Buffer size: {} bytes", storage.config.buffer_size);
-        println!("   • Flush interval: {}ms", storage.config.flush_interval_ms);
+        log::info!("Optimized database initialized at: {}", base_path);
+        log::info!("  Events: {}", storage.events_file);
+        log::info!("  Snapshots: {}", storage.snapshot_file);
+        log::info!("  Metadata: {}", storage.metadata_file);
+        log::info!("  Buffer size: {} bytes", storage.config.buffer_size);
+        log::info!("  Flush interval: {}ms", storage.config.flush_interval_ms);
 
         Ok(storage)
     }
@@ -344,7 +349,7 @@ impl OptimizedFileStorage {
     /// Read all events from the event log (compatible with original format)
     pub fn read_all_events(&self) -> EngineResult<Vec<String>> {
         if !Path::new(&self.events_file).exists() {
-            println!("📂 No events file found, starting with empty log");
+            log::debug!("No events file found, starting with empty log");
             return Ok(vec![]);
         }
 
@@ -358,7 +363,7 @@ impl OptimizedFileStorage {
             .map(|line| line.to_string())
             .collect();
 
-        println!("📂 Loaded {} events from optimized log", events.len());
+        log::debug!("Loaded {} events from optimized log", events.len());
 
         Ok(events)
     }
@@ -369,7 +374,7 @@ impl OptimizedFileStorage {
             EngineError::PersistenceError(format!("Failed to write snapshot: {}", e))
         })?;
 
-        println!("📸 State snapshot saved: {} bytes", state_json.len());
+        log::debug!("State snapshot saved: {} bytes", state_json.len());
 
         Ok(())
     }
@@ -377,7 +382,7 @@ impl OptimizedFileStorage {
     /// Load the latest state snapshot (unchanged for compatibility)
     pub fn load_snapshot(&self) -> EngineResult<Option<String>> {
         if !Path::new(&self.snapshot_file).exists() {
-            println!("📂 No snapshot found, will use initial state");
+            log::debug!("No snapshot found, will use initial state");
             return Ok(None);
         }
 
@@ -385,7 +390,7 @@ impl OptimizedFileStorage {
             EngineError::PersistenceError(format!("Failed to read snapshot: {}", e))
         })?;
 
-        println!("📂 Loaded state snapshot: {} bytes", content.len());
+        log::debug!("Loaded state snapshot: {} bytes", content.len());
 
         Ok(Some(content))
     }
@@ -417,7 +422,7 @@ impl OptimizedFileStorage {
             EngineError::PersistenceError(format!("Failed to write metadata: {}", e))
         })?;
 
-        println!("📋 Created optimized metadata file");
+        log::debug!("Created optimized metadata file");
 
         Ok(())
     }
@@ -427,7 +432,7 @@ impl Drop for OptimizedFileStorage {
     fn drop(&mut self) {
         if let Some(writer) = self.async_writer.take() {
             if let Err(e) = writer.shutdown() {
-                eprintln!("Warning: Failed to shutdown async writer: {}", e);
+                log::warn!("Failed to shutdown async writer: {}", e);
             }
         }
     }

@@ -65,7 +65,7 @@ pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 's
     }
 
     /// Apply lifecycle rules before persisting
-    /// Based on #[lifecycle] attributes
+    /// Based on `#[lifecycle]` attributes
     fn apply_lifecycle(&mut self) -> Result<(), String> {
         Ok(()) // Default: no lifecycle rules
     }
@@ -82,6 +82,7 @@ where
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     /// Optional extractor to resolve user permissions (as strings) from the HTTP request
     /// This enables declarative read filtering via HttpExposable::can_read()
+    #[allow(clippy::type_complexity)]
     permission_extractor: Option<Arc<dyn Fn(&Req) -> Vec<String> + Send + Sync>>,
     pub(crate) session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
@@ -146,10 +147,12 @@ where
     }
 
     /// Create a new DeclarativeHttpHandler with automatic event replay
-    /// 
+    ///
     /// This is a convenience method that creates the handler and automatically
     /// replays all persisted events to restore state from the event log.
-    pub async fn new_with_replay(event_store_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new_with_replay(
+        event_store_path: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let handler = Self::new(event_store_path)?;
         handler.replay_events().await?;
         Ok(handler)
@@ -175,7 +178,7 @@ where
         }
 
         if Self::is_verbose() || replayed_count > 0 {
-            log::info!("📂 Replayed {} events into memory", replayed_count);
+            log::info!("Replayed {} events into memory", replayed_count);
         }
 
         Ok(replayed_count)
@@ -187,7 +190,10 @@ where
     }
 
     /// Set the permission checker for RBAC enforcement
-    pub fn with_permission_checker(mut self, checker: Arc<dyn crate::rbac::PermissionChecker>) -> Self {
+    pub fn with_permission_checker(
+        mut self,
+        checker: Arc<dyn crate::rbac::PermissionChecker>,
+    ) -> Self {
         self.permission_checker = Some(checker);
         self
     }
@@ -219,21 +225,21 @@ where
     /// Extract role from Authorization header (Bearer token)
     async fn extract_role_from_request(&self, req: &Req) -> Option<String> {
         use crate::session::SessionStore;
-        
+
         // Get session store (if configured)
         let session_store_any = self.session_store.as_ref()?.clone();
-        
+
         // Try to downcast Arc<dyn Any> to Arc<PersistentSessionStore>
-        let store: Arc<crate::session::PersistentSessionStore> = 
+        let store: Arc<crate::session::PersistentSessionStore> =
             session_store_any.downcast().ok()?;
-        
+
         // Extract Bearer token from Authorization header
         let auth_header = req.headers().get(http::header::AUTHORIZATION)?.to_str().ok()?;
         let token = auth_header.strip_prefix("Bearer ")?.trim();
-        
+
         // Get session from store
         let session = store.get(token).await.ok()??;
-        
+
         // Extract role from session
         let role: Option<String> = session.get("role");
         role
@@ -280,8 +286,8 @@ where
             storage.insert(actual_key, item);
         }
         if Self::is_verbose() {
-            println!(
-                "🔄 Reconcile: storage replaced with authoritative snapshot ({} items)",
+            log::debug!(
+                "Reconcile: storage replaced with authoritative snapshot ({} items)",
                 storage.len()
             );
         }
@@ -304,11 +310,15 @@ where
         // Persist to event store (best-effort - don't fail the operation)
         // IMPORTANT: Storage is already updated, so operation must succeed for consistency
         if let Err(e) = self.persist_to_event_store("Replicated", &item).await {
-            log::warn!("⚠️ Failed to persist replicated item event for {}: {:?} (storage already updated)", actual_key, e);
+            log::warn!(
+                "Failed to persist replicated item event for {}: {:?} (storage already updated)",
+                actual_key,
+                e
+            );
         }
 
         if Self::is_verbose() {
-            println!("📥 Replicated item {} applied to follower", actual_key);
+            log::debug!("Replicated item {} applied to follower", actual_key);
         }
 
         Ok(())
@@ -321,7 +331,7 @@ where
             self.apply_replicated_item(item).await?;
         }
         if Self::is_verbose() {
-            println!("📥 Bulk replicated {} items applied to follower", count);
+            log::debug!("Bulk replicated {} items applied to follower", count);
         }
         Ok(count)
     }
@@ -333,11 +343,16 @@ where
         {
             let storage = self.storage.read().await;
             let has_key = storage.contains_key(id);
-            log::debug!("📝 APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}", id, has_key, storage.len());
+            log::debug!(
+                "APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}",
+                id,
+                has_key,
+                storage.len()
+            );
             if !has_key {
                 // If item doesn't exist, treat as create (eventual consistency)
                 drop(storage);
-                log::debug!("📝 APPLY UPDATE: item doesn't exist, creating instead");
+                log::debug!("APPLY UPDATE: item doesn't exist, creating instead");
                 return self.apply_replicated_item(item).await;
             }
         }
@@ -351,11 +366,15 @@ where
         // Persist to event store (best-effort - don't fail the operation)
         // IMPORTANT: Storage is already updated, so we must succeed for consistency
         if let Err(e) = self.persist_to_event_store("Updated", &item).await {
-            log::warn!("⚠️ Failed to persist update event for {}: {:?} (storage already updated)", id, e);
+            log::warn!(
+                "Failed to persist update event for {}: {:?} (storage already updated)",
+                id,
+                e
+            );
         }
 
         if Self::is_verbose() {
-            println!("📥 Replicated UPDATE for {} applied", id);
+            log::debug!("Replicated UPDATE for {} applied", id);
         }
 
         Ok(())
@@ -369,7 +388,12 @@ where
         let removed_item = {
             let mut storage = self.storage.write().await;
             let has_key = storage.contains_key(id);
-            log::debug!("🗑️ APPLY DELETE: id={}, exists_in_storage={}, storage_len={}", id, has_key, storage.len());
+            log::debug!(
+                "APPLY DELETE: id={}, exists_in_storage={}, storage_len={}",
+                id,
+                has_key,
+                storage.len()
+            );
             storage.remove(id)
         };
 
@@ -377,17 +401,21 @@ where
             // Persist deletion to event store (best-effort - don't fail the operation)
             // This ensures idempotency: once item is removed from storage, operation succeeds
             if let Err(e) = self.persist_to_event_store("Deleted", &item).await {
-                log::warn!("⚠️ Failed to persist delete event for {}: {:?} (storage already updated)", id, e);
+                log::warn!(
+                    "Failed to persist delete event for {}: {:?} (storage already updated)",
+                    id,
+                    e
+                );
             }
 
             if Self::is_verbose() {
-                println!("📥 Replicated DELETE for {} applied", id);
+                log::debug!("Replicated DELETE for {} applied", id);
             }
 
             Ok(true)
         } else {
             // Item didn't exist (idempotent behavior - not an error)
-            log::debug!("📥 Replicated DELETE for {} - item not found (idempotent)", id);
+            log::debug!("Replicated DELETE for {} - item not found (idempotent)", id);
             Ok(false)
         }
     }
@@ -437,15 +465,13 @@ where
     pub async fn configure_declarative_persistence(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!("🔧 Analyzing declarative persistence configuration...");
+        log::info!("Analyzing declarative persistence configuration...");
 
         // For now, just log that we're using the conservative settings
         // The actual logic would analyze T::get_declarative_spec() when the trait bounds are fixed
-        println!(
-            "ℹ️  Using conservative persistence settings (enable_compaction: false by default)"
-        );
-        println!("ℹ️  Compaction will only be enabled if declarative attributes specify it");
-        println!("ℹ️  This prevents automatic deletion of .raftlog files");
+        log::info!("Using conservative persistence settings (enable_compaction: false by default)");
+        log::info!("Compaction will only be enabled if declarative attributes specify it");
+        log::info!("This prevents automatic deletion of .raftlog files");
 
         Ok(())
     }
@@ -521,18 +547,12 @@ where
     /// GET /api/{model} - List all items (declarative read filtering)
     async fn handle_list(&self, req: &Req) -> Result<Resp, Infallible> {
         // Extract permissions from request if extractor is provided
-        let user_perms: Vec<String> = self
-            .permission_extractor
-            .as_ref()
-            .map(|f| f(req))
-            .unwrap_or_else(|| Vec::new());
+        let user_perms: Vec<String> =
+            self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
         let storage = self.storage.read().await;
         // Apply declarative read filtering via HttpExposable::can_read
-        let items: Vec<&T> = storage
-            .values()
-            .filter(|item| item.can_read(&user_perms))
-            .collect();
+        let items: Vec<&T> = storage.values().filter(|item| item.can_read(&user_perms)).collect();
 
         match serde_json::to_string(&items) {
             Ok(json) => Ok(Response::builder()
@@ -547,18 +567,16 @@ where
     /// POST /api/{model} - Create new item
     async fn handle_create(&self, req: Req) -> Result<Resp, Infallible> {
         // Agnostic write enforcement using permission_extractor + can_write()
-        let extracted_perms: Option<Vec<String>> = self
-            .permission_extractor
-            .as_ref()
-            .map(|f| f(&req));
-        
+        let extracted_perms: Option<Vec<String>> =
+            self.permission_extractor.as_ref().map(|f| f(&req));
+
         // Extract role BEFORE consuming body (if needed for legacy fallback)
         let extracted_role = if extracted_perms.is_none() {
             self.extract_role_from_request(&req).await
         } else {
             None
         };
-        
+
         // Validate content type
         if !Self::has_json_content_type(&req) {
             return Ok(self.unsupported_media_type_response());
@@ -605,11 +623,13 @@ where
                         .unwrap());
                 }
             };
-            
+
             // Check permissions
             let model_name = std::any::type_name::<T>().split("::").last().unwrap_or("Item");
             let specific_perm = format!("{}Write", model_name);
-            if !checker.has_permission(&role, &specific_perm) && !checker.has_permission(&role, "Write") {
+            if !checker.has_permission(&role, &specific_perm)
+                && !checker.has_permission(&role, "Write")
+            {
                 return Ok(Response::builder()
                     .status(StatusCode::FORBIDDEN)
                     .header("content-type", "application/json")
@@ -632,7 +652,7 @@ where
 
         // RAFT INTEGRATION: Check if consensus is required
         if let Some(consensus_arc) = &self.consensus {
-            println!("🔄 Raft: Proposing create operation for item {}", primary_key);
+            log::debug!("Raft: Proposing create operation for item {}", primary_key);
 
             // Real Raft consensus proposal
             match consensus_arc
@@ -642,7 +662,7 @@ where
                 .await
             {
                 Ok(_) => {
-                    println!("✅ Raft: Consensus achieved, applying operation locally");
+                    log::info!("Raft: Consensus achieved, applying operation locally");
 
                     // Apply to local storage after successful consensus
                     // Use the item's actual ID as key, not the placeholder
@@ -651,29 +671,27 @@ where
                         .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
                         .unwrap_or_else(|| primary_key.clone());
 
-                    println!(
-                        "🔍 DEBUG: primary_key = {}, actual_key = {}",
-                        primary_key, actual_key
+                    log::debug!(
+                        "DEBUG: primary_key = {}, actual_key = {}",
+                        primary_key,
+                        actual_key
                     );
-                    println!(
-                        "🔍 DEBUG: item JSON = {}",
+                    log::debug!(
+                        "DEBUG: item JSON = {}",
                         serde_json::to_string(&item).unwrap_or_default()
                     );
 
                     {
                         let mut storage = self.storage.write().await;
                         storage.insert(actual_key.clone(), item.clone());
-                        println!("🔍 DEBUG: Storage now has {} items", storage.len());
+                        log::debug!("DEBUG: Storage now has {} items", storage.len());
                     }
 
                     if (self.persist_to_event_store("Created", &item).await).is_err() {
                         return Ok(self.internal_error_response());
                     }
 
-                    println!(
-                        "✅ Raft: Successfully replicated item {} across cluster",
-                        primary_key
-                    );
+                    log::info!("Raft: Successfully replicated item {} across cluster", primary_key);
                 }
                 Err(e) => {
                     return Ok(Response::builder()
@@ -694,7 +712,7 @@ where
                 return Ok(self.internal_error_response());
             }
 
-            println!("📝 Local: Item {} stored locally only", primary_key);
+            log::debug!("Local: Item {} stored locally only", primary_key);
         }
 
         match serde_json::to_string(&item) {
@@ -824,11 +842,8 @@ where
     /// GET /api/{model}/{id} - Get item by ID (declarative read filtering)
     async fn handle_get(&self, id: &str, req: &Req) -> Result<Resp, Infallible> {
         // Extract permissions from request if extractor is provided
-        let user_perms: Vec<String> = self
-            .permission_extractor
-            .as_ref()
-            .map(|f| f(req))
-            .unwrap_or_else(|| Vec::new());
+        let user_perms: Vec<String> =
+            self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
         let storage = self.storage.read().await;
 
@@ -857,18 +872,16 @@ where
     /// PUT /api/{model}/{id} - Update item
     async fn handle_update(&self, id: &str, req: Req) -> Result<Resp, Infallible> {
         // Agnostic write enforcement using permission_extractor + can_write()
-        let extracted_perms: Option<Vec<String>> = self
-            .permission_extractor
-            .as_ref()
-            .map(|f| f(&req));
-        
+        let extracted_perms: Option<Vec<String>> =
+            self.permission_extractor.as_ref().map(|f| f(&req));
+
         // Extract role BEFORE consuming body (if needed for legacy fallback)
         let extracted_role = if extracted_perms.is_none() {
             self.extract_role_from_request(&req).await
         } else {
             None
         };
-        
+
         // Validate content type
         if !Self::has_json_content_type(&req) {
             return Ok(self.unsupported_media_type_response());
@@ -914,11 +927,13 @@ where
                         .unwrap());
                 }
             };
-            
+
             // Check permissions
             let model_name = std::any::type_name::<T>().split("::").last().unwrap_or("Item");
             let specific_perm = format!("{}Write", model_name);
-            if !checker.has_permission(&role, &specific_perm) && !checker.has_permission(&role, "Write") {
+            if !checker.has_permission(&role, &specific_perm)
+                && !checker.has_permission(&role, "Write")
+            {
                 return Ok(Response::builder()
                     .status(StatusCode::FORBIDDEN)
                     .header("content-type", "application/json")
@@ -939,7 +954,7 @@ where
 
         // RAFT INTEGRATION: Check if consensus is required for UPDATE
         if let Some(consensus_arc) = &self.consensus {
-            println!("🔄 Raft: Proposing UPDATE operation for item {}", id);
+            log::debug!("Raft: Proposing UPDATE operation for item {}", id);
             match consensus_arc
                 .read()
                 .await
@@ -989,10 +1004,8 @@ where
     /// DELETE /api/{model}/{id} - Delete item
     async fn handle_delete(&self, id: &str, req: Req) -> Result<Resp, Infallible> {
         // Agnostic write/delete enforcement using permission_extractor + can_write()
-        let extracted_perms: Option<Vec<String>> = self
-            .permission_extractor
-            .as_ref()
-            .map(|f| f(&req));
+        let extracted_perms: Option<Vec<String>> =
+            self.permission_extractor.as_ref().map(|f| f(&req));
 
         // First, fetch the item if present to evaluate permissions against it
         let existing_item_opt = {
@@ -1021,11 +1034,13 @@ where
                             .unwrap());
                     }
                 };
-                
+
                 // Check permissions
                 let model_name = std::any::type_name::<T>().split("::").last().unwrap_or("Item");
                 let specific_perm = format!("{}Delete", model_name);
-                if !checker.has_permission(&role, &specific_perm) && !checker.has_permission(&role, "Delete") {
+                if !checker.has_permission(&role, &specific_perm)
+                    && !checker.has_permission(&role, "Delete")
+                {
                     return Ok(Response::builder()
                         .status(StatusCode::FORBIDDEN)
                         .header("content-type", "application/json")
@@ -1037,13 +1052,8 @@ where
 
         // RAFT INTEGRATION: Check if consensus is required for DELETE
         if let Some(consensus_arc) = &self.consensus {
-            println!("🔄 Raft: Proposing DELETE operation for item {}", id);
-            match consensus_arc
-                .read()
-                .await
-                .propose_delete(id.to_string())
-                .await
-            {
+            log::debug!("Raft: Proposing DELETE operation for item {}", id);
+            match consensus_arc.read().await.propose_delete(id.to_string()).await {
                 Ok(_) => {
                     // Apply to local storage after successful consensus
                     let removed_item = {
@@ -1066,13 +1076,11 @@ where
                         None => Ok(self.not_found_response()),
                     }
                 }
-                Err(e) => {
-                    Ok(Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .header("content-type", "application/json")
-                        .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
-                        .unwrap())
-                }
+                Err(e) => Ok(Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header("content-type", "application/json")
+                    .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
+                    .unwrap()),
             }
         } else {
             // No consensus - delete directly (single-node mode)
@@ -1223,17 +1231,13 @@ where
 
         // Get all events and filter by aggregate_id
         match event_store.get_all_events() {
-            Ok(events) => {
-                events
-                    .into_iter()
-                    .filter_map(|event_json| {
-                        serde_json::from_str::<EventEnvelope>(&event_json).ok()
-                    })
-                    .filter(|envelope| {
-                        envelope.aggregate_id.as_ref().map(|aid| aid == id).unwrap_or(false)
-                    })
-                    .collect()
-            }
+            Ok(events) => events
+                .into_iter()
+                .filter_map(|event_json| serde_json::from_str::<EventEnvelope>(&event_json).ok())
+                .filter(|envelope| {
+                    envelope.aggregate_id.as_ref().map(|aid| aid == id).unwrap_or(false)
+                })
+                .collect(),
             Err(_) => Vec::new(),
         }
     }
@@ -1245,11 +1249,7 @@ where
 
     /// Submit an admin edit event (event-sourced: appends new event, updates state)
     /// Returns the new state after applying the edit
-    pub async fn submit_admin_edit(
-        &self,
-        id: &str,
-        changes: serde_json::Value,
-    ) -> Result<T, String>
+    pub async fn submit_admin_edit(&self, id: &str, changes: serde_json::Value) -> Result<T, String>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -1262,10 +1262,12 @@ where
         let mut item = current_item.ok_or_else(|| format!("Entity '{}' not found", id))?;
 
         // Merge changes into current item
-        let mut item_json = serde_json::to_value(&item)
-            .map_err(|e| format!("Failed to serialize item: {}", e))?;
+        let mut item_json =
+            serde_json::to_value(&item).map_err(|e| format!("Failed to serialize item: {}", e))?;
 
-        if let (Some(item_obj), Some(changes_obj)) = (item_json.as_object_mut(), changes.as_object()) {
+        if let (Some(item_obj), Some(changes_obj)) =
+            (item_json.as_object_mut(), changes.as_object())
+        {
             for (key, value) in changes_obj {
                 item_obj.insert(key.clone(), value.clone());
             }
@@ -1311,7 +1313,8 @@ where
 
         {
             let mut event_store = self.event_store.write().await;
-            event_store.append_envelope(&envelope)
+            event_store
+                .append_envelope(&envelope)
                 .map_err(|e| format!("Failed to persist event: {}", e))?;
         }
 

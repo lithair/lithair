@@ -3,8 +3,8 @@
 //! This module contains the core Lithair engine types and traits.
 
 use crate::config::LithairConfig;
-use crate::model_inspect::Inspectable;
 use crate::model::ModelSpec;
+use crate::model_inspect::Inspectable;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -14,24 +14,26 @@ use std::sync::{Arc, RwLock};
 pub mod async_writer;
 pub mod events;
 pub mod lockfree_engine;
+pub mod multi_file_store;
 pub mod persistence;
 pub mod persistence_optimized;
 pub mod relations;
 pub mod scc2_engine;
-pub mod state;
-pub mod multi_file_store;
 pub mod snapshot;
+pub mod state;
 
 // Re-export types
 pub use async_writer::{AsyncWriter, DurabilityMode, WriteEvent};
-pub use events::{Event, EventStore, EventDeserializer, EventEnvelope, ChainVerificationResult, ChainError};
+pub use events::{
+    ChainError, ChainVerificationResult, Event, EventDeserializer, EventEnvelope, EventStore,
+};
+pub use multi_file_store::MultiFileEventStore;
 pub use persistence::{DatabaseStats, FileStorage};
 pub use persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 pub use relations::{AutoJoiner, DataSource, RelationRegistry};
 pub use scc2_engine::{Scc2Engine, Scc2EngineConfig, VersionedEntry};
+pub use snapshot::{RecoveryContext, Snapshot, SnapshotMetadata, SnapshotStats, SnapshotStore};
 pub use state::StateEngine;
-pub use multi_file_store::MultiFileEventStore;
-pub use snapshot::{Snapshot, SnapshotMetadata, SnapshotStats, SnapshotStore, RecoveryContext};
 
 /// The core application trait that users must implement
 pub trait RaftstoneApplication: Send + Sync + Sized + 'static {
@@ -151,9 +153,10 @@ impl<A: RaftstoneApplication> Engine<A> {
             config.raft_config.storage.data_dir.clone()
         };
 
-        let use_multi_file = config.use_multi_file_store || std::env::var("RS_MULTI_FILE")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+        let use_multi_file = config.use_multi_file_store
+            || std::env::var("RS_MULTI_FILE")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
 
         let use_binary = std::env::var("RS_ENABLE_BINARY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -170,10 +173,10 @@ impl<A: RaftstoneApplication> Engine<A> {
         // Note: fsync_on_append is configured via configure_batching usually, or not exposed on EventStore directly
         // except via configure_batching.
 
-        // Register deserializers - TODO: Fix type mismatch Box vs Arc
-        // For now we skip explicit registration and assume replaying works if deserializers are standard or handled elsewhere.
-        // Actually, EventStore uses deserializers for replay. If we don't register them, replay might fail for custom events.
-        // But standard Event trait deserialization uses serde_json::from_str which works without registration if payload is simple.
+        // Deserializer registration is skipped here due to a Box vs Arc type mismatch.
+        // Standard Event trait deserialization via serde_json::from_str works without
+        // explicit registration for simple payloads. Custom events that require registered
+        // deserializers may need an alternative replay path.
 
         let event_store_arc = Arc::new(RwLock::new(event_store));
 
@@ -184,9 +187,14 @@ impl<A: RaftstoneApplication> Engine<A> {
 
         let state_storage = if use_scc2 {
             let scc_config = Scc2EngineConfig {
-                verbose_logging: config.raft_config.logging.level == "debug" || config.raft_config.logging.level == "trace",
+                verbose_logging: config.raft_config.logging.level == "debug"
+                    || config.raft_config.logging.level == "trace",
                 enable_snapshots: true,
-                snapshot_interval: if config.snapshot_every > 0 { config.snapshot_every } else { 1000 },
+                snapshot_interval: if config.snapshot_every > 0 {
+                    config.snapshot_every
+                } else {
+                    1000
+                },
                 enable_deduplication: true,
                 auto_persist_writes: true,
                 force_immediate_persistence: false,
@@ -196,7 +204,8 @@ impl<A: RaftstoneApplication> Engine<A> {
                 .map_err(|e| anyhow::anyhow!("Failed to initialize SCC2 engine: {}", e))?;
 
             // Replay events
-            scc_engine.replay_events::<A::Event>()
+            scc_engine
+                .replay_events::<A::Event>()
                 .map_err(|e| anyhow::anyhow!("Failed to replay events: {}", e))?;
 
             StateStorage::Scc2(Arc::new(scc_engine))
@@ -232,20 +241,22 @@ impl<A: RaftstoneApplication> Engine<A> {
         self.apply_event_internal(key, event)
     }
 
-    fn apply_event_internal(&self, key: String, event: A::Event) -> EngineResult<()>
-    {
+    fn apply_event_internal(&self, key: String, event: A::Event) -> EngineResult<()> {
         match &self.state_storage {
             StateStorage::RwLock(lock) => {
-                let mut guard = lock.write().map_err(|_| EngineError::EngineError("Lock poisoned".into()))?;
+                let mut guard =
+                    lock.write().map_err(|_| EngineError::EngineError("Lock poisoned".into()))?;
                 event.apply(&mut guard);
                 Ok(())
             }
             StateStorage::Scc2(scc) => {
+                let handle = tokio::runtime::Handle::try_current()
+                    .map_err(|_| EngineError::EngineError("No Tokio runtime available".into()))?;
                 tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async {
-                        scc.apply_event(key, event, true).await
-                    })
-                }).map(|_| ()).map_err(EngineError::from)
+                    handle.block_on(async { scc.apply_event(key, event, true).await })
+                })
+                .map(|_| ())
+                .map_err(EngineError::from)
             }
         }
     }
@@ -257,7 +268,8 @@ impl<A: RaftstoneApplication> Engine<A> {
     {
         match &self.state_storage {
             StateStorage::RwLock(lock) => {
-                let mut guard = lock.write().map_err(|_| EngineError::EngineError("Lock poisoned".into()))?;
+                let mut guard =
+                    lock.write().map_err(|_| EngineError::EngineError("Lock poisoned".into()))?;
                 Ok(f(&mut guard))
             }
             StateStorage::Scc2(scc) => {
@@ -272,53 +284,51 @@ impl<A: RaftstoneApplication> Engine<A> {
     }
 
     /// Get the relation registry
-                pub fn relations(&self) -> &RelationRegistry {
-                    &self.relations
-                }
+    pub fn relations(&self) -> &RelationRegistry {
+        &self.relations
+    }
 
-                /// Get the event store (useful for tests and advanced usage)
-                pub fn event_store(&self) -> Option<Arc<RwLock<EventStore>>> {
-                    self.event_store.clone()
-                }
+    /// Get the event store (useful for tests and advanced usage)
+    pub fn event_store(&self) -> Option<Arc<RwLock<EventStore>>> {
+        self.event_store.clone()
+    }
 
-                /// Flush pending writes
-                pub fn flush(&self) -> EngineResult<()> {
-                    match &self.state_storage {
-                        StateStorage::RwLock(_) => {
-                            Ok(())
-                        }
-                        StateStorage::Scc2(scc) => {
-                             tokio::task::block_in_place(|| {
-                                tokio::runtime::Handle::current().block_on(async {
-                                    scc.flush().await
-                                })
-                            }).map_err(EngineError::from)
-                        }
-                    }
-                }
+    /// Flush pending writes
+    pub fn flush(&self) -> EngineResult<()> {
+        match &self.state_storage {
+            StateStorage::RwLock(_) => Ok(()),
+            StateStorage::Scc2(scc) => {
+                let handle = tokio::runtime::Handle::try_current()
+                    .map_err(|_| EngineError::EngineError("No Tokio runtime available".into()))?;
+                tokio::task::block_in_place(|| handle.block_on(async { scc.flush().await }))
+                    .map_err(EngineError::from)
+            }
+        }
+    }
 
-                /// Trigger a manual state snapshot
-                pub fn save_state_snapshot(&self) -> EngineResult<()> {
-                    match &self.state_storage {
-                        StateStorage::RwLock(_) => {
-                            Err(EngineError::InvalidOperation("Snapshots not supported for RwLock backend yet".into()))
-                        }
-                        StateStorage::Scc2(scc) => {
-                             scc.snapshot().map_err(EngineError::from)
-                        }
-                    }
-                }
+    /// Trigger a manual state snapshot
+    pub fn save_state_snapshot(&self) -> EngineResult<()> {
+        match &self.state_storage {
+            StateStorage::RwLock(_) => Err(EngineError::InvalidOperation(
+                "Snapshots not supported for RwLock backend yet".into(),
+            )),
+            StateStorage::Scc2(scc) => scc.snapshot().map_err(EngineError::from),
+        }
+    }
 
-                /// Compact event log after snapshot (truncate)
-                pub fn compact_after_snapshot(&self) -> EngineResult<()> {
-                    if let Some(store) = &self.event_store {
-                        store.write().unwrap().truncate_events()
-                    } else {
-                        Err(EngineError::InvalidOperation("No event store configured".into()))
-                    }
-                }
+    /// Compact event log after snapshot (truncate)
+    pub fn compact_after_snapshot(&self) -> EngineResult<()> {
+        if let Some(store) = &self.event_store {
+            store
+                .write()
+                .map_err(|_| EngineError::EngineError("Event store lock poisoned".into()))?
+                .truncate_events()
+        } else {
+            Err(EngineError::InvalidOperation("No event store configured".into()))
+        }
+    }
 
-                /// Shutdown the engine
+    /// Shutdown the engine
     pub fn shutdown(&self) -> EngineResult<()> {
         self.flush()
     }

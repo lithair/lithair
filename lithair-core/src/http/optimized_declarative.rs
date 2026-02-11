@@ -82,7 +82,7 @@ where
         let uri = req.uri().path().to_string();
         let base_path = format!("/{}", T::http_base_path());
 
-        println!("🚀 T021 OPTIMIZED: {} {}", method, uri);
+        log::debug!("T021 OPTIMIZED: {} {}", method, uri);
 
         match (method, uri.as_str()) {
             // GET /api/products - List all (JSON response for HTTP API)
@@ -119,7 +119,7 @@ where
 
     /// List all items (HTTP API response in JSON for compatibility)
     async fn handle_list_all(&self) -> Result<Resp, Infallible> {
-        println!("📦 T021 OPTIMIZED: Listing all {}", T::http_base_path());
+        log::debug!("T021 OPTIMIZED: Listing all {}", T::http_base_path());
 
         let items = self.get_all_items_optimized().await;
 
@@ -152,7 +152,7 @@ where
         };
 
         // T021 OPTIMIZATION: Use bincode for internal processing
-        println!("🚀 T021: Processing create with bincode serialization");
+        log::debug!("T021: Processing create with bincode serialization");
 
         // Apply lifecycle hooks
         if item.on_before_create().is_err() {
@@ -171,9 +171,11 @@ where
         let json_size = json_envelope.size();
         let size_savings = (json_size - bincode_size) as f64 / json_size as f64 * 100.0;
 
-        println!(
-            "💾 T021 STATS: JSON {} bytes → Bincode {} bytes ({:.1}% savings)",
-            json_size, bincode_size, size_savings
+        log::debug!(
+            "T021 STATS: JSON {} bytes -> Bincode {} bytes ({:.1}% savings)",
+            json_size,
+            bincode_size,
+            size_savings
         );
 
         // Store the item with its primary key
@@ -183,7 +185,7 @@ where
 
         // Apply post-create hooks
         if item.on_after_create().is_err() {
-            println!("⚠️ Post-create hook failed, but item was created successfully");
+            log::warn!("Post-create hook failed, but item was created successfully");
         }
 
         // Return JSON response for HTTP API compatibility
@@ -199,7 +201,7 @@ where
 
     /// Get item by ID (JSON response for HTTP API)
     async fn handle_get_by_id(&self, id: &str) -> Result<Resp, Infallible> {
-        println!("🔍 T021 OPTIMIZED: Getting {} by ID: {}", T::http_base_path(), id);
+        log::debug!("T021 OPTIMIZED: Getting {} by ID: {}", T::http_base_path(), id);
 
         match self.get_item_by_id_optimized(id).await {
             Some(item) => {
@@ -233,7 +235,7 @@ where
             Err(_) => return Ok(self.bad_request_response("Invalid JSON")),
         };
 
-        println!("🚀 T021: Processing update with bincode serialization");
+        log::debug!("T021: Processing update with bincode serialization");
 
         // Use bincode for internal storage (T021 optimization)
         if let Err(e) = self.update_item_optimized(id, &updated_item).await {
@@ -257,7 +259,7 @@ where
 
     /// Delete item with T021 optimization
     async fn handle_delete_optimized(&self, id: &str) -> Result<Resp, Infallible> {
-        println!("🗑️ T021 OPTIMIZED: Deleting {} by ID: {}", T::http_base_path(), id);
+        log::debug!("T021 OPTIMIZED: Deleting {} by ID: {}", T::http_base_path(), id);
 
         if let Err(e) = self.delete_item_optimized(id).await {
             return Ok(self.internal_error_response(&format!("Delete failed: {}", e)));
@@ -273,12 +275,12 @@ where
     // Internal optimized storage methods using bincode (T021)
 
     async fn get_all_items_optimized(&self) -> Vec<T> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read().expect("http storage lock poisoned");
         storage.values().cloned().collect()
     }
 
     async fn get_item_by_id_optimized(&self, id: &str) -> Option<T> {
-        let storage = self.storage.read().unwrap();
+        let storage = self.storage.read().expect("http storage lock poisoned");
         storage.get(id).cloned()
     }
 
@@ -289,12 +291,12 @@ where
             .serialize_internal(item)
             .map_err(|e| format!("Bincode serialization failed: {}", e))?;
 
-        println!("💾 T021: Processing {} bytes in bincode format", envelope.size());
+        log::debug!("T021: Processing {} bytes in bincode format", envelope.size());
 
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write().expect("http storage lock poisoned");
         storage.insert(item.get_primary_key(), item.clone());
 
-        println!("💾 T021: Stored item with bincode optimization");
+        log::debug!("T021: Stored item with bincode optimization");
         Ok(())
     }
 
@@ -305,16 +307,16 @@ where
             .serialize_internal(item)
             .map_err(|e| format!("Bincode serialization failed: {}", e))?;
 
-        println!("💾 T021: Updating with {} bytes in bincode format", envelope.size());
+        log::debug!("T021: Updating with {} bytes in bincode format", envelope.size());
 
-        let mut storage = self.storage.write().unwrap();
+        let mut storage = self.storage.write().expect("http storage lock poisoned");
         storage.insert(id.to_string(), item.clone());
         Ok(())
     }
 
     async fn delete_item_optimized(&self, id: &str) -> Result<(), String> {
-        println!("🗑️ T021: Optimized delete operation");
-        let mut storage = self.storage.write().unwrap();
+        log::debug!("T021: Optimized delete operation");
+        let mut storage = self.storage.write().expect("http storage lock poisoned");
         storage.remove(id);
         Ok(())
     }

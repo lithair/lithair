@@ -31,7 +31,7 @@ impl<S: Send + Sync + 'static> AsyncHttpServer<S> {
         let addr: SocketAddr = addr.parse()?;
         let listener = TcpListener::bind(addr).await?;
 
-        println!("🚀 Async HTTP server listening on {}", addr);
+        log::info!("Async HTTP server listening on {}", addr);
 
         loop {
             let (stream, _) = listener.accept().await?;
@@ -52,7 +52,7 @@ impl<S: Send + Sync + 'static> AsyncHttpServer<S> {
                     )
                     .await
                 {
-                    eprintln!("Error serving connection: {:?}", err);
+                    log::error!("Error serving connection: {:?}", err);
                 }
             });
         }
@@ -88,14 +88,14 @@ async fn convert_request(
 ) -> Result<LithairRequest, Box<dyn std::error::Error + Send + Sync>> {
     use http_body_util::BodyExt;
 
-    let method = match req.method() {
-        &hyper::Method::GET => super::HttpMethod::GET,
-        &hyper::Method::POST => super::HttpMethod::POST,
-        &hyper::Method::PUT => super::HttpMethod::PUT,
-        &hyper::Method::DELETE => super::HttpMethod::DELETE,
-        &hyper::Method::PATCH => super::HttpMethod::PATCH,
-        &hyper::Method::HEAD => super::HttpMethod::HEAD,
-        &hyper::Method::OPTIONS => super::HttpMethod::OPTIONS,
+    let method = match *req.method() {
+        hyper::Method::GET => super::HttpMethod::GET,
+        hyper::Method::POST => super::HttpMethod::POST,
+        hyper::Method::PUT => super::HttpMethod::PUT,
+        hyper::Method::DELETE => super::HttpMethod::DELETE,
+        hyper::Method::PATCH => super::HttpMethod::PATCH,
+        hyper::Method::HEAD => super::HttpMethod::HEAD,
+        hyper::Method::OPTIONS => super::HttpMethod::OPTIONS,
         _ => super::HttpMethod::GET,
     };
 
@@ -133,5 +133,5 @@ fn convert_response(resp: &LithairResponse) -> Response<Full<Bytes>> {
         .status(status)
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(body)))
-        .unwrap()
+        .expect("valid HTTP response")
 }

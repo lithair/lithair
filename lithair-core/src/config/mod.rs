@@ -31,34 +31,34 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
-pub mod server;
-pub mod sessions;
+pub mod admin;
+pub mod frontend;
+pub mod logging;
+pub mod performance;
+pub mod raft;
 pub mod rbac;
 pub mod replication;
-pub mod admin;
-pub mod logging;
+pub mod server;
+pub mod sessions;
 pub mod storage;
-pub mod performance;
-pub mod frontend;
-pub mod raft;
 
-pub use server::ServerConfig;
-pub use sessions::SessionsConfig;
+pub use admin::AdminConfig;
+pub use frontend::FrontendConfig;
+pub use logging::LoggingConfig;
+pub use performance::PerformanceConfig;
+pub use raft::RaftConfig;
 pub use rbac::RbacConfig;
 pub use replication::ReplicationConfig;
-pub use admin::AdminConfig;
-pub use logging::LoggingConfig;
-pub use storage::{StorageConfig, SchemaMigrationMode};
-pub use performance::PerformanceConfig;
-pub use frontend::FrontendConfig;
-pub use raft::RaftConfig;
+pub use server::ServerConfig;
+pub use sessions::SessionsConfig;
+pub use storage::{SchemaMigrationMode, StorageConfig};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Complete Lithair configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LithairConfig {
     pub server: ServerConfig,
     pub sessions: SessionsConfig,
@@ -72,23 +72,6 @@ pub struct LithairConfig {
     pub raft: RaftConfig,
 }
 
-impl Default for LithairConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            sessions: SessionsConfig::default(),
-            rbac: RbacConfig::default(),
-            replication: ReplicationConfig::default(),
-            admin: AdminConfig::default(),
-            logging: LoggingConfig::default(),
-            storage: StorageConfig::default(),
-            performance: PerformanceConfig::default(),
-            frontend: FrontendConfig::default(),
-            raft: RaftConfig::default(),
-        }
-    }
-}
-
 impl LithairConfig {
     /// Load configuration with full supersedence chain
     ///
@@ -99,36 +82,36 @@ impl LithairConfig {
     pub fn load() -> Result<Self> {
         Self::load_from("config.toml")
     }
-    
+
     /// Load configuration from a specific file
     pub fn load_from(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        
+
         // Start with defaults
         let mut config = Self::default();
-        
+
         // Load from file if it exists
         if path.exists() {
             let file_config = Self::from_file(path)
                 .with_context(|| format!("Failed to load config from {}", path.display()))?;
             config.merge(file_config);
         }
-        
+
         // Apply environment variables (highest priority)
         config.apply_env_vars();
-        
+
         Ok(config)
     }
-    
+
     /// Load configuration from TOML file
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content = std::fs::read_to_string(path.as_ref())
             .with_context(|| format!("Failed to read config file: {}", path.as_ref().display()))?;
-        
+
         toml::from_str(&content)
             .with_context(|| format!("Failed to parse TOML config: {}", path.as_ref().display()))
     }
-    
+
     /// Merge another config into this one (other takes priority)
     pub fn merge(&mut self, other: Self) {
         self.server.merge(other.server);
@@ -141,7 +124,7 @@ impl LithairConfig {
         self.performance.merge(other.performance);
         self.raft.merge(other.raft);
     }
-    
+
     /// Apply environment variables to configuration
     pub fn apply_env_vars(&mut self) {
         self.server.apply_env_vars();
@@ -154,7 +137,7 @@ impl LithairConfig {
         self.performance.apply_env_vars();
         self.raft.apply_env_vars();
     }
-    
+
     /// Validate configuration
     pub fn validate(&self) -> Result<()> {
         self.server.validate()?;
@@ -173,7 +156,7 @@ impl LithairConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_config() {
         let config = LithairConfig::default();
@@ -188,7 +171,7 @@ mod tests {
         assert_eq!(config.raft.path, "/raft");
         assert!(!config.raft.auth_required);
     }
-    
+
     #[test]
     fn test_config_validation() {
         let config = LithairConfig::default();

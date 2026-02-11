@@ -8,8 +8,8 @@
 //! - Compression ratio tracking
 //! - Performance metrics
 
+use serde::{de::DeserializeOwned, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Serialize, de::DeserializeOwned};
 
 /// Binary serialization errors
 #[derive(Debug, Clone)]
@@ -94,14 +94,17 @@ impl BinaryEnvelope {
     pub fn uncompressed(data: Vec<u8>) -> Self {
         let size = data.len();
         Self {
-            id: format!("bin_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+            id: format!(
+                "bin_{}",
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()
+            ),
             event_type: "binary".to_string(),
             data,
             is_compressed: false,
             original_size: size,
             compressed_size: size,
             compression_ratio: 1.0,
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
         }
     }
 
@@ -117,14 +120,17 @@ impl BinaryEnvelope {
             if compressed_size > 0 { original_size as f32 / compressed_size as f32 } else { 1.0 };
 
         Ok(Self {
-            id: format!("bin_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+            id: format!(
+                "bin_{}",
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()
+            ),
             event_type: "binary_compressed".to_string(),
             data: compressed,
             is_compressed: true,
             original_size,
             compressed_size,
             compression_ratio,
-            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
         })
     }
 

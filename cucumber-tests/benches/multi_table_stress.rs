@@ -1,9 +1,9 @@
 use lithair_core::engine::{AsyncWriter, EventStore, Scc2Engine, Scc2EngineConfig};
+use rand::prelude::*;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use rand::Rng;
-use rand::prelude::*;
 
 // --- Data Models ---
 
@@ -26,8 +26,12 @@ impl lithair_core::model_inspect::Inspectable for User {
 }
 
 impl lithair_core::model::ModelSpec for User {
-    fn get_policy(&self, _field_name: &str) -> Option<lithair_core::model::FieldPolicy> { None }
-    fn get_all_fields(&self) -> Vec<String> { vec!["id".to_string(), "username".to_string(), "email".to_string()] }
+    fn get_policy(&self, _field_name: &str) -> Option<lithair_core::model::FieldPolicy> {
+        None
+    }
+    fn get_all_fields(&self) -> Vec<String> {
+        vec!["id".to_string(), "username".to_string(), "email".to_string()]
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -42,15 +46,19 @@ impl lithair_core::model_inspect::Inspectable for Product {
         match field_name {
             "id" => serde_json::to_value(&self.id).ok(),
             "sku" => serde_json::to_value(&self.sku).ok(),
-            "price" => serde_json::to_value(&self.price).ok(),
+            "price" => serde_json::to_value(self.price).ok(),
             _ => None,
         }
     }
 }
 
 impl lithair_core::model::ModelSpec for Product {
-    fn get_policy(&self, _field_name: &str) -> Option<lithair_core::model::FieldPolicy> { None }
-    fn get_all_fields(&self) -> Vec<String> { vec!["id".to_string(), "sku".to_string(), "price".to_string()] }
+    fn get_policy(&self, _field_name: &str) -> Option<lithair_core::model::FieldPolicy> {
+        None
+    }
+    fn get_all_fields(&self) -> Vec<String> {
+        vec!["id".to_string(), "sku".to_string(), "price".to_string()]
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -67,20 +75,29 @@ impl lithair_core::model_inspect::Inspectable for Order {
             "id" => serde_json::to_value(&self.id).ok(),
             "user_id" => serde_json::to_value(&self.user_id).ok(),
             "product_ids" => serde_json::to_value(&self.product_ids).ok(),
-            "total" => serde_json::to_value(&self.total).ok(),
+            "total" => serde_json::to_value(self.total).ok(),
             _ => None,
         }
     }
 }
 
 impl lithair_core::model::ModelSpec for Order {
-    fn get_policy(&self, _field_name: &str) -> Option<lithair_core::model::FieldPolicy> { None }
-    fn get_all_fields(&self) -> Vec<String> { vec!["id".to_string(), "user_id".to_string(), "product_ids".to_string(), "total".to_string()] }
+    fn get_policy(&self, _field_name: &str) -> Option<lithair_core::model::FieldPolicy> {
+        None
+    }
+    fn get_all_fields(&self) -> Vec<String> {
+        vec![
+            "id".to_string(),
+            "user_id".to_string(),
+            "product_ids".to_string(),
+            "total".to_string(),
+        ]
+    }
 }
 
 // --- Constants ---
 const ITEM_COUNT: usize = 1_000_000; // 1 Million items
-const READ_COUNT: usize = 500_000;   // 500k Random reads
+const READ_COUNT: usize = 500_000; // 500k Random reads
 
 #[tokio::main]
 async fn main() {
@@ -118,15 +135,19 @@ async fn run_single_log_test() {
     std::fs::create_dir_all(persist_path).unwrap();
 
     // 1. Persistence
-    let event_store = Arc::new(RwLock::new(EventStore::new(persist_path).expect("EventStore failed")));
+    let event_store =
+        Arc::new(RwLock::new(EventStore::new(persist_path).expect("EventStore failed")));
     // AsyncWriter is Sync, so we can wrap it in Arc directly without Mutex
     // This avoids lock contention on the 'write' method which just sends to a channel
     let writer = Arc::new(AsyncWriter::new(event_store.clone(), 2000));
 
     // 2. Memory (SCC2)
-    let users = Arc::new(Scc2Engine::<User>::new(event_store.clone(), create_scc2_config()).unwrap());
-    let products = Arc::new(Scc2Engine::<Product>::new(event_store.clone(), create_scc2_config()).unwrap());
-    let orders = Arc::new(Scc2Engine::<Order>::new(event_store.clone(), create_scc2_config()).unwrap());
+    let users =
+        Arc::new(Scc2Engine::<User>::new(event_store.clone(), create_scc2_config()).unwrap());
+    let products =
+        Arc::new(Scc2Engine::<Product>::new(event_store.clone(), create_scc2_config()).unwrap());
+    let orders =
+        Arc::new(Scc2Engine::<Order>::new(event_store.clone(), create_scc2_config()).unwrap());
 
     // --- WRITE PHASE ---
     println!("📝 Writing 1,000,000 items...");
@@ -158,7 +179,7 @@ async fn run_single_log_test() {
                         };
                         event_json = serde_json::to_string(&user).unwrap();
                         u.insert(user.id.clone(), user).await;
-                    },
+                    }
                     1 => {
                         let product = Product {
                             id: format!("p-{}", abs_i),
@@ -167,7 +188,7 @@ async fn run_single_log_test() {
                         };
                         event_json = serde_json::to_string(&product).unwrap();
                         p.insert(product.id.clone(), product).await;
-                    },
+                    }
                     _ => {
                         let order = Order {
                             id: format!("o-{}", abs_i),
@@ -224,9 +245,21 @@ async fn run_single_log_test() {
                 let target_id = rng.gen_range(0..ITEM_COUNT);
                 let type_mod = target_id % 3;
                 match type_mod {
-                    0 => { if u.read(&format!("u-{}", target_id), |_| ()).is_some() { hits += 1; } },
-                    1 => { if p.read(&format!("p-{}", target_id), |_| ()).is_some() { hits += 1; } },
-                    _ => { if o.read(&format!("o-{}", target_id), |_| ()).is_some() { hits += 1; } },
+                    0 => {
+                        if u.read(&format!("u-{}", target_id), |_| ()).is_some() {
+                            hits += 1;
+                        }
+                    }
+                    1 => {
+                        if p.read(&format!("p-{}", target_id), |_| ()).is_some() {
+                            hits += 1;
+                        }
+                    }
+                    _ => {
+                        if o.read(&format!("o-{}", target_id), |_| ()).is_some() {
+                            hits += 1;
+                        }
+                    }
                 }
             }
             hits
@@ -259,9 +292,12 @@ async fn run_multi_file_test() {
     // EventStore takes a base path and assumes events.raftlog.
     // To allow multi-file, we simulate it by giving different directories.
 
-    let store_users = Arc::new(RwLock::new(EventStore::new(&format!("{}/users", persist_path)).unwrap()));
-    let store_products = Arc::new(RwLock::new(EventStore::new(&format!("{}/products", persist_path)).unwrap()));
-    let store_orders = Arc::new(RwLock::new(EventStore::new(&format!("{}/orders", persist_path)).unwrap()));
+    let store_users =
+        Arc::new(RwLock::new(EventStore::new(&format!("{}/users", persist_path)).unwrap()));
+    let store_products =
+        Arc::new(RwLock::new(EventStore::new(&format!("{}/products", persist_path)).unwrap()));
+    let store_orders =
+        Arc::new(RwLock::new(EventStore::new(&format!("{}/orders", persist_path)).unwrap()));
 
     let w_users = Arc::new(AsyncWriter::new(store_users.clone(), 2000));
     let w_products = Arc::new(AsyncWriter::new(store_products.clone(), 2000));
@@ -269,7 +305,8 @@ async fn run_multi_file_test() {
 
     // 2. Memory (SCC2)
     let users = Arc::new(Scc2Engine::<User>::new(store_users, create_scc2_config()).unwrap());
-    let products = Arc::new(Scc2Engine::<Product>::new(store_products, create_scc2_config()).unwrap());
+    let products =
+        Arc::new(Scc2Engine::<Product>::new(store_products, create_scc2_config()).unwrap());
     let orders = Arc::new(Scc2Engine::<Order>::new(store_orders, create_scc2_config()).unwrap());
 
     // --- WRITE PHASE ---
@@ -303,7 +340,7 @@ async fn run_multi_file_test() {
                         let json = serde_json::to_string(&user).unwrap();
                         u.insert(user.id.clone(), user).await;
                         wu.write(json).ok();
-                    },
+                    }
                     1 => {
                         let product = Product {
                             id: format!("p-{}", abs_i),
@@ -313,7 +350,7 @@ async fn run_multi_file_test() {
                         let json = serde_json::to_string(&product).unwrap();
                         p.insert(product.id.clone(), product).await;
                         wp.write(json).ok();
-                    },
+                    }
                     _ => {
                         let order = Order {
                             id: format!("o-{}", abs_i),
@@ -372,9 +409,21 @@ async fn run_multi_file_test() {
                 let target_id = rng.gen_range(0..ITEM_COUNT);
                 let type_mod = target_id % 3;
                 match type_mod {
-                    0 => { if u.read(&format!("u-{}", target_id), |_| ()).is_some() { hits += 1; } },
-                    1 => { if p.read(&format!("p-{}", target_id), |_| ()).is_some() { hits += 1; } },
-                    _ => { if o.read(&format!("o-{}", target_id), |_| ()).is_some() { hits += 1; } },
+                    0 => {
+                        if u.read(&format!("u-{}", target_id), |_| ()).is_some() {
+                            hits += 1;
+                        }
+                    }
+                    1 => {
+                        if p.read(&format!("p-{}", target_id), |_| ()).is_some() {
+                            hits += 1;
+                        }
+                    }
+                    _ => {
+                        if o.read(&format!("o-{}", target_id), |_| ()).is_some() {
+                            hits += 1;
+                        }
+                    }
                 }
             }
             hits
@@ -393,4 +442,3 @@ async fn run_multi_file_test() {
     println!("   Time: {:.2}s", elapsed_read.as_secs_f64());
     println!("   Throughput: {:.0} reads/sec", rps);
 }
-

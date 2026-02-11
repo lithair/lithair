@@ -11,50 +11,33 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 pub enum MfaEvent {
     /// User initiated MFA setup (secret generated but not yet enabled)
-    MfaSetupInitiated {
-        username: String,
-        secret: TotpSecret,
-        timestamp: DateTime<Utc>,
-    },
-    
+    MfaSetupInitiated { username: String, secret: TotpSecret, timestamp: DateTime<Utc> },
+
     /// User enabled MFA (verified first code successfully)
-    MfaEnabled {
-        username: String,
-        timestamp: DateTime<Utc>,
-    },
-    
+    MfaEnabled { username: String, timestamp: DateTime<Utc> },
+
     /// User disabled MFA
     MfaDisabled {
         username: String,
-        reason: Option<String>,  // e.g., "user_request", "admin_reset"
+        reason: Option<String>, // e.g., "user_request", "admin_reset"
         timestamp: DateTime<Utc>,
     },
-    
+
     /// TOTP code verified successfully during login
-    MfaCodeVerified {
-        username: String,
-        timestamp: DateTime<Utc>,
-    },
-    
+    MfaCodeVerified { username: String, timestamp: DateTime<Utc> },
+
     /// TOTP code verification failed
     MfaCodeVerificationFailed {
         username: String,
-        reason: String,  // e.g., "invalid_code", "expired"
+        reason: String, // e.g., "invalid_code", "expired"
         timestamp: DateTime<Utc>,
     },
-    
+
     /// Backup codes generated
-    BackupCodesGenerated {
-        username: String,
-        codes_count: usize,
-        timestamp: DateTime<Utc>,
-    },
-    
+    BackupCodesGenerated { username: String, codes_count: usize, timestamp: DateTime<Utc> },
+
     /// Backup code used
-    BackupCodeUsed {
-        username: String,
-        timestamp: DateTime<Utc>,
-    },
+    BackupCodeUsed { username: String, timestamp: DateTime<Utc> },
 }
 
 impl MfaEvent {
@@ -70,7 +53,7 @@ impl MfaEvent {
             MfaEvent::BackupCodeUsed { username, .. } => username,
         }
     }
-    
+
     /// Get the timestamp of this event
     pub fn timestamp(&self) -> DateTime<Utc> {
         match self {
@@ -83,7 +66,7 @@ impl MfaEvent {
             MfaEvent::BackupCodeUsed { timestamp, .. } => *timestamp,
         }
     }
-    
+
     /// Get event type as string (for logging/audit)
     pub fn event_type(&self) -> &'static str {
         match self {
@@ -99,7 +82,7 @@ impl MfaEvent {
 }
 
 /// MFA State - reconstructed from events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MfaState {
     /// Username → MFA data
     pub users: std::collections::HashMap<String, UserMfaState>,
@@ -115,19 +98,11 @@ pub struct UserMfaState {
     pub failed_attempts: usize,
 }
 
-impl Default for MfaState {
-    fn default() -> Self {
-        Self {
-            users: std::collections::HashMap::new(),
-        }
-    }
-}
-
 impl MfaState {
     /// Apply an event to the state (event sourcing replay)
     pub fn apply(&mut self, event: &MfaEvent) {
         let username = event.username().to_string();
-        
+
         match event {
             MfaEvent::MfaSetupInitiated { secret, .. } => {
                 let user_state = self.users.entry(username).or_insert_with(|| UserMfaState {
@@ -137,33 +112,33 @@ impl MfaState {
                     last_verification: None,
                     failed_attempts: 0,
                 });
-                
+
                 user_state.secret = Some(secret.clone());
             }
-            
+
             MfaEvent::MfaEnabled { timestamp, .. } => {
                 if let Some(user_state) = self.users.get_mut(&username) {
                     user_state.status.enabled = true;
                     user_state.status.enabled_at = Some(*timestamp);
                 }
             }
-            
+
             MfaEvent::MfaDisabled { .. } => {
                 if let Some(user_state) = self.users.get_mut(&username) {
                     user_state.status.enabled = false;
                     user_state.status.enabled_at = None;
-                    user_state.secret = None;  // Clear secret on disable
+                    user_state.secret = None; // Clear secret on disable
                     user_state.backup_codes.clear();
                 }
             }
-            
+
             MfaEvent::MfaCodeVerified { timestamp, .. } => {
                 if let Some(user_state) = self.users.get_mut(&username) {
                     user_state.last_verification = Some(*timestamp);
-                    user_state.failed_attempts = 0;  // Reset failed attempts on success
+                    user_state.failed_attempts = 0; // Reset failed attempts on success
                 }
             }
-            
+
             MfaEvent::MfaCodeVerificationFailed { .. } => {
                 // Create user entry if doesn't exist (user may have attempted MFA without setup)
                 let user_state = self.users.entry(username).or_insert_with(|| UserMfaState {
@@ -175,17 +150,17 @@ impl MfaState {
                 });
                 user_state.failed_attempts += 1;
             }
-            
+
             MfaEvent::BackupCodesGenerated { .. } => {
                 // Backup codes management (to be implemented)
             }
-            
+
             MfaEvent::BackupCodeUsed { .. } => {
                 // Backup code usage tracking
             }
         }
     }
-    
+
     /// Replay multiple events to reconstruct state
     pub fn replay(events: &[MfaEvent]) -> Self {
         let mut state = Self::default();
@@ -200,48 +175,43 @@ impl MfaState {
 mod tests {
     use super::*;
     use crate::mfa::TotpAlgorithm;
-    
+
     #[test]
     fn test_event_sourcing_replay() {
         let now = Utc::now();
-        
+
         let secret = crate::mfa::TotpSecret::generate_with_account(
             TotpAlgorithm::SHA256,
             6,
             30,
             "Test",
             "user",
-        );
-        
+        )
+        .unwrap();
+
         let events = vec![
             MfaEvent::MfaSetupInitiated {
                 username: "alice".to_string(),
                 secret: secret.clone(),
                 timestamp: now,
             },
-            MfaEvent::MfaEnabled {
-                username: "alice".to_string(),
-                timestamp: now,
-            },
-            MfaEvent::MfaCodeVerified {
-                username: "alice".to_string(),
-                timestamp: now,
-            },
+            MfaEvent::MfaEnabled { username: "alice".to_string(), timestamp: now },
+            MfaEvent::MfaCodeVerified { username: "alice".to_string(), timestamp: now },
         ];
-        
+
         let state = MfaState::replay(&events);
-        
+
         assert!(state.users.contains_key("alice"));
         let alice_state = &state.users["alice"];
         assert!(alice_state.status.enabled);
         assert!(alice_state.secret.is_some());
         assert_eq!(alice_state.failed_attempts, 0);
     }
-    
+
     #[test]
     fn test_failed_attempts_tracking() {
         let now = Utc::now();
-        
+
         let events = vec![
             MfaEvent::MfaCodeVerificationFailed {
                 username: "bob".to_string(),
@@ -254,9 +224,9 @@ mod tests {
                 timestamp: now,
             },
         ];
-        
+
         let state = MfaState::replay(&events);
-        
+
         assert_eq!(state.users["bob"].failed_attempts, 2);
     }
 }

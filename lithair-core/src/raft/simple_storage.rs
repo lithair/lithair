@@ -98,7 +98,7 @@ impl RaftStorage<TypeConfig> for SimpleLogStore {
         
         for entry in entries {
             if let EntryPayload::Normal(request) = &entry.payload {
-                println!("📝 Lithair: Storing client request: {}", request.status);
+                log::debug!("Lithair: Storing client request: {}", request.status);
             }
             
             logs.insert(entry.log_id.index, entry.clone());
@@ -135,12 +135,12 @@ impl RaftStorage<TypeConfig> for SimpleLogStore {
         for entry in entries {
             if let EntryPayload::Normal(request) = &entry.payload {
                 // Handle ClientRequest for MemStore compatibility
-                println!("⚡ Lithair: Applied client request: {}", request.status);
+                log::debug!("Lithair: Applied client request: {}", request.status);
                 responses.push(LithairResponse::EventApplied {
                     event_id: uuid::Uuid::new_v4().to_string(),
                     applied_at: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 });
             }
@@ -162,7 +162,7 @@ impl RaftStorage<TypeConfig> for SimpleLogStore {
         _meta: &SnapshotMeta<NodeId, ()>,
         _snapshot: Box<Cursor<Vec<u8>>>,
     ) -> Result<(), StorageError<NodeId>> {
-        println!("📦 Lithair: Snapshot installed");
+        log::info!("Lithair: Snapshot installed");
         Ok(())
     }
 

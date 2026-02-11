@@ -87,23 +87,23 @@ pub async fn migrate_json_to_events(
     let event_log = if !dry_run {
         Some(MfaEventLog::new(&event_log_path)?)
     } else {
-        log::info!("🧪 DRY RUN MODE - No events will be written");
+        log::info!("DRY RUN MODE - No events will be written");
         None
     };
 
     // Process each JSON file
     for json_file in json_files {
         match migrate_file(&json_file, event_log.as_ref(), &mut stats).await {
-            Ok(_) => log::info!("✅ Migrated: {:?}", json_file),
+            Ok(_) => log::info!("Migrated: {:?}", json_file),
             Err(e) => {
                 let error_msg = format!("Failed to migrate {:?}: {}", json_file, e);
-                log::error!("❌ {}", error_msg);
+                log::error!("{}", error_msg);
                 stats.errors.push(error_msg);
             }
         }
     }
 
-    log::info!("📊 {}", stats.summary());
+    log::info!("{}", stats.summary());
 
     Ok(stats)
 }
@@ -116,8 +116,8 @@ fn find_json_files(dir: &Path) -> Result<Vec<PathBuf>> {
 
     let mut files = Vec::new();
 
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("Failed to read directory: {:?}", dir))?
+    for entry in
+        fs::read_dir(dir).with_context(|| format!("Failed to read directory: {:?}", dir))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -151,10 +151,7 @@ async fn migrate_file(
         match serde_json::from_str::<UserMfaData>(&json_content) {
             Ok(user_data) => {
                 // Extract username from filename (e.g., "admin.json" → "admin")
-                let username = json_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
+                let username = json_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
 
                 migrate_user(username, &user_data, event_log, stats).await?;
             }
@@ -235,7 +232,7 @@ mod tests {
         fs::create_dir_all(&json_dir).unwrap();
 
         // Create legacy JSON file
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30).unwrap();
         let mut users = HashMap::new();
         users.insert(
             "alice".to_string(),
@@ -271,7 +268,7 @@ mod tests {
         fs::create_dir_all(&json_dir).unwrap();
 
         // Create legacy JSON file
-        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30);
+        let secret = TotpSecret::generate(TotpAlgorithm::SHA256, 6, 30).unwrap();
         let mut users = HashMap::new();
         users.insert(
             "bob".to_string(),
@@ -292,9 +289,7 @@ mod tests {
 
         // Run actual migration
         let event_log_path = temp_dir.path().join("events.log");
-        let stats = migrate_json_to_events(&json_dir, &event_log_path, false)
-            .await
-            .unwrap();
+        let stats = migrate_json_to_events(&json_dir, &event_log_path, false).await.unwrap();
 
         assert_eq!(stats.users_migrated, 1);
         assert_eq!(stats.events_generated, 2); // Setup + Enabled

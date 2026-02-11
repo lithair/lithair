@@ -23,46 +23,13 @@ pub type RoleId = u32;
 /// Session ID type
 pub type SessionId = String;
 
-/// 🎯 **AGNOSTIC PERMISSION TRAIT**
+/// Application-defined permission trait
 ///
-/// This trait allows applications to define their own permission systems
-/// without hardcoding business logic into the Lithair framework core.
+/// Allows applications to define their own permission systems
+/// without hardcoding business logic into the framework.
 ///
-/// # Examples
-///
-/// ```rust,ignore
-/// // E-commerce application permissions
-/// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-/// pub enum ECommercePermission {
-///     ProductCreateAny,
-///     ProductReadAny,
-///     ProductUpdateAny,
-///     ProductDeleteAny,
-///     AdminDashboard,
-/// }
-///
-/// impl Permission for ECommercePermission {
-///     fn identifier(&self) -> &str {
-///         match self {
-///             Self::ProductCreateAny => "product:create:any",
-///             Self::ProductReadAny => "product:read:any",
-///             Self::ProductUpdateAny => "product:update:any",
-///             Self::ProductDeleteAny => "product:delete:any",
-///             Self::AdminDashboard => "admin:dashboard",
-///         }
-///     }
-///
-///     fn description(&self) -> &str {
-///         match self {
-///             Self::ProductCreateAny => "Create any product",
-///             Self::ProductReadAny => "Read all products",
-///             Self::ProductUpdateAny => "Update any product",
-///             Self::ProductDeleteAny => "Delete any product",
-///             Self::AdminDashboard => "Access admin dashboard",
-///         }
-///     }
-/// }
-/// ```
+/// Identifiers should follow the `resource:action[:scope]` convention
+/// (e.g., `"product:create:any"`).
 pub trait Permission:
     Clone + PartialEq + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static
 {
@@ -96,9 +63,7 @@ pub enum PermissionLevel {
     System,
 }
 
-/// 🎯 **PERMISSION UTILITIES**
-///
-/// Utility functions for working with application-defined permissions
+/// Utility functions for working with permission identifiers
 #[allow(dead_code)]
 pub struct PermissionUtils;
 
@@ -300,8 +265,6 @@ pub enum SecurityEvent<P: Permission> {
     },
 }
 
-// JSON serialization for SecurityEvent will be implemented later if needed
-
 /// Security state containing all security-related data
 ///
 /// Generic over Permission type to allow applications to define their own permission systems
@@ -391,8 +354,48 @@ impl<P: Permission> SecurityState<P> {
                     .insert(*object_id, *to_owner);
             }
 
-            // TODO: Implement other event applications
-            _ => {}
+            SecurityEvent::UserUpdated { user_id, email, name, .. } => {
+                if let Some(user) = self.users.get_mut(user_id) {
+                    user.email = email.clone();
+                    user.name = name.clone();
+                }
+            }
+
+            SecurityEvent::UserDeleted { user_id, .. } => {
+                if let Some(user) = self.users.get_mut(user_id) {
+                    user.is_active = false;
+                }
+            }
+
+            SecurityEvent::RoleUpdated { role_id, name, permissions, .. } => {
+                if let Some(role) = self.roles.get_mut(role_id) {
+                    role.name = name.clone();
+                    role.permissions = permissions.iter().cloned().collect();
+                }
+            }
+
+            SecurityEvent::RoleDeleted { role_id, .. } => {
+                self.roles.remove(role_id);
+                // Remove this role from all user assignments
+                for user_roles in self.user_roles.values_mut() {
+                    user_roles.remove(role_id);
+                }
+            }
+
+            SecurityEvent::UserAuthenticated { user_id, timestamp, .. } => {
+                if let Some(user) = self.users.get_mut(user_id) {
+                    user.last_login = Some(*timestamp);
+                }
+            }
+
+            SecurityEvent::UserLoggedOut { session_id, .. } => {
+                self.active_sessions.remove(session_id);
+            }
+
+            // Access events are informational and don't mutate state
+            SecurityEvent::AuthenticationFailed { .. }
+            | SecurityEvent::AccessGranted { .. }
+            | SecurityEvent::AccessDenied { .. } => {}
         }
     }
 

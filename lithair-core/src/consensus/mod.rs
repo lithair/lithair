@@ -109,8 +109,8 @@ where
             return Ok(()); // No replication needed
         }
 
-        println!(
-            "🌐 Initializing HYPER HTTP-based consensus for model {} with fields: {:?}",
+        log::info!(
+            "Initializing HYPER HTTP-based consensus for model {} with fields: {:?}",
             T::consensus_group(),
             T::replicated_fields()
         );
@@ -144,24 +144,24 @@ where
         self.raft = Some(raft_arc.clone());
         self.http_replicator = Some(http_replicator);
 
-        println!(
-            "✅ HYPER HTTP consensus initialized for node {} with {} peers",
+        log::info!(
+            "HYPER HTTP consensus initialized for node {} with {} peers",
             self.config.node_id,
             self.config.cluster_peers.len()
         );
 
         // Initialize cluster membership and leader election
         if self.config.cluster_peers.is_empty() {
-            println!("🔴 Single-node mode: no replication needed");
+            log::info!("Single-node mode: no replication needed");
             let mut nodes = BTreeSet::new();
             nodes.insert(self.config.node_id);
             match raft_arc.initialize(nodes).await {
-                Ok(_) => println!("✅ Single-node cluster initialized"),
-                Err(e) => println!("⚠️ Failed to initialize single-node cluster: {}", e),
+                Ok(_) => log::info!("Single-node cluster initialized"),
+                Err(e) => log::warn!("Failed to initialize single-node cluster: {}", e),
             }
         } else {
-            println!(
-                "🟢 Multi-node HTTP replication: {} peers configured",
+            log::info!(
+                "Multi-node HTTP replication: {} peers configured",
                 self.config.cluster_peers.len()
             );
 
@@ -183,14 +183,14 @@ where
             let is_initial_leader = self.config.node_id == lowest_id;
 
             if is_initial_leader {
-                println!("👑 Node {} selected as HTTP replication leader", self.config.node_id);
+                log::info!("Node {} selected as HTTP replication leader", self.config.node_id);
                 let nodes: BTreeSet<u64> = all_node_ids.into_iter().collect();
                 match raft_arc.initialize(nodes).await {
-                    Ok(_) => println!("✅ HTTP replication cluster initialized"),
-                    Err(e) => println!("⚠️ Failed to initialize HTTP cluster: {}", e),
+                    Ok(_) => log::info!("HTTP replication cluster initialized"),
+                    Err(e) => log::warn!("Failed to initialize HTTP cluster: {}", e),
                 }
             } else {
-                println!("🔄 Node {} waiting for HTTP replication leader", self.config.node_id);
+                log::info!("Node {} waiting for HTTP replication leader", self.config.node_id);
             }
         }
 
@@ -206,7 +206,7 @@ where
     pub async fn propose_create(&self, item: T, primary_key: String) -> anyhow::Result<()> {
         match &self.http_replicator {
             Some(replicator) => {
-                println!("🌐 HYPER: Proposing CRUD operation through HTTP replication...");
+                log::debug!("HYPER: Proposing CRUD operation through HTTP replication...");
 
                 let operation = CrudOperation::Create { item, primary_key: primary_key.clone() };
 
@@ -216,19 +216,19 @@ where
                     node_id: self.config.node_id,
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 };
 
                 // Replicate via HTTP to all peers using HYPER
                 replicator.replicate_operation(app_data).await?;
 
-                println!("✅ HYPER: CRUD operation successfully replicated via HTTP");
+                log::info!("HYPER: CRUD operation successfully replicated via HTTP");
                 Ok(())
             }
             None => {
-                println!(
-                    "⚠️ HTTP replicator not initialized - operation proceeding without consensus"
+                log::warn!(
+                    "HTTP replicator not initialized - operation proceeding without consensus"
                 );
                 Ok(())
             }
@@ -239,7 +239,7 @@ where
     pub async fn propose_update(&self, item: T, primary_key: String) -> anyhow::Result<()> {
         match &self.http_replicator {
             Some(replicator) => {
-                println!("🌐 HYPER: Proposing UPDATE operation through HTTP replication...");
+                log::debug!("HYPER: Proposing UPDATE operation through HTTP replication...");
 
                 let operation = CrudOperation::Update { item, primary_key: primary_key.clone() };
 
@@ -249,20 +249,18 @@ where
                     node_id: self.config.node_id,
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 };
 
                 // Replicate via HTTP to all peers using HYPER
                 replicator.replicate_operation(app_data).await?;
 
-                println!("✅ HYPER: UPDATE operation successfully replicated via HTTP");
+                log::info!("HYPER: UPDATE operation successfully replicated via HTTP");
                 Ok(())
             }
             None => {
-                println!(
-                    "⚠️ HTTP replicator not initialized - UPDATE proceeding without consensus"
-                );
+                log::warn!("HTTP replicator not initialized - UPDATE proceeding without consensus");
                 Ok(())
             }
         }
@@ -272,7 +270,7 @@ where
     pub async fn propose_delete(&self, primary_key: String) -> anyhow::Result<()> {
         match &self.http_replicator {
             Some(replicator) => {
-                println!("🌐 HYPER: Proposing DELETE operation through HTTP replication...");
+                log::debug!("HYPER: Proposing DELETE operation through HTTP replication...");
 
                 let operation = CrudOperation::<T>::Delete { primary_key: primary_key.clone() };
 
@@ -282,20 +280,18 @@ where
                     node_id: self.config.node_id,
                     timestamp: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
+                        .unwrap_or_default()
                         .as_secs(),
                 };
 
                 // Replicate via HTTP to all peers using HYPER
                 replicator.replicate_operation(app_data).await?;
 
-                println!("✅ HYPER: DELETE operation successfully replicated via HTTP");
+                log::info!("HYPER: DELETE operation successfully replicated via HTTP");
                 Ok(())
             }
             None => {
-                println!(
-                    "⚠️ HTTP replicator not initialized - DELETE proceeding without consensus"
-                );
+                log::warn!("HTTP replicator not initialized - DELETE proceeding without consensus");
                 Ok(())
             }
         }
@@ -352,7 +348,7 @@ impl openraft::network::RaftNetwork<TypeConfig> for DeclarativeConnection {
         openraft::raft::AppendEntriesResponse<u64>,
         openraft::error::RPCError<u64, (), openraft::error::RaftError<u64>>,
     > {
-        println!("📨 Leader election append entries to node {}", self.target_id);
+        log::debug!("Leader election append entries to node {}", self.target_id);
         Ok(openraft::raft::AppendEntriesResponse::Success)
     }
 
@@ -368,7 +364,7 @@ impl openraft::network::RaftNetwork<TypeConfig> for DeclarativeConnection {
             openraft::error::RaftError<u64, openraft::error::InstallSnapshotError>,
         >,
     > {
-        println!("📸 Leader election install snapshot to node {}", self.target_id);
+        log::debug!("Leader election install snapshot to node {}", self.target_id);
         Ok(openraft::raft::InstallSnapshotResponse { vote: req.vote })
     }
 
@@ -380,7 +376,7 @@ impl openraft::network::RaftNetwork<TypeConfig> for DeclarativeConnection {
         openraft::raft::VoteResponse<u64>,
         openraft::error::RPCError<u64, (), openraft::error::RaftError<u64>>,
     > {
-        println!("🗳️ Leader election vote request to node {}", self.target_id);
+        log::debug!("Leader election vote request to node {}", self.target_id);
         Ok(openraft::raft::VoteResponse { vote: req.vote, vote_granted: true, last_log_id: None })
     }
 }
@@ -414,10 +410,12 @@ impl HyperReplicationCoordinator {
         let event_store = EventStore::new(event_store_path)?;
         let http_client = HttpClient::new();
 
-        println!("🌐 HYPER Replication Coordinator initialized:");
-        println!("   EventStore: {}", event_store_path);
-        println!("   Node ID: {}", node_id);
-        println!("   Peers: {:?}", peers);
+        log::info!(
+            "HYPER Replication Coordinator initialized: EventStore={}, Node ID={}, Peers={:?}",
+            event_store_path,
+            node_id,
+            peers
+        );
 
         let coordinator = Self {
             event_store: Arc::new(RwLock::new(event_store)),
@@ -448,9 +446,9 @@ impl HyperReplicationCoordinator {
             let url = format!("http://{}/internal/replicate", peer);
 
             match self.send_with_retries(&url, &json_data, 5, Duration::from_secs(3)).await {
-                Ok(_) => println!("✅ HYPER: Replicated to peer {}", peer),
+                Ok(_) => log::debug!("HYPER: Replicated to peer {}", peer),
                 Err(e) => {
-                    println!("❌ HYPER: Failed to replicate to peer {} after retries: {}", peer, e);
+                    log::error!("HYPER: Failed to replicate to peer {} after retries: {}", peer, e);
                     // Enqueue for background retry
                     let mut q = self.pending_queue.write().await;
                     q.push((url.clone(), json_data.clone(), 0));
@@ -491,7 +489,7 @@ impl HyperReplicationCoordinator {
             store.flush()?;
         }
 
-        println!("📝 Node {}: Applied operation locally to EventStore", self.node_id);
+        log::debug!("Node {}: Applied operation locally to EventStore", self.node_id);
         Ok(())
     }
 
@@ -533,7 +531,7 @@ impl HyperReplicationCoordinator {
                         return Err(e);
                     }
                     let backoff = base_timeout.mul_f32(0.2).as_millis() as u64 + (1u64 << attempt);
-                    println!("⏳ Retry {} for {} in {}ms", attempt, url, backoff);
+                    log::debug!("Retry {} for {} in {}ms", attempt, url, backoff);
                     sleep(Duration::from_millis(backoff)).await;
                 }
             }
@@ -553,7 +551,7 @@ impl HyperReplicationCoordinator {
                 };
 
                 if !entries.is_empty() {
-                    println!("🔁 Draining {} pending replication requests...", entries.len());
+                    log::debug!("Draining {} pending replication requests...", entries.len());
                 }
 
                 for (url, json, attempts) in entries.drain(..) {
@@ -565,11 +563,11 @@ impl HyperReplicationCoordinator {
                     let res = timeout(Duration::from_secs(5), fut).await;
                     match res {
                         Ok(Ok(resp)) if resp.status().is_success() => {
-                            println!("✅ Background replicate OK -> {}", url);
+                            log::debug!("Background replicate OK -> {}", url);
                         }
                         Ok(Ok(resp)) => {
-                            println!(
-                                "❌ Background replicate failed status {} -> {}",
+                            log::error!(
+                                "Background replicate failed status {} -> {}",
                                 resp.status(),
                                 url
                             );
@@ -577,12 +575,12 @@ impl HyperReplicationCoordinator {
                             q.push((url.clone(), json.clone(), attempts.saturating_add(1)));
                         }
                         Ok(Err(e)) => {
-                            println!("❌ Background replicate error {} -> {}", e, url);
+                            log::error!("Background replicate error {} -> {}", e, url);
                             let mut q = pending.write().await;
                             q.push((url.clone(), json.clone(), attempts.saturating_add(1)));
                         }
                         Err(_) => {
-                            println!("⏱️ Background replicate timeout -> {}", url);
+                            log::warn!("Background replicate timeout -> {}", url);
                             let mut q = pending.write().await;
                             q.push((url.clone(), json.clone(), attempts.saturating_add(1)));
                         }
@@ -599,8 +597,8 @@ impl HyperReplicationCoordinator {
     where
         T: for<'de> Deserialize<'de>,
     {
-        // TODO: Reconstruct state from EventStore events
-        // For now, return empty - this will be filled with EventStore replay logic
+        // State reconstruction from EventStore events is not yet implemented.
+        // Returns an empty map until EventStore replay logic is added.
         Ok(std::collections::HashMap::new())
     }
 }

@@ -16,7 +16,7 @@ pub struct RaftConfig {
     /// Require authentication for Raft endpoints
     pub auth_required: bool,
     /// Secret token for Raft endpoint authentication
-    /// If set, all Raft requests must include header: X-Raft-Token: <token>
+    /// If set, all Raft requests must include header: `X-Raft-Token: <token>`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_token: Option<String>,
     /// Heartbeat interval in seconds (leader sends heartbeats to followers)
@@ -120,15 +120,44 @@ impl RaftConfig {
     }
 
     /// Validate authentication token from request header
+    ///
+    /// Uses constant-time comparison to prevent timing attacks.
     pub fn validate_token(&self, token: Option<&str>) -> bool {
         if !self.auth_required {
             return true;
         }
 
         match (&self.auth_token, token) {
-            (Some(expected), Some(provided)) => expected == provided,
-            (None, _) => true, // No token configured, allow
-            (Some(_), None) => false, // Token required but not provided
+            (Some(expected), Some(provided)) => {
+                // HMAC-based constant-time comparison to prevent timing attacks
+                // (including length-based side channels).
+                // By computing HMAC(key, provided) vs HMAC(key, expected),
+                // the comparison is constant-time regardless of input lengths.
+                use hmac::{Hmac, Mac};
+                use sha2::Sha256;
+                type HmacSha256 = Hmac<Sha256>;
+
+                let key = expected.as_bytes();
+                let mut mac_provided =
+                    HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+                mac_provided.update(provided.as_bytes());
+                let hash_provided = mac_provided.finalize().into_bytes();
+
+                let mut mac_expected =
+                    HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+                mac_expected.update(expected.as_bytes());
+                let hash_expected = mac_expected.finalize().into_bytes();
+
+                // Constant-time comparison of fixed-size hashes
+                hash_provided
+                    .as_slice()
+                    .iter()
+                    .zip(hash_expected.as_slice())
+                    .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                    == 0
+            }
+            (None, _) => true,
+            (Some(_), None) => false,
         }
     }
 
@@ -163,9 +192,7 @@ mod tests {
 
     #[test]
     fn test_with_auth() {
-        let config = RaftConfig::new()
-            .with_path("/_internal/raft")
-            .with_auth("secret-token-123");
+        let config = RaftConfig::new().with_path("/_internal/raft").with_auth("secret-token-123");
 
         assert_eq!(config.path, "/_internal/raft");
         assert!(config.auth_required);
@@ -215,9 +242,7 @@ mod tests {
 
     #[test]
     fn test_validate_heartbeat_ge_election() {
-        let config = RaftConfig::new()
-            .with_heartbeat_interval(5)
-            .with_election_timeout(3);
+        let config = RaftConfig::new().with_heartbeat_interval(5).with_election_timeout(3);
         assert!(config.validate().is_err());
     }
 

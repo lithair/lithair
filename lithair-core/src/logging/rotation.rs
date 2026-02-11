@@ -68,13 +68,13 @@ impl RotatingWriter {
     pub fn write(&self, data: &[u8]) -> anyhow::Result<()> {
         self.check_rotation(data.len())?;
 
-        let mut writer_guard = self.current_writer.lock().unwrap();
+        let mut writer_guard = self.current_writer.lock().expect("current writer lock poisoned");
         if let Some(ref mut writer) = writer_guard.as_mut() {
             writer.write_all(data)?;
             writer.write_all(b"\n")?;
 
             // Update current size
-            let mut size_guard = self.current_size.lock().unwrap();
+            let mut size_guard = self.current_size.lock().expect("current size lock poisoned");
             *size_guard += data.len() as u64 + 1; // +1 for newline
         }
 
@@ -83,7 +83,7 @@ impl RotatingWriter {
 
     /// Flush buffered data
     pub fn flush(&self) -> anyhow::Result<()> {
-        let mut writer_guard = self.current_writer.lock().unwrap();
+        let mut writer_guard = self.current_writer.lock().expect("current writer lock poisoned");
         if let Some(ref mut writer) = writer_guard.as_mut() {
             writer.flush()?;
         }
@@ -94,21 +94,24 @@ impl RotatingWriter {
     fn check_rotation(&self, incoming_size: usize) -> anyhow::Result<()> {
         let should_rotate = match &self.config.rotation {
             FileRotation::Size(max_size) => {
-                let current_size = *self.current_size.lock().unwrap();
+                let current_size = *self.current_size.lock().expect("current size lock poisoned");
                 current_size + incoming_size as u64 > *max_size
             }
             FileRotation::Daily => {
-                let last_rotation = *self.last_rotation.lock().unwrap();
+                let last_rotation =
+                    *self.last_rotation.lock().expect("last rotation lock poisoned");
                 let now = Utc::now();
                 now.date_naive() > last_rotation.date_naive()
             }
             FileRotation::Hourly => {
-                let last_rotation = *self.last_rotation.lock().unwrap();
+                let last_rotation =
+                    *self.last_rotation.lock().expect("last rotation lock poisoned");
                 let now = Utc::now();
                 now.format("%Y%m%d%H").to_string() != last_rotation.format("%Y%m%d%H").to_string()
             }
             FileRotation::Weekly => {
-                let last_rotation = *self.last_rotation.lock().unwrap();
+                let last_rotation =
+                    *self.last_rotation.lock().expect("last rotation lock poisoned");
                 let now = Utc::now();
                 now.iso_week() != last_rotation.iso_week()
             }
@@ -126,7 +129,8 @@ impl RotatingWriter {
     fn rotate(&self) -> anyhow::Result<()> {
         // Close current writer
         {
-            let mut writer_guard = self.current_writer.lock().unwrap();
+            let mut writer_guard =
+                self.current_writer.lock().expect("current writer lock poisoned");
             if let Some(mut writer) = writer_guard.take() {
                 writer.flush()?;
             }
@@ -134,7 +138,7 @@ impl RotatingWriter {
 
         // Generate rotated filename
         let rotated_path = self.generate_rotated_filename()?;
-        let current_path = self.current_path.lock().unwrap().clone();
+        let current_path = self.current_path.lock().expect("current path lock poisoned").clone();
 
         // Move current file to rotated name
         if current_path.exists() {
@@ -147,8 +151,8 @@ impl RotatingWriter {
         }
 
         // Reset state and create new writer
-        *self.current_size.lock().unwrap() = 0;
-        *self.last_rotation.lock().unwrap() = Utc::now();
+        *self.current_size.lock().expect("current size lock poisoned") = 0;
+        *self.last_rotation.lock().expect("last rotation lock poisoned") = Utc::now();
 
         self.ensure_writer()?;
 
@@ -221,14 +225,15 @@ impl RotatingWriter {
 
     /// Ensure a writer is available
     fn ensure_writer(&self) -> anyhow::Result<()> {
-        let mut writer_guard = self.current_writer.lock().unwrap();
+        let mut writer_guard = self.current_writer.lock().expect("current writer lock poisoned");
         if writer_guard.is_none() {
-            let current_path = self.current_path.lock().unwrap().clone();
+            let current_path =
+                self.current_path.lock().expect("current path lock poisoned").clone();
             let file = OpenOptions::new().create(true).append(true).open(&current_path)?;
 
             // Update current size based on existing file
             if let Ok(metadata) = file.metadata() {
-                *self.current_size.lock().unwrap() = metadata.len();
+                *self.current_size.lock().expect("current size lock poisoned") = metadata.len();
             }
 
             *writer_guard = Some(BufWriter::new(file));

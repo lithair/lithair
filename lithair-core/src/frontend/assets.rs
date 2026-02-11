@@ -1,8 +1,8 @@
 //! Static Asset Management for Lithair Frontend
 
 use crate::engine::Event;
-use crate::model_inspect::Inspectable;
 use crate::model::{FieldPolicy, ModelSpec};
+use crate::model_inspect::Inspectable;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -40,7 +40,7 @@ impl Inspectable for StaticAsset {
             "compression_enabled" => serde_json::to_value(self.compression_enabled).ok(),
             "cache_ttl_seconds" => serde_json::to_value(self.cache_ttl_seconds).ok(),
             // Note: 'content' and 'metadata' excluded from standard inspection for performance
-            _ => None
+            _ => None,
         }
     }
 }
@@ -112,7 +112,10 @@ impl StaticAsset {
         vec![
             ("Content-Type".to_string(), self.mime_type.clone()),
             ("Content-Length".to_string(), self.size_bytes.to_string()),
-            ("Cache-Control".to_string(), format!("public, max-age={}", self.cache_ttl_seconds)),
+            (
+                "Cache-Control".to_string(),
+                format!("public, max-age={}", self.cache_ttl_seconds),
+            ),
             ("X-Served-From".to_string(), "Lithair-Memory".to_string()),
             ("X-Asset-Version".to_string(), self.version.clone()),
         ]
@@ -155,13 +158,14 @@ fn detect_mime_type(path: &str) -> String {
         "gif" => "image/gif",
         "svg" => "image/svg+xml",
         _ => "application/octet-stream",
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn should_compress(mime_type: &str) -> bool {
-    matches!(mime_type,
-        "text/html" | "text/css" | "application/javascript" |
-        "application/json" | "text/plain"
+    matches!(
+        mime_type,
+        "text/html" | "text/css" | "application/javascript" | "application/json" | "text/plain"
     )
 }
 

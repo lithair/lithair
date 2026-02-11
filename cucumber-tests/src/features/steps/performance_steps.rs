@@ -1,5 +1,5 @@
-use cucumber::{given, then, when};
 use crate::features::LithairWorld;
+use cucumber::{given, then, when};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
@@ -22,7 +22,10 @@ async fn given_lockfree_configured(_world: &mut LithairWorld) {
 
 #[when(expr = "I start the SCC2 server on port {int}")]
 async fn start_scc2_server(world: &mut LithairWorld, port: u16) {
-    world.start_server(port, "scc2_server_demo").await.expect("Failed to start SCC2 server");
+    world
+        .start_server(port, "scc2_server_demo")
+        .await
+        .expect("Failed to start SCC2 server");
     sleep(Duration::from_millis(500)).await;
 }
 
@@ -125,9 +128,8 @@ async fn concurrent_connections(world: &mut LithairWorld, client_count: u32) {
     let mut success_count = 0;
 
     for i in 0..client_count {
-        match world.make_request("GET", &format!("/perf/echo?client={}", i), None).await {
-            Ok(()) => success_count += 1,
-            Err(_) => {} // Ignore errors for now
+        if let Ok(()) = world.make_request("GET", &format!("/perf/echo?client={}", i), None).await {
+            success_count += 1;
         }
     }
 
@@ -138,11 +140,7 @@ async fn concurrent_connections(world: &mut LithairWorld, client_count: u32) {
 #[then("no client should be rejected")]
 async fn assert_no_rejections(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
-    assert_eq!(
-        metrics.error_rate, 0.0,
-        "Error rate {}% should be 0%",
-        metrics.error_rate
-    );
+    assert_eq!(metrics.error_rate, 0.0, "Error rate {}% should be 0%", metrics.error_rate);
 }
 
 #[then(expr = "the server should maintain latency under {int}ms")]

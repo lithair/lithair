@@ -2,6 +2,7 @@
 name = "rbac_session_demo"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 description = "Lithair RBAC with Session Management Demo"
 
 [dependencies]

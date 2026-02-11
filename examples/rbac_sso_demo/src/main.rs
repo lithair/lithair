@@ -63,35 +63,34 @@ pub enum AdminPermission {
 // ============================================================================
 
 /// User roles with associated permissions
-/// 
+///
 /// The #[derive(RbacRole)] macro automatically generates the `has_permission` method
 /// based on the #[permissions(...)] attributes on each variant.
-/// 
+///
 /// This is TRUE declarative RBAC - no manual implementation needed!
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(lithair_macros::RbacRole)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, lithair_macros::RbacRole)]
 #[permission_type(ProductPermission)]
 pub enum UserRole {
     /// Public access (no authentication required)
     #[allow(dead_code)]
     Public,
-    
+
     /// Customer - can view products
     #[permissions(ProductRead)]
     Customer,
-    
+
     /// Employee - can view and create products
     #[permissions(ProductRead, ProductWrite)]
     Employee,
-    
+
     /// Stock Manager - can manage inventory
     #[permissions(ProductRead, StockRead, StockWrite)]
     StockManager,
-    
+
     /// Product Manager - can manage products
     #[permissions(ProductRead, ProductWrite, StockRead)]
     ProductManager,
-    
+
     /// Administrator - full access
     #[permissions(all)]
     Administrator,
@@ -118,7 +117,7 @@ pub enum AuthProvider {
     ///     scopes = ["email", "profile"]
     /// )]
     Google,
-    
+
     /// GitHub OAuth
     /// #[idp(
     ///     provider = "github",
@@ -128,7 +127,7 @@ pub enum AuthProvider {
     ///     scopes = ["user:email"]
     /// )]
     GitHub,
-    
+
     /// Microsoft OAuth (Azure AD)
     /// #[idp(
     ///     provider = "microsoft",
@@ -138,7 +137,7 @@ pub enum AuthProvider {
     ///     redirect_uri = "/auth/microsoft/callback"
     /// )]
     Microsoft,
-    
+
     /// Local JWT authentication
     /// #[idp(provider = "jwt")]
     LocalJWT,
@@ -154,7 +153,7 @@ fn generate_uuid() -> Uuid {
 
 /// Product model with field-level permissions
 /// This demonstrates the DECLARATIVE RBAC syntax
-/// 
+///
 /// In the real implementation, the #[sso] attribute would be implemented
 /// For now, we show the intended syntax in comments
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
@@ -177,28 +176,28 @@ pub struct Product {
     #[permission(read = "Public")]
     #[serde(default = "generate_uuid")]
     pub id: Uuid,
-    
+
     /// Product name - public read, manager write
     #[db(indexed)]
     #[http(expose)]
     #[permission(read = "Public", write = "ProductManager")]
     pub name: String,
-    
+
     /// Product description - public read, manager write
     #[http(expose)]
     #[permission(read = "Public", write = "ProductManager")]
     pub description: String,
-    
+
     /// Product price - public read, manager write
     #[http(expose)]
     #[permission(read = "Public", write = "ProductManager")]
     pub price: f64,
-    
+
     /// Stock quantity - restricted to stock managers
     #[http(expose)]
     #[permission(read = "StockManager", write = "StockManager")]
     pub stock: i32,
-    
+
     /// Internal cost - admin only
     #[http(expose)]
     #[permission(read = "Administrator", write = "Administrator")]
@@ -209,24 +208,24 @@ impl Product {
     /// Filter fields based on user role
     pub fn filter_for_role(&self, role: &UserRole) -> serde_json::Value {
         use serde_json::json;
-        
+
         let mut product = json!({
             "id": self.id,
             "name": &self.name,
             "description": &self.description,
             "price": self.price,
         });
-        
+
         // Add stock if user has StockRead permission
         if role.has_permission(ProductPermission::StockRead) {
             product["stock"] = json!(self.stock);
         }
-        
+
         // Add cost if user is Administrator
         if matches!(role, UserRole::Administrator) {
             product["cost"] = json!(self.cost);
         }
-        
+
         product
     }
 }
@@ -239,23 +238,23 @@ pub struct User {
     /// User ID
     /// #[db(primary_key)]
     pub id: Uuid,
-    
+
     /// Email address
     /// #[db(unique)]
     /// #[auth(identifier)]
     pub email: String,
-    
+
     /// Display name
     pub name: String,
-    
+
     /// User role
     /// #[permission(read = "Self", write = "Administrator")]
     pub role: UserRole,
-    
+
     /// Authentication providers
     /// #[auth(providers = [Google, GitHub, Microsoft, LocalJWT])]
     pub auth_providers: Vec<AuthProvider>,
-    
+
     /// Password hash (for LocalJWT only)
     #[serde(skip_serializing)]
     pub password_hash: Option<String>,
@@ -271,14 +270,17 @@ pub struct AppState {
     pub users: Arc<Vec<User>>,
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self { products: Arc::new(vec![]), users: Arc::new(vec![]) }
+    }
+}
+
 impl AppState {
     /// Initialize empty state
     /// Products will be added via API calls (see: task examples:rbac:seed)
     pub fn new() -> Self {
-        Self {
-            products: Arc::new(vec![]),
-            users: Arc::new(vec![]),
-        }
+        Self::default()
     }
 }
 
@@ -290,13 +292,13 @@ impl AppState {
 async fn main() -> Result<()> {
     // Initialize logger
     env_logger::init();
-    
+
     // Parse CLI arguments
     let args = Args::parse();
-    
+
     // Initialize application state
     let state = AppState::new();
-    
+
     println!("🔐 Lithair RBAC + SSO Demo");
     println!("============================");
     println!();
@@ -334,10 +336,10 @@ async fn main() -> Result<()> {
     println!();
     println!("📖 See README.md for complete documentation");
     println!();
-    
+
     // In a real implementation, this would start the Hyper server
     // with all routes auto-generated from the declarative attributes
-    
+
     // For this demo, we just show the data
     println!("📊 Demo Data:");
     println!();
@@ -348,11 +350,10 @@ async fn main() -> Result<()> {
     println!();
     println!("Users ({} items):", state.users.len());
     for user in state.users.iter() {
-        println!("  • {} ({:?}) - Providers: {:?}", 
-                 user.email, user.role, user.auth_providers);
+        println!("  • {} ({:?}) - Providers: {:?}", user.email, user.role, user.auth_providers);
     }
     println!();
-    
+
     println!("✅ Server ready!");
     println!("📝 Products will be added via API (see: task examples:rbac:seed)");
     println!();
@@ -361,19 +362,19 @@ async fn main() -> Result<()> {
     println!("💡 To seed demo products, run in another terminal:");
     println!("   task examples:rbac:seed PORT={}", args.port);
     println!();
-    
+
     // Start the Lithair DeclarativeServer with RBAC enabled
     // This will auto-generate all HTTP routes with RBAC middleware
     let event_store_path = "./data/rbac_products.events";
-    
+
     // Configure RBAC with password provider
-    let rbac_config = lithair_core::rbac::RbacConfig::new()
-        .enabled()
-        .with_provider(lithair_core::rbac::ProviderConfig::Password {
+    let rbac_config = lithair_core::rbac::RbacConfig::new().enabled().with_provider(
+        lithair_core::rbac::ProviderConfig::Password {
             password: "secret123".to_string(),
             default_role: "Customer".to_string(),
-        });
-    
+        },
+    );
+
     DeclarativeServer::<Product>::new(event_store_path, args.port)?
         .with_rbac(rbac_config)
         .serve()
@@ -383,20 +384,20 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_role_permissions() {
         // Customer can only read products
         assert!(UserRole::Customer.has_permission(ProductPermission::ProductRead));
         assert!(!UserRole::Customer.has_permission(ProductPermission::ProductWrite));
         assert!(!UserRole::Customer.has_permission(ProductPermission::StockRead));
-        
+
         // ProductManager can read/write products and read stock
         assert!(UserRole::ProductManager.has_permission(ProductPermission::ProductRead));
         assert!(UserRole::ProductManager.has_permission(ProductPermission::ProductWrite));
         assert!(UserRole::ProductManager.has_permission(ProductPermission::StockRead));
         assert!(!UserRole::ProductManager.has_permission(ProductPermission::StockWrite));
-        
+
         // Administrator has all permissions
         assert!(UserRole::Administrator.has_permission(ProductPermission::ProductRead));
         assert!(UserRole::Administrator.has_permission(ProductPermission::ProductWrite));
@@ -404,7 +405,7 @@ mod tests {
         assert!(UserRole::Administrator.has_permission(ProductPermission::StockRead));
         assert!(UserRole::Administrator.has_permission(ProductPermission::StockWrite));
     }
-    
+
     #[test]
     fn test_field_filtering() {
         let product = Product {
@@ -415,7 +416,7 @@ mod tests {
             stock: 50,
             cost: 40.0,
         };
-        
+
         // Customer should not see stock or cost
         let customer_view = product.filter_for_role(&UserRole::Customer);
         assert!(customer_view.get("id").is_some());
@@ -423,12 +424,12 @@ mod tests {
         assert!(customer_view.get("price").is_some());
         assert!(customer_view.get("stock").is_none());
         assert!(customer_view.get("cost").is_none());
-        
+
         // StockManager should see stock but not cost
         let manager_view = product.filter_for_role(&UserRole::StockManager);
         assert!(manager_view.get("stock").is_some());
         assert!(manager_view.get("cost").is_none());
-        
+
         // Administrator should see everything
         let admin_view = product.filter_for_role(&UserRole::Administrator);
         assert!(admin_view.get("stock").is_some());

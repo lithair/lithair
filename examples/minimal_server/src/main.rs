@@ -22,18 +22,18 @@ async fn main() -> Result<()> {
         .with_port(8080)
         .with_host("127.0.0.1")
         .with_cors(true)
-        
+
         // HTTP Features
         .with_logging_config(LoggingConfig::development())
         .with_gzip_config(GzipConfig {
             enabled: true,
             min_bytes: 1024,
         })
-        
+
         // Admin panel
         .with_admin_panel(true)
         .with_metrics(true)
-        
+
         // Start server
         .serve()
         .await?;

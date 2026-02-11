@@ -10,9 +10,9 @@
 
 #[allow(unused_imports)]
 use crate::http::body_from;
+use crate::http::{Req, Resp};
 #[allow(unused_imports)]
 use http_body_util::BodyExt;
-use crate::http::{Req, Resp};
 use hyper::Method;
 use std::convert::Infallible;
 use std::future::Future;
@@ -52,20 +52,12 @@ pub trait ThreeTierHandler<T: Send + Sync>: Send + Sync {
 impl<T: Send + Sync> ThreeTierRouter<T> {
     /// Create a new three-tier router with default prefixes
     pub fn new(context: T) -> Self {
-        Self {
-            context,
-            admin_prefix: "/admin/".to_string(),
-            backend_prefix: "/api/".to_string(),
-        }
+        Self { context, admin_prefix: "/admin/".to_string(), backend_prefix: "/api/".to_string() }
     }
 
     /// Create a new three-tier router with custom prefixes
     pub fn with_prefixes(context: T, admin_prefix: String, backend_prefix: String) -> Self {
-        Self {
-            context,
-            admin_prefix,
-            backend_prefix,
-        }
+        Self { context, admin_prefix, backend_prefix }
     }
 
     /// Route request to appropriate tier handler
@@ -76,7 +68,7 @@ impl<T: Send + Sync> ThreeTierRouter<T> {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
-        log::debug!("🌐 Three-Tier Route: {} {}", method, path);
+        log::debug!("Three-Tier Route: {} {}", method, path);
 
         // Three-tier routing logic
         if path.starts_with(&self.admin_prefix) {
@@ -101,11 +93,7 @@ pub struct ThreeTierRouterBuilder<T> {
 
 impl<T> ThreeTierRouterBuilder<T> {
     pub fn new() -> Self {
-        Self {
-            context: None,
-            admin_prefix: None,
-            backend_prefix: None,
-        }
+        Self { context: None, admin_prefix: None, backend_prefix: None }
     }
 
     pub fn with_context(mut self, context: T) -> Self {
@@ -128,11 +116,7 @@ impl<T> ThreeTierRouterBuilder<T> {
         let admin_prefix = self.admin_prefix.unwrap_or_else(|| "/admin/".to_string());
         let backend_prefix = self.backend_prefix.unwrap_or_else(|| "/api/".to_string());
 
-        ThreeTierRouter {
-            context,
-            admin_prefix,
-            backend_prefix,
-        }
+        ThreeTierRouter { context, admin_prefix, backend_prefix }
     }
 }
 
@@ -155,28 +139,25 @@ mod tests {
     impl ThreeTierHandler<TestContext> for TestHandler {
         fn handle_frontend(&self, _req: Req, _context: &TestContext) -> HandlerFuture {
             Box::pin(async move {
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(body_from("Frontend"))
-                    .unwrap())
+                Ok(Response::builder().status(StatusCode::OK).body(body_from("Frontend")).unwrap())
             })
         }
 
         fn handle_backend(&self, _req: Req, _context: &TestContext) -> HandlerFuture {
             Box::pin(async move {
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(body_from("Backend"))
-                    .unwrap())
+                Ok(Response::builder().status(StatusCode::OK).body(body_from("Backend")).unwrap())
             })
         }
 
-        fn handle_admin(&self, _req: Req, _method: &Method, _path: &str, _context: &TestContext) -> HandlerFuture {
+        fn handle_admin(
+            &self,
+            _req: Req,
+            _method: &Method,
+            _path: &str,
+            _context: &TestContext,
+        ) -> HandlerFuture {
             Box::pin(async move {
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(body_from("Admin"))
-                    .unwrap())
+                Ok(Response::builder().status(StatusCode::OK).body(body_from("Admin")).unwrap())
             })
         }
     }

@@ -51,7 +51,9 @@ impl Default for StorageConfig {
 }
 
 impl StorageConfig {
-    pub fn merge(&mut self, other: Self) { *self = other; }
+    pub fn merge(&mut self, other: Self) {
+        *self = other;
+    }
     pub fn apply_env_vars(&mut self) {
         if let Ok(dir) = env::var("RS_DATA_DIR") {
             self.data_dir = dir;
@@ -67,5 +69,7 @@ impl StorageConfig {
             };
         }
     }
-    pub fn validate(&self) -> Result<()> { Ok(()) }
+    pub fn validate(&self) -> Result<()> {
+        Ok(())
+    }
 }

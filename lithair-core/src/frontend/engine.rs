@@ -56,10 +56,7 @@ impl FrontendEngine {
         // Create SCC2 engine
         let engine = Scc2Engine::new(event_store_arc, config)?;
 
-        Ok(Self {
-            engine: Arc::new(engine),
-            host_id,
-        })
+        Ok(Self { engine: Arc::new(engine), host_id })
     }
 
     /// Load static directory into memory with event sourcing
@@ -81,7 +78,11 @@ impl FrontendEngine {
         let mut loaded_count = 0;
 
         // Walk directory recursively
-        fn walk_dir(dir: &Path, base_path_disk: &Path, assets: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
+        fn walk_dir(
+            dir: &Path,
+            base_path_disk: &Path,
+            assets: &mut Vec<(String, Vec<u8>)>,
+        ) -> Result<()> {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
@@ -91,7 +92,8 @@ impl FrontendEngine {
                 } else if path.is_file() {
                     // Create web path from file path
                     let relative_path = path.strip_prefix(base_path_disk)?;
-                    let web_path = format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
+                    let web_path =
+                        format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
 
                     // Read file content
                     let content = std::fs::read(&path)?;
@@ -109,7 +111,13 @@ impl FrontendEngine {
             let asset = StaticAsset::new(web_path.clone(), content);
             let key = format!("{}:{}", self.host_id, web_path);
 
-            log::info!("📄 [{}] {} ({} bytes, {})", self.host_id, web_path, asset.size_bytes, asset.mime_type);
+            log::info!(
+                "📄 [{}] {} ({} bytes, {})",
+                self.host_id,
+                web_path,
+                asset.size_bytes,
+                asset.mime_type
+            );
 
             // Write to SCC2 engine (emits event + persists to .raftlog)
             // Use apply_event now that StaticAsset implements Event
@@ -144,7 +152,9 @@ impl FrontendEngine {
         let key = format!("{}:{}", self.host_id, path);
 
         // Get existing asset or create new one
-        let mut asset = self.engine.read(&key, |a| a.clone())
+        let mut asset = self
+            .engine
+            .read(&key, |a| a.clone())
             .unwrap_or_else(|| StaticAsset::new(path.to_string(), content.clone()));
 
         // Update content
@@ -162,8 +172,7 @@ impl FrontendEngine {
     /// # Arguments
     /// * `path` - Web path
     pub async fn delete_asset(&self, path: &str) -> Result<()> {
-        // TODO: Implement delete with event sourcing
-        // For now, assets are immutable once loaded
+        // Note: delete with event sourcing is not yet supported; assets are immutable once loaded
         let _key = format!("{}:{}", self.host_id, path);
         Ok(())
     }

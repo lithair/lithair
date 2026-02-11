@@ -1,7 +1,6 @@
-use cucumber::{given, when, then};
 use crate::features::world::{LithairWorld, TestArticle};
+use cucumber::{given, then, when};
 use std::time::Instant;
-use std::sync::Arc;
 
 // ==================== CONTEXT STEPS ====================
 
@@ -47,8 +46,12 @@ async fn measure_append_write_time(world: &mut LithairWorld, count: usize) {
     let elapsed = start.elapsed();
     let throughput = count as f64 / elapsed.as_secs_f64();
 
-    println!("✅ {} articles created in {:.2}s ({:.0} writes/sec)",
-             count, elapsed.as_secs_f64(), throughput);
+    println!(
+        "✅ {} articles created in {:.2}s ({:.0} writes/sec)",
+        count,
+        elapsed.as_secs_f64(),
+        throughput
+    );
 
     // Sauvegarder métriques
     let mut metrics = world.metrics.lock().await;
@@ -65,7 +68,8 @@ async fn verify_append_time(world: &mut LithairWorld, max_seconds: u64) {
     assert!(
         actual_seconds <= max_seconds,
         "Append time {} secondes > {} secondes maximum",
-        actual_seconds, max_seconds
+        actual_seconds,
+        max_seconds
     );
     println!("✅ Append time-only: {}s <= {}s", actual_seconds, max_seconds);
 }
@@ -78,7 +82,8 @@ async fn verify_append_throughput(world: &mut LithairWorld, min_throughput: u64)
     assert!(
         actual >= min_throughput,
         "Append throughput {} writes/sec < {} minimum",
-        actual, min_throughput
+        actual,
+        min_throughput
     );
     println!("✅ Append throughput: {} writes/sec >= {}", actual, min_throughput);
 }
@@ -99,7 +104,7 @@ async fn create_products_with_wrong_prices(world: &mut LithairWorld, count: usiz
         let product = TestArticle {
             id: format!("product-{}", i),
             title: format!("Product {} - WRONG PRICE", i),
-            content: format!("Price: 999.99 (incorrect)"),
+            content: "Price: 999.99 (incorrect)".to_string(),
         };
         let id = product.id.clone();
         world.scc2_articles.write(&id, |s| *s = product).ok();
@@ -132,10 +137,13 @@ async fn correct_prices_with_events(world: &mut LithairWorld, count: usize) {
         }
 
         // Mettre à jour en mémoire aussi
-        world.scc2_articles.write(&id, |product| {
-            product.content = format!("Price: 29.99 (corrected)");
-            product.title = product.title.replace("WRONG PRICE", "CORRECTED");
-        }).ok();
+        world
+            .scc2_articles
+            .write(&id, |product| {
+                product.content = "Price: 29.99 (corrected)".to_string();
+                product.title = product.title.replace("WRONG PRICE", "CORRECTED");
+            })
+            .ok();
     }
 
     let elapsed = start.elapsed();
@@ -153,13 +161,19 @@ async fn verify_correction_events_time(world: &mut LithairWorld, _count: usize, 
     assert!(
         actual_seconds <= max_seconds,
         "Corrections take {}s > {}s maximum",
-        actual_seconds, max_seconds
+        actual_seconds,
+        max_seconds
     );
     println!("✅ Corrections en {}s <= {}s", actual_seconds, max_seconds);
 }
 
 #[then(regex = r"^the history must show (\d+) events \((\d+) Created \+ (\d+) Updated\)$")]
-async fn verify_event_history_count(_world: &mut LithairWorld, total: String, created: String, updated: String) {
+async fn verify_event_history_count(
+    _world: &mut LithairWorld,
+    total: String,
+    created: String,
+    updated: String,
+) {
     let total: usize = total.parse().unwrap();
     let created: usize = created.parse().unwrap();
     let updated: usize = updated.parse().unwrap();
@@ -211,8 +225,13 @@ async fn measure_random_reads(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
     let avg_latency_ns = elapsed.as_nanos() as f64 / count as f64;
 
-    println!("✅ {} reads in {:.4}s ({:.0} reads/sec, {:.2}ns avg)",
-             successful_reads, elapsed.as_secs_f64(), throughput, avg_latency_ns);
+    println!(
+        "✅ {} reads in {:.4}s ({:.0} reads/sec, {:.2}ns avg)",
+        successful_reads,
+        elapsed.as_secs_f64(),
+        throughput,
+        avg_latency_ns
+    );
 
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
@@ -229,7 +248,8 @@ async fn verify_read_latency(world: &mut LithairWorld, max_latency_ms: f64) {
     assert!(
         actual <= max_latency_ms,
         "Average latency {:.4}ms > {:.4}ms maximum",
-        actual, max_latency_ms
+        actual,
+        max_latency_ms
     );
     println!("✅ Average latency: {:.6}ms <= {}ms", actual, max_latency_ms);
 }
@@ -242,7 +262,8 @@ async fn verify_read_throughput(world: &mut LithairWorld, min_throughput: u64) {
     assert!(
         actual >= min_throughput,
         "Throughput {} reads/sec < {} minimum",
-        actual, min_throughput
+        actual,
+        min_throughput
     );
     println!("✅ Read throughput: {} reads/sec >= {}", actual, min_throughput);
 }
@@ -319,11 +340,7 @@ async fn verify_history_response_time(world: &mut LithairWorld, max_ms: u64) {
     let metrics = world.metrics.lock().await;
     let actual_ms = metrics.total_duration.as_millis() as u64;
 
-    assert!(
-        actual_ms <= max_ms,
-        "Response time {}ms > {}ms maximum",
-        actual_ms, max_ms
-    );
+    assert!(actual_ms <= max_ms, "Response time {}ms > {}ms maximum", actual_ms, max_ms);
     println!("✅ Response time: {}ms <= {}ms", actual_ms, max_ms);
 }
 
@@ -383,11 +400,7 @@ async fn verify_all_responses_fast(world: &mut LithairWorld, max_ms: u64) {
     let metrics = world.metrics.lock().await;
     let avg_ms = metrics.last_avg_latency_ms;
 
-    assert!(
-        avg_ms <= max_ms as f64,
-        "Average latency {:.2}ms > {}ms",
-        avg_ms, max_ms
-    );
+    assert!(avg_ms <= max_ms as f64, "Average latency {:.2}ms > {}ms", avg_ms, max_ms);
     println!("✅ Average latency: {:.2}ms <= {}ms", avg_ms, max_ms);
 }
 
@@ -417,7 +430,9 @@ async fn create_article_with_id(world: &mut LithairWorld, id: String) {
     println!("✅ Article {} created", id);
 }
 
-#[when(regex = r#"^I call POST /_admin/data/models/Article/\{id\}/edit with \{"title": "New title"\}$"#)]
+#[when(
+    regex = r#"^I call POST /_admin/data/models/Article/\{id\}/edit with \{"title": "New title"\}$"#
+)]
 async fn call_edit_api(world: &mut LithairWorld) {
     println!("🔧 Calling edit API...");
     let start = Instant::now();
@@ -436,9 +451,12 @@ async fn call_edit_api(world: &mut LithairWorld) {
     }
 
     // Mettre à jour en mémoire
-    world.scc2_articles.write(article_id, |article| {
-        article.title = "New title".to_string();
-    }).ok();
+    world
+        .scc2_articles
+        .write(article_id, |article| {
+            article.title = "New title".to_string();
+        })
+        .ok();
 
     let elapsed = start.elapsed();
     println!("✅ Edit completed in {:?}", elapsed);
@@ -522,7 +540,9 @@ async fn verify_bulk_edit_time(world: &mut LithairWorld, count: u64, max_seconds
     assert!(
         actual <= max_seconds,
         "{} AdminEdits take {}s > {}s",
-        count, actual, max_seconds
+        count,
+        actual,
+        max_seconds
     );
     println!("✅ {} AdminEdits en {}s <= {}s", count, actual, max_seconds);
 }

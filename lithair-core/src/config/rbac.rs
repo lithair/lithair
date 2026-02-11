@@ -31,7 +31,7 @@ impl RbacConfig {
     pub fn merge(&mut self, other: Self) {
         *self = other;
     }
-    
+
     pub fn apply_env_vars(&mut self) {
         if let Ok(enabled) = env::var("RS_RBAC_ENABLED") {
             self.enabled = enabled.parse().unwrap_or(false);
@@ -43,7 +43,7 @@ impl RbacConfig {
             self.audit_enabled = audit.parse().unwrap_or(true);
         }
     }
-    
+
     pub fn validate(&self) -> Result<()> {
         Ok(())
     }

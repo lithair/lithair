@@ -6,19 +6,72 @@ on:
   pull_request:
 
 jobs:
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-audit-
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo audit
+        run: cargo audit
+
+      - name: Run cargo deny (licenses and advisories)
+        run: cargo deny check advisories licenses
+        continue-on-error: true  # Don't fail on license issues initially
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+
   build-test-smoke:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     container: rust:1-bookworm
-    timeout-minutes: 30
+    timeout-minutes: 35
+    env:
+      # Override release profile for CI: disable LTO and use more codegen units
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Show disk space
+        run: df -h /
+
       - name: Install system deps
         run: |
           apt-get update -qq
-          apt-get install -y -qq curl jq lsof python3 build-essential
+          apt-get install -y -qq curl jq lsof python3 build-essential nodejs npm
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -39,9 +92,16 @@ jobs:
         run: |
           task docs:lint
 
-      - name: CI Pipeline (build + clippy + tests with deny warnings)
+      - name: CI Pipeline (release without LTO for disk efficiency)
         run: |
-          task ci:full
+          echo "🚀 Lithair CI Pipeline"
+          echo "✅ Code formatting check..."
+          cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
+          echo "🔍 Clippy analysis (includes build) with -D warnings..."
+          cargo clippy --workspace --all-targets --release --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
+          echo "🧪 Unit tests (core + macros)..."
+          cargo test -p lithair-core -p lithair-macros --release --quiet && echo "   ✓ Tests OK" || (echo "   ✗ Tests failed" && exit 1)
+          echo "🎉 CI completed successfully!"
 
       - name: Ensure demo scripts are executable
         run: |
@@ -79,4 +139,3 @@ jobs:
           RS_PERF_MAX_BYTES: 262144
         run: |
           bash examples/raft_replication_demo/bench_http_server_stateless.sh
-

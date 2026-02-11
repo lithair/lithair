@@ -40,7 +40,7 @@ impl Event for SessionCreated {
                 id: self.session_id.clone(),
                 user_id: self.user_id.clone().unwrap_or_default(),
                 role: self.role.clone().unwrap_or_default(),
-                expires_at: self.expires_at.unwrap_or_else(|| chrono::Utc::now()),
+                expires_at: self.expires_at.unwrap_or_else(chrono::Utc::now),
                 data: self.data.clone().unwrap_or_default(),
             },
         );

@@ -10,7 +10,7 @@ pub enum LogFormat {
     Json,
 
     /// Human-readable format (development default)
-    /// Example: 2024-01-15 10:30:00 INFO [app::auth] User logged in user_id=123
+    /// Example: `2024-01-15 10:30:00 INFO [app::auth] User logged in user_id=123`
     Human,
 
     /// Logfmt format (key=value pairs)
@@ -18,7 +18,7 @@ pub enum LogFormat {
     Logfmt,
 
     /// Custom format using template string
-    /// Example: "{timestamp} [{level}] {message}" -> "2024-01-15 10:30:00 [INFO] User logged in"
+    /// Example: `"{timestamp} [{level}] {message}"` -> `"2024-01-15 10:30:00 [INFO] User logged in"`
     Custom(String),
 }
 

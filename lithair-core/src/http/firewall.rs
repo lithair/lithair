@@ -82,23 +82,23 @@ fn macro_nets(name: &str) -> Vec<IpNet> {
     let mut out = Vec::new();
     match n.as_str() {
         "private_v4" => {
-            out.push("10.0.0.0/8".parse().unwrap());
-            out.push("172.16.0.0/12".parse().unwrap());
-            out.push("192.168.0.0/16".parse().unwrap());
+            out.push("10.0.0.0/8".parse().expect("valid CIDR literal"));
+            out.push("172.16.0.0/12".parse().expect("valid CIDR literal"));
+            out.push("192.168.0.0/16".parse().expect("valid CIDR literal"));
         }
         "private" | "internal" | "internal_private" | "internal_private_ip" => {
-            out.push("10.0.0.0/8".parse().unwrap());
-            out.push("172.16.0.0/12".parse().unwrap());
-            out.push("192.168.0.0/16".parse().unwrap());
-            out.push("fc00::/7".parse().unwrap()); // IPv6 ULA
+            out.push("10.0.0.0/8".parse().expect("valid CIDR literal"));
+            out.push("172.16.0.0/12".parse().expect("valid CIDR literal"));
+            out.push("192.168.0.0/16".parse().expect("valid CIDR literal"));
+            out.push("fc00::/7".parse().expect("valid CIDR literal")); // IPv6 ULA
         }
         "loopback" => {
-            out.push("127.0.0.0/8".parse().unwrap());
-            out.push("::1/128".parse().unwrap());
+            out.push("127.0.0.0/8".parse().expect("valid CIDR literal"));
+            out.push("::1/128".parse().expect("valid CIDR literal"));
         }
         "link_local" => {
-            out.push("169.254.0.0/16".parse().unwrap());
-            out.push("fe80::/10".parse().unwrap());
+            out.push("169.254.0.0/16".parse().expect("valid CIDR literal"));
+            out.push("fe80::/10".parse().expect("valid CIDR literal"));
         }
         _ => {}
     }
@@ -191,7 +191,7 @@ impl Firewall {
             .status(status)
             .header("content-type", "application/json")
             .body(body_from(body))
-            .unwrap()
+            .expect("valid HTTP response")
     }
 
     fn check_ip_lists(&self, ip: Option<&str>) -> Result<(), RespErr> {
@@ -244,7 +244,7 @@ impl Firewall {
     fn check_global_qps(&self) -> Result<(), RespErr> {
         if let Some(limit) = self.cfg.global_qps {
             let now = Self::now_sec();
-            let mut win = self.global_win.lock().unwrap();
+            let mut win = self.global_win.lock().expect("global rate limit lock poisoned");
             if win.second != now {
                 win.second = now;
                 win.count = 0;
@@ -264,7 +264,7 @@ impl Firewall {
     fn check_per_ip_qps(&self, ip: Option<&str>) -> Result<(), RespErr> {
         if let (Some(limit), Some(ip)) = (self.cfg.per_ip_qps, ip) {
             let now = Self::now_sec();
-            let mut map = self.per_ip_win.lock().unwrap();
+            let mut map = self.per_ip_win.lock().expect("per-ip rate limit lock poisoned");
             let win = map.entry(ip.to_string()).or_insert(Window { second: now, count: 0 });
             if win.second != now {
                 win.second = now;

@@ -31,12 +31,14 @@ Edit `Cargo.toml`:
 
 ```toml
 [dependencies]
-lithair-core = { path = "../Lithair/lithair-core" }
-lithair-macros = { path = "../Lithair/lithair-macros" }
+lithair-core = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 ```
+
+> **Note:** `lithair-core` includes derive macros by default (via the `macros` feature).
+> No need to add `lithair-macros` separately.
 
 ### 3. Define Your Model
 
@@ -47,7 +49,6 @@ use lithair_core::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
-#[model(endpoint = "/api/products")]
 struct Product {
     id: String,
     name: String,
