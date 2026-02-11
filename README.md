@@ -2,12 +2,9 @@
 
 > Solid as stone, light as air.
 
-Building a web app shouldn't require assembling a frontend framework, a backend
-framework, a database, an ORM, a migration tool, and a deployment pipeline.
-Most ideas die in that setup phase.
-
-Lithair takes a different approach: you define your data model, and a complete
-backend emerges from it. One struct, one binary, no layers.
+What if your application compiled from the start? What if you defined your data
+model, chose the features you need -- REST API, authentication, permissions,
+replication -- and everything just worked? One struct, one binary, ready to run.
 
 ```rust
 use lithair_core::prelude::*;
@@ -34,19 +31,16 @@ This gives you 5 REST endpoints, event-sourced persistence, and automatic state
 reconstruction on restart. No database to install, no ORM to configure, no
 migrations to manage. `cargo run` and you're live.
 
-## Why
+## The idea
 
-Traditional web development stacks layers: HTTP framework, database driver, ORM,
-migration system, session store, auth middleware, permission checks. Each layer
-adds complexity, dependencies, and failure modes.
+Your data model already describes what your application does. Lithair starts
+from there: define a struct, annotate it with what you need, and the framework
+generates the rest -- endpoints, persistence, access control, clustering.
 
-Lithair collapses these layers into one. Your data model is your API, your
-schema, your persistence, and your access control. Everything runs in a single
-binary with no external services.
-
-This works because most applications don't need a separate database server. They
-need to store data, serve it over HTTP, and control who can access what. Lithair
-does exactly that, in memory, with event sourcing for durability.
+You pick features like building blocks. Need sessions? `.with_sessions()`.
+Need RBAC? Add `#[permission]` annotations. Need multi-node replication?
+`.with_clustering()`. Each feature composes cleanly because everything runs
+in the same process, in memory, with event sourcing for durability.
 
 ## Install
 
