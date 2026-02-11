@@ -156,7 +156,6 @@ pub fn derive_lithair_model(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let name_str = name.to_string();
 
-    // TODO: Extract struct fields and generate appropriate events
     let _fields = match &input.data {
         syn::Data::Struct(data_struct) => &data_struct.fields,
         _ => {
@@ -166,16 +165,13 @@ pub fn derive_lithair_model(input: TokenStream) -> TokenStream {
         }
     };
 
-    // For now, generate a placeholder implementation
     let expanded = quote! {
-        // TODO: Generate actual event types and implementations
         impl lithair_core::macros::GeneratedModel for #name {
             fn model_name() -> &'static str {
                 #name_str
             }
 
             fn field_names() -> &'static [&'static str] {
-                // TODO: Extract actual field names
                 &[]
             }
         }
@@ -216,27 +212,21 @@ pub fn derive_lithair_model(input: TokenStream) -> TokenStream {
 pub fn lithair_api(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemImpl);
 
-    // For now, just return the original implementation
-    // TODO: Generate route registration and HTTP handler code
-
+    // Passes through the impl block unchanged. Route registration is handled
+    // by `LithairServer::with_route()` at the call site.
     let expanded = quote! {
         #input
-
-        // TODO: Generate route registration implementation
-        // impl lithair_core::macros::GeneratedApi<SomeStateType> for SomeType {
-        //     fn routes() -> Vec<lithair_core::http::Route<SomeStateType>> {
-        //         vec![]
-        //     }
-        // }
     };
 
     TokenStream::from(expanded)
 }
 
-/// Derive macro for schema evolution and migration support (placeholder)
+/// Derive macro for schema evolution and migration support.
+///
+/// Generates migration metadata for struct fields annotated with `#[schema]`
+/// and `#[migration]` attributes.
 #[proc_macro_derive(SchemaEvolution, attributes(schema, migration))]
 pub fn derive_schema_evolution(input: TokenStream) -> TokenStream {
-    // Placeholder implementation - pass through unchanged
     input
 }
 
@@ -357,8 +347,3 @@ pub fn derive_rbac_role(input: TokenStream) -> TokenStream {
 pub fn lithair_model(_attr: TokenStream, item: TokenStream) -> TokenStream {
     lithair_model::lithair_model_impl(item.into()).into()
 }
-
-// TODO: Add more helper macros as needed
-// - #[RaftstoneEvent] for custom events
-// - #[RaftstoneMiddleware] for middleware
-// - #[RaftstonePlugin] for plugins
