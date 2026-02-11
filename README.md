@@ -4,7 +4,8 @@
 
 What if your application compiled from the start? What if you defined your data
 model, chose the features you need -- REST API, authentication, permissions,
-replication -- and everything just worked? One struct, one binary, ready to run.
+replication -- and everything just worked? One binary, native performance,
+nothing wasted.
 
 ```rust
 use lithair_core::prelude::*;
@@ -33,14 +34,22 @@ migrations to manage. `cargo run` and you're live.
 
 ## The idea
 
-Your data model already describes what your application does. Lithair starts
-from there: define a struct, annotate it with what you need, and the framework
-generates the rest -- endpoints, persistence, access control, clustering.
+Not every project needs a microservice architecture, a managed database, and
+an orchestration layer. Most applications need to store data, serve it over
+HTTP, and control who can access what.
 
-You pick features like building blocks. Need sessions? `.with_sessions()`.
-Need RBAC? Add `#[permission]` annotations. Need multi-node replication?
-`.with_clustering()`. Each feature composes cleanly because everything runs
-in the same process, in memory, with event sourcing for durability.
+Lithair does exactly that, in a single compiled binary. Because it's Rust, you
+get native performance with minimal CPU and RAM -- just what your application
+actually needs, nothing more. Because it's compiled, there's no runtime, no
+interpreter, no garbage collector in the way.
+
+Everything is built in: event sourcing gives you a full history of every change
+for free. Replication is integrated if you need it. Sessions, permissions,
+firewall -- you pick what you need with annotations and builder methods, and it
+compiles into your binary. No external services to install, configure, or maintain.
+
+Your data model is the starting point. Define a struct, annotate the fields,
+and the framework generates the rest.
 
 ## Install
 
