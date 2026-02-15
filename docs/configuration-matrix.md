@@ -15,7 +15,7 @@ Quick reference matrix for all configuration options.
 
 | Category | Variable | Default | File | Env | Code | Hot-Reload | Notes |
 |----------|----------|---------|------|-----|------|------------|-------|
-| **SERVER** |
+| **SERVER** | | | | | | | |
 | | `port` | `8080` | ✅ | ✅ | ✅ | 🔒 | Listening port |
 | | `host` | `127.0.0.1` | ✅ | ✅ | ✅ | 🔒 | Listening address |
 | | `workers` | `num_cpus` | ✅ | ✅ | ✅ | 🔒 | Tokio worker threads |
@@ -23,7 +23,7 @@ Quick reference matrix for all configuration options.
 | | `cors_origins` | `["*"]` | ✅ | ✅ | ✅ | 🔄 | Allowed origins |
 | | `request_timeout` | `30s` | ✅ | ✅ | ✅ | 🔄 | Request timeout |
 | | `max_body_size` | `10MB` | ✅ | ✅ | ✅ | 🔄 | Max request body |
-| **SESSIONS** |
+| **SESSIONS** | | | | | | | |
 | | `enabled` | `true` | ✅ | ✅ | ✅ | 🔒 | Enable sessions |
 | | `cleanup_interval` | `300s` | ✅ | ✅ | ✅ | 🔄 | Cleanup interval |
 | | `max_age` | `3600s` | ✅ | ✅ | ✅ | 🔄 | Session lifetime |
@@ -31,36 +31,36 @@ Quick reference matrix for all configuration options.
 | | `cookie_secure` | `true` | ✅ | ✅ | ❌ | 🔄 | Secure flag |
 | | `cookie_httponly` | `true` | ✅ | ✅ | ❌ | 🔄 | HttpOnly flag |
 | | `cookie_samesite` | `Lax` | ✅ | ✅ | ❌ | 🔄 | SameSite policy |
-| **RBAC** |
+| **RBAC** | | | | | | | |
 | | `enabled` | `false` | ✅ | ✅ | ✅ | 🔒 | Enable RBAC |
 | | `default_role` | `guest` | ✅ | ✅ | ✅ | 🔄 | Default role |
 | | `audit_enabled` | `true` | ✅ | ✅ | ✅ | 🔄 | Audit trail |
 | | `rate_limit_enabled` | `false` | ✅ | ✅ | ✅ | 🔄 | Login rate limit |
 | | `max_login_attempts` | `5` | ✅ | ✅ | ❌ | 🔄 | Max login attempts |
 | | `lockout_duration` | `300s` | ✅ | ✅ | ❌ | 🔄 | Lockout duration |
-| **REPLICATION** |
+| **REPLICATION** | | | | | | | |
 | | `enabled` | `false` | ✅ | ✅ | ✅ | 🔒 | Enable Raft |
 | | `node_id` | `auto` | ✅ | ✅ | ✅ | 🔒 | Node identifier |
 | | `cluster_nodes` | `[]` | ✅ | ✅ | ✅ | 🔒 | Cluster nodes |
 | | `election_timeout` | `150ms` | ✅ | ✅ | ❌ | 🔄 | Election timeout |
 | | `heartbeat_interval` | `50ms` | ✅ | ✅ | ❌ | 🔄 | Heartbeat interval |
 | | `snapshot_threshold` | `1000` | ✅ | ✅ | ❌ | 🔄 | Snapshot threshold |
-| **ADMIN** |
+| **ADMIN** | | | | | | | |
 | | `enabled` | `true` | ✅ | ✅ | ✅ | 🔄 | Enable admin panel |
 | | `path` | `/admin` | ✅ | ✅ | ✅ | 🔄 | Admin panel path |
 | | `auth_required` | `true` | ✅ | ✅ | ✅ | 🔄 | Require auth |
 | | `metrics_enabled` | `true` | ✅ | ✅ | ✅ | 🔄 | Prometheus metrics |
 | | `metrics_path` | `/metrics` | ✅ | ✅ | ❌ | 🔄 | Metrics endpoint |
-| **DEVELOPMENT** ⚠️ **DEV ONLY** (env-only enforcement) |
+| **DEVELOPMENT** | ⚠️ **DEV ONLY** | | | | | | env-only enforcement |
 | | `dev_reload_token` | `None` | 🚫 **BLOCKED** | ✅ **ONLY** | ❌ | 🔄 | Bypass TOTP/MFA + hot reload (rejected in config.toml) |
-| **LOGGING** |
+| **LOGGING** | | | | | | | |
 | | `level` | `info` | ✅ | ✅ | ✅ | 🔄 | Log level |
 | | `format` | `json` | ✅ | ✅ | ✅ | 🔄 | Log format |
 | | `file_enabled` | `false` | ✅ | ✅ | ✅ | 🔄 | Log to file |
 | | `file_path` | `./logs` | ✅ | ✅ | ❌ | 🔄 | Log directory |
 | | `file_rotation` | `daily` | ✅ | ✅ | ❌ | 🔄 | Rotation policy |
 | | `file_max_size` | `100MB` | ✅ | ✅ | ❌ | 🔄 | Max file size |
-| **STORAGE** |
+| **STORAGE** | | | | | | | |
 | | `data_dir` | `./data` | ✅ | ✅ | ✅ | 🔒 | Data directory |
 | | `snapshot_interval` | `1000` | ✅ | ✅ | ❌ | 🔄 | Snapshot interval |
 | | `compaction_enabled` | `true` | ✅ | ✅ | ❌ | 🔄 | Auto compaction |
@@ -68,7 +68,7 @@ Quick reference matrix for all configuration options.
 | | `backup_enabled` | `false` | ✅ | ✅ | ✅ | 🔄 | Auto backups |
 | | `backup_interval` | `24h` | ✅ | ✅ | ❌ | 🔄 | Backup interval |
 | | `backup_path` | `./backups` | ✅ | ✅ | ❌ | 🔄 | Backup directory |
-| **PERFORMANCE** |
+| **PERFORMANCE** | | | | | | | |
 | | `cache_enabled` | `true` | ✅ | ✅ | ✅ | 🔄 | Memory cache |
 | | `cache_size` | `1000` | ✅ | ✅ | ❌ | 🔄 | Cache size |
 | | `cache_ttl` | `300s` | ✅ | ✅ | ❌ | 🔄 | Cache TTL |

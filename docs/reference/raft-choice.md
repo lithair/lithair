@@ -56,6 +56,7 @@ struct Product {
 ## ⚡ **Why Raft Over Alternatives?**
 
 ### **Raft vs. Simple Database Replication**
+
 | Feature | Simple Replication | Raft Consensus |
 |---------|-------------------|----------------|
 | **Split-brain protection** | ❌ Manual handling | ✅ Automatic |
@@ -64,6 +65,7 @@ struct Product {
 | **Network partitions** | ❌ Data loss risk | ✅ Safety guaranteed |
 
 ### **Raft vs. External Services (Redis/PostgreSQL)**
+
 | Aspect | External Service | Lithair+Raft |
 |--------|------------------|-----------------|
 | **Dependencies** | Redis, PostgreSQL, etcd | Zero external deps |
