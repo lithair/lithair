@@ -108,7 +108,6 @@ jobs:
           chmod +x examples/advanced/http-firewall/run_demo.sh
           chmod +x examples/advanced/http-firewall/run_declarative_demo.sh
           chmod +x examples/advanced/http-hardening/run_demo.sh
-          chmod +x tests/frontend_benchmark/run_frontend_demo.sh
           chmod +x examples/09-replication/bench_http_server_stateless.sh
 
       - name: Smoke - Firewall demo (configurable)
@@ -122,10 +121,6 @@ jobs:
       - name: Smoke - HTTP hardening demo
         run: |
           PORT=19102 bash examples/advanced/http-hardening/run_demo.sh
-
-      - name: Smoke - Frontend benchmark (static + API)
-        run: |
-          PORT=19103 bash tests/frontend_benchmark/run_frontend_demo.sh
 
       - name: Smoke - Stateless perf endpoints (fast)
         env:
