@@ -127,8 +127,7 @@ async fn then_event_contains_metadata(world: &mut LithairWorld) {
     let content = std::fs::read_to_string(&events_file).expect("Impossible de lire events.raftlog");
     let last_line = content
         .lines()
-        .filter(|l| !l.trim().is_empty())
-        .next_back()
+        .rfind(|l| !l.trim().is_empty())
         .expect("Aucun événement trouvé dans events.raftlog");
 
     let json_part = strip_crc32_prefix(last_line);
