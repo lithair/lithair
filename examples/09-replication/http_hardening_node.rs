@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "http_hardening_node",
+    name = "replication-hardening-node",
     about = "Minimal declarative server for HTTP hardening demo"
 )]
 struct Args {
@@ -86,14 +86,14 @@ async fn main() -> Result<()> {
     let logging_config = if args.open {
         // Development logging for open mode
         LoggingConfig::development()
-            .with_context_field("service", "http_hardening_node")
+            .with_context_field("service", "replication-hardening-node")
             .with_context_field("mode", "open")
             .with_context_field("port", &args.port.to_string())
     } else {
         // Production logging for secure mode
         LoggingConfig::production()
             .with_file_output("./logs/hardening_node.log", FileRotation::Daily, Some(7))
-            .with_context_field("service", "http_hardening_node")
+            .with_context_field("service", "replication-hardening-node")
             .with_context_field("mode", "secure")
             .with_context_field("port", &args.port.to_string())
     };

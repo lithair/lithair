@@ -51,7 +51,7 @@ derive_product_url() {
 start_node() {
   echo "\n🚀 Starting declarative node on :${PORT} (firewall demo)"
   # Baseline: firewall disabled
-  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin http_firewall_node -- \
+  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin replication-firewall-node -- \
     --port "$PORT" --fw-enable false >"$LOG_DIR/node_demo.log" 2>&1 &
   NODE_PID=$!
 
@@ -69,7 +69,7 @@ start_node() {
 start_node_with_cfg() {
   echo "\n🚀 Starting node with FW cfg: $*"
   # Start with CLI-based declarative config (overrides env)
-  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin http_firewall_node -- \
+  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin replication-firewall-node -- \
     --port "$PORT" $* >"$LOG_DIR/node_demo.log" 2>&1 &
   NODE_PID=$!
 
@@ -129,7 +129,7 @@ main() {
   kill_port_if_listening "$PORT"
 
   echo "🔨 Building demo binary..."
-  cargo build --release -p replication --bin http_firewall_node >/dev/null
+  cargo build --release -p replication --bin replication-firewall-node >/dev/null
 
   # Baseline: no firewall (disabled)
   echo "\n===== Baseline: firewall disabled ====="

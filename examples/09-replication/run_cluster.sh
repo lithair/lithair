@@ -32,8 +32,8 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 build_binary() {
-    log_info "Building pure_declarative_node..."
-    cargo build --release --bin pure_declarative_node -p replication 2>&1 | tail -5
+    log_info "Building replication-declarative-node..."
+    cargo build --release --bin replication-declarative-node -p replication 2>&1 | tail -5
     log_info "Build complete!"
 }
 
@@ -70,7 +70,7 @@ start_cluster() {
 
         log_info "Starting Node $i on port $port (peers: $peers)"
 
-        RUST_LOG=info EXPERIMENT_DATA_BASE="$DATA_DIR" ./target/release/pure_declarative_node \
+        RUST_LOG=info EXPERIMENT_DATA_BASE="$DATA_DIR" ./target/release/replication-declarative-node \
             --node-id $i \
             --port $port \
             --peers $peers \
@@ -130,7 +130,7 @@ stop_cluster() {
     fi
 
     # Also kill any orphaned processes
-    pkill -f "pure_declarative_node" 2>/dev/null || true
+    pkill -f "replication-declarative-node" 2>/dev/null || true
 
     log_info "Cluster stopped"
 }

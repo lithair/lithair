@@ -10,7 +10,7 @@ use tokio::time::Duration;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "http_loadgen_demo",
+    name = "replication-loadgen",
     about = "High-performance HTTP load generator for Lithair demo"
 )]
 struct Args {

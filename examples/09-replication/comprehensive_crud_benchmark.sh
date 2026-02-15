@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Lithair Comprehensive CRUD Benchmark Suite
-# Uses realistic CRUD operations via http_loadgen_demo instead of simple GET requests
+# Uses realistic CRUD operations via replication-loadgen instead of simple GET requests
 # Generates detailed markdown reports comparing security configurations
 
 set -euo pipefail
@@ -81,9 +81,9 @@ start_server() {
 
     # Start server in background
     if [[ -n "$env_vars" ]]; then
-        eval "$env_vars cargo run --release --bin http_hardening_node -- $args" > "/tmp/server_${config}_${port}.log" 2>&1 &
+        eval "$env_vars cargo run --release --bin replication-hardening-node -- $args" > "/tmp/server_${config}_${port}.log" 2>&1 &
     else
-        cargo run --release --bin http_hardening_node -- $args > "/tmp/server_${config}_${port}.log" 2>&1 &
+        cargo run --release --bin replication-hardening-node -- $args > "/tmp/server_${config}_${port}.log" 2>&1 &
     fi
 
     local server_pid=$!
@@ -159,11 +159,11 @@ run_crud_benchmark() {
     echo "Concurrency: ${CRUD_CONCURRENCY}"
     echo "Target: ${url}/api/products"
 
-    # Run CRUD benchmark using our http_loadgen_demo
+    # Run CRUD benchmark using our replication-loadgen
     local benchmark_log="${config_dir}/crud_benchmark.log"
     local start_time=$(date +%s.%N)
 
-    if cargo run --release --bin http_loadgen_demo -- \
+    if cargo run --release --bin replication-loadgen -- \
         --leader "$url" \
         --total "$CRUD_TOTAL" \
         --concurrency "$CRUD_CONCURRENCY" \
@@ -248,7 +248,7 @@ generate_crud_report() {
 
 **Timestamp:** ${TIMESTAMP}
 **Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-**Tool:** http_loadgen_demo (Realistic CRUD operations)
+**Tool:** replication-loadgen (Realistic CRUD operations)
 **Framework:** Lithair DeclarativeServer
 
 ## Executive Summary
@@ -398,7 +398,7 @@ This benchmark uses **realistic application patterns** instead of simple health 
 
 **Test Environment:**
 - Lithair DeclarativeServer with auto-generated CRUD API
-- http_loadgen_demo with realistic operation patterns
+- replication-loadgen with realistic operation patterns
 - Dynamic port allocation to prevent conflicts
 - Product model with JSON serialization/deserialization
 
@@ -427,7 +427,7 @@ main() {
 
     # Build the binaries
     echo -e "${YELLOW}🔨 Building release binaries...${NC}"
-    cargo build --release --bin http_hardening_node --bin http_loadgen_demo >/dev/null
+    cargo build --release --bin replication-hardening-node --bin replication-loadgen >/dev/null
 
     # Run CRUD benchmarks for each configuration
     for config in "${!TEST_CONFIGS[@]}"; do

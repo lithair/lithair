@@ -40,19 +40,19 @@ Node 1 (Leader)     Node 2 (Follower)    Node 3 (Follower)
 
 ```bash
 # Terminal 1: Lancer le leader (Node 1)
-cargo run --release --bin pure_declarative_node -- \
+cargo run --release --bin replication-declarative-node -- \
   --node-id 1 \
   --port 8080 \
   --peers "8081,8082"
 
 # Terminal 2: Lancer le follower (Node 2)
-cargo run --release --bin pure_declarative_node -- \
+cargo run --release --bin replication-declarative-node -- \
   --node-id 2 \
   --port 8081 \
   --peers "8080,8082"
 
 # Terminal 3: Lancer le follower (Node 3)
-cargo run --release --bin pure_declarative_node -- \
+cargo run --release --bin replication-declarative-node -- \
   --node-id 3 \
   --port 8082 \
   --peers "8080,8081"
@@ -157,7 +157,7 @@ Consultez `baseline_results/` à la racine du repo pour des mesures représentat
 
 ## 🔐 HTTP Hardening Demo (stateless perf + firewall)
 
-Le binaire `http_hardening_node` lance un serveur HTTP déclaratif minimal pour démontrer :
+Le binaire `replication-hardening-node` lance un serveur HTTP déclaratif minimal pour démontrer :
 
 - Endpoints de performance sans état (`/perf/echo`, `/perf/json`, `/perf/bytes`)
 - Gzip (négociation `Accept-Encoding`, seuil configurable)
@@ -173,13 +173,13 @@ Par défaut, ce serveur démarre avec une posture « production-like » :
 Pour l’ouvrir en local (désactiver la posture firewall par défaut) :
 
 ```bash
-cargo run -p replication --bin http_hardening_node -- --port 18320 --open
+cargo run -p replication --bin replication-hardening-node -- --port 18320 --open
 ```
 
 Vous pouvez aussi compiler l’exemple en mode « ouvert par défaut » via la feature :
 
 ```bash
-cargo run -p replication --features open_by_default --bin http_hardening_node -- --port 18320
+cargo run -p replication --features open_by_default --bin replication-hardening-node -- --port 18320
 ```
 
 Le script de bench stateless lance automatiquement le serveur avec `--open` :

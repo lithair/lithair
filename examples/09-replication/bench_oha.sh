@@ -37,7 +37,7 @@ check_server() {
     else
         echo -e "${RED}❌ Server is not responding at ${URL}${NC}"
         echo "Make sure the server is running with:"
-        echo "  cargo run --release -p replication --bin http_hardening_node -- --port ${PORT} --open"
+        echo "  cargo run --release -p replication --bin replication-hardening-node -- --port ${PORT} --open"
         return 1
     fi
 }

@@ -25,7 +25,7 @@ bash examples/http_firewall_demo/run_demo.sh
 The script will:
 
 - Free port 8080 if needed
-- Build `pure_declarative_node`
+- Build `replication-declarative-node`
 - Run several scenarios and assert HTTP statuses:
   - Baseline (firewall disabled): GET /status → 200
   - Deny localhost: GET /status → 403

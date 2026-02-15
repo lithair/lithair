@@ -71,9 +71,9 @@ start_server() {
 
     # Start server in background
     if [[ -n "$env_vars" ]]; then
-        eval "$env_vars cargo run --release --bin http_hardening_node -- $args" > "/tmp/server_${config}_${port}.log" 2>&1 &
+        eval "$env_vars cargo run --release --bin replication-hardening-node -- $args" > "/tmp/server_${config}_${port}.log" 2>&1 &
     else
-        cargo run --release --bin http_hardening_node -- $args > "/tmp/server_${config}_${port}.log" 2>&1 &
+        cargo run --release --bin replication-hardening-node -- $args > "/tmp/server_${config}_${port}.log" 2>&1 &
     fi
 
     local server_pid=$!
@@ -409,7 +409,7 @@ EOF
 ## Technical Details
 
 **Test Environment:**
-- Lithair DeclarativeServer with http_hardening_node
+- Lithair DeclarativeServer with replication-hardening-node
 - oha HTTP load generator with JSON output
 - Dynamic port allocation to prevent conflicts
 - Automatic endpoint discovery

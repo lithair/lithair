@@ -106,8 +106,8 @@ echo "Buffers: RS_BUFFER_SIZE=${RS_BUFFER_SIZE:-unset}, RS_MAX_EVENTS_BUFFER=${R
 
 # 0. Kill any existing benchmark/node processes
 echo "🧹 Step 0: Killing existing Lithair nodes..."
-pkill -f "target/release/pure_declarative_node" 2>/dev/null || true
-pkill -f "pure_declarative_node" 2>/dev/null || true
+pkill -f "target/release/replication-declarative-node" 2>/dev/null || true
+pkill -f "replication-declarative-node" 2>/dev/null || true
 
 # Free the expected ports if still occupied
 for port in $LEADER_PORT $FOLLOWER1_PORT $FOLLOWER2_PORT; do
@@ -145,8 +145,8 @@ echo ""
 
 # 2. Build project
 echo "🔨 Step 2: Building Lithair..."
-cargo build --release --bin pure_declarative_node
-cargo build --release -p replication --bin http_loadgen_demo
+cargo build --release --bin replication-declarative-node
+cargo build --release -p replication --bin replication-loadgen
 echo "✅ Build completed"
 echo ""
 
@@ -154,22 +154,22 @@ echo ""
 echo "🏗️ Step 3: Starting Lithair node(s)..."
 echo "Starting Node 1 (Leader) on port $LEADER_PORT..."
 if [ "$SINGLE_NODE" = "1" ]; then
-  cargo run --release --bin pure_declarative_node -- --node-id 1 --port $LEADER_PORT > node1_bench.log 2>&1 &
+  cargo run --release --bin replication-declarative-node -- --node-id 1 --port $LEADER_PORT > node1_bench.log 2>&1 &
   NODE1_PID=$!
 else
-  cargo run --release --bin pure_declarative_node -- --node-id 1 --port $LEADER_PORT --peers "$FOLLOWER1_PORT,$FOLLOWER2_PORT" > node1_bench.log 2>&1 &
+  cargo run --release --bin replication-declarative-node -- --node-id 1 --port $LEADER_PORT --peers "$FOLLOWER1_PORT,$FOLLOWER2_PORT" > node1_bench.log 2>&1 &
   NODE1_PID=$!
 
   sleep 3
 
   echo "Starting Node 2 (Follower) on port $FOLLOWER1_PORT..."
-  cargo run --release --bin pure_declarative_node -- --node-id 2 --port $FOLLOWER1_PORT --peers "$LEADER_PORT,$FOLLOWER2_PORT" > node2_bench.log 2>&1 &
+  cargo run --release --bin replication-declarative-node -- --node-id 2 --port $FOLLOWER1_PORT --peers "$LEADER_PORT,$FOLLOWER2_PORT" > node2_bench.log 2>&1 &
   NODE2_PID=$!
 
   sleep 3
 
   echo "Starting Node 3 (Follower) on port $FOLLOWER2_PORT..."
-  cargo run --release --bin pure_declarative_node -- --node-id 3 --port $FOLLOWER2_PORT --peers "$LEADER_PORT,$FOLLOWER1_PORT" > node3_bench.log 2>&1 &
+  cargo run --release --bin replication-declarative-node -- --node-id 3 --port $FOLLOWER2_PORT --peers "$LEADER_PORT,$FOLLOWER1_PORT" > node3_bench.log 2>&1 &
   NODE3_PID=$!
 fi
 
@@ -204,7 +204,7 @@ done
 echo ""
 
 # 4. Launch benchmark
-echo "🚀 Step 4: Launching random CRUD operations via http_loadgen_demo (80% CREATE, 15% READ, 5% UPDATE)..."
+echo "🚀 Step 4: Launching random CRUD operations via replication-loadgen (80% CREATE, 15% READ, 5% UPDATE)..."
 START_TIME=$(date +%s)
 
 # Use the Rust HTTP load generator exclusively
@@ -238,7 +238,7 @@ PRESEED_PER_NODE=${PRESEED_PER_NODE:-0}
 if [ "$PRESEED_PER_NODE" -gt 0 ]; then
   echo "🌱 Pre-seeding dataset: $PRESEED_PER_NODE items per node (total $((PRESEED_PER_NODE * NODES)))"
   SEED_TOTAL=$((PRESEED_PER_NODE * NODES))
-  target/release/http_loadgen_demo \
+  target/release/replication-loadgen \
     --leader "$LEADER_URL" \
     --total "$SEED_TOTAL" \
     --concurrency "$LOADGEN_CONCURRENCY" \
@@ -258,7 +258,7 @@ BENCH_SUITE=${BENCH_SUITE:-}
 if [ -z "$BENCH_SUITE" ]; then
   if [ "$SINGLE_NODE" = "1" ]; then
     # Single-node: one load generator instance
-    target/release/http_loadgen_demo \
+    target/release/replication-loadgen \
       --leader "$LEADER_URL" \
       --total "$PER_NODE_OPS" \
       --concurrency "$LOADGEN_CONCURRENCY" \
@@ -277,7 +277,7 @@ if [ -z "$BENCH_SUITE" ]; then
     TOTAL_DONE=$PER_NODE_OPS
   else
     # Run one load generator per node worth of operations (all writes still target the leader)
-    target/release/http_loadgen_demo \
+    target/release/replication-loadgen \
       --leader "$LEADER_URL" \
       --total "$PER_NODE_OPS" \
       --concurrency "$LOADGEN_CONCURRENCY" \
@@ -292,7 +292,7 @@ if [ -z "$BENCH_SUITE" ]; then
       --timeout-s "$LOADGEN_TIMEOUT_S" &
     LG1=$!
 
-    target/release/http_loadgen_demo \
+    target/release/replication-loadgen \
       --leader "$LEADER_URL" \
       --total "$PER_NODE_OPS" \
       --concurrency "$LOADGEN_CONCURRENCY" \
@@ -307,7 +307,7 @@ if [ -z "$BENCH_SUITE" ]; then
       --timeout-s "$LOADGEN_TIMEOUT_S" &
     LG2=$!
 
-    target/release/http_loadgen_demo \
+    target/release/replication-loadgen \
       --leader "$LEADER_URL" \
       --total "$PER_NODE_OPS" \
       --concurrency "$LOADGEN_CONCURRENCY" \
@@ -336,7 +336,7 @@ else
       for C in $CONC_LIST; do
         echo "\n➡️  Suite[concurrency_scaling] Running with concurrency=$C"
         if [ "$SINGLE_NODE" = "1" ]; then
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$C" \
@@ -350,7 +350,7 @@ else
             --read-path "$READ_PATH" \
             --timeout-s "$LOADGEN_TIMEOUT_S"
         else
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$C" \
@@ -363,7 +363,7 @@ else
             --read-targets "$READ_TARGETS" \
             --read-path "$READ_PATH" \
             --timeout-s "$LOADGEN_TIMEOUT_S" & LG1=$!
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$C" \
@@ -376,7 +376,7 @@ else
             --read-targets "$READ_TARGETS" \
             --read-path "$READ_PATH" \
             --timeout-s "$LOADGEN_TIMEOUT_S" & LG2=$!
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$C" \
@@ -420,7 +420,7 @@ else
         esac
         echo "\n➡️  Suite[heavy_vs_light_reads] LIGHT_READS=$LR (read_path=$RP)"
         if [ "$SINGLE_NODE" = "1" ]; then
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -434,7 +434,7 @@ else
             --read-path "$RP" \
             --timeout-s "$LOADGEN_TIMEOUT_S"
         else
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -447,7 +447,7 @@ else
             --read-targets "$READ_TARGETS" \
             --read-path "$RP" \
             --timeout-s "$LOADGEN_TIMEOUT_S" & LG1=$!
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -460,7 +460,7 @@ else
             --read-targets "$READ_TARGETS" \
             --read-path "$RP" \
             --timeout-s "$LOADGEN_TIMEOUT_S" & LG2=$!
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -481,7 +481,7 @@ else
       for MODE in bulk single; do
         echo "\n➡️  Suite[bulk_vs_single] mode=$MODE"
         if [ "$SINGLE_NODE" = "1" ]; then
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -495,7 +495,7 @@ else
             --read-path "$READ_PATH" \
             --timeout-s "$LOADGEN_TIMEOUT_S"
         else
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -508,7 +508,7 @@ else
             --read-targets "$READ_TARGETS" \
             --read-path "$READ_PATH" \
             --timeout-s "$LOADGEN_TIMEOUT_S" & LG1=$!
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \
@@ -521,7 +521,7 @@ else
             --read-targets "$READ_TARGETS" \
             --read-path "$READ_PATH" \
             --timeout-s "$LOADGEN_TIMEOUT_S" & LG2=$!
-          target/release/http_loadgen_demo \
+          target/release/replication-loadgen \
             --leader "$LEADER_URL" \
             --total "$PER_NODE_OPS" \
             --concurrency "$LOADGEN_CONCURRENCY" \

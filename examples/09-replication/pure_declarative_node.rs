@@ -17,13 +17,13 @@
 //!
 //! ```bash
 //! # Terminal 1 - Leader (node 0)
-//! cargo run --bin pure_declarative_node -- --node-id 0 --port 8080 --peers 8081,8082
+//! cargo run --bin replication-declarative-node -- --node-id 0 --port 8080 --peers 8081,8082
 //!
 //! # Terminal 2 - Follower 1
-//! cargo run --bin pure_declarative_node -- --node-id 1 --port 8081 --peers 8080,8082
+//! cargo run --bin replication-declarative-node -- --node-id 1 --port 8081 --peers 8080,8082
 //!
 //! # Terminal 3 - Follower 2
-//! cargo run --bin pure_declarative_node -- --node-id 2 --port 8082 --peers 8080,8081
+//! cargo run --bin replication-declarative-node -- --node-id 2 --port 8082 --peers 8080,8081
 //! ```
 //!
 //! ## Test replication
