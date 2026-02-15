@@ -6,6 +6,7 @@ authors = ["Lithair Team"]
 license = "MIT OR Apache-2.0"
 description = "Cucumber BDD testing suite for Lithair framework"
 autobenches = false
+autotests = false
 
 [[bin]]
 name = "cucumber"
@@ -23,24 +24,53 @@ path = "benches/filestorage_bench.rs"
 name = "multi_table_stress"
 path = "benches/multi_table_stress.rs"
 
+[[bin]]
+name = "database_perf_test"
+path = "tests/database_perf_test.rs"
+
+[[bin]]
+name = "stress_1m_test"
+path = "tests/stress_1m_test.rs"
+
+[[bin]]
+name = "engine_direct_test"
+path = "tests/engine_direct_test.rs"
+
+[[bin]]
+name = "durability_test"
+path = "tests/durability_test.rs"
+
+[[bin]]
+name = "bench_isolated"
+path = "tests/bench_isolated.rs"
+
+[[bin]]
+name = "engine_reliability_test"
+path = "tests/engine_reliability_test.rs"
+
+[[bin]]
+name = "multi_file_durability_test"
+path = "tests/multi_file_durability_test.rs"
+
+[[bin]]
+name = "snapshot_durability_test"
+path = "tests/snapshot_durability_test.rs"
+
+[[bin]]
+name = "stress_snapshot_test"
+path = "tests/stress_snapshot_test.rs"
+
+[[bin]]
+name = "stress_snapshot_100k_test"
+path = "tests/stress_snapshot_100k_test.rs"
+
+[[bin]]
+name = "cluster_stress_test"
+path = "tests/cluster_stress_test.rs"
+
 [[test]]
 name = "cucumber_tests"
 path = "tests/cucumber_tests.rs"
-harness = false
-
-[[test]]
-name = "database_perf_test"
-path = "tests/database_perf_test.rs"
-harness = false
-
-[[test]]
-name = "stress_1m_test"
-path = "tests/stress_1m_test.rs"
-harness = false
-
-[[test]]
-name = "engine_direct_test"
-path = "tests/engine_direct_test.rs"
 harness = false
 
 [[test]]
@@ -49,53 +79,10 @@ path = "tests/declarative_test.rs"
 harness = false
 
 [[test]]
-name = "durability_test"
-path = "tests/durability_test.rs"
-harness = false
-
-[[test]]
-name = "bench_isolated"
-path = "tests/bench_isolated.rs"
-harness = false
-
-[[test]]
-name = "engine_reliability_test"
-path = "tests/engine_reliability_test.rs"
-harness = false
-
-[[test]]
-name = "integration_build_test"
-path = "tests/integration_build_test.rs"
-
-[[test]]
-name = "multi_file_durability_test"
-path = "tests/multi_file_durability_test.rs"
-harness = false
-
-[[test]]
-name = "snapshot_durability_test"
-path = "tests/snapshot_durability_test.rs"
-harness = false
-
-[[test]]
-name = "stress_snapshot_test"
-path = "tests/stress_snapshot_test.rs"
-harness = false
-
-[[test]]
-name = "stress_snapshot_100k_test"
-path = "tests/stress_snapshot_100k_test.rs"
-harness = false
-
-[[test]]
 name = "serialization_test"
 path = "tests/serialization_test.rs"
 harness = false
 
-[[test]]
-name = "cluster_stress_test"
-path = "tests/cluster_stress_test.rs"
-harness = false
 
 [dependencies]
 cucumber = { git = "https://github.com/cucumber-rs/cucumber.git" }

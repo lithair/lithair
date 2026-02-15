@@ -1,0 +1,14 @@
+[package]
+name = "static-site"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "static-site"
+path = "src/main.rs"
+
+[dependencies]
+lithair-core = { path = "../../lithair-core" }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"

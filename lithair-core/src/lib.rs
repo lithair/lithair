@@ -104,8 +104,8 @@ mod macros;
 // Re-export derive macros from lithair-macros so users only need one crate
 #[cfg(feature = "macros")]
 pub use lithair_macros::{
-    DeclarativeModel, LifecycleAware, Page, RbacRole, RaftstoneModel, SchemaEvolution,
-    lithair_api, lithair_model,
+    lithair_api, lithair_model, DeclarativeModel, LifecycleAware, Page, RaftstoneModel, RbacRole,
+    SchemaEvolution,
 };
 
 // Prelude module for convenient imports

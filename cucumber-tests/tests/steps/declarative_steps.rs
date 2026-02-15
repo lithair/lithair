@@ -222,7 +222,7 @@ impl Default for DeclarativeWorld {
 
 // --- Steps ---
 
-#[given(expr = "une spécification de modèle pour {string} avec le champ {string} unique")]
+#[given(expr = "a model specification for {string} with field {string} as unique")]
 async fn given_model_spec(w: &mut DeclarativeWorld, _model: String, field: String) {
     if field == "name" {
         let mut config = TEST_SPEC_CONFIG.write().unwrap();
@@ -245,7 +245,7 @@ async fn given_model_spec(w: &mut DeclarativeWorld, _model: String, field: Strin
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
-#[when(expr = "je crée un produit {string} avec le nom {string}")]
+#[when(expr = "I create a product {string} with name {string}")]
 async fn when_create_product_named(w: &mut DeclarativeWorld, id: String, name: String) {
     let event = TestEvent::ProductCreated { id: id.clone(), name: name.clone(), stock: 10 };
 
@@ -277,7 +277,7 @@ async fn when_create_product_named(w: &mut DeclarativeWorld, id: String, name: S
     }
 }
 
-#[then(expr = "l'opération doit réussir")]
+#[then(expr = "the operation must succeed")]
 async fn then_operation_succeeds(w: &mut DeclarativeWorld) {
     match &w.last_result {
         Some(Ok(_)) => {}
@@ -286,13 +286,13 @@ async fn then_operation_succeeds(w: &mut DeclarativeWorld) {
     }
 }
 
-#[when(expr = "je tente de créer un autre produit {string} avec le nom {string}")]
+#[when(expr = "I try to create another product {string} with name {string}")]
 async fn when_try_create_product_named(w: &mut DeclarativeWorld, id: String, name: String) {
     // Reuse logic
     when_create_product_named(w, id, name).await;
 }
 
-#[then(expr = "l'opération doit échouer avec une erreur de contrainte d'unicité")]
+#[then(expr = "the operation must fail with a uniqueness constraint error")]
 async fn then_operation_fails_unique(w: &mut DeclarativeWorld) {
     match &w.last_result {
         Some(Err(msg)) => {
@@ -302,7 +302,7 @@ async fn then_operation_fails_unique(w: &mut DeclarativeWorld) {
     }
 }
 
-#[given("un moteur initialisé avec support multi-entité")]
+#[given("an engine initialized with multi-entity support")]
 async fn given_multi_entity_engine(w: &mut DeclarativeWorld) {
     let config = EngineConfig {
         event_log_path: w.temp_dir.path().to_str().unwrap().to_string(),
@@ -311,7 +311,7 @@ async fn given_multi_entity_engine(w: &mut DeclarativeWorld) {
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
-#[when(expr = "je crée un produit {string} \\(stock: {int})")]
+#[when(expr = "I create a product {string} \\(stock: {int})")]
 async fn when_create_product_stock(w: &mut DeclarativeWorld, id: String, stock: i32) {
     let event =
         TestEvent::ProductCreated { id: id.clone(), name: format!("Product {}", id), stock };
@@ -319,14 +319,14 @@ async fn when_create_product_stock(w: &mut DeclarativeWorld, id: String, stock: 
     w.engine.as_mut().unwrap().flush().unwrap();
 }
 
-#[when(expr = "je crée une commande {string} pour le produit {string} \\(qte: {int})")]
+#[when(expr = "I create an order {string} for product {string} \\(qty: {int})")]
 async fn when_create_order(w: &mut DeclarativeWorld, id: String, product_id: String, qty: i32) {
     let event = TestEvent::OrderPlaced { id, product_id, qty };
     w.engine.as_mut().unwrap().apply_event("global".to_string(), event).unwrap();
     w.engine.as_mut().unwrap().flush().unwrap();
 }
 
-#[then(expr = "l'état du produit {string} doit avoir un stock de {int}")]
+#[then(expr = "the state of product {string} must have a stock of {int}")]
 async fn then_check_product_stock(w: &mut DeclarativeWorld, id: String, stock: i32) {
     let engine = w.engine.as_ref().unwrap();
     let actual_stock = engine
@@ -335,7 +335,7 @@ async fn then_check_product_stock(w: &mut DeclarativeWorld, id: String, stock: i
     assert_eq!(actual_stock, stock);
 }
 
-#[then(expr = "le journal d'événements doit contenir {int} événements")]
+#[then(expr = "the event log must contain {int} events")]
 async fn then_check_event_count(w: &mut DeclarativeWorld, count: usize) {
     let engine = w.engine.as_ref().unwrap();
     engine.flush().unwrap(); // Ensure flush before check
@@ -348,7 +348,7 @@ async fn then_check_event_count(w: &mut DeclarativeWorld, count: usize) {
     }
 }
 
-#[then(expr = "le journal doit contenir un événement de type {string}")]
+#[then(expr = "the log must contain an event of type {string}")]
 async fn then_check_event_type(w: &mut DeclarativeWorld, type_name: String) {
     let engine = w.engine.as_ref().unwrap();
     engine.flush().unwrap();
@@ -369,7 +369,7 @@ async fn then_check_event_type(w: &mut DeclarativeWorld, type_name: String) {
     );
 }
 
-#[given("un journal contenant:")]
+#[given("a log containing:")]
 async fn given_journal_with_content(w: &mut DeclarativeWorld, step: &cucumber::gherkin::Step) {
     let config = EngineConfig {
         event_log_path: w.temp_dir.path().to_str().unwrap().to_string(),
@@ -410,7 +410,7 @@ async fn given_journal_with_content(w: &mut DeclarativeWorld, step: &cucumber::g
     }
 }
 
-#[when("je redémarre le moteur")]
+#[when("I restart the engine")]
 async fn when_restart_engine(w: &mut DeclarativeWorld) {
     let config = EngineConfig {
         event_log_path: w.temp_dir.path().to_str().unwrap().to_string(),
@@ -420,7 +420,7 @@ async fn when_restart_engine(w: &mut DeclarativeWorld) {
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
-#[given("un moteur configuré en mode binaire")]
+#[given("an engine configured in binary mode")]
 async fn given_binary_engine(w: &mut DeclarativeWorld) {
     let config = EngineConfig {
         event_log_path: w.temp_dir.path().to_str().unwrap().to_string(),
@@ -431,7 +431,7 @@ async fn given_binary_engine(w: &mut DeclarativeWorld) {
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
-#[when("je redémarre le moteur en mode binaire")]
+#[when("I restart the engine in binary mode")]
 async fn when_restart_binary_engine(w: &mut DeclarativeWorld) {
     let config = EngineConfig {
         event_log_path: w.temp_dir.path().to_str().unwrap().to_string(),
@@ -442,21 +442,21 @@ async fn when_restart_binary_engine(w: &mut DeclarativeWorld) {
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
-#[then(expr = "l'état en mémoire doit contenir le produit {string}")]
+#[then(expr = "the in-memory state must contain product {string}")]
 async fn then_state_contains_product(w: &mut DeclarativeWorld, id: String) {
     let engine = w.engine.as_ref().unwrap();
     let exists = engine.read_state("global", |s| s.products.contains_key(&id)).unwrap();
     assert!(exists, "Product {} missing from state after replay", id);
 }
 
-#[then(expr = "l'état en mémoire doit contenir la commande {string}")]
+#[then(expr = "the in-memory state must contain order {string}")]
 async fn then_state_contains_order(w: &mut DeclarativeWorld, id: String) {
     let engine = w.engine.as_ref().unwrap();
     let exists = engine.read_state("global", |s| s.orders.contains_key(&id)).unwrap();
     assert!(exists, "Order {} missing from state after replay", id);
 }
 
-#[when("je force un snapshot de l'état")]
+#[when("I force a state snapshot")]
 async fn when_force_snapshot(_w: &mut DeclarativeWorld) {
     // Feature not yet exposed in Engine directly
     // if let Some(engine) = &mut w.engine {
@@ -464,7 +464,7 @@ async fn when_force_snapshot(_w: &mut DeclarativeWorld) {
     // }
 }
 
-#[then("le fichier de snapshot doit exister")]
+#[then("the snapshot file must exist")]
 async fn then_snapshot_exists(_w: &mut DeclarativeWorld) {
     // let snapshot_path = w.temp_dir.path().join("state.raftsnap");
     // assert!(snapshot_path.exists(), "Snapshot file missing at {:?}", snapshot_path);
@@ -472,16 +472,14 @@ async fn then_snapshot_exists(_w: &mut DeclarativeWorld) {
     // assert!(metadata.len() > 0, "Snapshot file is empty");
 }
 
-#[when("je tronque le journal d'événements")]
+#[when("I truncate the event log")]
 async fn when_truncate_log(_w: &mut DeclarativeWorld) {
     // if let Some(engine) = &mut w.engine {
     //     engine.compact_after_snapshot().unwrap();
     // }
 }
 
-#[given(
-    expr = "un moteur avec une spécification de modèle pour {string} liant {string} à {string}"
-)]
+#[given(expr = "an engine with a model specification for {string} linking {string} to {string}")]
 async fn given_model_spec_relation(
     w: &mut DeclarativeWorld,
     _model: String,
@@ -503,7 +501,7 @@ async fn given_model_spec_relation(
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
-#[given(expr = "une source de données {string} contenant la catégorie {string} \\({string})")]
+#[given(expr = "a data source {string} containing category {string} \\({string})")]
 async fn given_data_source_category(
     w: &mut DeclarativeWorld,
     collection: String,
@@ -516,7 +514,7 @@ async fn given_data_source_category(
     w.registry.register(&collection, Arc::new(MockCategorySource { data }));
 }
 
-#[when(expr = "je crée un produit {string} avec category_id {string}")]
+#[when(expr = "I create a product {string} with category_id {string}")]
 async fn when_create_product_with_category(w: &mut DeclarativeWorld, id: String, cat_id: String) {
     let event = TestEvent::ProductCreatedWithCategory {
         id: id.clone(),
@@ -528,7 +526,7 @@ async fn when_create_product_with_category(w: &mut DeclarativeWorld, id: String,
     w.engine.as_mut().unwrap().flush().unwrap();
 }
 
-#[when(expr = "je demande l'expansion automatique des relations pour le produit {string}")]
+#[when(expr = "I request automatic expansion of relations for product {string}")]
 async fn when_expand_relations(w: &mut DeclarativeWorld, id: String) {
     let engine = w.engine.as_ref().unwrap();
 
@@ -550,13 +548,13 @@ async fn when_expand_relations(w: &mut DeclarativeWorld, id: String) {
     w.last_json_response = Some(json);
 }
 
-#[then(expr = "le JSON résultant doit contenir le champ {string}")]
+#[then(expr = "the resulting JSON must contain field {string}")]
 async fn then_json_contains_field(w: &mut DeclarativeWorld, field: String) {
     let json = w.last_json_response.as_ref().unwrap();
     assert!(json.get(&field).is_some(), "JSON missing field '{}': {:?}", field, json);
 }
 
-#[then(expr = "le champ {string} doit contenir le nom {string}")]
+#[then(expr = "field {string} must contain name {string}")]
 async fn then_field_contains_name(w: &mut DeclarativeWorld, field: String, value: String) {
     let json = w.last_json_response.as_ref().unwrap();
     let field_val = json.get(&field).unwrap();

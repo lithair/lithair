@@ -1,21 +1,30 @@
 [workspace]
 resolver = "2"
 members = [
+    # Core
     "lithair-core",
     "lithair-macros",
-    "examples/raft_replication_demo",
-    "examples/blog_replicated_demo",
-    "examples/lithair_playground",
-    "examples/raft_consistency_test",
-    "examples/rbac_sso_demo",
-    "examples/rbac_session_demo",
-    "examples/minimal_server",
-    "examples/blog_server",
-    "examples/ecommerce_app",
-    "examples/datatable_demo",
-    "examples/replication_stress_test",
-    "examples/schema_migration_demo",
-    "cucumber-tests"
+
+    # Examples (progressive complexity)
+    "examples/01-hello-world",
+    "examples/02-static-site",
+    "examples/03-rest-api",
+    "examples/04-blog",
+    "examples/05-ecommerce",
+    "examples/06-auth-sessions",
+    "examples/07-auth-rbac-mfa",
+    "examples/08-schema-migration",
+    "examples/09-replication",
+    "examples/10-blog-distributed",
+
+    # Advanced examples
+    "examples/advanced/datatable",
+    "examples/advanced/stress-test",
+    "examples/advanced/consistency-test",
+    "examples/advanced/playground",
+
+    # Tests
+    "cucumber-tests",
 ]
 
 [workspace.package]
