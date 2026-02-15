@@ -1,6 +1,17 @@
 use crate::features::world::LithairWorld;
 use cucumber::{given, then, when};
+use lithair_core::engine::persistence::parse_and_validate_event;
 use lithair_core::engine::{Engine, EngineConfig, EngineError, Event};
+
+/// Strip CRC32 prefix from a raw raftlog line, returning just the JSON part.
+/// Handles both `<crc32>:<json>` format and legacy plain JSON lines.
+fn strip_crc32_prefix(line: &str) -> &str {
+    if line.len() > 9 && line.as_bytes()[8] == b':' {
+        &line[9..]
+    } else {
+        line
+    }
+}
 
 // Background
 #[given(expr = "a Lithair engine with event sourcing enabled")]
@@ -120,8 +131,9 @@ async fn then_event_contains_metadata(world: &mut LithairWorld) {
         .next_back()
         .expect("Aucun événement trouvé dans events.raftlog");
 
+    let json_part = strip_crc32_prefix(last_line);
     let value: serde_json::Value =
-        serde_json::from_str(last_line).expect("Événement invalide (JSON)");
+        serde_json::from_str(json_part).expect("Événement invalide (JSON)");
 
     let obj = value.as_object().expect("Événement persisté n'est pas un objet JSON");
 
@@ -154,7 +166,7 @@ async fn then_log_file_updated_atomically(world: &mut LithairWorld) {
         if line.trim().is_empty() {
             continue;
         }
-        if serde_json::from_str::<serde_json::Value>(line).is_err() {
+        if parse_and_validate_event(line).is_err() {
             panic!(
                 "❌ Ligne partielle ou corrompue détectée dans events.raftlog à la ligne {}",
                 idx + 1
@@ -653,8 +665,9 @@ async fn then_duplicate_ignored(world: &mut LithairWorld) {
             continue;
         }
         total += 1;
+        let json_part = strip_crc32_prefix(line);
         let value: serde_json::Value =
-            serde_json::from_str(line).expect("Ligne invalide dans events.raftlog (dédup)");
+            serde_json::from_str(json_part).expect("Ligne invalide dans events.raftlog (dédup)");
         if let Some(obj) = value.as_object() {
             if let Some(eid) = obj.get("event_id").and_then(|v| v.as_str()) {
                 if eid.starts_with("article-created:dedup-article-1") {
@@ -695,8 +708,9 @@ async fn then_integrity_preserved(world: &mut LithairWorld) {
             continue;
         }
 
-        let value: serde_json::Value =
-            serde_json::from_str(line).expect("Ligne invalide dans events.raftlog (intégrité)");
+        let json_part = strip_crc32_prefix(line);
+        let value: serde_json::Value = serde_json::from_str(json_part)
+            .expect("Ligne invalide dans events.raftlog (intégrité)");
 
         let obj = value.as_object().expect("Événement de log n'est pas un objet JSON (intégrité)");
 
@@ -845,7 +859,7 @@ async fn then_system_detects_corruption(world: &mut LithairWorld) {
         if line.trim().is_empty() {
             continue;
         }
-        if serde_json::from_str::<serde_json::Value>(line).is_err() {
+        if parse_and_validate_event(line).is_err() {
             invalid += 1;
             last_invalid_line = idx + 1;
         }

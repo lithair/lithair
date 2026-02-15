@@ -1,0 +1,66 @@
+[package]
+name = "replication"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Lithair Distributed Replication Demo - Simple multi-node example"
+authors = ["Yoan Roblet (Arcker)"]
+
+[[bin]]
+name = "replication-declarative-node"
+path = "pure_declarative_node.rs"
+
+[[bin]]
+name = "replication-loadgen"
+path = "http_loadgen_demo.rs"
+
+[[bin]]
+name = "replication-firewall-node"
+path = "http_firewall_node.rs"
+
+[[bin]]
+name = "replication-firewall-declarative"
+path = "http_firewall_declarative.rs"
+
+[[bin]]
+name = "replication-hardening-node"
+path = "http_hardening_node.rs"
+
+[features]
+default = []
+open_by_default = []
+
+
+[dependencies]
+# Core Lithair framework
+lithair-core = { path = "../../lithair-core" }
+lithair-macros = { path = "../../lithair-macros" }
+
+# Serialization & Data
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+# Distributed Consensus
+openraft = { version = "0.9", features = ["serde"] }
+async-trait = "0.1"
+
+# HTTP Client for inter-node communication (Lithair pure std::net server)
+reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
+
+# HTTP Server for external cluster node
+hyper = { version = "1.7", features = ["full"] }
+
+# Async Runtime
+tokio = { version = "1.47", features = ["full"] }
+
+# Utilities
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+openraft-memstore = "0.9.21"
+rand = "0.9.2"

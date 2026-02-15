@@ -14,7 +14,15 @@ mod features {
 
 #[tokio::main]
 async fn main() {
+    // Run serialization tests, filtering out scenarios that need
+    // a running HTTP server or are benchmarks.
     features::world::LithairWorld::cucumber()
-        .run_and_exit("features/performance/serialization_modes.feature")
+        .filter_run(
+            "features/performance/serialization_modes.feature",
+            |_feature, _rule, scenario| {
+                let skip_tags: &[&str] = &["http", "benchmark"];
+                !scenario.tags.iter().any(|t| skip_tags.contains(&t.as_str()))
+            },
+        )
         .await;
 }

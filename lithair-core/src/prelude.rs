@@ -9,8 +9,8 @@
 // Derive macros (re-exported from lithair-macros)
 #[cfg(feature = "macros")]
 pub use crate::{
-    DeclarativeModel, LifecycleAware, Page, RbacRole, RaftstoneModel, SchemaEvolution,
-    lithair_api, lithair_model,
+    lithair_api, lithair_model, DeclarativeModel, LifecycleAware, Page, RaftstoneModel, RbacRole,
+    SchemaEvolution,
 };
 
 // Server builder
