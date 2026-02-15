@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "replication-firewall-declarative", about = "Model-level declarative firewall demo")]
+#[command(
+    name = "replication-firewall-declarative",
+    about = "Model-level declarative firewall demo"
+)]
 struct Args {
     /// Port to listen on (default: 8081)
     #[arg(long, default_value_t = 8081)]
