@@ -105,23 +105,23 @@ jobs:
 
       - name: Ensure demo scripts are executable
         run: |
-          chmod +x examples/http_firewall_demo/run_demo.sh
-          chmod +x examples/http_firewall_demo/run_declarative_demo.sh
-          chmod +x examples/http_hardening_demo/run_demo.sh
+          chmod +x examples/advanced/http-firewall/run_demo.sh
+          chmod +x examples/advanced/http-firewall/run_declarative_demo.sh
+          chmod +x examples/advanced/http-hardening/run_demo.sh
           chmod +x tests/frontend_benchmark/run_frontend_demo.sh
-          chmod +x examples/raft_replication_demo/bench_http_server_stateless.sh
+          chmod +x examples/09-replication/bench_http_server_stateless.sh
 
       - name: Smoke - Firewall demo (configurable)
         run: |
-          PORT=19100 bash examples/http_firewall_demo/run_demo.sh
+          PORT=19100 bash examples/advanced/http-firewall/run_demo.sh
 
       - name: Smoke - Firewall demo (model-level declarative)
         run: |
-          PORT=19101 bash examples/http_firewall_demo/run_declarative_demo.sh
+          PORT=19101 bash examples/advanced/http-firewall/run_declarative_demo.sh
 
       - name: Smoke - HTTP hardening demo
         run: |
-          PORT=19102 bash examples/http_hardening_demo/run_demo.sh
+          PORT=19102 bash examples/advanced/http-hardening/run_demo.sh
 
       - name: Smoke - Frontend benchmark (static + API)
         run: |
@@ -138,4 +138,4 @@ jobs:
           TOTAL_ECHO_1KB: 1000
           RS_PERF_MAX_BYTES: 262144
         run: |
-          bash examples/raft_replication_demo/bench_http_server_stateless.sh
+          bash examples/09-replication/bench_http_server_stateless.sh
