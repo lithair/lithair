@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Lithair HTTP Stateless benchmark helper
-# - Starts http_hardening_node (perf endpoints enabled at /perf)
-# - Runs http_loadgen_demo in perf-* modes
+# - Starts replication-hardening-node (perf endpoints enabled at /perf)
+# - Runs replication-loadgen in perf-* modes
 # - Writes a Markdown report in baseline_results/
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -45,10 +45,10 @@ wait_ready() {
 }
 
 start_server() {
-  echo "\n🚀 Starting Lithair http_hardening_node on :$PORT (perf=/perf)"
+  echo "\n🚀 Starting Lithair replication-hardening-node on :$PORT (perf=/perf)"
   RS_PERF_MAX_BYTES=${RS_PERF_MAX_BYTES:-2000000} \
   RUST_LOG=${RUST_LOG:-error} \
-  cargo run --release -p replication --bin http_hardening_node -- --port "$PORT" --open \
+  cargo run --release -p replication --bin replication-hardening-node -- --port "$PORT" --open \
     >"$LOG_FILE" 2>&1 &
   NODE_PID=$!
 }
@@ -72,28 +72,28 @@ bench_section() {
 }
 
 run_status() {
-  cargo run --release -p replication --bin http_loadgen_demo -- \
+  cargo run --release -p replication --bin replication-loadgen -- \
     --leader "$URL" --total ${TOTAL_STATUS:-20000} --concurrency "$CONCURRENCY" \
     --mode perf-status --perf-path /health --timeout-s "$TIMEOUT_S"
 }
 
 run_perf_json() {
   local bytes="$1"
-  cargo run --release -p replication --bin http_loadgen_demo -- \
+  cargo run --release -p replication --bin replication-loadgen -- \
     --leader "$URL" --total "$2" --concurrency "$CONCURRENCY" \
     --mode perf-json --perf-path /observe/perf/json --perf-bytes "$bytes" --timeout-s "$TIMEOUT_S"
 }
 
 run_perf_bytes() {
   local bytes="$1"
-  cargo run --release -p replication --bin http_loadgen_demo -- \
+  cargo run --release -p replication --bin replication-loadgen -- \
     --leader "$URL" --total "$2" --concurrency "$CONCURRENCY" \
     --mode perf-bytes --perf-path /observe/perf/bytes --perf-bytes "$bytes" --timeout-s "$TIMEOUT_S"
 }
 
 run_perf_echo() {
   local bytes="$1"
-  cargo run --release -p replication --bin http_loadgen_demo -- \
+  cargo run --release -p replication --bin replication-loadgen -- \
     --leader "$URL" --total "$2" --concurrency "$CONCURRENCY" \
     --mode perf-echo --perf-path /observe/perf/echo --perf-bytes "$bytes" --timeout-s "$TIMEOUT_S"
 }

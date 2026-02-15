@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Fully declarative firewall demo runner for http_firewall_declarative
+# Fully declarative firewall demo runner for replication-firewall-declarative
 # - Starts server with model-level #[firewall(...)] config only
 # - Verifies readiness and base path
 # - Runs baseline and rate-limit checks, prints PASS/FAIL summary
@@ -90,7 +90,7 @@ derive_product_url() {
 
 start_node() {
   echo "\n🚀 Starting declarative model-level firewall node on :${PORT}"
-  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin http_firewall_declarative -- \
+  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin replication-firewall-declarative -- \
     --port "$PORT" >"$LOG_FILE" 2>&1 &
   NODE_PID=$!
 
@@ -110,7 +110,7 @@ main() {
   kill_port_if_listening "$PORT"
 
   echo "🔨 Building declarative firewall demo binary..."
-  cargo build --release -p replication --bin http_firewall_declarative >/dev/null
+  cargo build --release -p replication --bin replication-firewall-declarative >/dev/null
 
   start_node
   # Using hardcoded /api/products path - matches DeclarativeModel Product

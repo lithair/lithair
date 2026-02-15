@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Simple E2E integration runner
-# - Starts 3 Lithair nodes (pure_declarative_node)
+# - Starts 3 Lithair nodes (replication-declarative-node)
 # - Runs bulk HTTP load against leader
 # - Verifies basic convergence across nodes
 # - Shuts everything down cleanly
@@ -28,7 +28,7 @@ trap cleanup EXIT
 start_node() {
   local id="$1" port="$2" peers="$3" log="$4"
   echo "🚀 Starting node ${id} on :${port} (peers=${peers})"
-  RUST_LOG=info cargo run --release -p replication --bin pure_declarative_node -- \
+  RUST_LOG=info cargo run --release -p replication --bin replication-declarative-node -- \
     --node-id "$id" \
     --port "$port" \
     --peers "$peers" >"$log" 2>&1 &
@@ -51,7 +51,7 @@ MODE=${MODE:-bulk}
 LEADER=${LEADER:-http://127.0.0.1:8080}
 
 echo "\n📦 Running loadgen: total=$TOTAL mode=$MODE bulk=$BULK concurrency=$CONCURRENCY leader=$LEADER"
-cargo run --release -p replication --bin http_loadgen_demo -- \
+cargo run --release -p replication --bin replication-loadgen -- \
   --leader "$LEADER" \
   --total "$TOTAL" \
   --concurrency "$CONCURRENCY" \
@@ -133,7 +133,7 @@ if [[ -n "${PID1:-}" ]]; then kill "$PID1" 2>/dev/null || true; fi
 sleep 5
 
 echo "\n📦 Post-leader-restart small load (target follower 8081 to follow redirect)"
-cargo run --release -p replication --bin http_loadgen_demo -- \
+cargo run --release -p replication --bin replication-loadgen -- \
   --leader "http://127.0.0.1:8081" \
   --total 200 \
   --concurrency 64 \

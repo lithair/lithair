@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Lithair HTTP server benchmark helper
-# - Starts http_hardening_node
-# - Runs http_loadgen_demo in BULK and RANDOM modes
+# - Starts replication-hardening-node
+# - Runs replication-loadgen in BULK and RANDOM modes
 # - Writes a Markdown report in baseline_results/
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -42,12 +42,12 @@ wait_ready() {
 }
 
 start_server() {
-  echo "\n🚀 Starting Lithair http_hardening_node on :$PORT"
+  echo "\n🚀 Starting Lithair replication-hardening-node on :$PORT"
   RS_HTTP_MAX_BODY_BYTES_BULK=${RS_HTTP_MAX_BODY_BYTES_BULK:-2000000} \
   RS_HTTP_MAX_BODY_BYTES_SINGLE=${RS_HTTP_MAX_BODY_BYTES_SINGLE:-1048576} \
   RS_HTTP_TIMEOUT_MS=${RS_HTTP_TIMEOUT_MS:-10000} \
   RUST_LOG=${RUST_LOG:-error} \
-  cargo run --release -p replication --bin http_hardening_node -- --port "$PORT" \
+  cargo run --release -p replication --bin replication-hardening-node -- --port "$PORT" \
     >"$LOG_FILE" 2>&1 &
   NODE_PID=$!
 }
@@ -60,13 +60,13 @@ stop_server() {
 }
 
 run_loadgen_bulk() {
-  cargo run --release -p replication --bin http_loadgen_demo -- \
+  cargo run --release -p replication --bin replication-loadgen -- \
     --leader "$URL" --total ${TOTAL_BULK:-20000} --concurrency ${CONCURRENCY:-512} \
     --mode bulk --bulk-size ${BULK_SIZE:-100} --timeout-s ${TIMEOUT_S:-10}
 }
 
 run_loadgen_random() {
-  cargo run --release -p replication --bin http_loadgen_demo -- \
+  cargo run --release -p replication --bin replication-loadgen -- \
     --leader "$URL" --total ${TOTAL_RANDOM:-20000} --concurrency ${CONCURRENCY:-512} \
     --mode random --read-targets "$URL" --read-path /status --timeout-s ${TIMEOUT_S:-10}
 }

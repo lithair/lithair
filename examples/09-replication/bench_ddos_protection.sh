@@ -80,7 +80,7 @@ wait_for_server() {
 # Start hardened server with anti-DDoS protection
 echo -e "${YELLOW}🚀 Starting Lithair hardened server on :$PORT${NC}"
 RUST_LOG=warn RS_ANTI_DDOS=1 RS_MAX_CONNECTIONS=1000 RS_RATE_LIMIT=200 \
-cargo run --release -p replication --bin http_hardening_node -- --port "$PORT" --open >/tmp/ddos_server.log 2>&1 &
+cargo run --release -p replication --bin replication-hardening-node -- --port "$PORT" --open >/tmp/ddos_server.log 2>&1 &
 SERVER_PID=$!
 
 # Cleanup function
@@ -105,7 +105,7 @@ echo -e "${BLUE}📊 Running Anti-DDoS benchmarks...${NC}"
 
 # 1. Baseline performance (normal conditions)
 bench_section "BASELINE - Normal Load (64 concurrent)" \
-    cargo run --release -p replication --bin http_loadgen_demo -- \
+    cargo run --release -p replication --bin replication-loadgen -- \
     --leader "http://127.0.0.1:$PORT" \
     --total 2000 --concurrency 64 \
     --mode perf-status --perf-path /health \
@@ -113,7 +113,7 @@ bench_section "BASELINE - Normal Load (64 concurrent)" \
 
 # 2. High concurrency stress test
 bench_section "STRESS TEST - High Concurrency ($CONCURRENCY concurrent)" \
-    cargo run --release -p replication --bin http_loadgen_demo -- \
+    cargo run --release -p replication --bin replication-loadgen -- \
     --leader "http://127.0.0.1:$PORT" \
     --total 5000 --concurrency $CONCURRENCY \
     --mode perf-status --perf-path /health \
@@ -121,7 +121,7 @@ bench_section "STRESS TEST - High Concurrency ($CONCURRENCY concurrent)" \
 
 # 3. Rate limiting test (burst traffic)
 bench_section "RATE LIMITING - Burst Traffic Test" \
-    cargo run --release -p replication --bin http_loadgen_demo -- \
+    cargo run --release -p replication --bin replication-loadgen -- \
     --leader "http://127.0.0.1:$PORT" \
     --total 1000 --concurrency 200 \
     --mode perf-json --perf-path /observe/perf/json --perf-bytes 1024 \
