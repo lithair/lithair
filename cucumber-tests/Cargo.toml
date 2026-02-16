@@ -83,6 +83,11 @@ name = "serialization_test"
 path = "tests/serialization_test.rs"
 harness = false
 
+[[test]]
+name = "scaffolding_test"
+path = "tests/scaffolding_test.rs"
+harness = false
+
 
 [dependencies]
 cucumber = { git = "https://github.com/cucumber-rs/cucumber.git" }
@@ -102,6 +107,9 @@ lithair-core = { path = "../lithair-core" }
 
 # Pour gérer les ports aléatoires dans les tests
 portpicker = "0.1"
+
+# TOML parsing for scaffolding tests
+toml = "0.8"
 
 # Serialization testing (dual-mode JSON + rkyv)
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing
