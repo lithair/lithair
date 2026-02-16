@@ -33,13 +33,13 @@ impl RbacConfig {
     }
 
     pub fn apply_env_vars(&mut self) {
-        if let Ok(enabled) = env::var("RS_RBAC_ENABLED") {
+        if let Ok(enabled) = env::var("LT_RBAC_ENABLED") {
             self.enabled = enabled.parse().unwrap_or(false);
         }
-        if let Ok(role) = env::var("RS_RBAC_DEFAULT_ROLE") {
+        if let Ok(role) = env::var("LT_RBAC_DEFAULT_ROLE") {
             self.default_role = role;
         }
-        if let Ok(audit) = env::var("RS_RBAC_AUDIT_ENABLED") {
+        if let Ok(audit) = env::var("LT_RBAC_AUDIT_ENABLED") {
             self.audit_enabled = audit.parse().unwrap_or(true);
         }
     }

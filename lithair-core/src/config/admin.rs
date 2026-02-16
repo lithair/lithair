@@ -22,7 +22,7 @@ pub struct AdminConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_admin_ui_path: Option<String>,
     /// Development-only reload token for simplified hot reload (NOT for production!)
-    /// Set via RS_DEV_RELOAD_TOKEN environment variable
+    /// Set via LT_DEV_RELOAD_TOKEN environment variable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dev_reload_token: Option<String>,
 }
@@ -49,11 +49,11 @@ impl AdminConfig {
 
     /// Apply environment variables and handle special cases (random generation, persistence)
     pub fn apply_env_vars(&mut self) {
-        if let Ok(enabled) = env::var("RS_ADMIN_ENABLED") {
+        if let Ok(enabled) = env::var("LT_ADMIN_ENABLED") {
             self.enabled = enabled.parse().unwrap_or(true);
         }
 
-        if let Ok(path) = env::var("RS_ADMIN_PATH") {
+        if let Ok(path) = env::var("LT_ADMIN_PATH") {
             if path == "random" {
                 // Try to load existing random path from persistence file
                 if let Ok(persisted_path) = Self::load_random_path() {
@@ -77,7 +77,7 @@ impl AdminConfig {
         }
 
         // Development reload token (WARNING: Development only!)
-        if let Ok(token) = env::var("RS_DEV_RELOAD_TOKEN") {
+        if let Ok(token) = env::var("LT_DEV_RELOAD_TOKEN") {
             if !token.is_empty() {
                 self.dev_reload_token = Some(token.clone());
                 log::warn!(

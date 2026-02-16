@@ -23,7 +23,7 @@ impl PerformanceConfig {
         *self = other;
     }
     pub fn apply_env_vars(&mut self) {
-        if let Ok(enabled) = env::var("RS_CACHE_ENABLED") {
+        if let Ok(enabled) = env::var("LT_CACHE_ENABLED") {
             self.cache_enabled = enabled.parse().unwrap_or(true);
         }
     }

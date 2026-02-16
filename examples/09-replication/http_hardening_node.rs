@@ -142,17 +142,17 @@ async fn main() -> Result<()> {
     }
 
     // Configure anti-DDoS protection if enabled via environment variable
-    let enable_anti_ddos = std::env::var("RS_ANTI_DDOS")
+    let enable_anti_ddos = std::env::var("LT_ANTI_DDOS")
         .map(|v| v == "1" || v.to_lowercase() == "true")
         .unwrap_or(false);
 
     if enable_anti_ddos {
-        let max_connections = std::env::var("RS_MAX_CONNECTIONS")
+        let max_connections = std::env::var("LT_MAX_CONNECTIONS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1000);
         let rate_limit =
-            std::env::var("RS_RATE_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
+            std::env::var("LT_RATE_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
 
         let anti_ddos_config = AntiDDoSConfig {
             max_connections_per_ip: max_connections / 10, // 10% per IP

@@ -32,9 +32,9 @@ kill_port_if_listening() {
 start_node() {
   echo "\n🚀 Starting declarative node on :${PORT} (replication-hardening-node)"
   # Tighten bulk limit to make 413 easy to demonstrate
-  export RS_HTTP_MAX_BODY_BYTES_BULK=${RS_HTTP_MAX_BODY_BYTES_BULK:-2000}
-  export RS_HTTP_MAX_BODY_BYTES_SINGLE=${RS_HTTP_MAX_BODY_BYTES_SINGLE:-2048}
-  export RS_HTTP_TIMEOUT_MS=${RS_HTTP_TIMEOUT_MS:-10000}
+  export LT_HTTP_MAX_BODY_BYTES_BULK=${LT_HTTP_MAX_BODY_BYTES_BULK:-2000}
+  export LT_HTTP_MAX_BODY_BYTES_SINGLE=${LT_HTTP_MAX_BODY_BYTES_SINGLE:-2048}
+  export LT_HTTP_TIMEOUT_MS=${LT_HTTP_TIMEOUT_MS:-10000}
 
   RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin replication-hardening-node -- \
     --port "$PORT" >"$LOG_DIR/node_demo.log" 2>&1 &
@@ -88,7 +88,7 @@ main() {
   assert_code 405 "POST /api/products/random-id (only GET allowed)" -X POST "$LEADER_URL/api/products/random-id" -H 'Content-Type: application/json' -d '{}'
 
   echo "\n===== 413 Payload Too Large (bulk) ====="
-  # Build a tiny-bulk payload that exceeds RS_HTTP_MAX_BODY_BYTES_BULK=2000
+  # Build a tiny-bulk payload that exceeds LT_HTTP_MAX_BODY_BYTES_BULK=2000
   PAYLOAD_FILE="$(mktemp)"
   python3 - "$PAYLOAD_FILE" <<'PY'
 import json, sys
@@ -102,10 +102,10 @@ PY
 
   if [[ "${DEMO_TRY_TIMEOUT:-0}" == "1" ]]; then
     echo "\n===== 504 Gateway Timeout (best‑effort) ====="
-    echo "Restarting node with RS_HTTP_TIMEOUT_MS=1 to try provoking 504..."
+    echo "Restarting node with LT_HTTP_TIMEOUT_MS=1 to try provoking 504..."
     cleanup || true
     kill_port_if_listening "$PORT"
-    RS_HTTP_TIMEOUT_MS=1 start_node
+    LT_HTTP_TIMEOUT_MS=1 start_node
     # A quick GET may still succeed; this is best‑effort depending on host speed.
     assert_code 504 "Best‑effort: GET /api/products under 1ms timeout" "$LEADER_URL/api/products" || true
   fi

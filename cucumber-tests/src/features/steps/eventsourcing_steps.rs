@@ -990,7 +990,7 @@ async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld
         .expect("Impossible de créer le répertoire pour la déduplication persistante");
 
     // Forcer la persistance des IDs de déduplication (par défaut déjà activée, mais explicite)
-    std::env::set_var("RS_DEDUP_PERSIST", "1");
+    std::env::set_var("LT_DEDUP_PERSIST", "1");
 
     let config = EngineConfig { event_log_path: base_path.clone(), ..Default::default() };
 
@@ -1105,7 +1105,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
         .expect("Impossible de créer le répertoire pour la déduplication multi-fichiers");
 
     // Forcer la persistance des IDs de déduplication
-    std::env::set_var("RS_DEDUP_PERSIST", "1");
+    std::env::set_var("LT_DEDUP_PERSIST", "1");
 
     let config = EngineConfig {
         event_log_path: base_path.clone(),
@@ -1425,8 +1425,8 @@ async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
         .expect("Impossible de créer le répertoire de test pour la rotation multi-fichiers");
 
     // Activer la rotation avec un seuil très bas pour forcer rapidement un rollover
-    // Note: FileStorage::new lit RS_MAX_LOG_FILE_SIZE et configure max_log_file_size en conséquence.
-    std::env::set_var("RS_MAX_LOG_FILE_SIZE", "512");
+    // Note: FileStorage::new lit LT_MAX_LOG_FILE_SIZE et configure max_log_file_size en conséquence.
+    std::env::set_var("LT_MAX_LOG_FILE_SIZE", "512");
 
     let config = EngineConfig {
         event_log_path: base_path.clone(),

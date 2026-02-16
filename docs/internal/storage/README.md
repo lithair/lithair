@@ -37,7 +37,7 @@ This is the single source of truth. It contains the immutable sequence of all ch
 
 ### Hybrid Format
 
-Lithair supports two persistence formats, configurable via `RS_STORAGE_FORMAT`.
+Lithair supports two persistence formats, configurable via `LT_STORAGE_FORMAT`.
 
 #### Binary Mode (Production - Recommended)
 
@@ -114,8 +114,8 @@ Reads can be concurrent (RwLock).
 
 By default, Lithair calls `fsync` after every event write.
 
-- `RS_FSYNC_ON_APPEND=true`: Maximum Durability (Zero Data Loss).
-- `RS_FSYNC_ON_APPEND=false`: Maximum Performance (Risk of losing last milliseconds in OS crash).
+- `LT_FSYNC_ON_APPEND=true`: Maximum Durability (Zero Data Loss).
+- `LT_FSYNC_ON_APPEND=false`: Maximum Performance (Risk of losing last milliseconds in OS crash).
 
 ## 6. Performance & Limitations
 

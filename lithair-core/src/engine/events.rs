@@ -224,7 +224,7 @@ impl EventStore {
         let last_event_hash = Self::load_last_event_hash(&backend, binary_mode)?;
 
         // Enable hash chain by default, can be disabled via env var
-        let enable_hash_chain = !std::env::var("RS_DISABLE_HASH_CHAIN")
+        let enable_hash_chain = !std::env::var("LT_DISABLE_HASH_CHAIN")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
@@ -235,13 +235,13 @@ impl EventStore {
             pending_since_flush: 0,
             flush_every: 1,
             binary_mode: binary_mode
-                || std::env::var("RS_ENABLE_BINARY")
+                || std::env::var("LT_ENABLE_BINARY")
                     .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                     .unwrap_or(false),
-            disable_index: std::env::var("RS_DISABLE_INDEX")
+            disable_index: std::env::var("LT_DISABLE_INDEX")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
-            dedup_persist: !std::env::var("RS_DEDUP_PERSIST")
+            dedup_persist: !std::env::var("LT_DEDUP_PERSIST")
                 .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
                 .unwrap_or(false),
             last_event_hash,
@@ -258,7 +258,7 @@ impl EventStore {
         let last_event_hash = Self::load_last_event_hash(&backend, false)?;
 
         // Enable hash chain by default
-        let enable_hash_chain = !std::env::var("RS_DISABLE_HASH_CHAIN")
+        let enable_hash_chain = !std::env::var("LT_DISABLE_HASH_CHAIN")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
@@ -268,13 +268,13 @@ impl EventStore {
             log_verbose: false, // Disabled for performance
             pending_since_flush: 0,
             flush_every: 1,
-            binary_mode: std::env::var("RS_ENABLE_BINARY")
+            binary_mode: std::env::var("LT_ENABLE_BINARY")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
-            disable_index: std::env::var("RS_DISABLE_INDEX")
+            disable_index: std::env::var("LT_DISABLE_INDEX")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
-            dedup_persist: !std::env::var("RS_DEDUP_PERSIST")
+            dedup_persist: !std::env::var("LT_DEDUP_PERSIST")
                 .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
                 .unwrap_or(false),
             last_event_hash,

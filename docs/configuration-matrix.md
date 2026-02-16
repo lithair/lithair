@@ -115,7 +115,7 @@ port = 8080
 port = 3000
 
 # 3. Environment
-export RS_PORT=9000
+export LT_PORT=9000
 
 # 4. Code (WINS)
 LithairServer::new()
@@ -129,7 +129,7 @@ LithairServer::new()
 All environment variables follow the pattern:
 
 ```
-RS_<SECTION>_<OPTION>
+LT_<SECTION>_<OPTION>
 ```
 
 ### Shortcuts
@@ -137,10 +137,10 @@ RS_<SECTION>_<OPTION>
 Common settings have shortcuts without section prefix:
 
 ```bash
-RS_PORT=8080              # Shortcut for RS_SERVER_PORT
-RS_HOST=0.0.0.0           # Shortcut for RS_SERVER_HOST
-RS_LOG_LEVEL=debug        # Shortcut for RS_LOGGING_LEVEL
-RS_DATA_DIR=./data        # Shortcut for RS_STORAGE_DATA_DIR
+LT_PORT=8080              # Shortcut for LT_SERVER_PORT
+LT_HOST=0.0.0.0           # Shortcut for LT_SERVER_HOST
+LT_LOG_LEVEL=debug        # Shortcut for LT_LOGGING_LEVEL
+LT_DATA_DIR=./data        # Shortcut for LT_STORAGE_DATA_DIR
 ```
 
 ### Array Values
@@ -148,8 +148,8 @@ RS_DATA_DIR=./data        # Shortcut for RS_STORAGE_DATA_DIR
 Arrays in environment variables use comma-separated values:
 
 ```bash
-RS_CORS_ORIGINS=https://app.com,https://admin.com
-RS_CLUSTER_NODES=node-2:8081,node-3:8082
+LT_COLT_ORIGINS=https://app.com,https://admin.com
+LT_CLUSTER_NODES=node-2:8081,node-3:8082
 ```
 
 ---
@@ -260,12 +260,12 @@ LithairServer::new()
 
 ```bash
 # All via environment variables
-docker run -e RS_PORT=8080 \
-           -e RS_HOST=0.0.0.0 \
-           -e RS_REPLICATION_ENABLED=true \
-           -e RS_CLUSTER_NODES=node-2:8081,node-3:8082 \
-           -e RS_LOG_LEVEL=info \
-           -e RS_LOG_FORMAT=json \
+docker run -e LT_PORT=8080 \
+           -e LT_HOST=0.0.0.0 \
+           -e LT_REPLICATION_ENABLED=true \
+           -e LT_CLUSTER_NODES=node-2:8081,node-3:8082 \
+           -e LT_LOG_LEVEL=info \
+           -e LT_LOG_FORMAT=json \
            myapp:latest
 ```
 
@@ -400,40 +400,40 @@ Warning: storage.data_dir does not exist, creating: ./data
 
 ```bash
 # ✅ Use environment variables for secrets
-export RS_ADMIN_PASSWORD=<strong-password>
-export RS_JWT_SECRET=<random-secret>
+export LT_ADMIN_PASSWORD=<strong-password>
+export LT_JWT_SECRET=<random-secret>
 
 # ✅ Enable security features
-export RS_SESSION_COOKIE_SECURE=true
-export RS_ADMIN_AUTH_REQUIRED=true
-export RS_RBAC_ENABLED=true
+export LT_SESSION_COOKIE_SECURE=true
+export LT_ADMIN_AUTH_REQUIRED=true
+export LT_RBAC_ENABLED=true
 
 # ✅ Restrict CORS
-export RS_CORS_ORIGINS=https://app.example.com
+export LT_COLT_ORIGINS=https://app.example.com
 
 # ✅ Enable audit trail
-export RS_RBAC_AUDIT_ENABLED=true
+export LT_RBAC_AUDIT_ENABLED=true
 
 # ✅ Enable rate limiting
-export RS_RBAC_RATE_LIMIT=true
+export LT_RBAC_RATE_LIMIT=true
 ```
 
 ### Development Checklist
 
 ```bash
 # ✅ Relaxed CORS for local dev
-export RS_CORS_ENABLED=true
-export RS_CORS_ORIGINS=*
+export LT_COLT_ENABLED=true
+export LT_COLT_ORIGINS=*
 
 # ✅ Verbose logging
-export RS_LOG_LEVEL=debug
-export RS_LOG_FORMAT=pretty
+export LT_LOG_LEVEL=debug
+export LT_LOG_FORMAT=pretty
 
 # ✅ Disable auth for testing
-export RS_ADMIN_AUTH_REQUIRED=false
+export LT_ADMIN_AUTH_REQUIRED=false
 
 # ✅ Shorter timeouts for faster feedback
-export RS_SESSION_MAX_AGE=300
+export LT_SESSION_MAX_AGE=300
 ```
 
 ---

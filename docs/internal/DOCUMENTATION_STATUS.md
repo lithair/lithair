@@ -30,7 +30,7 @@ Last updated: 2025-10-24
 - **Reference** (5+ docs)
   - Declarative Attributes, API Reference, SQL vs Lithair
   - Configuration Reference, Configuration Matrix
-  - Environment Variables (RUST_LOG, RS_ADMIN_PATH, RS_DEV_RELOAD_TOKEN)
+  - Environment Variables (RUST_LOG, LT_ADMIN_PATH, LT_DEV_RELOAD_TOKEN)
 
 - **Examples** (3 docs)
   - Overview, Data-First Comparison, Audit Report

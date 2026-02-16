@@ -131,6 +131,6 @@ jobs:
           TOTAL_JSON_1KB: 2000
           TOTAL_BYTES_1KB: 2000
           TOTAL_ECHO_1KB: 1000
-          RS_PERF_MAX_BYTES: 262144
+          LT_PERF_MAX_BYTES: 262144
         run: |
           bash examples/09-replication/bench_http_server_stateless.sh

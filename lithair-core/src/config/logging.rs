@@ -28,7 +28,7 @@ impl LoggingConfig {
         *self = other;
     }
     pub fn apply_env_vars(&mut self) {
-        if let Ok(level) = env::var("RS_LOG_LEVEL") {
+        if let Ok(level) = env::var("LT_LOG_LEVEL") {
             self.level = level;
         }
     }

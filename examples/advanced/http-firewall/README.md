@@ -38,10 +38,10 @@ Logs are written to `examples/http_firewall_demo/node_demo.log`.
 
 ## Environment variables
 
-- `RS_FW_ENABLE` = `1` to enable firewall
-- `RS_FW_IP_DENY` = CSV of IPs to deny (exact match)
-- `RS_FW_IP_ALLOW` = CSV of IPs to allow (exact match). If set, only these are allowed.
-- `RS_FW_RATE_GLOBAL_QPS` = global requests per second limit
-- `RS_FW_RATE_PERIP_QPS` = per-IP requests per second limit
+- `LT_FW_ENABLE` = `1` to enable firewall
+- `LT_FW_IP_DENY` = CSV of IPs to deny (exact match)
+- `LT_FW_IP_ALLOW` = CSV of IPs to allow (exact match). If set, only these are allowed.
+- `LT_FW_RATE_GLOBAL_QPS` = global requests per second limit
+- `LT_FW_RATE_PERIP_QPS` = per-IP requests per second limit
 
 See `docs/HTTP_FIREWALL.md` for details and roadmap.

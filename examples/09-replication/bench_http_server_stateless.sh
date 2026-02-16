@@ -46,7 +46,7 @@ wait_ready() {
 
 start_server() {
   echo "\n🚀 Starting Lithair replication-hardening-node on :$PORT (perf=/perf)"
-  RS_PERF_MAX_BYTES=${RS_PERF_MAX_BYTES:-2000000} \
+  LT_PERF_MAX_BYTES=${LT_PERF_MAX_BYTES:-2000000} \
   RUST_LOG=${RUST_LOG:-error} \
   cargo run --release -p replication --bin replication-hardening-node -- --port "$PORT" --open \
     >"$LOG_FILE" 2>&1 &

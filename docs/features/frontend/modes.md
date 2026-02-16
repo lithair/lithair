@@ -41,7 +41,7 @@ Example:
 
 ```bash
 # Development-friendly reload (token bypass)
-RS_DEV_RELOAD_TOKEN=dev123 cargo run -- --port 3000 --hybrid
+LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --port 3000 --hybrid
 curl -X POST http://localhost:3000/admin/sites/reload -H "X-Reload-Token: dev123"
 
 # Production-safe reload (auth required)

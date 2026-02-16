@@ -134,7 +134,7 @@ impl FileStorage {
         };
 
         // Optional: enable rotation via environment variable (useful for tests/benchmarks)
-        if let Ok(v) = std::env::var("RS_MAX_LOG_FILE_SIZE") {
+        if let Ok(v) = std::env::var("LT_MAX_LOG_FILE_SIZE") {
             if let Ok(n) = v.parse::<usize>() {
                 storage.max_log_file_size = n;
             }
@@ -160,9 +160,9 @@ impl FileStorage {
         self.fsync_on_append = enable;
     }
 
-    /// Enable the optimized async writer if RS_OPT_PERSIST=1 (or "true")
+    /// Enable the optimized async writer if LT_OPT_PERSIST=1 (or "true")
     fn maybe_enable_async_writer(&mut self) {
-        let enabled = std::env::var("RS_OPT_PERSIST")
+        let enabled = std::env::var("LT_OPT_PERSIST")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
         if !enabled {
@@ -170,17 +170,17 @@ impl FileStorage {
         }
 
         let mut cfg = OptimizedPersistenceConfig::default();
-        if let Ok(s) = std::env::var("RS_BUFFER_SIZE") {
+        if let Ok(s) = std::env::var("LT_BUFFER_SIZE") {
             if let Ok(n) = s.parse::<usize>() {
                 cfg.buffer_size = n;
             }
         }
-        if let Ok(s) = std::env::var("RS_FLUSH_INTERVAL_MS") {
+        if let Ok(s) = std::env::var("LT_FLUSH_INTERVAL_MS") {
             if let Ok(n) = s.parse::<u64>() {
                 cfg.flush_interval_ms = n;
             }
         }
-        if let Ok(s) = std::env::var("RS_MAX_EVENTS_BUFFER") {
+        if let Ok(s) = std::env::var("LT_MAX_EVENTS_BUFFER") {
             if let Ok(n) = s.parse::<usize>() {
                 cfg.max_events_buffer = n;
             }

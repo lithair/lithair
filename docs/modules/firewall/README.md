@@ -41,21 +41,21 @@ flowchart TD
 ### Priorité de Configuration
 1. **Builder API** : `DeclarativeServer::with_firewall_config(cfg)`
 2. **Attribut déclaratif** : `#[firewall(...)]` sur le modèle
-3. **Variables d'environnement** : `RS_FW_*`
+3. **Variables d'environnement** : `LT_FW_*`
 
 ### Variables d'Environnement
 
 ```bash
 # Activation
-RS_FW_ENABLE=1                    # Active le firewall
+LT_FW_ENABLE=1                    # Active le firewall
 
 # Filtrage IP
-RS_FW_IP_ALLOW=internal,192.168.0.0/16,127.0.0.1  # IPs autorisées (CSV: IP exactes, CIDR, ou macros)
-RS_FW_IP_DENY=10.0.0.5                           # IPs bloquées (CSV)
+LT_FW_IP_ALLOW=internal,192.168.0.0/16,127.0.0.1  # IPs autorisées (CSV: IP exactes, CIDR, ou macros)
+LT_FW_IP_DENY=10.0.0.5                           # IPs bloquées (CSV)
 
 # Rate Limiting  
-RS_FW_RATE_GLOBAL_QPS=1000        # Limite globale QPS
-RS_FW_RATE_PERIP_QPS=100         # Limite par IP QPS
+LT_FW_RATE_GLOBAL_QPS=1000        # Limite globale QPS
+LT_FW_RATE_PERIP_QPS=100         # Limite par IP QPS
 ```
 
 ### Configuration Déclarative
