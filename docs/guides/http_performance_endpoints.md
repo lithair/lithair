@@ -14,7 +14,7 @@ Endpoints (assuming base path `/perf`):
 - `GET /perf/bytes?n=N` — Returns raw bytes of length N.
 
 Limits:
-- `RS_PERF_MAX_BYTES` caps requested sizes (default: 2,000,000 bytes).
+- `LT_PERF_MAX_BYTES` caps requested sizes (default: 2,000,000 bytes).
 
 ## Enable in Code
 ```rust
@@ -28,9 +28,9 @@ let server = DeclarativeServer::<Product>::new("./data/product.events", 18320)?
 ```
 
 ## Environment Overrides
-- `RS_PERF_ENABLED=1` (or `true`) — Enable without code change.
-- `RS_PERF_BASE=/bench` — Change the base path.
-- `RS_PERF_MAX_BYTES=2000000` — Cap the size for `/perf/json` and `/perf/bytes`.
+- `LT_PERF_ENABLED=1` (or `true`) — Enable without code change.
+- `LT_PERF_BASE=/bench` — Change the base path.
+- `LT_PERF_MAX_BYTES=2000000` — Cap the size for `/perf/json` and `/perf/bytes`.
 
 ## Using Metrics Alongside Benchmarks
 For meaningful analysis, correlate your perf runs with live metrics. Lithair exposes Prometheus-compatible metrics at `/metrics` (see README Monitoring & Health Checks).
@@ -77,8 +77,8 @@ cargo run --release -p raft_replication_demo --bin http_loadgen_demo -- \
 Environment knobs:
 - `PORT`, `CONCURRENCY`, `TIMEOUT_S`
 - Totals per scenario: `TOTAL_STATUS`, `TOTAL_JSON_1KB`, `TOTAL_BYTES_1KB`, `TOTAL_ECHO_1KB`, etc.
-- `RS_HTTP_GZIP`, `RS_HTTP_GZIP_MIN` (if testing gzip)
-- `RS_PERF_MAX_BYTES` size caps
+- `LT_HTTP_GZIP`, `LT_HTTP_GZIP_MIN` (if testing gzip)
+- `LT_PERF_MAX_BYTES` size caps
 
 Run:
 ```bash
@@ -86,7 +86,7 @@ Run:
 bash examples/raft_replication_demo/bench_http_server_stateless.sh
 
 # With gzip forced
-RS_HTTP_GZIP=1 RS_HTTP_GZIP_MIN=1024 bash examples/raft_replication_demo/bench_http_server_stateless.sh
+LT_HTTP_GZIP=1 LT_HTTP_GZIP_MIN=1024 bash examples/raft_replication_demo/bench_http_server_stateless.sh
 ```
 
 ## Production Considerations

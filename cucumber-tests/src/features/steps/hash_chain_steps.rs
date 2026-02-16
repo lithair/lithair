@@ -14,7 +14,7 @@ use tempfile::TempDir;
 #[given("a Lithair server with hash chain enabled")]
 async fn given_hash_chain_enabled(world: &mut LithairWorld) {
     // Ensure hash chain is enabled (default behavior)
-    std::env::remove_var("RS_DISABLE_HASH_CHAIN");
+    std::env::remove_var("LT_DISABLE_HASH_CHAIN");
 
     // Initialize temp directory for this test
     let temp_dir = TempDir::new().expect("Failed to create temp dir");

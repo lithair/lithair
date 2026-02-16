@@ -154,11 +154,11 @@ impl<A: RaftstoneApplication> Engine<A> {
         };
 
         let use_multi_file = config.use_multi_file_store
-            || std::env::var("RS_MULTI_FILE")
+            || std::env::var("LT_MULTI_FILE")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
 
-        let use_binary = std::env::var("RS_ENABLE_BINARY")
+        let use_binary = std::env::var("LT_ENABLE_BINARY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
@@ -181,7 +181,7 @@ impl<A: RaftstoneApplication> Engine<A> {
         let event_store_arc = Arc::new(RwLock::new(event_store));
 
         // Choose state storage backend
-        let use_scc2 = std::env::var("RS_USE_SCC2")
+        let use_scc2 = std::env::var("LT_USE_SCC2")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true); // Default to true
 

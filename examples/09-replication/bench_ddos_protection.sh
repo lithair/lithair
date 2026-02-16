@@ -79,7 +79,7 @@ wait_for_server() {
 
 # Start hardened server with anti-DDoS protection
 echo -e "${YELLOW}🚀 Starting Lithair hardened server on :$PORT${NC}"
-RUST_LOG=warn RS_ANTI_DDOS=1 RS_MAX_CONNECTIONS=1000 RS_RATE_LIMIT=200 \
+RUST_LOG=warn LT_ANTI_DDOS=1 LT_MAX_CONNECTIONS=1000 LT_RATE_LIMIT=200 \
 cargo run --release -p replication --bin replication-hardening-node -- --port "$PORT" --open >/tmp/ddos_server.log 2>&1 &
 SERVER_PID=$!
 

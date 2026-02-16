@@ -157,7 +157,7 @@ tasks:
       - echo "💨 Smoke - Stateless perf endpoints (fast)..."
       - |
         CONCURRENCY=64 TIMEOUT_S=10 PORT=19104 TOTAL_STATUS=2000 TOTAL_JSON_1KB=2000 \
-        TOTAL_BYTES_1KB=2000 TOTAL_ECHO_1KB=1000 RS_PERF_MAX_BYTES=262144 \
+        TOTAL_BYTES_1KB=2000 TOTAL_ECHO_1KB=1000 LT_PERF_MAX_BYTES=262144 \
         bash examples/raft_replication_demo/bench_http_server_stateless.sh
       - echo "💨 Smoke - GZIP negotiation (skipped - test suite complete)"
       - echo "🎉 All smoke tests completed successfully!"

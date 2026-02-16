@@ -27,7 +27,7 @@ The performance endpoints are off the model API path and never interact with per
   - `GET  /perf/json?bytes=N` → JSON with a string payload of ~N bytes.
   - `GET  /perf/bytes?n=N` → Raw binary payload of N bytes.
 
-- Maximum payload: controlled by env `RS_PERF_MAX_BYTES` (default: 2,000,000 bytes).
+- Maximum payload: controlled by env `LT_PERF_MAX_BYTES` (default: 2,000,000 bytes).
 
 ### Enable in code
 ```rust
@@ -41,9 +41,9 @@ let server = DeclarativeServer::<Product>::new("./data/product.events", 18320)?
 ```
 
 ### Environment overrides
-- `RS_PERF_ENABLED=1` or `true` → Enable even if disabled in code.
-- `RS_PERF_BASE=/bench` → Change base path without code change.
-- `RS_PERF_MAX_BYTES=2000000` → Cap for `json`/`bytes` endpoints.
+- `LT_PERF_ENABLED=1` or `true` → Enable even if disabled in code.
+- `LT_PERF_BASE=/bench` → Change base path without code change.
+- `LT_PERF_MAX_BYTES=2000000` → Cap for `json`/`bytes` endpoints.
 
 ### Quick usage
 ```bash
@@ -71,8 +71,8 @@ let server = server
 ```
 
 - Environment:
-  - `RS_HTTP_GZIP=1` (or `true`) → enable globally.
-  - `RS_HTTP_GZIP_MIN=1024` → minimum body size before compressing.
+  - `LT_HTTP_GZIP=1` (or `true`) → enable globally.
+  - `LT_HTTP_GZIP_MIN=1024` → minimum body size before compressing.
 
 - Verification:
 ```bash
@@ -124,7 +124,7 @@ Behavior:
 ---
 
 ## Static Files: ETag and Cache-Control
-Static file serving is enabled by setting `RS_STATIC_DIR` to a directory containing `index.html` and an `assets/` folder.
+Static file serving is enabled by setting `LT_STATIC_DIR` to a directory containing `index.html` and an `assets/` folder.
 
 - Endpoints:
   - `/` or `/index.html` → serves `index.html`
@@ -170,8 +170,8 @@ cargo run --release -p raft_replication_demo --bin http_loadgen_demo -- \
 Environment knobs:
 - `PORT`, `CONCURRENCY`, `TIMEOUT_S`
 - Totals per scenario (examples): `TOTAL_STATUS`, `TOTAL_JSON_1KB`, `TOTAL_BYTES_1KB`, `TOTAL_ECHO_1KB`, ...
-- `RS_HTTP_GZIP`, `RS_HTTP_GZIP_MIN` for compression
-- `RS_PERF_MAX_BYTES` for perf endpoints size caps
+- `LT_HTTP_GZIP`, `LT_HTTP_GZIP_MIN` for compression
+- `LT_PERF_MAX_BYTES` for perf endpoints size caps
 
 Run:
 ```bash
@@ -179,7 +179,7 @@ Run:
 tbash examples/raft_replication_demo/bench_http_server_stateless.sh
 
 # With gzip forced
-tRS_HTTP_GZIP=1 RS_HTTP_GZIP_MIN=1024 bash examples/raft_replication_demo/bench_http_server_stateless.sh
+tLT_HTTP_GZIP=1 LT_HTTP_GZIP_MIN=1024 bash examples/raft_replication_demo/bench_http_server_stateless.sh
 ```
 
 The report includes throughput and latency percentiles (p50, p95, p99) per operation type.
@@ -197,12 +197,12 @@ These checks help detect regressions early without running heavy benchmarks.
 
 ## Troubleshooting
 - Payload rejected / truncated
-  - Ensure `RS_PERF_MAX_BYTES` is large enough for your test.
+  - Ensure `LT_PERF_MAX_BYTES` is large enough for your test.
 - No gzip in response
   - Include `Accept-Encoding: gzip`, and check the size vs `min_bytes`.
   - Verify per-route policies (a route policy may disable gzip).
 - Static files not served
-  - Set `RS_STATIC_DIR` to the correct directory and include `index.html` and `assets/`.
+  - Set `LT_STATIC_DIR` to the correct directory and include `index.html` and `assets/`.
 - ETag mismatch
   - ETag values are quoted. Ensure the `If-None-Match` header includes quotes.
 
@@ -241,12 +241,12 @@ async fn main() -> anyhow::Result<()> {
 
 You can override behavior per environment with:
 ```bash
-export RS_PERF_ENABLED=1
-export RS_PERF_BASE=/bench
-export RS_HTTP_GZIP=1
-export RS_HTTP_GZIP_MIN=512
-export RS_PERF_MAX_BYTES=2000000
-export RS_STATIC_DIR=./tests/frontend_benchmark/dist
+export LT_PERF_ENABLED=1
+export LT_PERF_BASE=/bench
+export LT_HTTP_GZIP=1
+export LT_HTTP_GZIP_MIN=512
+export LT_PERF_MAX_BYTES=2000000
+export LT_STATIC_DIR=./tests/frontend_benchmark/dist
 ```
 
 If you need additional examples (e.g., disabling gzip under a specific prefix or raising `min_bytes` per route), let us know.

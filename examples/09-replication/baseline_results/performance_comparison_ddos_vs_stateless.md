@@ -4,7 +4,7 @@
 Performance analysis comparing Lithair HTTP server with and without anti-DDoS protection enabled.
 
 ## Test Configuration
-- **Anti-DDoS Server**: RS_ANTI_DDOS=1, rate limit 200/min, max 1000 connections
+- **Anti-DDoS Server**: LT_ANTI_DDOS=1, rate limit 200/min, max 1000 connections
 - **Standard Server**: No protection, high concurrency baseline
 - **Hardware**: Same test environment for fair comparison
 

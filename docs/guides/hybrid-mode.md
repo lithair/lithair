@@ -31,10 +31,10 @@ Lithair supports three serving modes for optimal performance and developer exper
 cargo run -- --port 3007 --data-dir ./blog_data --hybrid
 
 # With custom admin path
-RS_ADMIN_PATH=random cargo run -- --port 3007 --data-dir ./blog_data --hybrid
+LT_ADMIN_PATH=random cargo run -- --port 3007 --data-dir ./blog_data --hybrid
 
 # Production build with hybrid mode
-RS_ADMIN_PATH=/secure-admin ./target/release/lithair-blog --port 3007 --data-dir ./blog_data --hybrid
+LT_ADMIN_PATH=/secure-admin ./target/release/lithair-blog --port 3007 --data-dir ./blog_data --hybrid
 ```
 
 #### Development Workflow
@@ -43,7 +43,7 @@ RS_ADMIN_PATH=/secure-admin ./target/release/lithair-blog --port 3007 --data-dir
 
 ```bash
 # 1. Start server with development reload token
-RS_DEV_RELOAD_TOKEN=dev123 RS_ADMIN_PATH=random cargo run -- --hybrid
+LT_DEV_RELOAD_TOKEN=dev123 LT_ADMIN_PATH=random cargo run -- --hybrid
 
 # 2. Make changes to your frontend
 vim frontend/src/pages/index.astro
@@ -56,7 +56,7 @@ curl -X POST http://localhost:3007/admin/sites/reload \
   -H "X-Reload-Token: dev123"
 ```
 
-⚠️ **SECURITY WARNING**: `RS_DEV_RELOAD_TOKEN` is for **DEVELOPMENT ONLY**!
+⚠️ **SECURITY WARNING**: `LT_DEV_RELOAD_TOKEN` is for **DEVELOPMENT ONLY**!
 - The server will display a visible warning at startup when dev token is enabled
 - Never use this in production environments
 - Bypasses TOTP/MFA for admin login (username/password only)
@@ -66,7 +66,7 @@ curl -X POST http://localhost:3007/admin/sites/reload \
 
 ```bash
 # 1. Start server normally (no dev token)
-RS_ADMIN_PATH=random cargo run -- --hybrid
+LT_ADMIN_PATH=random cargo run -- --hybrid
 
 # 2. Authenticate and get session token (with MFA if required)
 TOKEN=$(curl -X POST http://localhost:3007/auth/login \
@@ -185,7 +185,7 @@ When you reload via `/admin/sites/reload`, both frontends are reloaded atomicall
 
 ```bash
 # Start once
-RS_ADMIN_PATH=random cargo run -- --hybrid
+LT_ADMIN_PATH=random cargo run -- --hybrid
 
 # Iterate freely
 cd frontend && npm run build && curl -X POST localhost:3007/admin/sites/reload
@@ -217,11 +217,11 @@ Navigate to your admin panel and look for the "Reload Sites" button (protected b
 
 ## Environment Variables
 
-- `RS_ADMIN_PATH`: Custom admin path or "random" for generated path
+- `LT_ADMIN_PATH`: Custom admin path or "random" for generated path
 - `RUST_LOG`: Set to `info` or `debug` for detailed reload logging
 
 ```bash
-RS_ADMIN_PATH=random RUST_LOG=info cargo run -- --hybrid
+LT_ADMIN_PATH=random RUST_LOG=info cargo run -- --hybrid
 ```
 
 ## Troubleshooting

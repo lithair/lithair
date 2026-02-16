@@ -347,7 +347,7 @@ Lithair is data-first: the right configuration depends on your workload. A ticke
 
 - __Key configuration knobs (ENV)__
   - `EXPERIMENT_DATA_BASE` – base data directory for examples.
-  - EventStore (see bench script): `RS_OPT_PERSIST`, `RS_BUFFER_SIZE`, `RS_MAX_EVENTS_BUFFER`, `RS_FLUSH_INTERVAL_MS`, `RS_FSYNC_ON_APPEND`, `RS_ENABLE_BINARY`, `RS_DISABLE_INDEX`, `RS_DEDUP_PERSIST`.
+  - EventStore (see bench script): `LT_OPT_PERSIST`, `LT_BUFFER_SIZE`, `LT_MAX_EVENTS_BUFFER`, `LT_FLUSH_INTERVAL_MS`, `LT_FSYNC_ON_APPEND`, `LT_ENABLE_BINARY`, `LT_DISABLE_INDEX`, `LT_DEDUP_PERSIST`.
 
 - __Where to go next__
   - `README_BENCHMARKS.md` → suites and methodology; “Recommended Defaults”.

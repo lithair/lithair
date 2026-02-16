@@ -43,9 +43,9 @@ wait_ready() {
 
 start_server() {
   echo "\n🚀 Starting Lithair replication-hardening-node on :$PORT"
-  RS_HTTP_MAX_BODY_BYTES_BULK=${RS_HTTP_MAX_BODY_BYTES_BULK:-2000000} \
-  RS_HTTP_MAX_BODY_BYTES_SINGLE=${RS_HTTP_MAX_BODY_BYTES_SINGLE:-1048576} \
-  RS_HTTP_TIMEOUT_MS=${RS_HTTP_TIMEOUT_MS:-10000} \
+  LT_HTTP_MAX_BODY_BYTES_BULK=${LT_HTTP_MAX_BODY_BYTES_BULK:-2000000} \
+  LT_HTTP_MAX_BODY_BYTES_SINGLE=${LT_HTTP_MAX_BODY_BYTES_SINGLE:-1048576} \
+  LT_HTTP_TIMEOUT_MS=${LT_HTTP_TIMEOUT_MS:-10000} \
   RUST_LOG=${RUST_LOG:-error} \
   cargo run --release -p replication --bin replication-hardening-node -- --port "$PORT" \
     >"$LOG_FILE" 2>&1 &

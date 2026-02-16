@@ -44,7 +44,7 @@ async fn given_replication_configured(_world: &mut LithairWorld) {
 
 #[given("hash chain is enabled on all nodes")]
 async fn given_hash_chain_enabled(_world: &mut LithairWorld) {
-    std::env::remove_var("RS_DISABLE_HASH_CHAIN");
+    std::env::remove_var("LT_DISABLE_HASH_CHAIN");
     println!("✅ Hash chain enabled on all nodes");
 }
 
