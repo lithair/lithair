@@ -83,7 +83,7 @@ Startup → Load all assets into memory → Serve from memory cache
 cargo run -- --port 3000 --hybrid
 
 # With custom admin path
-RS_ADMIN_PATH=random cargo run -- --port 3000 --hybrid
+LT_ADMIN_PATH=random cargo run -- --port 3000 --hybrid
 ```
 
 ### Asset Flow
@@ -99,7 +99,7 @@ Reload API call → Scan filesystem → Reload assets → Atomically swap → Co
 
 ```bash
 # 1. Start server with development reload token
-RS_DEV_RELOAD_TOKEN=dev123 cargo run -- --port 3000 --hybrid
+LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --port 3000 --hybrid
 
 # 2. Make changes to frontend
 vim frontend/src/pages/index.astro
@@ -112,7 +112,7 @@ curl -X POST http://localhost:3000/admin/sites/reload \
   -H "X-Reload-Token: dev123"
 ```
 
-⚠️ **SECURITY WARNING**: `RS_DEV_RELOAD_TOKEN` is for **DEVELOPMENT ONLY**!
+⚠️ **SECURITY WARNING**: `LT_DEV_RELOAD_TOKEN` is for **DEVELOPMENT ONLY**!
 - Server displays visible warning at startup when enabled
 - Never use in production environments
 - Bypasses TOTP/MFA for admin login (username/password only)
@@ -299,18 +299,18 @@ let server = CleanSiteServer::new(
 
 ### Hybrid Mode Variables
 
-**`RS_DEV_RELOAD_TOKEN`** (Development only)
+**`LT_DEV_RELOAD_TOKEN`** (Development only)
 - **Purpose**: Simplified development workflow - bypasses TOTP/MFA authentication + enables hot reload
-- **Usage**: `RS_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev` or `--hybrid`
+- **Usage**: `LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev` or `--hybrid`
 - **Security**: ⚠️ **NEVER use in production!** Server displays warning at startup
 - **Effects**:
   - **Login**: Admin login works with username/password only (no TOTP code required)
   - **Reload**: Reload endpoint accepts `X-Reload-Token` header instead of full RBAC/MFA
   - **Development**: Eliminates need to configure authenticator app during dev
 
-**`RS_ADMIN_PATH`**
+**`LT_ADMIN_PATH`**
 - **Purpose**: Set custom admin panel path or generate random path
-- **Usage**: `RS_ADMIN_PATH=/custom` or `RS_ADMIN_PATH=random`
+- **Usage**: `LT_ADMIN_PATH=/custom` or `LT_ADMIN_PATH=random`
 - **Default**: `/admin`
 - **Random**: Generates `/secure-XXXXXX` and persists to `.admin-path` file
 
@@ -323,12 +323,12 @@ let server = CleanSiteServer::new(
 
 **Development with hot reload**:
 ```bash
-RS_DEV_RELOAD_TOKEN=mytoken RS_ADMIN_PATH=random RUST_LOG=info cargo run -- --hybrid
+LT_DEV_RELOAD_TOKEN=mytoken LT_ADMIN_PATH=random RUST_LOG=info cargo run -- --hybrid
 ```
 
 **Production (secure)**:
 ```bash
-RS_ADMIN_PATH=random ./target/release/lithair-blog --port 3000
+LT_ADMIN_PATH=random ./target/release/lithair-blog --port 3000
 ```
 
 ## Troubleshooting

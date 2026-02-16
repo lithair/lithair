@@ -61,7 +61,7 @@ cargo test --test cucumber_tests -- features/basic.feature
 
 ```bash
 export RUST_LOG=debug
-export RS_OPT_PERSIST=1
+export LT_OPT_PERSIST=1
 cargo test --test cucumber_tests
 ```
 

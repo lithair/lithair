@@ -82,32 +82,32 @@ impl ReplicationConfig {
     }
 
     pub fn apply_env_vars(&mut self) {
-        if let Ok(enabled) = env::var("RS_REPLICATION_ENABLED") {
+        if let Ok(enabled) = env::var("LT_REPLICATION_ENABLED") {
             self.enabled = enabled.parse().unwrap_or(false);
         }
-        if let Ok(node_id) = env::var("RS_NODE_ID") {
+        if let Ok(node_id) = env::var("LT_NODE_ID") {
             self.node_id = node_id;
         }
-        if let Ok(nodes) = env::var("RS_CLUSTER_NODES") {
+        if let Ok(nodes) = env::var("LT_CLUSTER_NODES") {
             self.cluster_nodes = nodes.split(',').map(|s| s.trim().to_string()).collect();
         }
         // Resync environment variables
-        if let Ok(gap) = env::var("RS_MAX_RESYNC_GAP") {
+        if let Ok(gap) = env::var("LT_MAX_RESYNC_GAP") {
             self.max_resync_gap = gap.parse().unwrap_or(default_max_resync_gap());
         }
-        if let Ok(concurrent) = env::var("RS_MAX_CONCURRENT_RESYNCS") {
+        if let Ok(concurrent) = env::var("LT_MAX_CONCURRENT_RESYNCS") {
             self.max_concurrent_resyncs =
                 concurrent.parse().unwrap_or(default_max_concurrent_resyncs());
         }
-        if let Ok(interval) = env::var("RS_RESYNC_CHECK_INTERVAL_MS") {
+        if let Ok(interval) = env::var("LT_RESYNC_CHECK_INTERVAL_MS") {
             self.resync_check_interval_ms =
                 interval.parse().unwrap_or(default_resync_check_interval_ms());
         }
-        if let Ok(timeout) = env::var("RS_SNAPSHOT_SEND_TIMEOUT_SECS") {
+        if let Ok(timeout) = env::var("LT_SNAPSHOT_SEND_TIMEOUT_SECS") {
             self.snapshot_send_timeout_secs =
                 timeout.parse().unwrap_or(default_snapshot_send_timeout_secs());
         }
-        if let Ok(cooldown) = env::var("RS_RESYNC_COOLDOWN_SECS") {
+        if let Ok(cooldown) = env::var("LT_RESYNC_COOLDOWN_SECS") {
             self.resync_cooldown_secs = cooldown.parse().unwrap_or(default_resync_cooldown_secs());
         }
     }

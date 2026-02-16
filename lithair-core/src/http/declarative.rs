@@ -93,18 +93,18 @@ where
 {
     #[inline]
     fn is_verbose() -> bool {
-        std::env::var("RS_VERBOSE")
+        std::env::var("LT_VERBOSE")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
     }
     pub fn new(event_store_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Initialize EventStore with batching configuration
         let mut event_store = EventStore::new(event_store_path)?;
-        let max_batch_size: usize = std::env::var("RS_EVENT_MAX_BATCH")
+        let max_batch_size: usize = std::env::var("LT_EVENT_MAX_BATCH")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(16_384);
-        let fsync_on_append: bool = std::env::var("RS_FSYNC_ON_APPEND")
+        let fsync_on_append: bool = std::env::var("LT_FSYNC_ON_APPEND")
             .ok()
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
@@ -113,7 +113,7 @@ where
         let event_store = Arc::new(tokio::sync::RwLock::new(event_store));
 
         // Spawn a lightweight background flusher to persist batches periodically
-        let flush_interval_ms: u64 = std::env::var("RS_FLUSH_INTERVAL_MS")
+        let flush_interval_ms: u64 = std::env::var("LT_FLUSH_INTERVAL_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(100);
@@ -752,7 +752,7 @@ where
         };
 
         let mut created: Vec<T> = Vec::with_capacity(items.len());
-        let disable_consensus: bool = std::env::var("RS_DISABLE_CONSENSUS")
+        let disable_consensus: bool = std::env::var("LT_DISABLE_CONSENSUS")
             .ok()
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
@@ -1206,7 +1206,7 @@ where
 
     #[inline]
     fn max_body_bytes_single() -> usize {
-        std::env::var("RS_HTTP_MAX_BODY_BYTES_SINGLE")
+        std::env::var("LT_HTTP_MAX_BODY_BYTES_SINGLE")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(2 * 1024 * 1024) // 2 MiB
@@ -1214,7 +1214,7 @@ where
 
     #[inline]
     fn max_body_bytes_bulk() -> usize {
-        std::env::var("RS_HTTP_MAX_BODY_BYTES_BULK")
+        std::env::var("LT_HTTP_MAX_BODY_BYTES_BULK")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(12 * 1024 * 1024) // 12 MiB

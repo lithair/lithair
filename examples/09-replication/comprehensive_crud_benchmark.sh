@@ -65,10 +65,10 @@ start_server() {
             args="--port ${port}"  # Remove --open to enable firewall
             ;;
         "antiddos")
-            env_vars="RS_ANTI_DDOS=1 RS_MAX_CONNECTIONS=500 RS_RATE_LIMIT=100"
+            env_vars="LT_ANTI_DDOS=1 LT_MAX_CONNECTIONS=500 LT_RATE_LIMIT=100"
             ;;
         "full")
-            env_vars="RS_ANTI_DDOS=1 RS_MAX_CONNECTIONS=500 RS_RATE_LIMIT=100"
+            env_vars="LT_ANTI_DDOS=1 LT_MAX_CONNECTIONS=500 LT_RATE_LIMIT=100"
             args="--port ${port}"  # Remove --open to enable firewall
             ;;
     esac

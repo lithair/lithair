@@ -74,7 +74,7 @@ where
 
 fn resolve_perf_config(user: Option<PerfEndpointsConfig>) -> Option<PerfEndpointsConfig> {
     let mut cfg = user;
-    if let Ok(v) = std::env::var("RS_PERF_ENABLED") {
+    if let Ok(v) = std::env::var("LT_PERF_ENABLED") {
         let enabled = v == "1" || v.eq_ignore_ascii_case("true");
         let base_default =
             cfg.as_ref().map(|c| c.base_path.clone()).unwrap_or_else(|| "/perf".into());
@@ -82,7 +82,7 @@ fn resolve_perf_config(user: Option<PerfEndpointsConfig>) -> Option<PerfEndpoint
         new_cfg.enabled = enabled;
         cfg = Some(new_cfg);
     }
-    if let Ok(base) = std::env::var("RS_PERF_BASE") {
+    if let Ok(base) = std::env::var("LT_PERF_BASE") {
         let enabled_default = cfg.as_ref().map(|c| c.enabled).unwrap_or(true);
         cfg = Some(PerfEndpointsConfig { enabled: enabled_default, base_path: base });
     }
@@ -252,14 +252,14 @@ fn resolve_gzip_config(user: Option<GzipConfig>) -> Option<GzipConfig> {
     if user.is_some() {
         return user;
     }
-    let enabled = std::env::var("RS_HTTP_GZIP")
+    let enabled = std::env::var("LT_HTTP_GZIP")
         .ok()
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     if !enabled {
         return None;
     }
-    let min_bytes = std::env::var("RS_HTTP_GZIP_MIN")
+    let min_bytes = std::env::var("LT_HTTP_GZIP_MIN")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1024usize);
@@ -540,7 +540,7 @@ where
 
         let gzip_cfg = resolve_gzip_config(gzip_cfg);
         let access_log_enabled = self.access_log
-            || std::env::var("RS_HTTP_ACCESS_LOG")
+            || std::env::var("LT_HTTP_ACCESS_LOG")
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
@@ -1054,15 +1054,15 @@ where
 
     // Server Info endpoint (like phpinfo() for diagnostics)
     if uri == "/info" && method == Method::GET {
-        let anti_ddos_enabled = std::env::var("RS_ANTI_DDOS")
+        let anti_ddos_enabled = std::env::var("LT_ANTI_DDOS")
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
         let max_connections =
-            std::env::var("RS_MAX_CONNECTIONS").unwrap_or_else(|_| "not set".to_string());
-        let rate_limit = std::env::var("RS_RATE_LIMIT").unwrap_or_else(|_| "not set".to_string());
+            std::env::var("LT_MAX_CONNECTIONS").unwrap_or_else(|_| "not set".to_string());
+        let rate_limit = std::env::var("LT_RATE_LIMIT").unwrap_or_else(|_| "not set".to_string());
 
         // Determine firewall status from environment or presence of firewall config
-        let firewall_status = if std::env::var("RS_FIREWALL_ENABLED")
+        let firewall_status = if std::env::var("LT_FIREWALL_ENABLED")
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false)
         {
@@ -1085,9 +1085,9 @@ where
     }},
     "environment": {{
         "RUST_LOG": "{}",
-        "RS_ANTI_DDOS": "{}",
-        "RS_MAX_CONNECTIONS": "{}",
-        "RS_RATE_LIMIT": "{}"
+        "LT_ANTI_DDOS": "{}",
+        "LT_MAX_CONNECTIONS": "{}",
+        "LT_RATE_LIMIT": "{}"
     }},
     "endpoints": {{
         "health": "/health",
@@ -1107,7 +1107,7 @@ where
             firewall_status,
             gzip_status == "enabled",
             std::env::var("RUST_LOG").unwrap_or_else(|_| "not set".to_string()),
-            std::env::var("RS_ANTI_DDOS").unwrap_or_else(|_| "not set".to_string()),
+            std::env::var("LT_ANTI_DDOS").unwrap_or_else(|_| "not set".to_string()),
             max_connections,
             rate_limit,
             T::http_base_path(),
@@ -1356,7 +1356,7 @@ where
 
             if uri.starts_with(&format!("{}/json", base)) && method == Method::GET {
                 // Returns a JSON with a string payload of requested size (approx.)
-                let max_bytes: usize = std::env::var("RS_PERF_MAX_BYTES")
+                let max_bytes: usize = std::env::var("LT_PERF_MAX_BYTES")
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(2_000_000);
@@ -1394,7 +1394,7 @@ where
 
             if uri.starts_with(&format!("{}/bytes", base)) && method == Method::GET {
                 // Returns raw bytes (application/octet-stream)
-                let max_bytes: usize = std::env::var("RS_PERF_MAX_BYTES")
+                let max_bytes: usize = std::env::var("LT_PERF_MAX_BYTES")
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(2_000_000);
@@ -1507,7 +1507,7 @@ where
         }
 
         // Per-request timeout (covers handler execution)
-        let timeout_ms: u64 = std::env::var("RS_HTTP_TIMEOUT_MS")
+        let timeout_ms: u64 = std::env::var("LT_HTTP_TIMEOUT_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(10_000);
@@ -1538,8 +1538,8 @@ where
     }
 
     // Optional static file serving for frontend benchmarks/examples
-    // Enable by setting RS_STATIC_DIR to a directory containing index.html and assets/
-    if let Ok(static_dir) = std::env::var("RS_STATIC_DIR") {
+    // Enable by setting LT_STATIC_DIR to a directory containing index.html and assets/
+    if let Ok(static_dir) = std::env::var("LT_STATIC_DIR") {
         let path = req.uri().path().to_string();
         if path == "/" || path == "/index.html" {
             if let Some(resp0) = serve_static_file(&static_dir, "index.html", Some(req.headers())) {

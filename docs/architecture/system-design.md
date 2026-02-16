@@ -370,7 +370,7 @@ graph TB
 
         subgraph "Application State"
             PRODUCTS_STATE[products: HashMap]
-            USERS_STATE[users: HashMap]
+            USELT_STATE[users: HashMap]
             SECURITY_STATE[security: RBAC]
         end
 
@@ -386,10 +386,10 @@ graph TB
     BENCHMARK_ROUTE --> PRODUCT_CREATED
 
     PRODUCT_CREATED --> PRODUCTS_STATE
-    USER_REGISTERED --> USERS_STATE
+    USER_REGISTERED --> USELT_STATE
 
     PRODUCTS_STATE --> EVENTS_LOG
-    USERS_STATE --> STATE_SNAP
+    USELT_STATE --> STATE_SNAP
 ```
 
 ### IoT Timeseries
@@ -409,7 +409,7 @@ graph TB
         end
 
         subgraph "IoT State"
-            SENSORS_STATE[sensors: HashMap]
+            SENSOLT_STATE[sensors: HashMap]
             READINGS_STATE[recent_readings: Vec]
             LOCATION_INDEX[location_index: HashMap]
         end
@@ -422,9 +422,9 @@ graph TB
 
     GENERATE_ROUTE --> BATCH_READINGS
     BATCH_READINGS --> SENSOR_READING
-    SENSOR_READING --> SENSORS_STATE
+    SENSOR_READING --> SENSOLT_STATE
     SENSOR_READING --> READINGS_STATE
-    SENSORS_STATE --> LOCATION_INDEX
+    SENSOLT_STATE --> LOCATION_INDEX
 
     READINGS_STATE --> EAGER_LOADING
     EAGER_LOADING --> MEMORY_USAGE

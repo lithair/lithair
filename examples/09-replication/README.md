@@ -196,47 +196,47 @@ Pour isoler l’overhead réseau/consensus et mesurer uniquement le coût HTTP +
 SINGLE_NODE=1 ./bench_1000_crud_parallel.sh 10000
 ```
 
-Astuce : combinez avec les variables `RS_` pour comparer JSON vs Binaire, async on/off :
+Astuce : combinez avec les variables `LT_` pour comparer JSON vs Binaire, async on/off :
 
 ```bash
 # Async JSON (Stage A)
-SINGLE_NODE=1 RS_OPT_PERSIST=1 RS_ENABLE_BINARY=0 ./bench_1000_crud_parallel.sh 10000
+SINGLE_NODE=1 LT_OPT_PERSIST=1 LT_ENABLE_BINARY=0 ./bench_1000_crud_parallel.sh 10000
 
 # Binaire (Stage B)
-SINGLE_NODE=1 RS_OPT_PERSIST=1 RS_ENABLE_BINARY=1 ./bench_1000_crud_parallel.sh 10000
+SINGLE_NODE=1 LT_OPT_PERSIST=1 LT_ENABLE_BINARY=1 ./bench_1000_crud_parallel.sh 10000
 ```
 
 ## ⚙️ Runtime (Persistence & Performance)
 
-Pour des benchmarks réalistes à haut débit, le demo supporte des variables d’environnement `RS_` qui pilotent la persistance de l’EventStore :
+Pour des benchmarks réalistes à haut débit, le demo supporte des variables d’environnement `LT_` qui pilotent la persistance de l’EventStore :
 
-- `RS_OPT_PERSIST` (1/0) – active l’écriture asynchrone optimisée (writer thread) pour les événements (par défaut activée dans le script de bench).
-- `RS_BUFFER_SIZE` (octets) – taille du buffer d’écriture (par défaut 1 048 576 = 1 Mo).
-- `RS_MAX_EVENTS_BUFFER` – nombre d’événements à mettre en tampon avant flush (par défaut 2000).
-- `RS_FLUSH_INTERVAL_MS` – intervalle de flush périodique (par défaut 5 ms pour les benchs).
-- `RS_FSYNC_ON_APPEND` (1/0) – fsync à chaque append (0 recommandé pour les benchs de débit).
-- `RS_EVENT_MAX_BATCH` – taille de lot (batch) interne côté EventStore (par défaut 65536 dans le script de bench).
-- `RS_ENABLE_BINARY` (1/0) – active le mode binaire (Stage B) : les enveloppes d’événements sont sérialisées en bincode et écrites lignes par lignes (séparées par `\n`). Rejouer/restaurer reste compatible : le moteur reconvertit en JSON lors de la lecture.
-- `RS_DISABLE_INDEX` (1/0) – désactive l’index `aggregate_id -> offset` pour éviter des écritures supplémentaires pendant les benchs.
-- `RS_DEDUP_PERSIST` (1/0) – contrôle la persistance des IDs d’idempotence. Mettre à `0` pour les benchs éphémères (pas d’exactly‑once cross‑restart nécessaire).
+- `LT_OPT_PERSIST` (1/0) – active l’écriture asynchrone optimisée (writer thread) pour les événements (par défaut activée dans le script de bench).
+- `LT_BUFFER_SIZE` (octets) – taille du buffer d’écriture (par défaut 1 048 576 = 1 Mo).
+- `LT_MAX_EVENTS_BUFFER` – nombre d’événements à mettre en tampon avant flush (par défaut 2000).
+- `LT_FLUSH_INTERVAL_MS` – intervalle de flush périodique (par défaut 5 ms pour les benchs).
+- `LT_FSYNC_ON_APPEND` (1/0) – fsync à chaque append (0 recommandé pour les benchs de débit).
+- `LT_EVENT_MAX_BATCH` – taille de lot (batch) interne côté EventStore (par défaut 65536 dans le script de bench).
+- `LT_ENABLE_BINARY` (1/0) – active le mode binaire (Stage B) : les enveloppes d’événements sont sérialisées en bincode et écrites lignes par lignes (séparées par `\n`). Rejouer/restaurer reste compatible : le moteur reconvertit en JSON lors de la lecture.
+- `LT_DISABLE_INDEX` (1/0) – désactive l’index `aggregate_id -> offset` pour éviter des écritures supplémentaires pendant les benchs.
+- `LT_DEDUP_PERSIST` (1/0) – contrôle la persistance des IDs d’idempotence. Mettre à `0` pour les benchs éphémères (pas d’exactly‑once cross‑restart nécessaire).
 
 Exemple d’exécution manuelle avec persistance optimisée et binaire :
 
 ```bash
-export RS_OPT_PERSIST=1
-export RS_BUFFER_SIZE=1048576
-export RS_MAX_EVENTS_BUFFER=5000
-export RS_FLUSH_INTERVAL_MS=2
-export RS_FSYNC_ON_APPEND=0
-export RS_ENABLE_BINARY=1
+export LT_OPT_PERSIST=1
+export LT_BUFFER_SIZE=1048576
+export LT_MAX_EVENTS_BUFFER=5000
+export LT_FLUSH_INTERVAL_MS=2
+export LT_FSYNC_ON_APPEND=0
+export LT_ENABLE_BINARY=1
 
 ./bench_1000_crud_parallel.sh 10000
 ```
 
 Notes :
 
-- Le script `bench_1000_crud_parallel.sh` exporte déjà des valeurs par défaut adaptées pour le débit, dont `RS_OPT_PERSIST=1`.
-- Le mode binaire (`RS_ENABLE_BINARY=1`) maximise la vitesse d’append (3–5× vs JSON selon les charges) tout en conservant des snapshots JSON.
+- Le script `bench_1000_crud_parallel.sh` exporte déjà des valeurs par défaut adaptées pour le débit, dont `LT_OPT_PERSIST=1`.
+- Le mode binaire (`LT_ENABLE_BINARY=1`) maximise la vitesse d’append (3–5× vs JSON selon les charges) tout en conservant des snapshots JSON.
 
 ### Profils de stockage prédéfinis (STORAGE_PROFILE)
 
@@ -266,7 +266,7 @@ Le script de bench supporte des profils prêts à l’emploi (sélection via `ST
     ./bench_1000_crud_parallel.sh 10000
     ```
 
-Chaque profil configure automatiquement les variables `RS_` adéquates (buffers, flush, fsync, index, dedup, snapshots) afin d’adapter le moteur aux besoins de l’application.
+Chaque profil configure automatiquement les variables `LT_` adéquates (buffers, flush, fsync, index, dedup, snapshots) afin d’adapter le moteur aux besoins de l’application.
 
 ### Chemin de données (EXPERIMENT_DATA_BASE)
 

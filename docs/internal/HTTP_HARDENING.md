@@ -14,15 +14,15 @@ This document summarizes the production-oriented defaults and knobs available in
 
 ## Configuration (Environment Variables)
 
-- RS_HTTP_TIMEOUT_MS
+- LT_HTTP_TIMEOUT_MS
   - Default: `10000` (10 seconds)
   - Applies a per-request timeout to API paths (`/api/{model}...`). On timeout: 504.
 
-- RS_HTTP_MAX_BODY_BYTES_SINGLE
+- LT_HTTP_MAX_BODY_BYTES_SINGLE
   - Default: `2097152` (2 MiB)
   - Max request size for single-item POST/PUT (`/api/{model}`, `/api/{model}/{id}`)
 
-- RS_HTTP_MAX_BODY_BYTES_BULK
+- LT_HTTP_MAX_BODY_BYTES_BULK
   - Default: `12582912` (12 MiB)
   - Max request size for bulk POST (`/api/{model}/_bulk`)
 
@@ -44,7 +44,7 @@ Preflight handling:
 
 ## Timeouts
 
-- Configured via `RS_HTTP_TIMEOUT_MS` (default 10000 ms)
+- Configured via `LT_HTTP_TIMEOUT_MS` (default 10000 ms)
 - If a request exceeds this time budget on an API route, the server returns:
 
 ```json
@@ -55,8 +55,8 @@ with HTTP `504 Gateway Timeout`.
 
 ## Request Body Size Limits
 
-- Single-item endpoints (POST/PUT): `RS_HTTP_MAX_BODY_BYTES_SINGLE` (2 MiB by default)
-- Bulk ingestion (POST /_bulk): `RS_HTTP_MAX_BODY_BYTES_BULK` (12 MiB by default)
+- Single-item endpoints (POST/PUT): `LT_HTTP_MAX_BODY_BYTES_SINGLE` (2 MiB by default)
+- Bulk ingestion (POST /_bulk): `LT_HTTP_MAX_BODY_BYTES_BULK` (12 MiB by default)
 - Exceeding a limit yields HTTP `413 Payload Too Large`.
 
 ## Content-Type Validation
@@ -75,7 +75,7 @@ with HTTP `504 Gateway Timeout`.
 - 415 Unsupported Media Type – missing or wrong Content-Type
 - 500 Internal Server Error – unexpected failure
 - 503 Service Unavailable – consensus failure (when applicable)
-- 504 Gateway Timeout – request exceeded `RS_HTTP_TIMEOUT_MS`
+- 504 Gateway Timeout – request exceeded `LT_HTTP_TIMEOUT_MS`
 
 JSON error shape (representative):
 

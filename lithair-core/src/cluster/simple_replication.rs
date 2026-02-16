@@ -118,7 +118,7 @@ where
 {
     #[inline]
     fn is_verbose() -> bool {
-        std::env::var("RS_VERBOSE")
+        std::env::var("LT_VERBOSE")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
     }

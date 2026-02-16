@@ -38,7 +38,7 @@ Lithair uses a layered configuration system with the following priority (lowest 
 ```rust
 // 1. Default: port = 8080
 // 2. config.toml: port = 3000
-// 3. ENV: RS_PORT=9000
+// 3. ENV: LT_PORT=9000
 // 4. Code (WINS):
 LithairServer::new()
     .with_port(7000)  // Final value: 7000
@@ -52,13 +52,13 @@ Core HTTP server settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `port` | `8080` |  | `RS_PORT` | `.with_port(u16)` |  | Server listening port |
-| `host` | `"127.0.0.1"` |  | `RS_HOST` | `.with_host(String)` |  | Server listening address |
-| `workers` | `num_cpus` |  | `RS_WORKERS` | `.with_workers(usize)` |  | Number of Tokio worker threads |
-| `cors_enabled` | `false` |  | `RS_CORS_ENABLED` | `.with_cors(bool)` |  | Enable CORS support |
-| `cors_origins` | `["*"]` |  | `RS_CORS_ORIGINS` | `.with_cors_origins(Vec<String>)` |  | Allowed CORS origins (comma-separated in env) |
-| `request_timeout` | `30` |  | `RS_REQUEST_TIMEOUT` | `.with_timeout(u64)` |  | Request timeout in seconds |
-| `max_body_size` | `10485760` |  | `RS_MAX_BODY_SIZE` | `.with_max_body_size(usize)` |  | Maximum request body size in bytes (10MB default) |
+| `port` | `8080` |  | `LT_PORT` | `.with_port(u16)` |  | Server listening port |
+| `host` | `"127.0.0.1"` |  | `LT_HOST` | `.with_host(String)` |  | Server listening address |
+| `workers` | `num_cpus` |  | `LT_WORKERS` | `.with_workers(usize)` |  | Number of Tokio worker threads |
+| `cors_enabled` | `false` |  | `LT_COLT_ENABLED` | `.with_cors(bool)` |  | Enable CORS support |
+| `cors_origins` | `["*"]` |  | `LT_COLT_ORIGINS` | `.with_cors_origins(Vec<String>)` |  | Allowed CORS origins (comma-separated in env) |
+| `request_timeout` | `30` |  | `LT_REQUEST_TIMEOUT` | `.with_timeout(u64)` |  | Request timeout in seconds |
+| `max_body_size` | `10485760` |  | `LT_MAX_BODY_SIZE` | `.with_max_body_size(usize)` |  | Maximum request body size in bytes (10MB default) |
 
 ### Example
 
@@ -76,13 +76,13 @@ max_body_size = 10485760
 
 **Environment:**
 ```bash
-RS_PORT=8080
-RS_HOST=0.0.0.0
-RS_WORKERS=4
-RS_CORS_ENABLED=true
-RS_CORS_ORIGINS=https://app.example.com,https://admin.example.com
-RS_REQUEST_TIMEOUT=30
-RS_MAX_BODY_SIZE=10485760
+LT_PORT=8080
+LT_HOST=0.0.0.0
+LT_WORKERS=4
+LT_COLT_ENABLED=true
+LT_COLT_ORIGINS=https://app.example.com,https://admin.example.com
+LT_REQUEST_TIMEOUT=30
+LT_MAX_BODY_SIZE=10485760
 ```
 
 **Code:**
@@ -108,13 +108,13 @@ Session management and authentication settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `true` |  | `RS_SESSION_ENABLED` | `.with_sessions(SessionManager)` |  | Enable session management |
-| `cleanup_interval` | `300` |  | `RS_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)` |  | Cleanup interval in seconds (5 min default) |
-| `max_age` | `3600` |  | `RS_SESSION_MAX_AGE` | `.with_session_max_age(u64)` |  | Session lifetime in seconds (1 hour default) |
-| `cookie_enabled` | `true` |  | `RS_SESSION_COOKIE_ENABLED` | `.with_session_cookie(bool)` |  | Enable cookie-based sessions |
-| `cookie_secure` | `true` |  | `RS_SESSION_COOKIE_SECURE` | - |  | Set Secure flag on cookies (HTTPS only) |
-| `cookie_httponly` | `true` |  | `RS_SESSION_COOKIE_HTTPONLY` | - |  | Set HttpOnly flag on cookies (XSS protection) |
-| `cookie_samesite` | `"Lax"` |  | `RS_SESSION_COOKIE_SAMESITE` | - |  | SameSite policy (Strict/Lax/None) |
+| `enabled` | `true` |  | `LT_SESSION_ENABLED` | `.with_sessions(SessionManager)` |  | Enable session management |
+| `cleanup_interval` | `300` |  | `LT_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)` |  | Cleanup interval in seconds (5 min default) |
+| `max_age` | `3600` |  | `LT_SESSION_MAX_AGE` | `.with_session_max_age(u64)` |  | Session lifetime in seconds (1 hour default) |
+| `cookie_enabled` | `true` |  | `LT_SESSION_COOKIE_ENABLED` | `.with_session_cookie(bool)` |  | Enable cookie-based sessions |
+| `cookie_secure` | `true` |  | `LT_SESSION_COOKIE_SECURE` | - |  | Set Secure flag on cookies (HTTPS only) |
+| `cookie_httponly` | `true` |  | `LT_SESSION_COOKIE_HTTPONLY` | - |  | Set HttpOnly flag on cookies (XSS protection) |
+| `cookie_samesite` | `"Lax"` |  | `LT_SESSION_COOKIE_SAMESITE` | - |  | SameSite policy (Strict/Lax/None) |
 
 ### Example
 
@@ -132,13 +132,13 @@ cookie_samesite = "Lax"
 
 **Environment:**
 ```bash
-RS_SESSION_ENABLED=true
-RS_SESSION_CLEANUP_INTERVAL=300
-RS_SESSION_MAX_AGE=3600
-RS_SESSION_COOKIE_ENABLED=true
-RS_SESSION_COOKIE_SECURE=true
-RS_SESSION_COOKIE_HTTPONLY=true
-RS_SESSION_COOKIE_SAMESITE=Lax
+LT_SESSION_ENABLED=true
+LT_SESSION_CLEANUP_INTERVAL=300
+LT_SESSION_MAX_AGE=3600
+LT_SESSION_COOKIE_ENABLED=true
+LT_SESSION_COOKIE_SECURE=true
+LT_SESSION_COOKIE_HTTPONLY=true
+LT_SESSION_COOKIE_SAMESITE=Lax
 ```
 
 **Code:**
@@ -164,12 +164,12 @@ Role-Based Access Control settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `false` |  | `RS_RBAC_ENABLED` | `.with_rbac(RbacConfig)` |  | Enable RBAC system |
-| `default_role` | `"guest"` |  | `RS_RBAC_DEFAULT_ROLE` | `.with_default_role(String)` |  | Default role for unauthenticated users |
-| `audit_enabled` | `true` |  | `RS_RBAC_AUDIT_ENABLED` | `.with_audit(bool)` |  | Enable audit trail for RBAC events |
-| `rate_limit_enabled` | `false` |  | `RS_RBAC_RATE_LIMIT` | `.with_rate_limit(bool)` |  | Enable rate limiting on login attempts |
-| `max_login_attempts` | `5` |  | `RS_RBAC_MAX_LOGIN_ATTEMPTS` | - |  | Maximum login attempts before lockout |
-| `lockout_duration` | `300` |  | `RS_RBAC_LOCKOUT_DURATION` | - |  | Account lockout duration in seconds (5 min) |
+| `enabled` | `false` |  | `LT_RBAC_ENABLED` | `.with_rbac(RbacConfig)` |  | Enable RBAC system |
+| `default_role` | `"guest"` |  | `LT_RBAC_DEFAULT_ROLE` | `.with_default_role(String)` |  | Default role for unauthenticated users |
+| `audit_enabled` | `true` |  | `LT_RBAC_AUDIT_ENABLED` | `.with_audit(bool)` |  | Enable audit trail for RBAC events |
+| `rate_limit_enabled` | `false` |  | `LT_RBAC_RATE_LIMIT` | `.with_rate_limit(bool)` |  | Enable rate limiting on login attempts |
+| `max_login_attempts` | `5` |  | `LT_RBAC_MAX_LOGIN_ATTEMPTS` | - |  | Maximum login attempts before lockout |
+| `lockout_duration` | `300` |  | `LT_RBAC_LOCKOUT_DURATION` | - |  | Account lockout duration in seconds (5 min) |
 
 ### Example
 
@@ -186,12 +186,12 @@ lockout_duration = 300
 
 **Environment:**
 ```bash
-RS_RBAC_ENABLED=true
-RS_RBAC_DEFAULT_ROLE=guest
-RS_RBAC_AUDIT_ENABLED=true
-RS_RBAC_RATE_LIMIT=true
-RS_RBAC_MAX_LOGIN_ATTEMPTS=5
-RS_RBAC_LOCKOUT_DURATION=300
+LT_RBAC_ENABLED=true
+LT_RBAC_DEFAULT_ROLE=guest
+LT_RBAC_AUDIT_ENABLED=true
+LT_RBAC_RATE_LIMIT=true
+LT_RBAC_MAX_LOGIN_ATTEMPTS=5
+LT_RBAC_LOCKOUT_DURATION=300
 ```
 
 **Code:**
@@ -215,12 +215,12 @@ Raft consensus and cluster replication settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `false` |  | `RS_REPLICATION_ENABLED` | `.with_replication(bool)` |  | Enable Raft replication |
-| `node_id` | `auto` |  | `RS_NODE_ID` | `.with_node_id(String)` |  | Unique node identifier |
-| `cluster_nodes` | `[]` |  | `RS_CLUSTER_NODES` | `.with_cluster(Vec<String>)` |  | List of cluster nodes (comma-separated in env) |
-| `election_timeout` | `150` |  | `RS_ELECTION_TIMEOUT` | - |  | Election timeout in milliseconds |
-| `heartbeat_interval` | `50` |  | `RS_HEARTBEAT_INTERVAL` | - |  | Heartbeat interval in milliseconds |
-| `snapshot_threshold` | `1000` |  | `RS_SNAPSHOT_THRESHOLD` | - |  | Number of log entries before snapshot |
+| `enabled` | `false` |  | `LT_REPLICATION_ENABLED` | `.with_replication(bool)` |  | Enable Raft replication |
+| `node_id` | `auto` |  | `LT_NODE_ID` | `.with_node_id(String)` |  | Unique node identifier |
+| `cluster_nodes` | `[]` |  | `LT_CLUSTER_NODES` | `.with_cluster(Vec<String>)` |  | List of cluster nodes (comma-separated in env) |
+| `election_timeout` | `150` |  | `LT_ELECTION_TIMEOUT` | - |  | Election timeout in milliseconds |
+| `heartbeat_interval` | `50` |  | `LT_HEARTBEAT_INTERVAL` | - |  | Heartbeat interval in milliseconds |
+| `snapshot_threshold` | `1000` |  | `LT_SNAPSHOT_THRESHOLD` | - |  | Number of log entries before snapshot |
 
 ### Example
 
@@ -237,12 +237,12 @@ snapshot_threshold = 1000
 
 **Environment:**
 ```bash
-RS_REPLICATION_ENABLED=true
-RS_NODE_ID=node-1
-RS_CLUSTER_NODES=node-2:8081,node-3:8082
-RS_ELECTION_TIMEOUT=150
-RS_HEARTBEAT_INTERVAL=50
-RS_SNAPSHOT_THRESHOLD=1000
+LT_REPLICATION_ENABLED=true
+LT_NODE_ID=node-1
+LT_CLUSTER_NODES=node-2:8081,node-3:8082
+LT_ELECTION_TIMEOUT=150
+LT_HEARTBEAT_INTERVAL=50
+LT_SNAPSHOT_THRESHOLD=1000
 ```
 
 **Code:**
@@ -264,11 +264,11 @@ Administrative interface and monitoring settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `true` |  | `RS_ADMIN_ENABLED` | `.with_admin_panel(bool)` |  | Enable admin panel |
-| `path` | `"/admin"` |  | `RS_ADMIN_PATH` | `.with_admin_path(String)` |  | Admin panel base path |
-| `auth_required` | `true` |  | `RS_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)` |  | Require authentication for admin panel |
-| `metrics_enabled` | `true` |  | `RS_ADMIN_METRICS` | `.with_metrics(bool)` |  | Enable Prometheus metrics endpoint |
-| `metrics_path` | `"/metrics"` |  | `RS_ADMIN_METRICS_PATH` | - |  | Prometheus metrics endpoint path |
+| `enabled` | `true` |  | `LT_ADMIN_ENABLED` | `.with_admin_panel(bool)` |  | Enable admin panel |
+| `path` | `"/admin"` |  | `LT_ADMIN_PATH` | `.with_admin_path(String)` |  | Admin panel base path |
+| `auth_required` | `true` |  | `LT_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)` |  | Require authentication for admin panel |
+| `metrics_enabled` | `true` |  | `LT_ADMIN_METRICS` | `.with_metrics(bool)` |  | Enable Prometheus metrics endpoint |
+| `metrics_path` | `"/metrics"` |  | `LT_ADMIN_METRICS_PATH` | - |  | Prometheus metrics endpoint path |
 
 ---
 
@@ -282,7 +282,7 @@ Administrative interface and monitoring settings.
 |----------|---------|-------------|---------|--------------|------------|-------------|
 | `dev_reload_token` | `None` |  **BLOCKED** |  **REQUIRED** | - |  | Development bypass token for TOTP/MFA authentication + hot reload endpoint ( **DEV ONLY**) |
 
-### RS_DEV_RELOAD_TOKEN
+### LT_DEV_RELOAD_TOKEN
 
 **Purpose**: Simplified development workflow - bypasses TOTP/MFA authentication and enables hot reload without full RBAC.
 
@@ -296,10 +296,10 @@ Administrative interface and monitoring settings.
 **Usage**:
 ```bash
 # Development mode with bypass token
-RS_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev
+LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev
 
 # Hybrid mode with bypass token
-RS_DEV_RELOAD_TOKEN=dev123 cargo run -- --hybrid
+LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --hybrid
 
 # Login without TOTP
 curl -X POST http://localhost:3007/auth/login \
@@ -319,17 +319,17 @@ dev_reload_token = "dev123"
 
 # Server will fail with:
 # Error: Security Error: 'dev_reload_token' must only be set via
-# environment variable (RS_DEV_RELOAD_TOKEN), never in config.toml
+# environment variable (LT_DEV_RELOAD_TOKEN), never in config.toml
 # to prevent accidental git commits of secrets.
 ```
 
 **Correct Usage - Environment Variable Only** :
 ```bash
 # Use environment variable
-export RS_DEV_RELOAD_TOKEN=dev123
+export LT_DEV_RELOAD_TOKEN=dev123
 
 # Or inline
-RS_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev
+LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev
 ```
 
 ### Example
@@ -346,11 +346,11 @@ metrics_path = "/metrics"
 
 **Environment:**
 ```bash
-RS_ADMIN_ENABLED=true
-RS_ADMIN_PATH=/admin
-RS_ADMIN_AUTH_REQUIRED=true
-RS_ADMIN_METRICS=true
-RS_ADMIN_METRICS_PATH=/metrics
+LT_ADMIN_ENABLED=true
+LT_ADMIN_PATH=/admin
+LT_ADMIN_AUTH_REQUIRED=true
+LT_ADMIN_METRICS=true
+LT_ADMIN_METRICS_PATH=/metrics
 ```
 
 **Code:**
@@ -370,12 +370,12 @@ Application logging and observability settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `level` | `"info"` |  | `RS_LOG_LEVEL` | `.with_log_level(String)` |  | Log level (trace/debug/info/warn/error) |
-| `format` | `"json"` |  | `RS_LOG_FORMAT` | `.with_log_format(String)` |  | Log format (json/text/pretty) |
-| `file_enabled` | `false` |  | `RS_LOG_FILE_ENABLED` | `.with_log_file(bool)` |  | Enable logging to file |
-| `file_path` | `"./logs"` |  | `RS_LOG_FILE_PATH` | - |  | Log file directory path |
-| `file_rotation` | `"daily"` |  | `RS_LOG_FILE_ROTATION` | - |  | Log rotation policy (daily/hourly/size) |
-| `file_max_size` | `100` |  | `RS_LOG_FILE_MAX_SIZE` | - |  | Max log file size in MB |
+| `level` | `"info"` |  | `LT_LOG_LEVEL` | `.with_log_level(String)` |  | Log level (trace/debug/info/warn/error) |
+| `format` | `"json"` |  | `LT_LOG_FORMAT` | `.with_log_format(String)` |  | Log format (json/text/pretty) |
+| `file_enabled` | `false` |  | `LT_LOG_FILE_ENABLED` | `.with_log_file(bool)` |  | Enable logging to file |
+| `file_path` | `"./logs"` |  | `LT_LOG_FILE_PATH` | - |  | Log file directory path |
+| `file_rotation` | `"daily"` |  | `LT_LOG_FILE_ROTATION` | - |  | Log rotation policy (daily/hourly/size) |
+| `file_max_size` | `100` |  | `LT_LOG_FILE_MAX_SIZE` | - |  | Max log file size in MB |
 
 ### Example
 
@@ -392,12 +392,12 @@ file_max_size = 100
 
 **Environment:**
 ```bash
-RS_LOG_LEVEL=info
-RS_LOG_FORMAT=json
-RS_LOG_FILE_ENABLED=true
-RS_LOG_FILE_PATH=./logs
-RS_LOG_FILE_ROTATION=daily
-RS_LOG_FILE_MAX_SIZE=100
+LT_LOG_LEVEL=info
+LT_LOG_FORMAT=json
+LT_LOG_FILE_ENABLED=true
+LT_LOG_FILE_PATH=./logs
+LT_LOG_FILE_ROTATION=daily
+LT_LOG_FILE_MAX_SIZE=100
 ```
 
 **Code:**
@@ -416,13 +416,13 @@ Data persistence and storage settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `data_dir` | `"./data"` |  | `RS_DATA_DIR` | `.with_data_dir(String)` |  | Base directory for data storage |
-| `snapshot_interval` | `1000` |  | `RS_SNAPSHOT_INTERVAL` | - |  | Number of events before creating snapshot |
-| `compaction_enabled` | `true` |  | `RS_COMPACTION_ENABLED` | - |  | Enable automatic log compaction |
-| `compaction_threshold` | `10000` |  | `RS_COMPACTION_THRESHOLD` | - |  | Events threshold for compaction |
-| `backup_enabled` | `false` |  | `RS_BACKUP_ENABLED` | `.with_backup(bool)` |  | Enable automatic backups |
-| `backup_interval` | `86400` |  | `RS_BACKUP_INTERVAL` | - |  | Backup interval in seconds (24h default) |
-| `backup_path` | `"./backups"` |  | `RS_BACKUP_PATH` | - |  | Backup directory path |
+| `data_dir` | `"./data"` |  | `LT_DATA_DIR` | `.with_data_dir(String)` |  | Base directory for data storage |
+| `snapshot_interval` | `1000` |  | `LT_SNAPSHOT_INTERVAL` | - |  | Number of events before creating snapshot |
+| `compaction_enabled` | `true` |  | `LT_COMPACTION_ENABLED` | - |  | Enable automatic log compaction |
+| `compaction_threshold` | `10000` |  | `LT_COMPACTION_THRESHOLD` | - |  | Events threshold for compaction |
+| `backup_enabled` | `false` |  | `LT_BACKUP_ENABLED` | `.with_backup(bool)` |  | Enable automatic backups |
+| `backup_interval` | `86400` |  | `LT_BACKUP_INTERVAL` | - |  | Backup interval in seconds (24h default) |
+| `backup_path` | `"./backups"` |  | `LT_BACKUP_PATH` | - |  | Backup directory path |
 
 ### Example
 
@@ -440,13 +440,13 @@ backup_path = "./backups"
 
 **Environment:**
 ```bash
-RS_DATA_DIR=./data
-RS_SNAPSHOT_INTERVAL=1000
-RS_COMPACTION_ENABLED=true
-RS_COMPACTION_THRESHOLD=10000
-RS_BACKUP_ENABLED=true
-RS_BACKUP_INTERVAL=86400
-RS_BACKUP_PATH=./backups
+LT_DATA_DIR=./data
+LT_SNAPSHOT_INTERVAL=1000
+LT_COMPACTION_ENABLED=true
+LT_COMPACTION_THRESHOLD=10000
+LT_BACKUP_ENABLED=true
+LT_BACKUP_INTERVAL=86400
+LT_BACKUP_PATH=./backups
 ```
 
 **Code:**
@@ -464,12 +464,12 @@ Performance tuning and optimization settings.
 
 | Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
 |----------|---------|-------------|---------|--------------|------------|-------------|
-| `cache_enabled` | `true` |  | `RS_CACHE_ENABLED` | `.with_cache(bool)` |  | Enable in-memory caching |
-| `cache_size` | `1000` |  | `RS_CACHE_SIZE` | - |  | Maximum number of cached items |
-| `cache_ttl` | `300` |  | `RS_CACHE_TTL` | - |  | Cache TTL in seconds (5 min default) |
-| `connection_pool_size` | `10` |  | `RS_POOL_SIZE` | - |  | Connection pool size |
-| `batch_size` | `100` |  | `RS_BATCH_SIZE` | - |  | Default batch size for operations |
-| `compression_enabled` | `false` |  | `RS_COMPRESSION_ENABLED` | - |  | Enable response compression |
+| `cache_enabled` | `true` |  | `LT_CACHE_ENABLED` | `.with_cache(bool)` |  | Enable in-memory caching |
+| `cache_size` | `1000` |  | `LT_CACHE_SIZE` | - |  | Maximum number of cached items |
+| `cache_ttl` | `300` |  | `LT_CACHE_TTL` | - |  | Cache TTL in seconds (5 min default) |
+| `connection_pool_size` | `10` |  | `LT_POOL_SIZE` | - |  | Connection pool size |
+| `batch_size` | `100` |  | `LT_BATCH_SIZE` | - |  | Default batch size for operations |
+| `compression_enabled` | `false` |  | `LT_COMPRESSION_ENABLED` | - |  | Enable response compression |
 
 ### Example
 
@@ -486,12 +486,12 @@ compression_enabled = false
 
 **Environment:**
 ```bash
-RS_CACHE_ENABLED=true
-RS_CACHE_SIZE=1000
-RS_CACHE_TTL=300
-RS_POOL_SIZE=10
-RS_BATCH_SIZE=100
-RS_COMPRESSION_ENABLED=false
+LT_CACHE_ENABLED=true
+LT_CACHE_SIZE=1000
+LT_CACHE_TTL=300
+LT_POOL_SIZE=10
+LT_BATCH_SIZE=100
+LT_COMPRESSION_ENABLED=false
 ```
 
 **Code:**

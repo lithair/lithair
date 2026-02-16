@@ -63,22 +63,22 @@ Complete technical reference for all Lithair features, APIs, and configuration o
 ## Configuration Variables
 
 ### Server Configuration
-- `RS_PORT` - Server port (default: 3000)
-- `RS_HOST` - Server host (default: 127.0.0.1)
-- `RS_ADMIN_PATH` - Admin panel path (default: /admin)
-- `RS_DOCS_PATH` - Documentation path (default: ../Lithair/docs)
+- `LT_PORT` - Server port (default: 3000)
+- `LT_HOST` - Server host (default: 127.0.0.1)
+- `LT_ADMIN_PATH` - Admin panel path (default: /admin)
+- `LT_DOCS_PATH` - Documentation path (default: ../Lithair/docs)
 
 ### Frontend Configuration
-- `RS_PUBLIC_DIR` - Public frontend directory
-- `RS_ADMIN_DIR` - Admin frontend directory
+- `LT_PUBLIC_DIR` - Public frontend directory
+- `LT_ADMIN_DIR` - Admin frontend directory
 
 ### Development Configuration
-- `RS_DEV_RELOAD_TOKEN` - Development token (bypasses TOTP/MFA + enables hot reload) ⚠️ **DEV ONLY**
+- `LT_DEV_RELOAD_TOKEN` - Development token (bypasses TOTP/MFA + enables hot reload) ⚠️ **DEV ONLY**
 
 ### Security Configuration
-- `RS_SESSION_SECRET` - Session encryption secret
-- `RS_MFA_ISSUER` - MFA/TOTP issuer name
-- `RS_CORS_ORIGINS` - Allowed CORS origins
+- `LT_SESSION_SECRET` - Session encryption secret
+- `LT_MFA_ISSUER` - MFA/TOTP issuer name
+- `LT_COLT_ORIGINS` - Allowed CORS origins
 
 See [Configuration Reference](../configuration-reference.md) for complete list.
 

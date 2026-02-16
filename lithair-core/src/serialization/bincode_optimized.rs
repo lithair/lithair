@@ -328,7 +328,7 @@ mod tests {
         println!("Speedup: {:.2}x", speedup);
 
         // Only enforce strict speedup when explicitly requested
-        let enforce_perf = std::env::var("RS_ENFORCE_PERF")
+        let enforce_perf = std::env::var("LT_ENFORCE_PERF")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
@@ -341,7 +341,7 @@ mod tests {
             );
 
             // Allow environment to set expected minimum, default to 1.2x
-            let min_speedup: f64 = std::env::var("RS_BINCODE_MIN_SPEEDUP")
+            let min_speedup: f64 = std::env::var("LT_BINCODE_MIN_SPEEDUP")
                 .ok()
                 .and_then(|v| v.parse::<f64>().ok())
                 .unwrap_or(1.2);

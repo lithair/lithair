@@ -13,23 +13,23 @@ Default: disabled, opt-in via environment.
 
 ## Configuration (ENV)
 
-- RS_FW_ENABLE = `1`|`0` (default `0`)
-- RS_FW_IP_ALLOW = CSV of IPs (exact match). Empty means allow all unless denied.
-- RS_FW_IP_DENY = CSV of IPs (exact match). Deny takes precedence.
-- RS_FW_RATE_GLOBAL_QPS = integer (e.g. `1000`)
-- RS_FW_RATE_PERIP_QPS = integer (e.g. `100`)
+- LT_FW_ENABLE = `1`|`0` (default `0`)
+- LT_FW_IP_ALLOW = CSV of IPs (exact match). Empty means allow all unless denied.
+- LT_FW_IP_DENY = CSV of IPs (exact match). Deny takes precedence.
+- LT_FW_RATE_GLOBAL_QPS = integer (e.g. `1000`)
+- LT_FW_RATE_PERIP_QPS = integer (e.g. `100`)
 
 Examples:
 
 ```bash
 # Deny localhost entirely
-RS_FW_ENABLE=1 RS_FW_IP_DENY=127.0.0.1 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
+LT_FW_ENABLE=1 LT_FW_IP_DENY=127.0.0.1 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
 
 # Only allow a single IP
-RS_FW_ENABLE=1 RS_FW_IP_ALLOW=192.168.1.50 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
+LT_FW_ENABLE=1 LT_FW_IP_ALLOW=192.168.1.50 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
 
 # Rate limit globally and per IP
-RS_FW_ENABLE=1 RS_FW_RATE_GLOBAL_QPS=500 RS_FW_RATE_PERIP_QPS=50 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
+LT_FW_ENABLE=1 LT_FW_RATE_GLOBAL_QPS=500 LT_FW_RATE_PERIP_QPS=50 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
 ```
 
 ## Error semantics
@@ -75,7 +75,7 @@ Precedence when multiple sources are present:
 
 1. `DeclarativeServer::with_firewall_config(cfg)` (builder)
 2. `#[firewall(...)]` attribute on the model
-3. Environment variables (`RS_FW_*`)
+3. Environment variables (`LT_FW_*`)
 
 Example:
 

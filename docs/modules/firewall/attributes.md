@@ -45,7 +45,7 @@ pub struct Product {
 
 1. Builder config from code: `DeclarativeServer::with_firewall_config(...)`
 2. Model-level config: `#[firewall(...)]` on the model
-3. Environment variables: `RS_FW_*`
+3. Environment variables: `LT_FW_*`
 
 The builder config is the highest priority and will override the model attribute. The model attribute overrides environment variables.
 

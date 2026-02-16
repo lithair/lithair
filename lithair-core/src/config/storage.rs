@@ -55,13 +55,13 @@ impl StorageConfig {
         *self = other;
     }
     pub fn apply_env_vars(&mut self) {
-        if let Ok(dir) = env::var("RS_DATA_DIR") {
+        if let Ok(dir) = env::var("LT_DATA_DIR") {
             self.data_dir = dir;
         }
-        if let Ok(val) = env::var("RS_SCHEMA_VALIDATION") {
+        if let Ok(val) = env::var("LT_SCHEMA_VALIDATION") {
             self.schema_validation_enabled = val.parse().unwrap_or(true);
         }
-        if let Ok(mode) = env::var("RS_SCHEMA_MIGRATION_MODE") {
+        if let Ok(mode) = env::var("LT_SCHEMA_MIGRATION_MODE") {
             self.schema_migration_mode = match mode.to_lowercase().as_str() {
                 "strict" => SchemaMigrationMode::Strict,
                 "auto" => SchemaMigrationMode::Auto,

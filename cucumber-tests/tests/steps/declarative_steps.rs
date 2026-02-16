@@ -427,7 +427,7 @@ async fn given_binary_engine(w: &mut DeclarativeWorld) {
         ..Default::default()
     };
     // Set env var for binary mode
-    std::env::set_var("RS_ENABLE_BINARY", "1");
+    std::env::set_var("LT_ENABLE_BINARY", "1");
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 
@@ -438,7 +438,7 @@ async fn when_restart_binary_engine(w: &mut DeclarativeWorld) {
         ..Default::default()
     };
     // Set env var for binary mode
-    std::env::set_var("RS_ENABLE_BINARY", "1");
+    std::env::set_var("LT_ENABLE_BINARY", "1");
     w.engine = Some(Engine::<TestApp>::new(config).unwrap());
 }
 

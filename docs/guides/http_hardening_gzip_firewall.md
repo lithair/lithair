@@ -42,8 +42,8 @@ let server = server
 ```
 
 ### Environment overrides
-- `RS_HTTP_GZIP=1` or `true` → Enable globally.
-- `RS_HTTP_GZIP_MIN=1024` → Minimum body size to start compressing.
+- `LT_HTTP_GZIP=1` or `true` → Enable globally.
+- `LT_HTTP_GZIP_MIN=1024` → Minimum body size to start compressing.
 
 Notes:
 - Small bodies below `min_bytes` are not compressed.
@@ -114,13 +114,13 @@ let server = server.with_firewall_config(fw);
 ### Environment configuration (no code change)
 ```bash
 # Enable firewall and restrict IP access (comma-separated exact IPs)
-export RS_FW_ENABLE=1
-export RS_FW_IP_ALLOW="internal,10.0.0.10,192.168.0.0/16"
-export RS_FW_IP_DENY=""  # optional
+export LT_FW_ENABLE=1
+export LT_FW_IP_ALLOW="internal,10.0.0.10,192.168.0.0/16"
+export LT_FW_IP_DENY=""  # optional
 
 # Rate limits
-export RS_FW_RATE_GLOBAL_QPS=1000
-export RS_FW_RATE_PERIP_QPS=50
+export LT_FW_RATE_GLOBAL_QPS=1000
+export LT_FW_RATE_PERIP_QPS=50
 ```
 
 Then in code, rely on model or builder defaults; the final config is resolved with precedence `builder > model > env`.
@@ -154,7 +154,7 @@ Options:
 ```
 - Disable via env:
 ```bash
-export RS_PERF_ENABLED=0
+export LT_PERF_ENABLED=0
 ```
 - Or gate with `FirewallConfig` as shown above.
 

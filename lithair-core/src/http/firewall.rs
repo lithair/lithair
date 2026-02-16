@@ -39,16 +39,16 @@ pub struct Firewall {
 
 impl FirewallConfig {
     pub fn from_env() -> Self {
-        let enabled = std::env::var("RS_FW_ENABLE")
+        let enabled = std::env::var("LT_FW_ENABLE")
             .ok()
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        let allow = parse_csv_ipset(std::env::var("RS_FW_IP_ALLOW").unwrap_or_default());
-        let deny = parse_csv_ipset(std::env::var("RS_FW_IP_DENY").unwrap_or_default());
+        let allow = parse_csv_ipset(std::env::var("LT_FW_IP_ALLOW").unwrap_or_default());
+        let deny = parse_csv_ipset(std::env::var("LT_FW_IP_DENY").unwrap_or_default());
         let global_qps =
-            std::env::var("RS_FW_RATE_GLOBAL_QPS").ok().and_then(|v| v.parse::<u64>().ok());
+            std::env::var("LT_FW_RATE_GLOBAL_QPS").ok().and_then(|v| v.parse::<u64>().ok());
         let per_ip_qps =
-            std::env::var("RS_FW_RATE_PERIP_QPS").ok().and_then(|v| v.parse::<u64>().ok());
+            std::env::var("LT_FW_RATE_PERIP_QPS").ok().and_then(|v| v.parse::<u64>().ok());
         Self {
             enabled,
             allow,
@@ -410,9 +410,9 @@ mod tests {
     #[test]
     fn precedence_model_over_env() {
         // Set env to something different
-        std::env::set_var("RS_FW_ENABLE", "0");
-        std::env::set_var("RS_FW_IP_ALLOW", "");
-        std::env::set_var("RS_FW_RATE_GLOBAL_QPS", "100");
+        std::env::set_var("LT_FW_ENABLE", "0");
+        std::env::set_var("LT_FW_IP_ALLOW", "");
+        std::env::set_var("LT_FW_RATE_GLOBAL_QPS", "100");
         let model = FirewallConfig {
             enabled: true,
             allow: ["127.0.0.1"].into_iter().map(|s| s.to_string()).collect(),
@@ -430,11 +430,11 @@ mod tests {
 
     #[test]
     fn env_only_is_selected_when_no_builder_or_model() {
-        std::env::set_var("RS_FW_ENABLE", "1");
-        std::env::set_var("RS_FW_IP_ALLOW", "127.0.0.1");
-        std::env::set_var("RS_FW_IP_DENY", "");
-        std::env::set_var("RS_FW_RATE_GLOBAL_QPS", "7");
-        std::env::set_var("RS_FW_RATE_PERIP_QPS", "4");
+        std::env::set_var("LT_FW_ENABLE", "1");
+        std::env::set_var("LT_FW_IP_ALLOW", "127.0.0.1");
+        std::env::set_var("LT_FW_IP_DENY", "");
+        std::env::set_var("LT_FW_RATE_GLOBAL_QPS", "7");
+        std::env::set_var("LT_FW_RATE_PERIP_QPS", "4");
         let eff = resolve_firewall_config(None, None);
         assert!(eff.enabled);
         assert_eq!(eff.global_qps, Some(7));

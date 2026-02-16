@@ -563,7 +563,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
         .expect("Impossible de créer le répertoire pour la déduplication concurrente");
 
     // Forcer la persistance des IDs de déduplication
-    std::env::set_var("RS_DEDUP_PERSIST", "1");
+    std::env::set_var("LT_DEDUP_PERSIST", "1");
 
     let config = EngineConfig { event_log_path: base_path.clone(), ..Default::default() };
 

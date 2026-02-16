@@ -80,38 +80,38 @@ Operational guidance:
 
 ### Runtime Environment Variables (High Throughput)
 
-To control optimized persistence at runtime without code changes, use the following `RS_` environment variables:
+To control optimized persistence at runtime without code changes, use the following `LT_` environment variables:
 
-- `RS_OPT_PERSIST` (1/0)
+- `LT_OPT_PERSIST` (1/0)
   Enables the asynchronous writer thread for event appends (JSON lines). Greatly reduces syscall/flush overhead. Default: off (scripts may turn it on).
 
-- `RS_BUFFER_SIZE` (bytes)
+- `LT_BUFFER_SIZE` (bytes)
   Buffer capacity for the async writer (e.g., `1048576` for 1MB).
 
-- `RS_MAX_EVENTS_BUFFER`
+- `LT_MAX_EVENTS_BUFFER`
   Number of events to buffer before a forced flush (e.g., `2000`).
 
-- `RS_FLUSH_INTERVAL_MS`
+- `LT_FLUSH_INTERVAL_MS`
   Periodic flush interval in milliseconds (e.g., `2`–`10` in benchmarks).
 
-- `RS_FSYNC_ON_APPEND` (1/0)
+- `LT_FSYNC_ON_APPEND` (1/0)
   Control fsync on each append. For throughput benchmarks, use `0`.
 
-- `RS_EVENT_MAX_BATCH`
+- `LT_EVENT_MAX_BATCH`
   Internal batch size (legacy path). Kept for compatibility; async path prefers the parameters above.
 
-- `RS_ENABLE_BINARY` (1/0)
+- `LT_ENABLE_BINARY` (1/0)
   Enable true binary persistence: event envelopes are serialized with bincode and written as newline‑separated binary records. Replay remains compatible: the engine re‑serializes envelopes to JSON when reading for tooling.
 
 Example (activate async JSON + binary envelopes):
 
 ```bash
-export RS_OPT_PERSIST=1
-export RS_BUFFER_SIZE=1048576
-export RS_MAX_EVENTS_BUFFER=5000
-export RS_FLUSH_INTERVAL_MS=2
-export RS_FSYNC_ON_APPEND=0
-export RS_ENABLE_BINARY=1
+export LT_OPT_PERSIST=1
+export LT_BUFFER_SIZE=1048576
+export LT_MAX_EVENTS_BUFFER=5000
+export LT_FLUSH_INTERVAL_MS=2
+export LT_FSYNC_ON_APPEND=0
+export LT_ENABLE_BINARY=1
 ```
 
 ##  Intelligent Compaction & Rotation
