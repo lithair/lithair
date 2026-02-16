@@ -1,0 +1,18 @@
+[package]
+name = "lithair-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI tool for scaffolding Lithair projects"
+
+[[bin]]
+name = "lithair"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.8"

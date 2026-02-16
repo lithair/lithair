@@ -1,0 +1,14 @@
+use lithair_core::http::{HttpResponse, StatusCode};
+
+/// Health check handler.
+///
+/// Returns a JSON response indicating the service is running.
+pub fn health_check() -> HttpResponse {
+    HttpResponse::new(StatusCode::Ok).json(
+        &serde_json::json!({
+            "status": "ok",
+            "service": "{{project_name}}"
+        })
+        .to_string(),
+    )
+}

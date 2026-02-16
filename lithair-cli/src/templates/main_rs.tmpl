@@ -1,0 +1,20 @@
+use anyhow::Result;
+use lithair_core::prelude::*;
+
+mod models;
+mod routes;
+mod middleware;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    LithairServer::new()
+        .with_port(3000)
+        .with_host("127.0.0.1")
+        .with_cors(true)
+        .with_admin_panel(true)
+        .with_metrics(true)
+        .serve()
+        .await?;
+
+    Ok(())
+}

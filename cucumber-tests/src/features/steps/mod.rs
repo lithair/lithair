@@ -26,5 +26,8 @@ pub mod stress_multi_model_steps;
 pub mod stress_snapshot_steps;
 // pub mod real_database_performance_steps; // Disabled - duplicates with database_performance_steps
 
+// Scaffolding
+pub mod scaffolding_steps;
+
 // Practical examples
 // pub mod blog_frontend_steps;

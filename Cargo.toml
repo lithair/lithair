@@ -4,6 +4,7 @@ members = [
     # Core
     "lithair-core",
     "lithair-macros",
+    "lithair-cli",
 
     # Examples (progressive complexity)
     "examples/01-hello-world",

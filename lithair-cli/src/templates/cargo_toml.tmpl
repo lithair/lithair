@@ -1,0 +1,17 @@
+[package]
+name = "{{project_name}}"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "{{project_name}}"
+path = "src/main.rs"
+
+[dependencies]
+lithair-core = "0.1"
+lithair-macros = "0.1"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1", features = ["v4", "serde"] }
+anyhow = "1.0"
