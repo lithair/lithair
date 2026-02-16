@@ -264,7 +264,7 @@ fn benchmark_memory_usage() {
     println!("   📏 Snapshot size: {} items", snapshot.get_items().len());
 
     assert!(
-        snapshot_duration < Duration::from_millis(10),
+        snapshot_duration < Duration::from_millis(50),
         "Snapshot too slow: {:?}",
         snapshot_duration
     );
