@@ -8,6 +8,21 @@
 //!
 //! This re-exports the most commonly used types, traits, and functions
 //! so you can get started quickly without hunting for import paths.
+//!
+//! ## What's included
+//!
+//! - **Server builder**: [`LithairServer`], [`LithairServerBuilder`], [`ModelHandler`]
+//! - **Configuration**: [`LithairConfig`], [`LoggingConfig`]
+//! - **HTTP primitives** (from the `http` crate): [`Method`], [`Request`], [`Response`], [`StatusCode`]
+//! - **Response body helpers**: [`Full`] (from `http-body-util`)
+//! - **Engine traits**: [`RaftstoneApplication`], [`StateEngine`]
+//! - **HTTP server types**: [`HttpMethod`], [`HttpResponse`], [`HttpServer`], [`Route`], [`FirewallConfig`], [`GzipConfig`]
+//! - **Frontend**: [`FrontendEngine`], [`FrontendServer`]
+//! - **Session management**: [`Session`], [`SessionConfig`], [`SessionStore`], [`SessionMiddleware`], [`MemorySessionStore`]
+//! - **Security & RBAC**: [`AuthContext`], [`Permission`], [`Role`]
+//! - **Derive macros** (with `macros` feature): `DeclarativeModel`, `RbacRole`, `SchemaEvolution`, etc.
+//! - **Clustering**: [`ClusterArgs`]
+//! - **Schema**: [`SchemaMigrationMode`]
 
 // === Derive macros (from lithair-macros) ===
 #[cfg(feature = "macros")]
