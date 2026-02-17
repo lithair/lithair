@@ -115,6 +115,36 @@ mod tests {
     }
 
     #[test]
+    fn scaffold_wires_model_and_routes() {
+        let tmp = tempfile::tempdir().unwrap();
+        run("wired", tmp.path(), false).unwrap();
+
+        let main_rs = fs::read_to_string(tmp.path().join("wired/src/main.rs")).unwrap();
+        assert!(main_rs.contains("with_model"), "main.rs should wire with_model");
+        assert!(main_rs.contains("with_route"), "main.rs should wire with_route");
+        assert!(
+            main_rs.contains("with_frontend"),
+            "main.rs should wire with_frontend when frontend is enabled"
+        );
+
+        let item_rs = fs::read_to_string(tmp.path().join("wired/src/models/item.rs")).unwrap();
+        assert!(item_rs.contains("DeclarativeModel"), "item.rs should derive DeclarativeModel");
+    }
+
+    #[test]
+    fn scaffold_no_frontend_omits_with_frontend() {
+        let tmp = tempfile::tempdir().unwrap();
+        run("no-fe", tmp.path(), true).unwrap();
+
+        let main_rs = fs::read_to_string(tmp.path().join("no-fe/src/main.rs")).unwrap();
+        assert!(main_rs.contains("with_model"), "main.rs should still wire with_model");
+        assert!(
+            !main_rs.contains("with_frontend"),
+            "main.rs should NOT contain with_frontend when --no-frontend"
+        );
+    }
+
+    #[test]
     fn env_uses_lt_prefix() {
         let tmp = tempfile::tempdir().unwrap();
         run("env-test", tmp.path(), false).unwrap();

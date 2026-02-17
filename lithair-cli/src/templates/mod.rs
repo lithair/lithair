@@ -26,11 +26,17 @@ pub struct TemplateFile {
 
 /// Returns all template files for a standard project.
 ///
-/// When `include_frontend` is false, frontend assets are omitted.
+/// When `include_frontend` is false, frontend assets are omitted and the
+/// `.with_frontend(...)` call is removed from `main.rs`.
 pub fn standard_project(project_name: &str, include_frontend: bool) -> Vec<TemplateFile> {
+    let frontend_line =
+        if include_frontend { "        .with_frontend(\"./frontend\")\n" } else { "" };
+
+    let main_rs = render(MAIN_RS, project_name).replace("{{frontend_line}}", frontend_line);
+
     let mut files = vec![
         TemplateFile { path: "Cargo.toml", content: render(CARGO_TOML, project_name) },
-        TemplateFile { path: "src/main.rs", content: render(MAIN_RS, project_name) },
+        TemplateFile { path: "src/main.rs", content: main_rs },
         TemplateFile { path: "src/models/mod.rs", content: render(MODELS_MOD, project_name) },
         TemplateFile { path: "src/models/item.rs", content: render(MODELS_ITEM, project_name) },
         TemplateFile { path: "src/routes/mod.rs", content: render(ROUTES_MOD, project_name) },

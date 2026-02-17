@@ -51,6 +51,15 @@ Feature: Project Scaffolding
     And the file "cool-project/Cargo.toml" should contain 'name = "cool-project"'
     And the file "cool-project/README.md" should contain "cool-project"
 
+  Scenario: Generated project wires model and routes
+    Given a clean temporary directory
+    When I run lithair new "wired-app"
+    Then the command should succeed
+    And the file "wired-app/src/main.rs" should contain "with_model"
+    And the file "wired-app/src/main.rs" should contain "with_route"
+    And the file "wired-app/src/main.rs" should contain "with_frontend"
+    And the file "wired-app/src/models/item.rs" should contain "DeclarativeModel"
+
   Scenario: Environment variables use LT_ prefix
     Given a clean temporary directory
     When I run lithair new "env-test"

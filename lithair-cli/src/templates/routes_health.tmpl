@@ -1,14 +1,20 @@
-use lithair_core::http::{HttpResponse, StatusCode};
+use anyhow::Result;
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::{Request, Response, body::Incoming};
+use std::future::Future;
+use std::pin::Pin;
 
-/// Health check handler.
-///
-/// Returns a JSON response indicating the service is running.
-pub fn health_check() -> HttpResponse {
-    HttpResponse::new(StatusCode::Ok).json(
-        &serde_json::json!({
-            "status": "ok",
-            "service": "{{project_name}}"
-        })
-        .to_string(),
-    )
+pub fn handler(
+    _req: Request<Incoming>,
+) -> Pin<Box<dyn Future<Output = Result<Response<Full<Bytes>>>> + Send>> {
+    Box::pin(async {
+        Ok(Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(
+                r#"{"status":"ok","service":"{{project_name}}"}"#,
+            )))
+            .unwrap())
+    })
 }

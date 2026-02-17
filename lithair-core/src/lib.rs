@@ -52,6 +52,20 @@
 //! - [`rbac`] - Role-based access control
 //! - [`session`] - Session management with event sourcing
 //!
+//! # Getting Started with the CLI
+//!
+//! The fastest way to start is with the `lithair` CLI:
+//!
+//! ```bash
+//! cargo install lithair-cli
+//! lithair new my-app
+//! cd my-app
+//! cargo run
+//! ```
+//!
+//! This generates a ready-to-run project with a `DeclarativeModel`, health
+//! endpoint, frontend serving, and standard directory layout.
+//!
 //! # Features
 //!
 //! - **Declarative**: Define models, get full REST APIs automatically

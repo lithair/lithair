@@ -1,23 +1,12 @@
+use lithair_core::prelude::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-/// Example declarative model.
-///
-/// Add `#[derive(DeclarativeModel)]` with lithair-macros
-/// to auto-generate REST endpoints, validation, and more.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
 pub struct Item {
-    pub id: Uuid,
+    #[http(expose)]
+    pub id: String,
+    #[http(expose)]
     pub name: String,
+    #[http(expose)]
     pub description: String,
-}
-
-impl Item {
-    pub fn new(name: String, description: String) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            name,
-            description,
-        }
-    }
 }

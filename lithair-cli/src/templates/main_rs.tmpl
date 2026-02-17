@@ -11,7 +11,9 @@ async fn main() -> Result<()> {
         .with_port(3000)
         .with_host("127.0.0.1")
         .with_cors(true)
-        .with_admin_panel(true)
+        .with_model::<models::Item>("./data/items", "/api/items")
+        .with_route(Method::GET, "/health", routes::health::handler)
+{{frontend_line}}        .with_admin_panel(true)
         .with_metrics(true)
         .serve()
         .await?;

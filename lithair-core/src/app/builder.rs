@@ -1049,7 +1049,35 @@ impl LithairServerBuilder {
         self
     }
 
-    /// Add a custom route with async handler
+    /// Add a custom route with an async handler.
+    ///
+    /// The handler receives a `hyper::Request<Incoming>` and returns a
+    /// `Result<Response<Full<Bytes>>>`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use bytes::Bytes;
+    /// use http_body_util::Full;
+    /// use hyper::{Request, Response, body::Incoming};
+    ///
+    /// fn health(
+    ///     _req: Request<Incoming>,
+    /// ) -> std::pin::Pin<Box<dyn std::future::Future<
+    ///     Output = anyhow::Result<Response<Full<Bytes>>>,
+    /// > + Send>> {
+    ///     Box::pin(async {
+    ///         Ok(Response::builder()
+    ///             .status(200)
+    ///             .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+    ///             .unwrap())
+    ///     })
+    /// }
+    ///
+    /// LithairServer::new()
+    ///     .with_route(Method::GET, "/health", health)
+    ///     .serve()
+    ///     .await?;
+    /// ```
     pub fn with_route<F>(
         mut self,
         method: http::Method,
@@ -1172,9 +1200,32 @@ impl LithairServerBuilder {
         self
     }
 
-    /// Register a model with automatic CRUD generation (simple version without RBAC)
+    /// Register a model with automatic CRUD generation (simple version without RBAC).
+    ///
+    /// Generates GET, POST, PUT, DELETE endpoints under `base_path`.
+    /// Events are persisted to `data_path`.
     ///
     /// For schema migration support, use `with_declarative_model` instead.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use lithair_core::prelude::*;
+    /// use lithair_macros::DeclarativeModel;
+    /// use serde::{Serialize, Deserialize};
+    ///
+    /// #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
+    /// struct Todo {
+    ///     #[http(expose)]
+    ///     id: String,
+    ///     #[http(expose)]
+    ///     title: String,
+    /// }
+    ///
+    /// LithairServer::new()
+    ///     .with_model::<Todo>("./data/todos", "/api/todos")
+    ///     .serve()
+    ///     .await?;
+    /// ```
     pub fn with_model<T>(
         mut self,
         data_path: impl Into<String>,
