@@ -6,6 +6,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "CLI tool for scaffolding Lithair projects"
+readme = "README.md"
+keywords = ["lithair", "scaffolding", "cli", "web-framework", "code-generator"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "lithair"
