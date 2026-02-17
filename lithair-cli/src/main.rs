@@ -1,3 +1,13 @@
+//! Lithair CLI — project scaffolding tool.
+//!
+//! Install with `cargo install lithair-cli`, then run:
+//!
+//! ```bash
+//! lithair new my-app
+//! ```
+//!
+//! See `lithair --help` for all available commands and options.
+
 mod commands;
 mod templates;
 
@@ -5,7 +15,12 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "lithair", about = "Lithair project scaffolding tool")]
+#[command(
+    name = "lithair",
+    about = "Lithair project scaffolding tool",
+    version,
+    after_help = "See https://github.com/lithair/lithair for full documentation."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
