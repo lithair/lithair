@@ -1097,43 +1097,146 @@ impl LithairServer {
             }
         }
 
+        // Extract config values before moving self into Arc
+        let request_timeout = self.config.server.request_timeout;
+        let max_body_size = self.config.server.max_body_size;
+
+        // Materialize firewall from config (builder > env)
+        let firewall = Arc::new(crate::http::Firewall::new(
+            crate::http::firewall::resolve_firewall_config(self.firewall_config.clone(), None),
+        ));
+
+        // Materialize anti-DDoS protection if configured
+        let anti_ddos: Option<Arc<crate::security::anti_ddos::AntiDDoSProtection>> = self
+            .anti_ddos_config
+            .as_ref()
+            .map(|cfg| Arc::new(crate::security::anti_ddos::AntiDDoSProtection::new(cfg.clone())));
+
         // Share server state
         let server = Arc::new(self);
 
         // Accept connections
         loop {
             let (stream, remote_addr) = listener.accept().await?;
+
+            // Connection-level anti-DDoS check
+            if let Some(ref protection) = anti_ddos {
+                if !protection.is_connection_allowed(remote_addr.ip()).await {
+                    log::warn!("Anti-DDoS: rejected connection from {}", remote_addr.ip());
+                    drop(stream);
+                    continue;
+                }
+            }
+
             let server = server.clone();
+            let firewall = firewall.clone();
+            let anti_ddos = anti_ddos.clone();
 
             tokio::spawn(async move {
                 let io = hyper_util::rt::TokioIo::new(stream);
 
                 let service = hyper::service::service_fn(move |req| {
                     let server = server.clone();
+                    let firewall = firewall.clone();
+                    let anti_ddos = anti_ddos.clone();
                     async move {
-                        match server.handle_request(req).await {
-                            Ok(resp) => Ok::<_, std::convert::Infallible>(resp),
-                            Err(e) => {
-                                log::error!("Request handler error: {}", e);
-                                Ok(hyper::Response::builder()
-                                    .status(500)
+                        // Firewall check
+                        if let Err(_denied) =
+                            firewall.check(Some(remote_addr), req.method(), req.uri().path())
+                        {
+                            return Ok::<_, std::convert::Infallible>(Self::add_security_headers(
+                                hyper::Response::builder()
+                                    .status(403)
                                     .header("Content-Type", "application/json")
                                     .body(http_body_util::Full::new(bytes::Bytes::from(
-                                        r#"{"error":"Internal server error"}"#,
+                                        r#"{"error":"Forbidden"}"#,
                                     )))
-                                    .expect("valid HTTP response"))
+                                    .expect("valid HTTP response"),
+                            ));
+                        }
+
+                        // Anti-DDoS request rate check
+                        if let Some(ref protection) = anti_ddos {
+                            if !protection.is_request_allowed(remote_addr.ip()).await {
+                                return Ok(Self::add_security_headers(
+                                    hyper::Response::builder()
+                                        .status(429)
+                                        .header("Content-Type", "application/json")
+                                        .header("Retry-After", "60")
+                                        .body(http_body_util::Full::new(bytes::Bytes::from(
+                                            r#"{"error":"Rate limit exceeded"}"#,
+                                        )))
+                                        .expect("valid HTTP response"),
+                                ));
+                            }
+                        }
+
+                        // Body size enforcement via Content-Length
+                        if let Some(cl) = req.headers().get(hyper::header::CONTENT_LENGTH) {
+                            if let Ok(len) = cl.to_str().unwrap_or("0").parse::<usize>() {
+                                if len > max_body_size {
+                                    return Ok(Self::add_security_headers(
+                                        hyper::Response::builder()
+                                            .status(413)
+                                            .header("Content-Type", "application/json")
+                                            .body(http_body_util::Full::new(bytes::Bytes::from(
+                                                r#"{"error":"Request body too large"}"#,
+                                            )))
+                                            .expect("valid HTTP response"),
+                                    ));
+                                }
+                            }
+                        }
+
+                        match server.handle_request(req).await {
+                            Ok(resp) => {
+                                Ok::<_, std::convert::Infallible>(Self::add_security_headers(resp))
+                            }
+                            Err(e) => {
+                                log::error!("Request handler error: {}", e);
+                                Ok(Self::add_security_headers(
+                                    hyper::Response::builder()
+                                        .status(500)
+                                        .header("Content-Type", "application/json")
+                                        .body(http_body_util::Full::new(bytes::Bytes::from(
+                                            r#"{"error":"Internal server error"}"#,
+                                        )))
+                                        .expect("valid HTTP response"),
+                                ))
                             }
                         }
                     }
                 });
 
-                if let Err(err) =
-                    hyper::server::conn::http1::Builder::new().serve_connection(io, service).await
+                if let Err(err) = hyper::server::conn::http1::Builder::new()
+                    .timer(hyper_util::rt::TokioTimer::new())
+                    .header_read_timeout(std::time::Duration::from_secs(request_timeout))
+                    .keep_alive(true)
+                    .serve_connection(io, service)
+                    .await
                 {
                     log::error!("Connection error from {}: {}", remote_addr, err);
                 }
             });
         }
+    }
+
+    /// Add security headers to a response.
+    /// Uses `entry().or_insert()` so handlers that explicitly set a header are not overridden.
+    fn add_security_headers(
+        resp: hyper::Response<http_body_util::Full<bytes::Bytes>>,
+    ) -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
+        let (mut parts, body) = resp.into_parts();
+        let h = &mut parts.headers;
+        h.entry("x-content-type-options")
+            .or_insert("nosniff".parse().expect("valid header value"));
+        h.entry("x-frame-options")
+            .or_insert("DENY".parse().expect("valid header value"));
+        h.entry("referrer-policy")
+            .or_insert("strict-origin-when-cross-origin".parse().expect("valid header value"));
+        h.entry("x-xss-protection")
+            .or_insert("1; mode=block".parse().expect("valid header value"));
+        hyper::Response::from_parts(parts, body)
     }
 
     /// Match a path against a pattern with wildcard support
