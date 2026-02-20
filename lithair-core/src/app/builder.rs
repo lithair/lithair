@@ -12,6 +12,7 @@ pub struct LithairServerBuilder {
     session_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     custom_routes: Vec<CustomRoute>,
+    not_found_handler: Option<super::RouteHandler>,
     model_infos: Vec<crate::app::ModelRegistrationInfo>,
 
     // HTTP Features
@@ -52,6 +53,7 @@ impl LithairServerBuilder {
             session_manager: None,
             permission_checker: None,
             custom_routes: Vec::new(),
+            not_found_handler: None,
             model_infos: Vec::new(),
             logging_config: None,
             readiness_config: None,
@@ -79,6 +81,7 @@ impl LithairServerBuilder {
             session_manager: None,
             permission_checker: None,
             custom_routes: Vec::new(),
+            not_found_handler: None,
             model_infos: Vec::new(),
             logging_config: None,
             readiness_config: None,
@@ -1051,6 +1054,10 @@ impl LithairServerBuilder {
 
     /// Add a custom route with an async handler.
     ///
+    /// Custom routes are dispatched **before** model routes, so a custom
+    /// `/api/items/search` will take priority over the DeclarativeModel
+    /// prefix match on `/api/items`.
+    ///
     /// The handler receives a `hyper::Request<Incoming>` and returns a
     /// `Result<Response<Full<Bytes>>>`.
     ///
@@ -1102,6 +1109,45 @@ impl LithairServerBuilder {
             path: path.into(),
             handler: Arc::new(handler),
         });
+        self
+    }
+
+    /// Set a custom handler for 404 Not Found responses.
+    ///
+    /// When set, this handler is called instead of the default JSON 404 response
+    /// whenever no route matches the incoming request.
+    ///
+    /// The handler has the same signature as `with_route` handlers.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use lithair_core::app::response;
+    /// use http::StatusCode;
+    ///
+    /// LithairServer::new()
+    ///     .with_not_found_handler(|_req| {
+    ///         Box::pin(async {
+    ///             Ok(response::html(StatusCode::NOT_FOUND, "<h1>Page not found</h1>"))
+    ///         })
+    ///     })
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_not_found_handler<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(
+                hyper::Request<hyper::body::Incoming>,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>,
+                        > + Send,
+                >,
+            > + Send
+            + Sync
+            + 'static,
+    {
+        self.not_found_handler = Some(Arc::new(handler));
         self
     }
 
@@ -1466,6 +1512,7 @@ impl LithairServerBuilder {
             config: self.config,
             session_manager: self.session_manager,
             custom_routes: self.custom_routes,
+            not_found_handler: self.not_found_handler,
             route_guards: self.route_guards,
             model_infos: self.model_infos,
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),

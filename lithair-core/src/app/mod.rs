@@ -32,6 +32,7 @@ use std::sync::Arc;
 
 pub mod builder;
 pub mod model_handler;
+pub mod response;
 pub mod router;
 mod schema_handlers;
 
@@ -52,6 +53,7 @@ pub struct LithairServer {
     config: LithairConfig,
     session_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
     custom_routes: Vec<CustomRoute>,
+    not_found_handler: Option<RouteHandler>,
     route_guards: Vec<crate::http::RouteGuardMatcher>,
     model_infos: Vec<ModelRegistrationInfo>,
     models: Arc<tokio::sync::RwLock<Vec<ModelRegistration>>>,
@@ -1108,7 +1110,21 @@ impl LithairServer {
 
                 let service = hyper::service::service_fn(move |req| {
                     let server = server.clone();
-                    async move { server.handle_request(req).await }
+                    async move {
+                        match server.handle_request(req).await {
+                            Ok(resp) => Ok::<_, std::convert::Infallible>(resp),
+                            Err(e) => {
+                                log::error!("Request handler error: {}", e);
+                                Ok(hyper::Response::builder()
+                                    .status(500)
+                                    .header("Content-Type", "application/json")
+                                    .body(http_body_util::Full::new(bytes::Bytes::from(
+                                        r#"{"error":"Internal server error"}"#,
+                                    )))
+                                    .expect("valid HTTP response"))
+                            }
+                        }
+                    }
                 });
 
                 if let Err(err) =
@@ -1474,22 +1490,21 @@ impl LithairServer {
             }
         }
 
-        // Model routes (API endpoints checked first)
+        // Custom routes checked first — user overrides take priority over model prefix matches
+        for route in &self.custom_routes {
+            if route.method == method && Self::path_matches(&route.path, &path) {
+                return (route.handler)(req).await;
+            }
+        }
+
+        // Model routes (DeclarativeModel CRUD endpoints)
         let models = self.models.read().await;
         for model in models.iter() {
             if path.starts_with(&model.base_path) {
                 return self.handle_model_request(req, model).await;
             }
         }
-        drop(models); // Release read lock before custom routes
-
-        // Custom routes (with wildcard support)
-        for route in &self.custom_routes {
-            if route.method == method && Self::path_matches(&route.path, &path) {
-                // Call custom handler
-                return (route.handler)(req).await;
-            }
-        }
+        drop(models);
 
         // Frontend assets (memory-first serving with SCC2)
         // Checked AFTER API routes so /admin/login.html is served but /admin/api/* can still work
@@ -1561,9 +1576,15 @@ impl LithairServer {
             }
         }
 
-        // 404 Not Found (if no frontend or non-GET request)
+        // Custom 404 handler (if configured)
+        if let Some(ref handler) = self.not_found_handler {
+            return (handler)(req).await;
+        }
+
+        // 404 Not Found (default)
         Ok(hyper::Response::builder()
             .status(404)
+            .header("Content-Type", "application/json")
             .body(Full::new(Bytes::from(r#"{"error":"Not found"}"#)))
             .expect("valid HTTP response"))
     }
@@ -4275,6 +4296,7 @@ impl Default for LithairServer {
             config: LithairConfig::default(),
             session_manager: None,
             custom_routes: Vec::new(),
+            not_found_handler: None,
             route_guards: Vec::new(),
             model_infos: Vec::new(),
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
