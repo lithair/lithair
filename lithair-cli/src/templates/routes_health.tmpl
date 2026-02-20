@@ -2,6 +2,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{Request, Response, body::Incoming};
+use lithair_core::app::response;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -9,12 +10,9 @@ pub fn handler(
     _req: Request<Incoming>,
 ) -> Pin<Box<dyn Future<Output = Result<Response<Full<Bytes>>>> + Send>> {
     Box::pin(async {
-        Ok(Response::builder()
-            .status(200)
-            .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
-                r#"{"status":"ok","service":"{{project_name}}"}"#,
-            )))
-            .unwrap())
+        Ok(response::json(
+            http::StatusCode::OK,
+            r#"{"status":"ok","service":"{{project_name}}"}"#,
+        ))
     })
 }

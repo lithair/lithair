@@ -60,7 +60,11 @@ pub use http::Response;
 pub use http::StatusCode;
 
 // === Response body helpers (re-exported from `http-body-util`) ===
+pub use bytes::Bytes;
 pub use http_body_util::Full;
+
+// === Response helpers ===
+pub use crate::app::response;
 
 // === Frontend ===
 pub use crate::frontend::FrontendEngine;
