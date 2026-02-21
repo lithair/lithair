@@ -41,6 +41,16 @@ pub struct ServerConfig {
     /// Env: LT_MAX_BODY_SIZE
     /// Default: 10485760 (10MB)
     pub max_body_size: usize,
+
+    /// Path to TLS certificate PEM file
+    /// Env: LT_TLS_CERT
+    /// Default: None (plain HTTP)
+    pub tls_cert_path: Option<String>,
+
+    /// Path to TLS private key PEM file
+    /// Env: LT_TLS_KEY
+    /// Default: None (plain HTTP)
+    pub tls_key_path: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -53,6 +63,8 @@ impl Default for ServerConfig {
             cors_origins: vec!["*".to_string()],
             request_timeout: 30,
             max_body_size: 10 * 1024 * 1024, // 10MB
+            tls_cert_path: None,
+            tls_key_path: None,
         }
     }
 }
@@ -67,6 +79,8 @@ impl ServerConfig {
         self.cors_origins = other.cors_origins;
         self.request_timeout = other.request_timeout;
         self.max_body_size = other.max_body_size;
+        self.tls_cert_path = other.tls_cert_path;
+        self.tls_key_path = other.tls_key_path;
     }
 
     /// Apply environment variables
@@ -106,6 +120,14 @@ impl ServerConfig {
                 self.max_body_size = s;
             }
         }
+
+        if let Ok(cert) = env::var("LT_TLS_CERT") {
+            self.tls_cert_path = Some(cert);
+        }
+
+        if let Ok(key) = env::var("LT_TLS_KEY") {
+            self.tls_key_path = Some(key);
+        }
     }
 
     /// Validate configuration
@@ -130,6 +152,25 @@ impl ServerConfig {
 
         if self.max_body_size == 0 {
             bail!("Invalid max_body_size: must be greater than 0");
+        }
+
+        // TLS: both cert and key must be set together
+        match (&self.tls_cert_path, &self.tls_key_path) {
+            (Some(cert), Some(key)) => {
+                if !std::path::Path::new(cert).exists() {
+                    bail!("TLS certificate file not found: {}", cert);
+                }
+                if !std::path::Path::new(key).exists() {
+                    bail!("TLS key file not found: {}", key);
+                }
+            }
+            (Some(_), None) => {
+                bail!("LT_TLS_CERT is set but LT_TLS_KEY is missing; both are required for TLS");
+            }
+            (None, Some(_)) => {
+                bail!("LT_TLS_KEY is set but LT_TLS_CERT is missing; both are required for TLS");
+            }
+            (None, None) => {} // Plain HTTP, fine
         }
 
         Ok(())

@@ -48,6 +48,8 @@ hmac = "0.12"                  # HMAC for JWT signatures (crypto-secure)
 argon2 = "0.5"                 # Password hashing (OWASP recommended)
 base64 = "0.22"                # Proper base64 encoding/decoding
 rustls = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
 hex = "0.4"
 ipnet = "2"
 brotli = "8"
