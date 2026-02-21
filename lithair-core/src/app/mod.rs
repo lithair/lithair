@@ -39,6 +39,86 @@ mod schema_handlers;
 pub use builder::LithairServerBuilder;
 pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 
+// ============================================================================
+// TLS support types
+// ============================================================================
+
+/// A TCP stream that may or may not be wrapped in TLS.
+enum MaybeTlsStream {
+    Plain(tokio::net::TcpStream),
+    Tls(Box<tokio_rustls::server::TlsStream<tokio::net::TcpStream>>),
+}
+
+impl tokio::io::AsyncRead for MaybeTlsStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+            MaybeTlsStream::Tls(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for MaybeTlsStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+            MaybeTlsStream::Tls(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => std::pin::Pin::new(s).poll_flush(cx),
+            MaybeTlsStream::Tls(s) => std::pin::Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+            MaybeTlsStream::Tls(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
+/// Load TLS certificates from a PEM file.
+fn load_tls_certs(path: &str) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>> {
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("Failed to open TLS certificate file: {}", path))?;
+    let mut reader = std::io::BufReader::new(file);
+    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .with_context(|| format!("Failed to parse TLS certificates from: {}", path))?;
+    if certs.is_empty() {
+        anyhow::bail!("No certificates found in {}", path);
+    }
+    Ok(certs)
+}
+
+/// Load a TLS private key from a PEM file.
+fn load_tls_key(path: &str) -> Result<rustls::pki_types::PrivateKeyDer<'static>> {
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("Failed to open TLS key file: {}", path))?;
+    let mut reader = std::io::BufReader::new(file);
+    rustls_pemfile::private_key(&mut reader)
+        .with_context(|| format!("Failed to parse TLS key from: {}", path))?
+        .ok_or_else(|| anyhow::anyhow!("No private key found in {}", path))
+}
+
 /// Model registration with handler
 pub struct ModelRegistration {
     pub name: String,
@@ -1017,12 +1097,29 @@ impl LithairServer {
         // Build server address
         let addr = format!("{}:{}", self.config.server.host, self.config.server.port);
 
-        // Start HTTP server
+        // Build optional TLS acceptor
+        let tls_acceptor =
+            match (&self.config.server.tls_cert_path, &self.config.server.tls_key_path) {
+                (Some(cert_path), Some(key_path)) => {
+                    let certs = load_tls_certs(cert_path)?;
+                    let key = load_tls_key(key_path)?;
+                    let tls_config = rustls::ServerConfig::builder()
+                        .with_no_client_auth()
+                        .with_single_cert(certs, key)
+                        .context("Invalid TLS certificate/key pair")?;
+                    Some(tokio_rustls::TlsAcceptor::from(Arc::new(tls_config)))
+                }
+                _ => None,
+            };
+        let tls_active = tls_acceptor.is_some();
+
+        // Start server
         let listener = tokio::net::TcpListener::bind(&addr)
             .await
             .with_context(|| format!("Failed to bind to {}", addr))?;
 
-        log::info!("Server listening on http://{}", addr);
+        let scheme = if tls_active { "https" } else { "http" };
+        log::info!("Server listening on {}://{}", scheme, addr);
 
         // Start Raft background tasks if cluster mode enabled
         if let Some(ref raft_state) = self.raft_state {
@@ -1131,9 +1228,32 @@ impl LithairServer {
             let server = server.clone();
             let firewall = firewall.clone();
             let anti_ddos = anti_ddos.clone();
+            let tls_acceptor = tls_acceptor.clone();
 
             tokio::spawn(async move {
-                let io = hyper_util::rt::TokioIo::new(stream);
+                // TLS handshake (if configured) or plain TCP
+                let maybe_tls = if let Some(acceptor) = tls_acceptor {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        acceptor.accept(stream),
+                    )
+                    .await
+                    {
+                        Ok(Ok(tls_stream)) => MaybeTlsStream::Tls(Box::new(tls_stream)),
+                        Ok(Err(e)) => {
+                            log::debug!("TLS handshake failed from {}: {}", remote_addr, e);
+                            return;
+                        }
+                        Err(_) => {
+                            log::debug!("TLS handshake timeout from {}", remote_addr);
+                            return;
+                        }
+                    }
+                } else {
+                    MaybeTlsStream::Plain(stream)
+                };
+
+                let io = hyper_util::rt::TokioIo::new(maybe_tls);
 
                 let service = hyper::service::service_fn(move |req| {
                     let server = server.clone();
@@ -1152,6 +1272,7 @@ impl LithairServer {
                                         r#"{"error":"Forbidden"}"#,
                                     )))
                                     .expect("valid HTTP response"),
+                                tls_active,
                             ));
                         }
 
@@ -1167,6 +1288,7 @@ impl LithairServer {
                                             r#"{"error":"Rate limit exceeded"}"#,
                                         )))
                                         .expect("valid HTTP response"),
+                                    tls_active,
                                 ));
                             }
                         }
@@ -1183,15 +1305,16 @@ impl LithairServer {
                                                 r#"{"error":"Request body too large"}"#,
                                             )))
                                             .expect("valid HTTP response"),
+                                        tls_active,
                                     ));
                                 }
                             }
                         }
 
                         match server.handle_request(req).await {
-                            Ok(resp) => {
-                                Ok::<_, std::convert::Infallible>(Self::add_security_headers(resp))
-                            }
+                            Ok(resp) => Ok::<_, std::convert::Infallible>(
+                                Self::add_security_headers(resp, tls_active),
+                            ),
                             Err(e) => {
                                 log::error!("Request handler error: {}", e);
                                 Ok(Self::add_security_headers(
@@ -1202,6 +1325,7 @@ impl LithairServer {
                                             r#"{"error":"Internal server error"}"#,
                                         )))
                                         .expect("valid HTTP response"),
+                                    tls_active,
                                 ))
                             }
                         }
@@ -1223,8 +1347,10 @@ impl LithairServer {
 
     /// Add security headers to a response.
     /// Uses `entry().or_insert()` so handlers that explicitly set a header are not overridden.
+    /// When `tls_active` is true, adds HSTS header.
     fn add_security_headers(
         resp: hyper::Response<http_body_util::Full<bytes::Bytes>>,
+        tls_active: bool,
     ) -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
         let (mut parts, body) = resp.into_parts();
         let h = &mut parts.headers;
@@ -1236,6 +1362,11 @@ impl LithairServer {
             .or_insert("strict-origin-when-cross-origin".parse().expect("valid header value"));
         h.entry("x-xss-protection")
             .or_insert("1; mode=block".parse().expect("valid header value"));
+        if tls_active {
+            h.entry("strict-transport-security").or_insert(
+                "max-age=31536000; includeSubDomains".parse().expect("valid header value"),
+            );
+        }
         hyper::Response::from_parts(parts, body)
     }
 

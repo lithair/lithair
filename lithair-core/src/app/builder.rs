@@ -148,6 +148,16 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Enable TLS with certificate and key PEM files
+    ///
+    /// When set, the server serves HTTPS with HSTS.
+    /// Alternatively, set `LT_TLS_CERT` and `LT_TLS_KEY` environment variables.
+    pub fn with_tls(mut self, cert_path: impl Into<String>, key_path: impl Into<String>) -> Self {
+        self.config.server.tls_cert_path = Some(cert_path.into());
+        self.config.server.tls_key_path = Some(key_path.into());
+        self
+    }
+
     // ========================================================================
     // SESSIONS
     // ========================================================================
