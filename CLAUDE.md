@@ -123,7 +123,7 @@ refactor/<short-description> # Code restructuring
 
 ```bash
 # 1. Create feature branch from main
-git checkout main && git pull
+git checkout main && git pull origin main
 git checkout -b feat/my-feature
 
 # 2. Work, commit incrementally
@@ -134,7 +134,7 @@ git commit -m "feat: description of change"
 
 # 3. Push and create PR
 git push -u origin feat/my-feature
-gh pr create --title "feat: description" --body "## Summary\n- ..."
+gh pr create --title "feat: description" --body "## Summary\n- ...\n\n## Test plan\n- ..."
 
 # 4. CI must pass, then merge via GitHub (squash merge recommended)
 gh pr merge --squash --delete-branch
@@ -164,7 +164,7 @@ refactor: extract PEM loading helpers
 ### Pre-Push Checklist
 
 1. `task ci:full` passes (fmt + clippy -D warnings + tests)
-2. Tests updated if behavior changed
+2. Ensure new or modified behavior is covered by tests
 3. `task ci:github` for final validation before requesting review
 
 ## Spec-Driven Development Workflow

@@ -332,7 +332,8 @@ git checkout -b feat/my-feature
 # 3. Work in small, focused commits
 #    Always validate before pushing:
 task ci:full                          # fmt + clippy -D warnings + tests
-git add <specific-files>
+git add <specific-files>              # use explicit file names, not git add -p
+                                      # (interactive staging is incompatible with AI agents)
 git commit -m "feat: concise description"
 
 # 4. Push and open a Pull Request
@@ -381,9 +382,9 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
 
 ### Pre-Push Checklist
 
-1. `cargo fmt -- --check` (or `task fmt`)
+1. `cargo fmt -- --check` (or `task fmt:check`)
 2. `cargo clippy --workspace --all-targets -- -D warnings` (or `task lint`)
-3. `cargo test -p lithair-core -p lithair-macros` (or `task test`)
+3. `cargo test -p lithair-core -p lithair-macros`
 4. All three combined: **`task ci:full`**
 5. Before requesting review: **`task ci:github`** (includes smoke tests)
 
