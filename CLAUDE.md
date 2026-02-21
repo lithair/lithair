@@ -105,11 +105,67 @@ type Resp = Response<RespBody>;
 type RespErr = Box<Response<BoxBody<Bytes, Infallible>>>;
 ```
 
-### Commit Checklist
+## Git Workflow (Trunk-Based Development)
 
-1. `task ci:full` passes
-2. Tests updated if applicable
-3. `task ci:github` before pushing
+`main` is the protected trunk. All changes go through short-lived feature branches and Pull Requests.
+
+### Branch Naming
+
+```
+feat/<short-description>    # New features
+fix/<short-description>     # Bug fixes
+chore/<short-description>   # Maintenance, deps, CI
+docs/<short-description>    # Documentation only
+refactor/<short-description> # Code restructuring
+```
+
+### Development Flow
+
+```bash
+# 1. Create feature branch from main
+git checkout main && git pull
+git checkout -b feat/my-feature
+
+# 2. Work, commit incrementally
+#    Run CI before each push:
+task ci:full
+git add <files>
+git commit -m "feat: description of change"
+
+# 3. Push and create PR
+git push -u origin feat/my-feature
+gh pr create --title "feat: description" --body "## Summary\n- ..."
+
+# 4. CI must pass, then merge via GitHub (squash merge recommended)
+gh pr merge --squash --delete-branch
+```
+
+### Rules
+
+- **Never push directly to `main`** -- always go through a PR
+- **One concern per PR** -- keep PRs small and focused
+- **CI must pass** before merge (`task ci:full` at minimum)
+- **Short-lived branches** -- merge within hours/days, not weeks
+- **Squash merge** -- keeps `main` history clean and linear
+- **Delete branch after merge** -- no stale branches
+
+### Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add native TLS termination
+fix: correct session expiry calculation
+chore: bump tokio to 1.36
+docs: document trunk-based workflow
+refactor: extract PEM loading helpers
+```
+
+### Pre-Push Checklist
+
+1. `task ci:full` passes (fmt + clippy -D warnings + tests)
+2. Tests updated if behavior changed
+3. `task ci:github` for final validation before requesting review
 
 ## Spec-Driven Development Workflow
 
