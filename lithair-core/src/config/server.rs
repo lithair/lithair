@@ -176,3 +176,83 @@ impl ServerConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_has_no_tls() {
+        let cfg = ServerConfig::default();
+        assert!(cfg.tls_cert_path.is_none());
+        assert!(cfg.tls_key_path.is_none());
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_tls_cert_without_key_fails() {
+        let cfg =
+            ServerConfig { tls_cert_path: Some("cert.pem".to_string()), ..Default::default() };
+        let err = cfg.validate().unwrap_err();
+        assert!(err.to_string().contains("LT_TLS_KEY is missing"));
+    }
+
+    #[test]
+    fn test_tls_key_without_cert_fails() {
+        let cfg = ServerConfig { tls_key_path: Some("key.pem".to_string()), ..Default::default() };
+        let err = cfg.validate().unwrap_err();
+        assert!(err.to_string().contains("LT_TLS_CERT is missing"));
+    }
+
+    #[test]
+    fn test_tls_cert_file_not_found() {
+        let cfg = ServerConfig {
+            tls_cert_path: Some("/nonexistent/cert.pem".to_string()),
+            tls_key_path: Some("/nonexistent/key.pem".to_string()),
+            ..Default::default()
+        };
+        let err = cfg.validate().unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_tls_both_files_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        std::fs::write(&cert_path, "fake cert").unwrap();
+        std::fs::write(&key_path, "fake key").unwrap();
+
+        let cfg = ServerConfig {
+            tls_cert_path: Some(cert_path.to_str().unwrap().to_string()),
+            tls_key_path: Some(key_path.to_str().unwrap().to_string()),
+            ..Default::default()
+        };
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_merge_preserves_tls() {
+        let mut base = ServerConfig::default();
+        let other = ServerConfig {
+            tls_cert_path: Some("cert.pem".to_string()),
+            tls_key_path: Some("key.pem".to_string()),
+            ..Default::default()
+        };
+        base.merge(other);
+        assert_eq!(base.tls_cert_path.as_deref(), Some("cert.pem"));
+        assert_eq!(base.tls_key_path.as_deref(), Some("key.pem"));
+    }
+
+    #[test]
+    fn test_apply_env_vars_tls() {
+        let mut cfg = ServerConfig::default();
+        std::env::set_var("LT_TLS_CERT", "/tmp/test-cert.pem");
+        std::env::set_var("LT_TLS_KEY", "/tmp/test-key.pem");
+        cfg.apply_env_vars();
+        assert_eq!(cfg.tls_cert_path.as_deref(), Some("/tmp/test-cert.pem"));
+        assert_eq!(cfg.tls_key_path.as_deref(), Some("/tmp/test-key.pem"));
+        std::env::remove_var("LT_TLS_CERT");
+        std::env::remove_var("LT_TLS_KEY");
+    }
+}

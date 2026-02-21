@@ -26,6 +26,7 @@
 
 use crate::cluster::RaftLeadershipState;
 use crate::config::LithairConfig;
+use crate::proxy::tls::CertificateFingerprint;
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use std::sync::Arc;
@@ -1103,6 +1104,13 @@ impl LithairServer {
                 (Some(cert_path), Some(key_path)) => {
                     let certs = load_tls_certs(cert_path)?;
                     let key = load_tls_key(key_path)?;
+
+                    // Log certificate fingerprint for verification
+                    if let Some(leaf_cert) = certs.first() {
+                        let fp = CertificateFingerprint::from_rustls_cert(leaf_cert);
+                        log::info!("TLS certificate SHA-256: {}", fp.sha256_formatted());
+                    }
+
                     let tls_config = rustls::ServerConfig::builder()
                         .with_no_client_auth()
                         .with_single_cert(certs, key)
