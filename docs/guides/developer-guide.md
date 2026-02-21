@@ -305,35 +305,97 @@ cargo test --release -- --test-threads=1
 - [ ] Minimize string allocations
 - [ ] Profile and optimize hot paths
 
-## Contributing Guidelines
+## Git Workflow (Trunk-Based Development)
 
-### Pull Request Process
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes with tests
-4. Update documentation if needed
-5. Run the full test suite
-6. Submit a pull request with a clear description
+This project uses **trunk-based development**: `main` is the protected trunk, and all
+changes go through short-lived feature branches merged via Pull Requests.
+
+### Branch Naming Conventions
+
+| Prefix | Usage | Example |
+|--------|-------|---------|
+| `feat/` | New features | `feat/native-tls` |
+| `fix/` | Bug fixes | `fix/session-expiry` |
+| `chore/` | Maintenance, deps, CI | `chore/bump-tokio` |
+| `docs/` | Documentation only | `docs/trunk-based-workflow` |
+| `refactor/` | Code restructuring | `refactor/extract-pem-helpers` |
+
+### Development Flow
+
+```bash
+# 1. Start from an up-to-date main
+git checkout main && git pull origin main
+
+# 2. Create a feature branch
+git checkout -b feat/my-feature
+
+# 3. Work in small, focused commits
+#    Always validate before pushing:
+task ci:full                          # fmt + clippy -D warnings + tests
+git add <specific-files>              # use explicit file names, not git add -p
+                                      # (interactive staging is incompatible with AI agents)
+git commit -m "feat: concise description"
+
+# 4. Push and open a Pull Request
+git push -u origin feat/my-feature
+gh pr create --title "feat: concise title" --body "$(cat <<'EOF'
+## Summary
+- What this PR does and why
+
+## Test plan
+- [ ] `task ci:full` passes
+- [ ] Manual verification of ...
+EOF
+)"
+
+# 5. After CI passes and review is approved, merge (squash)
+gh pr merge --squash --delete-branch
+
+# 6. Back to main for the next task
+git checkout main && git pull origin main
+```
+
+### Rules
+
+| Rule | Rationale |
+|------|-----------|
+| Never push directly to `main` | Protected branch -- all changes via PR |
+| One concern per PR | Easier review, safer rollback |
+| CI must pass before merge | `task ci:full` at minimum |
+| Short-lived branches | Merge within hours/days, not weeks |
+| Squash merge | Keeps `main` history clean and linear |
+| Delete branch after merge | No stale branches |
 
 ### Commit Message Format
-```
-type(scope): brief description
 
-Detailed explanation of the change, including:
-- Why the change was needed
-- What was changed
-- Any breaking changes
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-Closes #issue_number
 ```
+<type>: <concise description>
+
+<optional body explaining the "why", not the "what">
+
+Co-Authored-By: ...   # if pair-programming or AI-assisted
+```
+
+Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
+
+### Pre-Push Checklist
+
+1. `cargo fmt -- --check` (or `task fmt:check`)
+2. `cargo clippy --workspace --all-targets -- -D warnings` (or `task lint`)
+3. `cargo test -p lithair-core -p lithair-macros`
+4. All three combined: **`task ci:full`**
+5. Before requesting review: **`task ci:github`** (includes smoke tests)
 
 ### Code Review Checklist
-- [ ] Code follows Rust idioms and style guidelines
-- [ ] All tests pass
-- [ ] Documentation is updated
-- [ ] Performance implications are considered
-- [ ] Error handling is comprehensive
-- [ ] Public API changes are necessary and well-designed
+
+- [ ] Code follows existing Rust idioms and project conventions
+- [ ] All tests pass (`task ci:full`)
+- [ ] New behavior has test coverage
+- [ ] Documentation is updated if public API changed
+- [ ] No security regressions (OWASP top 10)
+- [ ] Performance implications considered for hot paths
 
 ## Release Process
 
