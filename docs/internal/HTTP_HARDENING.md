@@ -85,6 +85,19 @@ JSON error shape (representative):
 
 Some endpoints may return specialized `error` codes (e.g. `rbac_denied`, `unsupported_media_type`, `payload_too_large`, `request timeout`).
 
+## TLS Termination
+
+Lithair supports native TLS via rustls. When `LT_TLS_CERT` and `LT_TLS_KEY` are set, the server:
+
+1. Loads the PEM certificate chain and private key at startup
+2. Logs the leaf certificate SHA-256 fingerprint
+3. Accepts TLS connections with a 10-second handshake timeout (slow/stalled handshakes are dropped)
+4. Adds `Strict-Transport-Security: max-age=31536000; includeSubDomains` to all responses
+
+HSTS is only sent when TLS is active. Plain HTTP responses never include the header.
+
+See `docs/guides/tls.md` for setup instructions.
+
 ## Graceful Shutdown
 
 - The server drains connections when receiving Ctrl-C / SIGTERM, reducing in-flight request loss during restarts.
@@ -97,7 +110,8 @@ Some endpoints may return specialized `error` codes (e.g. `rbac_denied`, `unsupp
 
 ## Related Documents
 
-- `docs/API_REFERENCE.md` – high-level reference; includes a summary under “HTTP Hardening & Error Semantics”.
+- `docs/guides/tls.md` – TLS setup, certificates, and HSTS.
+- `docs/API_REFERENCE.md` – high-level reference; includes a summary under "HTTP Hardening & Error Semantics".
 - `docs/HTTP_LOADGEN.md` – benchmarking & scenarios.
 - `examples/raft_replication_demo/README.md` – demo scenario guidance.
 

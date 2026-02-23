@@ -24,6 +24,41 @@ This page lists the core environment variables supported by Lithair.
   - Defaults to `../Lithair/docs` (relative to blog project).
   - Used by Lithair-Blog to load and serve framework documentation.
 
+## Server
+
+- `LT_PORT`
+  - Server listening port. Default: `8080`.
+
+- `LT_HOST`
+  - Server listening address. Default: `127.0.0.1`.
+
+- `LT_WORKERS`
+  - Number of Tokio worker threads. Default: auto-detect (num CPUs).
+
+- `LT_REQUEST_TIMEOUT`
+  - Request timeout in seconds. Default: `30`.
+
+- `LT_MAX_BODY_SIZE`
+  - Maximum request body size in bytes. Default: `10485760` (10 MB).
+
+## TLS
+
+- `LT_TLS_CERT`
+  - Path to TLS certificate PEM file. When set with `LT_TLS_KEY`, the server starts in HTTPS mode with HSTS enabled.
+  - Both `LT_TLS_CERT` and `LT_TLS_KEY` must be set together.
+
+- `LT_TLS_KEY`
+  - Path to TLS private key PEM file.
+  - Both `LT_TLS_CERT` and `LT_TLS_KEY` must be set together.
+
+## CORS
+
+- `LT_COLT_ENABLED`
+  - Enable CORS support. Default: `false`.
+
+- `LT_COLT_ORIGINS`
+  - Allowed CORS origins (comma-separated). Default: `*`.
+
 ## Benchmarks & Demos (examples)
 
 - `PORT`, `HOST`
@@ -37,5 +72,6 @@ This page lists the core environment variables supported by Lithair.
 
 ## See also
 
+- `docs/guides/tls.md` for TLS setup and certificate management
 - `docs/guides/serving-modes.md` for Dev/Prod/Hybrid modes and reload endpoint
 - `docs/guides/admin-protection.md` for firewall and admin endpoints
