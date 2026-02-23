@@ -206,9 +206,13 @@ mod tests {
 
     #[test]
     fn test_tls_cert_file_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+
         let cfg = ServerConfig {
-            tls_cert_path: Some("/nonexistent/cert.pem".to_string()),
-            tls_key_path: Some("/nonexistent/key.pem".to_string()),
+            tls_cert_path: Some(cert_path.to_str().unwrap().to_string()),
+            tls_key_path: Some(key_path.to_str().unwrap().to_string()),
             ..Default::default()
         };
         let err = cfg.validate().unwrap_err();
