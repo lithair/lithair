@@ -28,6 +28,18 @@ cargo run -p blog -- --port 3000
 | 09 | [replication](09-replication/) | Raft consensus, multi-node cluster | — |
 | 10 | [blog-distributed](10-blog-distributed/) | Blog + Raft replication combined | — |
 
+### Frontend Framework Integrations
+
+Same Notes CRUD backend, different frontend framework. `npm run build` → `dist/` → `with_frontend()` → SCC2 memory.
+
+| #  | Name | Framework | What you learn |
+|----|------|-----------|---------------|
+| 11 | [react](11-react/) | React 19 + Vite | useState/useEffect hooks, Vite proxy |
+| 12 | [angular](12-angular/) | Angular 19 | Standalone components, HttpClient, proxy.conf |
+| 13 | [vue](13-vue/) | Vue 3.5 + Vite | Composition API, `<script setup>`, ref/onMounted |
+| 14 | [svelte](14-svelte/) | Svelte 5 + Vite | Runes ($state, $effect), minimal boilerplate |
+| 15 | [astro](15-astro/) | Astro 5 | SSG page, vanilla JS island, zero JS framework |
+
 ### Advanced
 
 | Name | Purpose |
@@ -46,6 +58,8 @@ cargo run -p blog -- --port 3000
 **Need auth?** 04 → 06 → 07
 
 **Going distributed?** 09 → 10
+
+**Frontend integrations?** 03 → 11 (React) | 12 (Angular) | 13 (Vue) | 14 (Svelte) | 15 (Astro)
 
 ## For AI Agents
 

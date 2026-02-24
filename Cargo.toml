@@ -18,6 +18,13 @@ members = [
     "examples/09-replication",
     "examples/10-blog-distributed",
 
+    # Frontend framework integrations
+    "examples/11-react",
+    "examples/12-angular",
+    "examples/13-vue",
+    "examples/14-svelte",
+    "examples/15-astro",
+
     # Advanced examples
     "examples/advanced/datatable",
     "examples/advanced/stress-test",

@@ -1,0 +1,47 @@
+<h1>Notes (Angular)</h1>
+
+<form (ngSubmit)="addNote()">
+  <input
+    type="text"
+    placeholder="Title"
+    [(ngModel)]="title"
+    name="title"
+    required
+    aria-label="Note title"
+  />
+  <textarea
+    placeholder="Content"
+    [(ngModel)]="content"
+    name="content"
+    aria-label="Note content"
+  ></textarea>
+  <button type="submit">Add Note</button>
+</form>
+
+<ul>
+  <li
+    *ngFor="let note of notes"
+    [ngClass]="{ completed: note.completed }"
+  >
+    <div class="note-text">
+      <h3>{{ note.title }}</h3>
+      <p *ngIf="note.content">{{ note.content }}</p>
+    </div>
+    <div class="note-actions">
+      <button
+        class="secondary"
+        (click)="toggleNote(note)"
+        [attr.aria-label]="note.completed ? 'Mark ' + note.title + ' as incomplete' : 'Mark ' + note.title + ' as complete'"
+      >
+        {{ note.completed ? 'Undo' : 'Done' }}
+      </button>
+      <button
+        class="danger"
+        (click)="deleteNote(note.id)"
+        [attr.aria-label]="'Delete ' + note.title"
+      >
+        Delete
+      </button>
+    </div>
+  </li>
+</ul>

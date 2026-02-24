@@ -1,0 +1,230 @@
+---
+// Notes App — Astro + Lithair
+// Static page with client-side JS for API interaction
+---
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notes — Astro + Lithair</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+        color: #1a1a1a;
+        background: #fafafa;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      input,
+      textarea {
+        padding: 0.5rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font: inherit;
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 60px;
+      }
+
+      button {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font: inherit;
+        background: #2563eb;
+        color: #fff;
+      }
+
+      button:hover {
+        background: #1d4ed8;
+      }
+
+      button.secondary {
+        background: #e5e7eb;
+        color: #1a1a1a;
+      }
+
+      button.secondary:hover {
+        background: #d1d5db;
+      }
+
+      button.danger {
+        background: #dc2626;
+      }
+
+      button.danger:hover {
+        background: #b91c1c;
+      }
+
+      ul {
+        list-style: none;
+      }
+
+      li {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+        background: #fff;
+      }
+
+      li.completed .note-text h3 {
+        text-decoration: line-through;
+        opacity: 0.5;
+      }
+
+      .note-text {
+        flex: 1;
+      }
+
+      .note-text h3 {
+        font-size: 0.95rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .note-text p {
+        font-size: 0.85rem;
+        color: #666;
+      }
+
+      .note-actions {
+        display: flex;
+        gap: 0.25rem;
+      }
+
+      .note-actions button {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Notes (Astro)</h1>
+
+    <form id="note-form">
+      <input id="title" placeholder="Title" />
+      <textarea id="content" placeholder="Content"></textarea>
+      <button type="submit">Add Note</button>
+    </form>
+
+    <ul id="note-list"></ul>
+
+    <script>
+      const API = "/api/notes";
+      const form = document.getElementById("note-form") as HTMLFormElement;
+      const list = document.getElementById("note-list") as HTMLUListElement;
+      const titleInput = document.getElementById("title") as HTMLInputElement;
+      const contentInput = document.getElementById(
+        "content"
+      ) as HTMLTextAreaElement;
+
+      interface Note {
+        id: string;
+        title: string;
+        content: string;
+        completed: boolean;
+      }
+
+      async function fetchNotes(): Promise<void> {
+        const res = await fetch(API);
+        if (!res.ok) return;
+        const notes: Note[] = await res.json();
+        list.innerHTML = notes
+          .map(
+            (note) => `
+          <li class="${note.completed ? "completed" : ""}">
+            <div class="note-text">
+              <h3>${escapeHtml(note.title)}</h3>
+              <p>${escapeHtml(note.content)}</p>
+            </div>
+            <div class="note-actions">
+              <button class="secondary" data-toggle="${note.id}">
+                ${note.completed ? "Undo" : "Done"}
+              </button>
+              <button class="danger" data-delete="${note.id}">Del</button>
+            </div>
+          </li>`
+          )
+          .join("");
+
+        // Bind toggle buttons
+        list.querySelectorAll("[data-toggle]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = (btn as HTMLButtonElement).dataset.toggle!;
+            const note = notes.find((n) => n.id === id);
+            if (!note) return;
+            await fetch(`${API}/${id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...note, completed: !note.completed }),
+            });
+            fetchNotes();
+          });
+        });
+
+        // Bind delete buttons
+        list.querySelectorAll("[data-delete]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            await fetch(
+              `${API}/${(btn as HTMLButtonElement).dataset.delete}`,
+              { method: "DELETE" }
+            );
+            fetchNotes();
+          });
+        });
+      }
+
+      function escapeHtml(text: string): string {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      form.addEventListener("submit", async (e: Event) => {
+        e.preventDefault();
+        if (!titleInput.value.trim()) return;
+        await fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: titleInput.value,
+            content: contentInput.value,
+            completed: false,
+          }),
+        });
+        titleInput.value = "";
+        contentInput.value = "";
+        fetchNotes();
+      });
+
+      fetchNotes();
+    </script>
+  </body>
+</html>

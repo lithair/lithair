@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lithair DataTable Demo - Full Stack</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+        }
+        header h1 { font-size: 2rem; margin-bottom: 10px; }
+        header p { opacity: 0.9; }
+        .stack-info {
+            background: rgba(255,255,255,0.15);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        .stack-info code { background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; }
+
+        /* Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            align-items: center;
+        }
+        .nav-tab {
+            padding: 12px 24px;
+            border: none;
+            background: #f0f0f0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { background: #e0e0e0; }
+        .nav-tab.active { background: #667eea; color: white; }
+        .nav-tab .count {
+            background: rgba(0,0,0,0.15);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            margin-left: 8px;
+        }
+        .nav-tab.active .count { background: rgba(255,255,255,0.3); }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .stats-bar { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 150px;
+        }
+        .stat-card .label { color: #666; font-size: 0.9rem; margin-bottom: 5px; }
+        .stat-card .value { font-size: 1.5rem; font-weight: bold; color: #667eea; }
+        .stat-card.purple .value { color: #764ba2; }
+        .stat-card.green .value { color: #28a745; }
+        .stat-card.orange .value { color: #fd7e14; }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .controls-row { display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+        .controls input, .controls select {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        .controls input:focus, .controls select:focus { outline: none; border-color: #667eea; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5a6fd6; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-info { background: #17a2b8; color: white; }
+        .btn-info:hover { background: #138496; }
+        .btn-sm { padding: 6px 12px; font-size: 0.85rem; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; color: #333; }
+        tr:hover { background: #f8f9fa; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 500; }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-secondary { background: #e2e3e5; color: #383d41; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-info { background: #d1ecf1; color: #0c5460; }
+        .badge-primary { background: #cce5ff; color: #004085; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        .badge-vip { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #333; }
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #f8f9fa;
+        }
+        .pagination-info { color: #666; }
+        .page-btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .page-btn:hover:not(:disabled) { background: #f0f0f0; }
+        .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .progress { margin-top: 10px; padding: 10px; background: #e7f3ff; border-radius: 6px; display: none; }
+        .progress.active { display: block; }
+        .truncate { max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .clickable { cursor: pointer; color: #667eea; }
+        .clickable:hover { text-decoration: underline; }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 900px;
+            max-height: 80vh;
+            overflow-y: auto;
+            width: 90%;
+            padding: 30px;
+        }
+        .modal h2 { margin-bottom: 20px; }
+        .modal-close {
+            float: right;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+        .modal-close:hover { color: #333; }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .detail-item { background: #f8f9fa; padding: 12px; border-radius: 6px; }
+        .detail-item .label { font-size: 0.85rem; color: #666; margin-bottom: 4px; }
+        .detail-item .value { font-weight: 600; }
+
+        /* ==================== SIDEBAR LAYOUT ==================== */
+        .content-layout {
+            display: flex;
+            gap: 0;
+            align-items: flex-start;
+        }
+        .content-main {
+            flex: 1;
+            min-width: 0;
+        }
+        .filter-sidebar {
+            width: 300px;
+            min-width: 300px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-right: 20px;
+            overflow-y: auto;
+            max-height: calc(100vh - 120px);
+            position: sticky;
+            top: 20px;
+            transition: width 0.3s ease, min-width 0.3s ease, margin 0.3s ease, opacity 0.2s ease;
+        }
+        .filter-sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            margin-right: 0;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .filter-sidebar.right {
+            order: 2;
+            margin-right: 0;
+            margin-left: 20px;
+        }
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 15px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            font-size: 1.05rem;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 2;
+            border-radius: 8px 8px 0 0;
+        }
+        .sidebar-header-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .sidebar-header button {
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 3px 7px;
+            font-size: 1rem;
+            color: #666;
+            line-height: 1;
+        }
+        .sidebar-header button:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .sidebar-section {
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .sidebar-section:last-child {
+            border-bottom: none;
+        }
+        .sidebar-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            user-select: none;
+            gap: 8px;
+        }
+        .sidebar-section-header:hover {
+            background: #f8f9fa;
+        }
+        .sidebar-section-header .col-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sidebar-section-header .chevron {
+            transition: transform 0.2s;
+            font-size: 0.7rem;
+            color: #999;
+        }
+        .sidebar-section.collapsed .sidebar-section-body {
+            display: none;
+        }
+        .sidebar-section.collapsed .chevron {
+            transform: rotate(-90deg);
+        }
+        .sidebar-section-body {
+            padding: 6px 15px 12px;
+        }
+        .sidebar-filter-badge {
+            background: #667eea;
+            color: white;
+            border-radius: 10px;
+            padding: 1px 7px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .sidebar-search {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            margin-bottom: 6px;
+        }
+        .sidebar-search:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .sidebar-checkbox-list {
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .sidebar-checkbox {
+            display: flex;
+            align-items: center;
+            padding: 2px 0;
+            font-size: 0.82rem;
+            cursor: pointer;
+        }
+        .sidebar-checkbox:hover {
+            background: #f8f9fa;
+            border-radius: 3px;
+        }
+        .sidebar-checkbox input[type="checkbox"] {
+            margin-right: 7px;
+            accent-color: #667eea;
+            flex-shrink: 0;
+        }
+        .sidebar-checkbox .cb-label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sidebar-checkbox .cb-count {
+            margin-left: auto;
+            color: #aaa;
+            font-size: 0.75rem;
+            padding-left: 6px;
+            flex-shrink: 0;
+        }
+        .sidebar-numeric {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .sidebar-numeric select {
+            padding: 5px 4px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            background: white;
+            min-width: 52px;
+        }
+        .sidebar-numeric input[type="number"] {
+            flex: 1;
+            padding: 5px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            min-width: 0;
+        }
+        .sidebar-numeric select:focus,
+        .sidebar-numeric input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .sidebar-range {
+            font-size: 0.78rem;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        .sidebar-toggle-btn {
+            padding: 8px 14px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #667eea;
+            font-weight: 500;
+            transition: all 0.2s;
+            margin-left: auto;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .sidebar-toggle-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .sidebar-toggle-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .sidebar-empty {
+            padding: 20px 15px;
+            color: #999;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .controls-row { flex-direction: column; align-items: stretch; }
+            .stats-bar { flex-direction: column; }
+            .nav-tabs { flex-wrap: wrap; }
+            .filter-sidebar { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Lithair DataTable Demo</h1>
+            <p>Full-stack demonstration with relational data</p>
+            <div class="stack-info">
+                <strong>Stack:</strong>
+                <code>DeclarativeModel</code> +
+                <code>LithairServer</code> +
+                <code>Scc2Engine</code> +
+                <code>Event Sourcing</code>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchView('products')">
+                Products <span class="count" id="productsCount">0</span>
+            </button>
+            <button class="nav-tab" onclick="switchView('consumers')">
+                Consumers <span class="count" id="consumersCount">0</span>
+            </button>
+            <button class="nav-tab" onclick="switchView('orders')">
+                Orders <span class="count" id="ordersCount">0</span>
+            </button>
+            <button class="sidebar-toggle-btn active" id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle filters (Ctrl+B)">&#9776; Filters</button>
+        </div>
+
+        <div class="content-layout">
+            <!-- FILTER SIDEBAR -->
+            <aside class="filter-sidebar" id="filter-sidebar">
+                <div class="sidebar-header">
+                    <span>Filters</span>
+                    <div class="sidebar-header-actions">
+                        <button id="sidebar-switch-side" onclick="switchSidebarSide()" title="Switch side">&#x21C4;</button>
+                        <button id="sidebar-close" onclick="toggleSidebar()" title="Close">&times;</button>
+                    </div>
+                </div>
+                <div class="sidebar-body" id="sidebar-body">
+                    <div class="sidebar-empty">Loading...</div>
+                </div>
+            </aside>
+
+            <div class="content-main">
+                <!-- PRODUCTS VIEW -->
+                <div id="productsView" class="view active">
+                    <div class="stats-bar">
+                        <div class="stat-card">
+                            <div class="label">Total Products</div>
+                            <div class="value" id="totalProducts">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Engine</div>
+                            <div class="value" style="font-size: 1rem;">Scc2Engine</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">Storage</div>
+                            <div class="value" style="font-size: 1rem;">Event Sourcing</div>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <div class="controls-row">
+                            <input type="text" id="productSearch" placeholder="Search by name, SKU, brand..." style="min-width: 250px;" />
+                            <select id="categoryFilter">
+                                <option value="">All Categories</option>
+                                <option value="Electronics">Electronics</option>
+                                <option value="Clothing">Clothing</option>
+                                <option value="Home & Garden">Home & Garden</option>
+                                <option value="Sports">Sports</option>
+                                <option value="Books">Books</option>
+                                <option value="Toys">Toys</option>
+                                <option value="Automotive">Automotive</option>
+                                <option value="Health">Health</option>
+                                <option value="Beauty">Beauty</option>
+                                <option value="Food">Food</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadProducts()">Refresh</button>
+                        </div>
+                        <div class="controls-row" style="margin-top: 15px;">
+                            <button class="btn btn-success" onclick="seedData('products', 100)">Add 100</button>
+                            <button class="btn btn-success" onclick="seedData('products', 1000)">Add 1K</button>
+                            <button class="btn btn-warning" onclick="seedData('products', 10000)">Add 10K</button>
+                            <span style="color: #666; font-size: 0.9rem;" id="productLastAction"></span>
+                        </div>
+                        <div class="progress" id="productProgress">
+                            <strong>Operation in progress...</strong> Please wait.
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Brand</th>
+                                    <th>SKU</th>
+                                    <th>Price</th>
+                                    <th>Stock</th>
+                                    <th>Rating</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productTableBody">
+                                <tr><td colspan="9" class="loading">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                        <div class="pagination">
+                            <div class="pagination-info" id="productPaginationInfo">-</div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <button class="page-btn" id="productPrevBtn" onclick="changeProductPage(-1)">Previous</button>
+                                <span id="productPageInfo">Page 1</span>
+                                <button class="page-btn" id="productNextBtn" onclick="changeProductPage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONSUMERS VIEW -->
+                <div id="consumersView" class="view">
+                    <div class="stats-bar">
+                        <div class="stat-card purple">
+                            <div class="label">Total Consumers</div>
+                            <div class="value" id="totalConsumers">-</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="label">VIP Consumers</div>
+                            <div class="value" id="vipConsumers">-</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="label">Total Revenue</div>
+                            <div class="value" id="totalRevenue">-</div>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <div class="controls-row">
+                            <input type="text" id="consumerSearch" placeholder="Search by name, email, city..." style="min-width: 250px;" />
+                            <select id="countryFilter">
+                                <option value="">All Countries</option>
+                                <option value="USA">USA</option>
+                                <option value="UK">UK</option>
+                                <option value="France">France</option>
+                                <option value="Germany">Germany</option>
+                                <option value="Spain">Spain</option>
+                                <option value="Italy">Italy</option>
+                            </select>
+                            <select id="vipFilter">
+                                <option value="">All Customers</option>
+                                <option value="true">VIP Only</option>
+                                <option value="false">Regular Only</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadConsumers()">Refresh</button>
+                        </div>
+                        <div class="controls-row" style="margin-top: 15px;">
+                            <button class="btn btn-success" onclick="seedData('consumers', 10)">Add 10</button>
+                            <button class="btn btn-success" onclick="seedData('consumers', 100)">Add 100</button>
+                            <button class="btn btn-warning" onclick="seedData('consumers', 1000)">Add 1K</button>
+                            <span style="color: #666; font-size: 0.9rem;" id="consumerLastAction"></span>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>City</th>
+                                    <th>Country</th>
+                                    <th>Orders</th>
+                                    <th>Total Spent</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="consumerTableBody">
+                                <tr><td colspan="9" class="loading">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                        <div class="pagination">
+                            <div class="pagination-info" id="consumerPaginationInfo">-</div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <button class="page-btn" id="consumerPrevBtn" onclick="changeConsumerPage(-1)">Previous</button>
+                                <span id="consumerPageInfo">Page 1</span>
+                                <button class="page-btn" id="consumerNextBtn" onclick="changeConsumerPage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ORDERS VIEW -->
+                <div id="ordersView" class="view">
+                    <div class="stats-bar">
+                        <div class="stat-card">
+                            <div class="label">Total Orders</div>
+                            <div class="value" id="totalOrders">-</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="label">Delivered</div>
+                            <div class="value" id="deliveredOrders">-</div>
+                        </div>
+                        <div class="stat-card orange">
+                            <div class="label">Pending</div>
+                            <div class="value" id="pendingOrders">-</div>
+                        </div>
+                        <div class="stat-card purple">
+                            <div class="label">Order Value</div>
+                            <div class="value" id="orderValue">-</div>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <div class="controls-row">
+                            <input type="text" id="orderSearch" placeholder="Search by order ID, address..." style="min-width: 250px;" />
+                            <select id="statusFilter">
+                                <option value="">All Statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="shipped">Shipped</option>
+                                <option value="delivered">Delivered</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadOrders()">Refresh</button>
+                        </div>
+                        <div class="controls-row" style="margin-top: 15px;">
+                            <button class="btn btn-success" onclick="seedData('orders', 10)">Add 10</button>
+                            <button class="btn btn-success" onclick="seedData('orders', 100)">Add 100</button>
+                            <button class="btn btn-warning" onclick="seedData('orders', 500)">Add 500</button>
+                            <span style="color: #666; font-size: 0.9rem;" id="orderLastAction"></span>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Consumer</th>
+                                    <th>Products</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Shipping Address</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orderTableBody">
+                                <tr><td colspan="8" class="loading">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                        <div class="pagination">
+                            <div class="pagination-info" id="orderPaginationInfo">-</div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <button class="page-btn" id="orderPrevBtn" onclick="changeOrderPage(-1)">Previous</button>
+                                <span id="orderPageInfo">Page 1</span>
+                                <button class="page-btn" id="orderNextBtn" onclick="changeOrderPage(1)">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div><!-- /content-main -->
+        </div><!-- /content-layout -->
+    </div>
+
+    <!-- Order Detail Modal -->
+    <div class="modal-overlay" id="orderModal">
+        <div class="modal">
+            <span class="modal-close" onclick="closeOrderModal()">&times;</span>
+            <h2>Order Details</h2>
+            <div id="orderModalContent">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Consumer Orders Modal -->
+    <div class="modal-overlay" id="consumerOrdersModal">
+        <div class="modal">
+            <span class="modal-close" onclick="closeConsumerOrdersModal()">&times;</span>
+            <h2>Consumer Orders</h2>
+            <div id="consumerOrdersContent">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== STATE ====================
+        let currentView = 'products';
+        let productPage = 1, consumerPage = 1, orderPage = 1;
+        let allProducts = [], allConsumers = [], allOrders = [];
+        let isLoading = false;
+        const pageSize = 50;
+
+        // Sidebar state
+        let sidebarOpen = true;
+        let sidebarSide = 'left';
+        let metaCache = {};
+        let sidebarFilters = {};
+
+        // ==================== VIEW SWITCHING ====================
+        function switchView(view) {
+            currentView = view;
+            sidebarFilters = {};
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            // Find the clicked tab by matching view name
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                if (tab.textContent.toLowerCase().includes(view.substring(0, 4))) {
+                    tab.classList.add('active');
+                }
+            });
+            document.getElementById(view + 'View').classList.add('active');
+
+            // Load data if needed
+            if (view === 'products' && allProducts.length === 0) loadProducts();
+            if (view === 'consumers' && allConsumers.length === 0) loadConsumers();
+            if (view === 'orders' && allOrders.length === 0) loadOrders();
+
+            renderSidebar();
+        }
+
+        // ==================== SIDEBAR ====================
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            document.getElementById('filter-sidebar').classList.toggle('collapsed', !sidebarOpen);
+            document.getElementById('sidebar-toggle').classList.toggle('active', sidebarOpen);
+        }
+
+        function switchSidebarSide() {
+            sidebarSide = sidebarSide === 'left' ? 'right' : 'left';
+            document.getElementById('filter-sidebar').classList.toggle('right', sidebarSide === 'right');
+        }
+
+        async function fetchMeta(dataset) {
+            if (metaCache[dataset]) return metaCache[dataset];
+            try {
+                const resp = await fetch('/api/' + dataset + '/meta');
+                const meta = await resp.json();
+                metaCache[dataset] = meta;
+                return meta;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function renderSidebar() {
+            const dataset = currentView;
+            const meta = await fetchMeta(dataset);
+            const body = document.getElementById('sidebar-body');
+
+            if (!meta || !meta.columns || meta.columns.length === 0) {
+                body.innerHTML = '<div class="sidebar-empty">No column data available.<br>Seed some data first.</div>';
+                return;
+            }
+
+            body.innerHTML = meta.columns.map(col => {
+                if (col.col_type === 'text') {
+                    return renderTextSection(col);
+                } else {
+                    return renderNumericSection(col);
+                }
+            }).join('');
+
+            syncSidebarFromState();
+        }
+
+        function renderTextSection(col) {
+            const hasSearch = col.values.length > 15;
+            const activeCount = getActiveFilterCount(col.name);
+            const badgeHtml = activeCount > 0 ? '<span class="sidebar-filter-badge">' + activeCount + '</span>' : '';
+
+            let html = '<div class="sidebar-section" data-col="' + col.name + '">';
+            html += '<div class="sidebar-section-header" onclick="toggleSection(this)">';
+            html += '<span class="col-name">' + escapeHtml(col.name) + badgeHtml + '</span>';
+            html += '<span class="chevron">&#9660;</span>';
+            html += '</div>';
+            html += '<div class="sidebar-section-body">';
+
+            if (hasSearch) {
+                html += '<input class="sidebar-search" type="text" placeholder="Search ' + escapeHtml(col.name) + '..." oninput="filterCheckboxList(this, \'' + escapeAttr(col.name) + '\')">';
+            }
+
+            html += '<div class="sidebar-checkbox-list" id="cb-list-' + col.name + '">';
+            for (const v of col.values) {
+                const displayVal = v.value || '(empty)';
+                html += '<label class="sidebar-checkbox" data-value="' + escapeAttr(v.value) + '">';
+                html += '<input type="checkbox" data-col="' + escapeAttr(col.name) + '" data-value="' + escapeAttr(v.value) + '" onchange="onCheckboxChange(\'' + escapeAttr(col.name) + '\')">';
+                html += '<span class="cb-label" title="' + escapeAttr(displayVal) + '">' + escapeHtml(displayVal) + '</span>';
+                html += '<span class="cb-count">' + v.count + '</span>';
+                html += '</label>';
+            }
+            html += '</div></div></div>';
+            return html;
+        }
+
+        function renderNumericSection(col) {
+            const activeFilter = sidebarFilters[col.name] || '';
+            const badgeHtml = activeFilter ? '<span class="sidebar-filter-badge">1</span>' : '';
+            const rangeText = (col.min !== null && col.max !== null)
+                ? col.min.toLocaleString() + ' — ' + col.max.toLocaleString()
+                : '';
+
+            let html = '<div class="sidebar-section" data-col="' + col.name + '">';
+            html += '<div class="sidebar-section-header" onclick="toggleSection(this)">';
+            html += '<span class="col-name">' + escapeHtml(col.name) + badgeHtml + '</span>';
+            html += '<span class="chevron">&#9660;</span>';
+            html += '</div>';
+            html += '<div class="sidebar-section-body">';
+
+            if (rangeText) {
+                html += '<div class="sidebar-range">Range: ' + rangeText + '</div>';
+            }
+
+            html += '<div class="sidebar-numeric">';
+            html += '<select data-col="' + escapeAttr(col.name) + '" onchange="onNumericChange(\'' + escapeAttr(col.name) + '\')">';
+            html += '<option value="">--</option>';
+            html += '<option value=">">&gt;</option>';
+            html += '<option value="<">&lt;</option>';
+            html += '<option value=">=">&gt;=</option>';
+            html += '<option value="<=">&lt;=</option>';
+            html += '<option value="=">=</option>';
+            html += '</select>';
+            html += '<input type="number" data-col="' + escapeAttr(col.name) + '" placeholder="Value" oninput="debouncedNumericChange(\'' + escapeAttr(col.name) + '\')">';
+            html += '</div></div></div>';
+            return html;
+        }
+
+        function toggleSection(header) {
+            header.parentElement.classList.toggle('collapsed');
+        }
+
+        function filterCheckboxList(input, colName) {
+            const search = input.value.toLowerCase();
+            const list = document.getElementById('cb-list-' + colName);
+            if (!list) return;
+            list.querySelectorAll('.sidebar-checkbox').forEach(function(label) {
+                const val = (label.dataset.value || '').toLowerCase();
+                label.style.display = val.includes(search) ? '' : 'none';
+            });
+        }
+
+        function onCheckboxChange(colName) {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"][data-col="' + colName + '"]:checked');
+            const values = Array.from(checkboxes).map(function(cb) { return cb.dataset.value; });
+
+            if (values.length > 0) {
+                sidebarFilters[colName] = '=' + values.join('|');
+            } else {
+                delete sidebarFilters[colName];
+            }
+
+            applyFiltersFromSidebar();
+        }
+
+        let numericDebounceTimers = {};
+        function debouncedNumericChange(colName) {
+            clearTimeout(numericDebounceTimers[colName]);
+            numericDebounceTimers[colName] = setTimeout(function() { onNumericChange(colName); }, 300);
+        }
+
+        function onNumericChange(colName) {
+            const section = document.querySelector('.sidebar-section[data-col="' + colName + '"]');
+            if (!section) return;
+            const select = section.querySelector('.sidebar-numeric select');
+            const input = section.querySelector('.sidebar-numeric input[type="number"]');
+            const op = select ? select.value : '';
+            const val = input ? input.value : '';
+
+            if (op && val !== '') {
+                sidebarFilters[colName] = op + val;
+            } else {
+                delete sidebarFilters[colName];
+            }
+
+            applyFiltersFromSidebar();
+        }
+
+        function applyFiltersFromSidebar() {
+            if (currentView === 'products') { productPage = 1; filterAndDisplayProducts(); }
+            else if (currentView === 'consumers') { consumerPage = 1; filterAndDisplayConsumers(); }
+            else if (currentView === 'orders') { orderPage = 1; filterAndDisplayOrders(); }
+            updateSidebarCounts();
+        }
+
+        // ==================== STACKABLE CROSS-FILTERING (PowerBI style) ====================
+        function getCurrentData() {
+            if (currentView === 'products') return allProducts;
+            if (currentView === 'consumers') return allConsumers;
+            if (currentView === 'orders') return allOrders;
+            return [];
+        }
+
+        function updateSidebarCounts() {
+            var data = getCurrentData();
+            if (!data || data.length === 0) return;
+            var meta = metaCache[currentView];
+            if (!meta || !meta.columns) return;
+
+            meta.columns.forEach(function(col) {
+                if (col.col_type === 'text') {
+                    updateTextSectionCounts(col.name, data);
+                } else {
+                    updateNumericSectionRange(col.name, data);
+                }
+            });
+        }
+
+        function updateTextSectionCounts(colName, allData) {
+            // Cross-filter: apply ALL sidebar filters EXCEPT this column's own filter
+            var crossFiltered = allData.filter(function(item) {
+                for (var c in sidebarFilters) {
+                    if (c === colName) continue;
+                    if (!matchesSidebarFilter(item[c], sidebarFilters[c])) return false;
+                }
+                return true;
+            });
+
+            // Count values in the cross-filtered set
+            var counts = {};
+            for (var i = 0; i < crossFiltered.length; i++) {
+                var val = String(crossFiltered[i][colName] == null ? '' : crossFiltered[i][colName]);
+                counts[val] = (counts[val] || 0) + 1;
+            }
+
+            // Update each checkbox's count + dim items with 0
+            var list = document.getElementById('cb-list-' + colName);
+            if (!list) return;
+            list.querySelectorAll('.sidebar-checkbox').forEach(function(label) {
+                var val = label.dataset.value;
+                var count = counts[val] || 0;
+                var countEl = label.querySelector('.cb-count');
+                if (countEl) countEl.textContent = count;
+                label.style.opacity = count === 0 ? '0.35' : '1';
+            });
+
+            updateFilterBadge(colName);
+        }
+
+        function updateNumericSectionRange(colName, allData) {
+            var crossFiltered = allData.filter(function(item) {
+                for (var c in sidebarFilters) {
+                    if (c === colName) continue;
+                    if (!matchesSidebarFilter(item[c], sidebarFilters[c])) return false;
+                }
+                return true;
+            });
+
+            var nums = crossFiltered
+                .map(function(item) { return parseFloat(item[colName]); })
+                .filter(function(n) { return !isNaN(n); });
+
+            var section = document.querySelector('.sidebar-section[data-col="' + colName + '"]');
+            if (!section) return;
+            var rangeEl = section.querySelector('.sidebar-range');
+            if (rangeEl && nums.length > 0) {
+                var min = Math.min.apply(null, nums);
+                var max = Math.max.apply(null, nums);
+                rangeEl.textContent = 'Range: ' + min.toLocaleString() + ' \u2014 ' + max.toLocaleString() + ' (' + nums.length + ' rows)';
+            } else if (rangeEl) {
+                rangeEl.textContent = 'No matching data';
+            }
+
+            updateFilterBadge(colName);
+        }
+
+        function updateFilterBadge(colName) {
+            var section = document.querySelector('.sidebar-section[data-col="' + colName + '"]');
+            if (!section) return;
+            var header = section.querySelector('.sidebar-section-header .col-name');
+            if (!header) return;
+            var existingBadge = header.querySelector('.sidebar-filter-badge');
+            var count = getActiveFilterCount(colName);
+
+            if (count > 0 && !existingBadge) {
+                header.insertAdjacentHTML('beforeend', '<span class="sidebar-filter-badge">' + count + '</span>');
+            } else if (count === 0 && existingBadge) {
+                existingBadge.remove();
+            } else if (count > 0 && existingBadge) {
+                existingBadge.textContent = count;
+            }
+        }
+
+        function matchesSidebarFilter(value, filter) {
+            if (!filter) return true;
+            const strVal = String(value == null ? '' : value).toLowerCase();
+
+            // Pipe OR: =val1|val2|val3
+            if (filter.startsWith('=')) {
+                const targets = filter.substring(1).split('|').map(function(v) { return v.toLowerCase(); });
+                return targets.some(function(t) { return strVal === t; });
+            }
+
+            // Numeric operators
+            var numVal = parseFloat(value);
+            if (isNaN(numVal)) return false;
+
+            if (filter.startsWith('>=')) return numVal >= parseFloat(filter.substring(2));
+            if (filter.startsWith('<=')) return numVal <= parseFloat(filter.substring(2));
+            if (filter.startsWith('>')) return numVal > parseFloat(filter.substring(1));
+            if (filter.startsWith('<')) return numVal < parseFloat(filter.substring(1));
+
+            return true;
+        }
+
+        function passesSidebarFilters(item) {
+            for (const col in sidebarFilters) {
+                if (!matchesSidebarFilter(item[col], sidebarFilters[col])) return false;
+            }
+            return true;
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        function escapeAttr(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
+        }
+
+        function getActiveFilterCount(colName) {
+            var filter = sidebarFilters[colName];
+            if (!filter) return 0;
+            if (filter.startsWith('=')) return filter.substring(1).split('|').length;
+            return 1;
+        }
+
+        function syncSidebarFromState() {
+            for (const col in sidebarFilters) {
+                var filter = sidebarFilters[col];
+                if (filter && filter.startsWith('=')) {
+                    var values = filter.substring(1).split('|');
+                    var checkboxes = document.querySelectorAll('input[type="checkbox"][data-col="' + col + '"]');
+                    checkboxes.forEach(function(cb) {
+                        cb.checked = values.includes(cb.dataset.value);
+                    });
+                }
+            }
+        }
+
+        // ==================== PRODUCTS ====================
+        async function loadProducts() {
+            if (isLoading) return;
+            isLoading = true;
+            document.getElementById('productTableBody').innerHTML = '<tr><td colspan="9" class="loading">Loading...</td></tr>';
+
+            try {
+                const response = await fetch('/api/products');
+                allProducts = await response.json();
+                document.getElementById('totalProducts').textContent = allProducts.length.toLocaleString();
+                document.getElementById('productsCount').textContent = allProducts.length.toLocaleString();
+                filterAndDisplayProducts();
+            } catch (err) {
+                document.getElementById('productTableBody').innerHTML = '<tr><td colspan="9" style="color: red;">Error loading data</td></tr>';
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        function filterAndDisplayProducts() {
+            const search = document.getElementById('productSearch').value.toLowerCase();
+            const category = document.getElementById('categoryFilter').value;
+
+            let filtered = allProducts.filter(p => {
+                const matchesSearch = !search ||
+                    (p.name && p.name.toLowerCase().includes(search)) ||
+                    (p.sku && p.sku.toLowerCase().includes(search)) ||
+                    (p.brand && p.brand.toLowerCase().includes(search));
+                const matchesCategory = !category || p.category === category;
+                return matchesSearch && matchesCategory && passesSidebarFilters(p);
+            });
+
+            filtered.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+            const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+            const start = (productPage - 1) * pageSize;
+            renderProductTable(filtered.slice(start, start + pageSize));
+            updateProductPagination(filtered.length, totalPages);
+        }
+
+        function renderProductTable(products) {
+            const tbody = document.getElementById('productTableBody');
+            if (products.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #666;">No products found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = products.map(p => `
+                <tr>
+                    <td class="truncate" title="${p.id || ''}">${(p.id || '').substring(0, 8)}...</td>
+                    <td class="truncate" title="${p.name || ''}">${p.name || '-'}</td>
+                    <td>${p.category || '-'}</td>
+                    <td>${p.brand || '-'}</td>
+                    <td>${p.sku || '-'}</td>
+                    <td>$${(p.price || 0).toFixed(2)}</td>
+                    <td>${p.stock || 0}</td>
+                    <td>${(p.rating || 0).toFixed(1)} (${p.reviews_count || 0})</td>
+                    <td><span class="badge ${p.active ? 'badge-success' : 'badge-secondary'}">${p.active ? 'Active' : 'Inactive'}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        function updateProductPagination(total, totalPages) {
+            const start = ((productPage - 1) * pageSize) + 1;
+            const end = Math.min(productPage * pageSize, total);
+            document.getElementById('productPaginationInfo').textContent = `Showing ${start}-${end} of ${total.toLocaleString()}`;
+            document.getElementById('productPageInfo').textContent = `Page ${productPage} of ${totalPages}`;
+            document.getElementById('productPrevBtn').disabled = productPage <= 1;
+            document.getElementById('productNextBtn').disabled = productPage >= totalPages;
+        }
+
+        function changeProductPage(delta) { productPage += delta; filterAndDisplayProducts(); }
+
+        // ==================== CONSUMERS ====================
+        async function loadConsumers() {
+            if (isLoading) return;
+            isLoading = true;
+            document.getElementById('consumerTableBody').innerHTML = '<tr><td colspan="9" class="loading">Loading...</td></tr>';
+
+            try {
+                const response = await fetch('/api/consumers');
+                allConsumers = await response.json();
+
+                const vipCount = allConsumers.filter(c => c.vip).length;
+                const totalSpent = allConsumers.reduce((sum, c) => sum + (c.total_spent || 0), 0);
+
+                document.getElementById('totalConsumers').textContent = allConsumers.length.toLocaleString();
+                document.getElementById('consumersCount').textContent = allConsumers.length.toLocaleString();
+                document.getElementById('vipConsumers').textContent = vipCount.toLocaleString();
+                document.getElementById('totalRevenue').textContent = '$' + totalSpent.toLocaleString();
+
+                filterAndDisplayConsumers();
+            } catch (err) {
+                document.getElementById('consumerTableBody').innerHTML = '<tr><td colspan="9" style="color: red;">Error loading data</td></tr>';
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        function filterAndDisplayConsumers() {
+            const search = document.getElementById('consumerSearch').value.toLowerCase();
+            const country = document.getElementById('countryFilter').value;
+            const vip = document.getElementById('vipFilter').value;
+
+            let filtered = allConsumers.filter(c => {
+                const matchesSearch = !search ||
+                    (c.first_name && c.first_name.toLowerCase().includes(search)) ||
+                    (c.last_name && c.last_name.toLowerCase().includes(search)) ||
+                    (c.email && c.email.toLowerCase().includes(search)) ||
+                    (c.city && c.city.toLowerCase().includes(search));
+                const matchesCountry = !country || c.country === country;
+                const matchesVip = vip === '' || c.vip === (vip === 'true');
+                return matchesSearch && matchesCountry && matchesVip && passesSidebarFilters(c);
+            });
+
+            filtered.sort((a, b) => (b.total_spent || 0) - (a.total_spent || 0));
+            const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+            const start = (consumerPage - 1) * pageSize;
+            renderConsumerTable(filtered.slice(start, start + pageSize));
+            updateConsumerPagination(filtered.length, totalPages);
+        }
+
+        function renderConsumerTable(consumers) {
+            const tbody = document.getElementById('consumerTableBody');
+            if (consumers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #666;">No consumers found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = consumers.map(c => `
+                <tr>
+                    <td class="truncate" title="${c.id || ''}">${(c.id || '').substring(0, 8)}...</td>
+                    <td>${c.first_name || ''} ${c.last_name || ''}</td>
+                    <td class="truncate" title="${c.email || ''}">${c.email || '-'}</td>
+                    <td>${c.city || '-'}</td>
+                    <td>${c.country || '-'}</td>
+                    <td>${c.total_orders || 0}</td>
+                    <td>$${(c.total_spent || 0).toLocaleString()}</td>
+                    <td>${c.vip ? '<span class="badge badge-vip">VIP</span>' : '<span class="badge badge-secondary">Regular</span>'}</td>
+                    <td>
+                        <button class="btn btn-info btn-sm" onclick="viewConsumerOrders('${c.id}')">Orders</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateConsumerPagination(total, totalPages) {
+            const start = ((consumerPage - 1) * pageSize) + 1;
+            const end = Math.min(consumerPage * pageSize, total);
+            document.getElementById('consumerPaginationInfo').textContent = `Showing ${start}-${end} of ${total.toLocaleString()}`;
+            document.getElementById('consumerPageInfo').textContent = `Page ${consumerPage} of ${totalPages}`;
+            document.getElementById('consumerPrevBtn').disabled = consumerPage <= 1;
+            document.getElementById('consumerNextBtn').disabled = consumerPage >= totalPages;
+        }
+
+        function changeConsumerPage(delta) { consumerPage += delta; filterAndDisplayConsumers(); }
+
+        // ==================== ORDERS ====================
+        async function loadOrders() {
+            if (isLoading) return;
+            isLoading = true;
+            document.getElementById('orderTableBody').innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
+
+            try {
+                const response = await fetch('/api/orders');
+                allOrders = await response.json();
+
+                const delivered = allOrders.filter(o => o.status === 'delivered').length;
+                const pending = allOrders.filter(o => o.status === 'pending').length;
+                const totalValue = allOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+
+                document.getElementById('totalOrders').textContent = allOrders.length.toLocaleString();
+                document.getElementById('ordersCount').textContent = allOrders.length.toLocaleString();
+                document.getElementById('deliveredOrders').textContent = delivered.toLocaleString();
+                document.getElementById('pendingOrders').textContent = pending.toLocaleString();
+                document.getElementById('orderValue').textContent = '$' + totalValue.toLocaleString();
+
+                filterAndDisplayOrders();
+            } catch (err) {
+                document.getElementById('orderTableBody').innerHTML = '<tr><td colspan="8" style="color: red;">Error loading data</td></tr>';
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        function filterAndDisplayOrders() {
+            const search = document.getElementById('orderSearch').value.toLowerCase();
+            const status = document.getElementById('statusFilter').value;
+
+            let filtered = allOrders.filter(o => {
+                const matchesSearch = !search ||
+                    (o.id && o.id.toLowerCase().includes(search)) ||
+                    (o.shipping_address && o.shipping_address.toLowerCase().includes(search));
+                const matchesStatus = !status || o.status === status;
+                return matchesSearch && matchesStatus && passesSidebarFilters(o);
+            });
+
+            filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+            const start = (orderPage - 1) * pageSize;
+            renderOrderTable(filtered.slice(start, start + pageSize));
+            updateOrderPagination(filtered.length, totalPages);
+        }
+
+        function renderOrderTable(orders) {
+            const tbody = document.getElementById('orderTableBody');
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #666;">No orders found</td></tr>';
+                return;
+            }
+
+            const statusBadge = (status) => {
+                const badges = {
+                    pending: 'badge-warning',
+                    confirmed: 'badge-info',
+                    shipped: 'badge-primary',
+                    delivered: 'badge-success',
+                    cancelled: 'badge-danger'
+                };
+                return badges[status] || 'badge-secondary';
+            };
+
+            tbody.innerHTML = orders.map(o => `
+                <tr>
+                    <td class="truncate clickable" title="${o.id || ''}" onclick="viewOrderDetails('${o.id}')">${(o.id || '').substring(0, 8)}...</td>
+                    <td class="truncate clickable" title="${o.consumer_id || ''}" onclick="viewConsumerOrders('${o.consumer_id}')">${(o.consumer_id || '').substring(0, 8)}...</td>
+                    <td>${(o.product_ids || []).length} items</td>
+                    <td>$${(o.total_amount || 0).toFixed(2)}</td>
+                    <td><span class="badge ${statusBadge(o.status)}">${o.status || '-'}</span></td>
+                    <td class="truncate" title="${o.shipping_address || ''}">${o.shipping_address || '-'}</td>
+                    <td>${o.created_at ? new Date(o.created_at).toLocaleDateString() : '-'}</td>
+                    <td>
+                        <button class="btn btn-info btn-sm" onclick="viewOrderDetails('${o.id}')">Details</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateOrderPagination(total, totalPages) {
+            const start = ((orderPage - 1) * pageSize) + 1;
+            const end = Math.min(orderPage * pageSize, total);
+            document.getElementById('orderPaginationInfo').textContent = `Showing ${start}-${end} of ${total.toLocaleString()}`;
+            document.getElementById('orderPageInfo').textContent = `Page ${orderPage} of ${totalPages}`;
+            document.getElementById('orderPrevBtn').disabled = orderPage <= 1;
+            document.getElementById('orderNextBtn').disabled = orderPage >= totalPages;
+        }
+
+        function changeOrderPage(delta) { orderPage += delta; filterAndDisplayOrders(); }
+
+        // ==================== MODALS ====================
+        async function viewOrderDetails(orderId) {
+            document.getElementById('orderModal').classList.add('active');
+            document.getElementById('orderModalContent').innerHTML = '<div class="loading">Loading order details...</div>';
+
+            try {
+                const response = await fetch(`/api/orders/${orderId}/expanded`);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('orderModalContent').innerHTML = `<p style="color: red;">${data.error}</p>`;
+                    return;
+                }
+
+                const order = data.order || {};
+                const consumer = data.consumer || {};
+                const products = data.products || [];
+
+                const statusBadge = (status) => {
+                    const badges = { pending: 'badge-warning', confirmed: 'badge-info', shipped: 'badge-primary', delivered: 'badge-success', cancelled: 'badge-danger' };
+                    return badges[status] || 'badge-secondary';
+                };
+
+                document.getElementById('orderModalContent').innerHTML = `
+                    <h3 style="margin-bottom: 15px;">Order Information</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="label">Order ID</div><div class="value">${order.id || '-'}</div></div>
+                        <div class="detail-item"><div class="label">Status</div><div class="value"><span class="badge ${statusBadge(order.status)}">${order.status || '-'}</span></div></div>
+                        <div class="detail-item"><div class="label">Total Amount</div><div class="value">$${(order.total_amount || 0).toFixed(2)}</div></div>
+                        <div class="detail-item"><div class="label">Shipping Address</div><div class="value">${order.shipping_address || '-'}</div></div>
+                        <div class="detail-item"><div class="label">Created</div><div class="value">${order.created_at ? new Date(order.created_at).toLocaleString() : '-'}</div></div>
+                        <div class="detail-item"><div class="label">Notes</div><div class="value">${order.notes || '-'}</div></div>
+                    </div>
+
+                    <h3 style="margin: 20px 0 15px;">Consumer Information</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item"><div class="label">Name</div><div class="value">${consumer.first_name || ''} ${consumer.last_name || ''}</div></div>
+                        <div class="detail-item"><div class="label">Email</div><div class="value">${consumer.email || '-'}</div></div>
+                        <div class="detail-item"><div class="label">Phone</div><div class="value">${consumer.phone || '-'}</div></div>
+                        <div class="detail-item"><div class="label">Location</div><div class="value">${consumer.city || ''}, ${consumer.country || ''}</div></div>
+                        <div class="detail-item"><div class="label">VIP Status</div><div class="value">${consumer.vip ? '<span class="badge badge-vip">VIP</span>' : '<span class="badge badge-secondary">Regular</span>'}</div></div>
+                    </div>
+
+                    <h3 style="margin: 20px 0 15px;">Products (${products.length} items)</h3>
+                    <table style="width: 100%; margin-top: 10px;">
+                        <thead>
+                            <tr><th>Product</th><th>Category</th><th>Brand</th><th>Price</th><th>Qty</th></tr>
+                        </thead>
+                        <tbody>
+                            ${products.map((p, i) => `
+                                <tr>
+                                    <td>${p.name || '-'}</td>
+                                    <td>${p.category || '-'}</td>
+                                    <td>${p.brand || '-'}</td>
+                                    <td>$${(p.price || 0).toFixed(2)}</td>
+                                    <td>${(order.quantities || [])[i] || 1}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (err) {
+                document.getElementById('orderModalContent').innerHTML = `<p style="color: red;">Error loading order: ${err.message}</p>`;
+            }
+        }
+
+        function closeOrderModal() {
+            document.getElementById('orderModal').classList.remove('active');
+        }
+
+        async function viewConsumerOrders(consumerId) {
+            document.getElementById('consumerOrdersModal').classList.add('active');
+            document.getElementById('consumerOrdersContent').innerHTML = '<div class="loading">Loading consumer orders...</div>';
+
+            try {
+                const response = await fetch(`/api/consumers/${consumerId}/orders`);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('consumerOrdersContent').innerHTML = `<p style="color: red;">${data.error}</p>`;
+                    return;
+                }
+
+                const orders = data.orders || [];
+                const consumer = allConsumers.find(c => c.id === consumerId) || {};
+
+                const statusBadge = (status) => {
+                    const badges = { pending: 'badge-warning', confirmed: 'badge-info', shipped: 'badge-primary', delivered: 'badge-success', cancelled: 'badge-danger' };
+                    return badges[status] || 'badge-secondary';
+                };
+
+                document.getElementById('consumerOrdersContent').innerHTML = `
+                    <h3 style="margin-bottom: 15px;">Consumer: ${consumer.first_name || ''} ${consumer.last_name || ''}</h3>
+                    <p style="margin-bottom: 20px; color: #666;">
+                        ${consumer.email || ''} | ${consumer.city || ''}, ${consumer.country || ''}
+                        ${consumer.vip ? '<span class="badge badge-vip">VIP</span>' : ''}
+                    </p>
+
+                    <h4 style="margin-bottom: 10px;">Orders (${orders.length})</h4>
+                    ${orders.length === 0 ? '<p style="color: #666;">No orders found for this consumer.</p>' : `
+                        <table style="width: 100%;">
+                            <thead>
+                                <tr><th>Order ID</th><th>Products</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr>
+                            </thead>
+                            <tbody>
+                                ${orders.map(o => `
+                                    <tr>
+                                        <td class="truncate">${(o.id || '').substring(0, 8)}...</td>
+                                        <td>${(o.product_ids || []).length} items</td>
+                                        <td>$${(o.total_amount || 0).toFixed(2)}</td>
+                                        <td><span class="badge ${statusBadge(o.status)}">${o.status || '-'}</span></td>
+                                        <td>${o.created_at ? new Date(o.created_at).toLocaleDateString() : '-'}</td>
+                                        <td><button class="btn btn-info btn-sm" onclick="closeConsumerOrdersModal(); viewOrderDetails('${o.id}');">View</button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `}
+                `;
+            } catch (err) {
+                document.getElementById('consumerOrdersContent').innerHTML = `<p style="color: red;">Error: ${err.message}</p>`;
+            }
+        }
+
+        function closeConsumerOrdersModal() {
+            document.getElementById('consumerOrdersModal').classList.remove('active');
+        }
+
+        // ==================== SEEDING ====================
+        async function seedData(type, count) {
+            if (isLoading) return;
+            isLoading = true;
+
+            const actionId = type + 'LastAction';
+            document.getElementById(actionId).textContent = `Creating ${count} ${type}...`;
+
+            try {
+                const response = await fetch(`/api/seed/${type}?count=${count}`, { method: 'POST' });
+                const result = await response.json();
+                document.getElementById(actionId).textContent = `Created ${result.inserted || count} ${type} (${result.throughput_per_sec || '-'}/sec)`;
+
+                // Invalidate meta cache for this dataset
+                delete metaCache[type];
+
+                // Reload the relevant data
+                if (type === 'products') { allProducts = []; await loadProducts(); }
+                if (type === 'consumers') { allConsumers = []; await loadConsumers(); }
+                if (type === 'orders') { allOrders = []; await loadOrders(); }
+
+                // Re-render sidebar with fresh meta
+                renderSidebar();
+            } catch (err) {
+                document.getElementById(actionId).textContent = 'Error: ' + err.message;
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        document.getElementById('productSearch').addEventListener('input', () => { productPage = 1; filterAndDisplayProducts(); });
+        document.getElementById('categoryFilter').addEventListener('change', () => { productPage = 1; filterAndDisplayProducts(); });
+        document.getElementById('consumerSearch').addEventListener('input', () => { consumerPage = 1; filterAndDisplayConsumers(); });
+        document.getElementById('countryFilter').addEventListener('change', () => { consumerPage = 1; filterAndDisplayConsumers(); });
+        document.getElementById('vipFilter').addEventListener('change', () => { consumerPage = 1; filterAndDisplayConsumers(); });
+        document.getElementById('orderSearch').addEventListener('input', () => { orderPage = 1; filterAndDisplayOrders(); });
+        document.getElementById('statusFilter').addEventListener('change', () => { orderPage = 1; filterAndDisplayOrders(); });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'b') {
+                e.preventDefault();
+                toggleSidebar();
+            }
+            if (e.key === 'Escape') { closeOrderModal(); closeConsumerOrdersModal(); }
+        });
+
+        // Close modals on click outside
+        document.getElementById('orderModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('orderModal')) closeOrderModal();
+        });
+        document.getElementById('consumerOrdersModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('consumerOrdersModal')) closeConsumerOrdersModal();
+        });
+
+        // Initial load
+        loadProducts().then(() => renderSidebar());
+    </script>
+</body>
+</html>
