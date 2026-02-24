@@ -19,7 +19,7 @@ git-repository-url = "https://github.com/lithair/lithair"
 edit-url-template = "https://github.com/lithair/lithair/edit/main/docs/{path}"
 site-url = "/docs/"
 additional-css = ["theme/custom.css"]
-additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-js = ["mermaid-init.js"]
 no-section-label = false
 
 [output.html.print]

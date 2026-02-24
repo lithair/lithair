@@ -6,7 +6,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AdminConfig {
     pub enabled: bool,
     pub path: String,
@@ -23,8 +23,23 @@ pub struct AdminConfig {
     pub data_admin_ui_path: Option<String>,
     /// Development-only reload token for simplified hot reload (NOT for production!)
     /// Set via LT_DEV_RELOAD_TOKEN environment variable
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing)]
     pub dev_reload_token: Option<String>,
+}
+
+impl std::fmt::Debug for AdminConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdminConfig")
+            .field("enabled", &self.enabled)
+            .field("path", &self.path)
+            .field("auth_required", &self.auth_required)
+            .field("metrics_enabled", &self.metrics_enabled)
+            .field("metrics_path", &self.metrics_path)
+            .field("data_admin_enabled", &self.data_admin_enabled)
+            .field("data_admin_ui_path", &self.data_admin_ui_path)
+            .field("dev_reload_token", &self.dev_reload_token.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl Default for AdminConfig {
@@ -79,11 +94,8 @@ impl AdminConfig {
         // Development reload token (WARNING: Development only!)
         if let Ok(token) = env::var("LT_DEV_RELOAD_TOKEN") {
             if !token.is_empty() {
-                self.dev_reload_token = Some(token.clone());
-                log::warn!(
-                    "DEV RELOAD TOKEN ENABLED: {} (DEVELOPMENT ONLY - NOT FOR PRODUCTION!)",
-                    token
-                );
+                self.dev_reload_token = Some(token);
+                log::warn!("DEV RELOAD TOKEN ENABLED (DEVELOPMENT ONLY - NOT FOR PRODUCTION!)");
             }
         }
     }

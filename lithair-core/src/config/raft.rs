@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 
 /// Configuration for Raft cluster endpoints
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RaftConfig {
     /// Enable Raft endpoints
     pub enabled: bool,
@@ -17,12 +17,25 @@ pub struct RaftConfig {
     pub auth_required: bool,
     /// Secret token for Raft endpoint authentication
     /// If set, all Raft requests must include header: `X-Raft-Token: <token>`
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing)]
     pub auth_token: Option<String>,
     /// Heartbeat interval in seconds (leader sends heartbeats to followers)
     pub heartbeat_interval_secs: u64,
     /// Election timeout in seconds (followers start election if no heartbeat)
     pub election_timeout_secs: u64,
+}
+
+impl std::fmt::Debug for RaftConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RaftConfig")
+            .field("enabled", &self.enabled)
+            .field("path", &self.path)
+            .field("auth_required", &self.auth_required)
+            .field("auth_token", &self.auth_token.as_ref().map(|_| "[REDACTED]"))
+            .field("heartbeat_interval_secs", &self.heartbeat_interval_secs)
+            .field("election_timeout_secs", &self.election_timeout_secs)
+            .finish()
+    }
 }
 
 impl Default for RaftConfig {

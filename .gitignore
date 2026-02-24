@@ -11,6 +11,7 @@ events.raftidx
 meta.raftmeta
 examples/ecommerce/data/
 examples/**/nodes/**/
+.admin-path
 
 # Logs
 logs/
@@ -20,14 +21,14 @@ logs/
 # Test output
 test-results/
 robot-venv/
-*.html
+/*.html
 *.xml
 
 # Benchmark output
 benchmark_*.md
 benchmark_results/
 
-# Node.js (Playwright)
+# Node.js
 node_modules/
 package.json
 package-lock.json
@@ -36,6 +37,18 @@ package-lock.json
 # IDE and editor files
 *.code-workspace
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# AI/tool caches
+.serena/memories/
+.serena/cache/
 
 # Configuration (keep .example files)
 config.toml

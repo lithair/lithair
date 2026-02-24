@@ -33,11 +33,19 @@ pub struct JwtClaims {
 /// RBAC Middleware that enforces authentication and authorization
 ///
 /// Generic over Permission type to allow applications to define their own permission systems.
-#[derive(Debug)]
 pub struct RBACMiddleware<P: Permission> {
     security_state: Arc<RwLock<SecurityState<P>>>,
     jwt_secret: String,
     session_timeout: u64,
+}
+
+impl<P: Permission> std::fmt::Debug for RBACMiddleware<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RBACMiddleware")
+            .field("jwt_secret", &"[REDACTED]")
+            .field("session_timeout", &self.session_timeout)
+            .finish()
+    }
 }
 
 impl<P: Permission> RBACMiddleware<P> {

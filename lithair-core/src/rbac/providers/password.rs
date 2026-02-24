@@ -10,17 +10,49 @@ use crate::rbac::context::AuthContext;
 use crate::rbac::traits::AuthProvider;
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use hmac::{Hmac, Mac};
 use http::Request;
 use http_body_util::Full;
+use sha2::Sha256;
+
+/// HMAC-based constant-time string comparison to prevent timing attacks
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    type HmacSha256 = Hmac<Sha256>;
+    let key = b.as_bytes();
+
+    let mut mac_a = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+    mac_a.update(a.as_bytes());
+    let hash_a = mac_a.finalize().into_bytes();
+
+    let mut mac_b = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
+    mac_b.update(b.as_bytes());
+    let hash_b = mac_b.finalize().into_bytes();
+
+    hash_a
+        .as_slice()
+        .iter()
+        .zip(hash_b.as_slice())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
 
 /// Simple password authentication provider
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PasswordProvider {
     /// The password to check against
     password: String,
 
     /// Default role for authenticated users
     default_role: String,
+}
+
+impl std::fmt::Debug for PasswordProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PasswordProvider")
+            .field("password", &"[REDACTED]")
+            .field("default_role", &self.default_role)
+            .finish()
+    }
 }
 
 impl PasswordProvider {
@@ -39,9 +71,9 @@ impl AuthProvider for PasswordProvider {
         // Extract requested role from header (optional)
         let requested_role = request.headers().get("X-Auth-Role").and_then(|h| h.to_str().ok());
 
-        // Check if password matches
+        // Check if password matches (constant-time comparison)
         if let Some(pwd) = provided_password {
-            if pwd == self.password {
+            if constant_time_eq(pwd, &self.password) {
                 // Authenticated!
                 let role = requested_role.unwrap_or(&self.default_role).to_string();
 

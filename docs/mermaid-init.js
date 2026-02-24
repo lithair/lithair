@@ -1,39 +1,36 @@
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// Load mermaid from CDN and initialize with theme detection
+(function () {
+    var script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+    script.onload = function () {
+        var darkThemes = ['ayu', 'navy', 'coal'];
+        var lightThemes = ['light', 'rust'];
+        var classList = document.getElementsByTagName('html')[0].classList;
 
-(() => {
-    const darkThemes = ['ayu', 'navy', 'coal'];
-    const lightThemes = ['light', 'rust'];
-
-    const classList = document.getElementsByTagName('html')[0].classList;
-
-    let lastThemeWasLight = true;
-    for (const cssClass of classList) {
-        if (darkThemes.includes(cssClass)) {
-            lastThemeWasLight = false;
-            break;
+        var lastThemeWasLight = true;
+        for (var i = 0; i < classList.length; i++) {
+            if (darkThemes.indexOf(classList[i]) !== -1) {
+                lastThemeWasLight = false;
+                break;
+            }
         }
-    }
 
-    const theme = lastThemeWasLight ? 'default' : 'dark';
-    mermaid.initialize({ startOnLoad: true, theme });
+        var theme = lastThemeWasLight ? 'default' : 'dark';
+        mermaid.initialize({ startOnLoad: true, theme: theme });
 
-    // Simplest way to make mermaid re-render the diagrams in the new theme is via refreshing the page
+        for (var d = 0; d < darkThemes.length; d++) {
+            var el = document.getElementById(darkThemes[d]);
+            if (el) el.addEventListener('click', function () {
+                if (lastThemeWasLight) window.location.reload();
+            });
+        }
 
-    for (const darkTheme of darkThemes) {
-        document.getElementById(darkTheme).addEventListener('click', () => {
-            if (lastThemeWasLight) {
-                window.location.reload();
-            }
-        });
-    }
-
-    for (const lightTheme of lightThemes) {
-        document.getElementById(lightTheme).addEventListener('click', () => {
-            if (!lastThemeWasLight) {
-                window.location.reload();
-            }
-        });
-    }
+        for (var l = 0; l < lightThemes.length; l++) {
+            var el = document.getElementById(lightThemes[l]);
+            if (el) el.addEventListener('click', function () {
+                if (!lastThemeWasLight) window.location.reload();
+            });
+        }
+    };
+    document.head.appendChild(script);
 })();
