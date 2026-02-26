@@ -26,6 +26,7 @@ pub struct LithairServerBuilder {
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
     mfa_storage: Option<Arc<crate::mfa::MfaStorage>>, // MFA/TOTP storage
+    access_log: bool,
     legacy_endpoints: bool,
     deprecation_warnings: bool,
 
@@ -65,6 +66,7 @@ impl LithairServerBuilder {
             firewall_config: None,
             anti_ddos_config: None,
             mfa_storage: None,
+            access_log: false,
             legacy_endpoints: false,
             deprecation_warnings: false,
             frontend_configs: Vec::new(),
@@ -93,6 +95,7 @@ impl LithairServerBuilder {
             firewall_config: None,
             anti_ddos_config: None,
             mfa_storage: None,
+            access_log: false,
             legacy_endpoints: false,
             deprecation_warnings: false,
             frontend_configs: Vec::new(),
@@ -449,6 +452,14 @@ impl LithairServerBuilder {
         policy: crate::http::declarative_server::RoutePolicy,
     ) -> Self {
         self.route_policies.insert(path.into(), policy);
+        self
+    }
+
+    /// Enable HTTP access logging (structured JSON via `log::info!`).
+    ///
+    /// Can also be enabled via `LT_HTTP_ACCESS_LOG=1` environment variable.
+    pub fn with_access_log(mut self, enabled: bool) -> Self {
+        self.access_log = enabled;
         self
     }
 
@@ -1536,6 +1547,7 @@ impl LithairServerBuilder {
             route_policies: self.route_policies,
             firewall_config: self.firewall_config,
             anti_ddos_config: self.anti_ddos_config,
+            access_log: self.access_log,
             legacy_endpoints: self.legacy_endpoints,
             deprecation_warnings: self.deprecation_warnings,
             // Raft cluster
