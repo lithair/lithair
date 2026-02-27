@@ -155,6 +155,7 @@ pub struct LithairServer {
     route_policies: std::collections::HashMap<String, crate::http::declarative_server::RoutePolicy>,
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
+    access_log: bool,
     legacy_endpoints: bool,
     deprecation_warnings: bool,
 
@@ -1217,6 +1218,13 @@ impl LithairServer {
             .as_ref()
             .map(|cfg| Arc::new(crate::security::anti_ddos::AntiDDoSProtection::new(cfg.clone())));
 
+        // Resolve access log: builder flag OR env var
+        let access_log = self.access_log
+            || std::env::var("LT_HTTP_ACCESS_LOG")
+                .ok()
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+
         // Share server state
         let server = Arc::new(self);
 
@@ -1263,82 +1271,114 @@ impl LithairServer {
 
                 let io = hyper_util::rt::TokioIo::new(maybe_tls);
 
-                let service = hyper::service::service_fn(move |req| {
-                    let server = server.clone();
-                    let firewall = firewall.clone();
-                    let anti_ddos = anti_ddos.clone();
-                    async move {
-                        // Firewall check
-                        if let Err(_denied) =
-                            firewall.check(Some(remote_addr), req.method(), req.uri().path())
-                        {
-                            return Ok::<_, std::convert::Infallible>(Self::add_security_headers(
-                                hyper::Response::builder()
-                                    .status(403)
-                                    .header("Content-Type", "application/json")
-                                    .body(http_body_util::Full::new(bytes::Bytes::from(
-                                        r#"{"error":"Forbidden"}"#,
-                                    )))
-                                    .expect("valid HTTP response"),
-                                tls_active,
-                            ));
-                        }
+                let service = hyper::service::service_fn(
+                    move |req: hyper::Request<hyper::body::Incoming>| {
+                        let server = server.clone();
+                        let firewall = firewall.clone();
+                        let anti_ddos = anti_ddos.clone();
+                        async move {
+                            let start = std::time::Instant::now();
+                            let req_method = req.method().to_string();
+                            let req_path = req.uri().path().to_string();
 
-                        // Anti-DDoS request rate check
-                        if let Some(ref protection) = anti_ddos {
-                            if !protection.is_request_allowed(remote_addr.ip()).await {
-                                return Ok(Self::add_security_headers(
-                                    hyper::Response::builder()
-                                        .status(429)
-                                        .header("Content-Type", "application/json")
-                                        .header("Retry-After", "60")
-                                        .body(http_body_util::Full::new(bytes::Bytes::from(
-                                            r#"{"error":"Rate limit exceeded"}"#,
-                                        )))
-                                        .expect("valid HTTP response"),
-                                    tls_active,
-                                ));
-                            }
-                        }
-
-                        // Body size enforcement via Content-Length
-                        if let Some(cl) = req.headers().get(hyper::header::CONTENT_LENGTH) {
-                            if let Ok(len) = cl.to_str().unwrap_or("0").parse::<usize>() {
-                                if len > max_body_size {
-                                    return Ok(Self::add_security_headers(
-                                        hyper::Response::builder()
-                                            .status(413)
-                                            .header("Content-Type", "application/json")
-                                            .body(http_body_util::Full::new(bytes::Bytes::from(
-                                                r#"{"error":"Request body too large"}"#,
-                                            )))
-                                            .expect("valid HTTP response"),
-                                        tls_active,
-                                    ));
+                            let result = (async move {
+                                // Firewall check
+                                if let Err(_denied) = firewall.check(
+                                    Some(remote_addr),
+                                    req.method(),
+                                    req.uri().path(),
+                                ) {
+                                    return Ok::<_, std::convert::Infallible>(
+                                        Self::add_security_headers(
+                                            hyper::Response::builder()
+                                                .status(403)
+                                                .header("Content-Type", "application/json")
+                                                .body(http_body_util::Full::new(
+                                                    bytes::Bytes::from(r#"{"error":"Forbidden"}"#),
+                                                ))
+                                                .expect("valid HTTP response"),
+                                            tls_active,
+                                        ),
+                                    );
                                 }
-                            }
-                        }
 
-                        match server.handle_request(req).await {
-                            Ok(resp) => Ok::<_, std::convert::Infallible>(
-                                Self::add_security_headers(resp, tls_active),
-                            ),
-                            Err(e) => {
-                                log::error!("Request handler error: {}", e);
-                                Ok(Self::add_security_headers(
-                                    hyper::Response::builder()
-                                        .status(500)
-                                        .header("Content-Type", "application/json")
-                                        .body(http_body_util::Full::new(bytes::Bytes::from(
-                                            r#"{"error":"Internal server error"}"#,
-                                        )))
-                                        .expect("valid HTTP response"),
-                                    tls_active,
-                                ))
+                                // Anti-DDoS request rate check
+                                if let Some(ref protection) = anti_ddos {
+                                    if !protection.is_request_allowed(remote_addr.ip()).await {
+                                        return Ok(Self::add_security_headers(
+                                            hyper::Response::builder()
+                                                .status(429)
+                                                .header("Content-Type", "application/json")
+                                                .header("Retry-After", "60")
+                                                .body(http_body_util::Full::new(
+                                                    bytes::Bytes::from(
+                                                        r#"{"error":"Rate limit exceeded"}"#,
+                                                    ),
+                                                ))
+                                                .expect("valid HTTP response"),
+                                            tls_active,
+                                        ));
+                                    }
+                                }
+
+                                // Body size enforcement via Content-Length
+                                if let Some(cl) = req.headers().get(hyper::header::CONTENT_LENGTH) {
+                                    if let Ok(len) = cl.to_str().unwrap_or("0").parse::<usize>() {
+                                        if len > max_body_size {
+                                            return Ok(Self::add_security_headers(
+                                                hyper::Response::builder()
+                                                    .status(413)
+                                                    .header("Content-Type", "application/json")
+                                                    .body(http_body_util::Full::new(
+                                                        bytes::Bytes::from(
+                                                            r#"{"error":"Request body too large"}"#,
+                                                        ),
+                                                    ))
+                                                    .expect("valid HTTP response"),
+                                                tls_active,
+                                            ));
+                                        }
+                                    }
+                                }
+
+                                match server.handle_request(req).await {
+                                    Ok(resp) => Ok::<_, std::convert::Infallible>(
+                                        Self::add_security_headers(resp, tls_active),
+                                    ),
+                                    Err(e) => {
+                                        log::error!("Request handler error: {}", e);
+                                        Ok(Self::add_security_headers(
+                                            hyper::Response::builder()
+                                                .status(500)
+                                                .header("Content-Type", "application/json")
+                                                .body(http_body_util::Full::new(
+                                                    bytes::Bytes::from(
+                                                        r#"{"error":"Internal server error"}"#,
+                                                    ),
+                                                ))
+                                                .expect("valid HTTP response"),
+                                            tls_active,
+                                        ))
+                                    }
+                                }
+                            })
+                            .await;
+
+                            if access_log {
+                                let Ok(ref resp) = result;
+                                crate::http::log_access(
+                                    Some(remote_addr),
+                                    &req_method,
+                                    &req_path,
+                                    resp,
+                                    start,
+                                );
                             }
+
+                            result
                         }
-                    }
-                });
+                    },
+                );
 
                 if let Err(err) = hyper::server::conn::http1::Builder::new()
                     .timer(hyper_util::rt::TokioTimer::new())
@@ -4552,6 +4592,7 @@ impl Default for LithairServer {
             route_policies: std::collections::HashMap::new(),
             firewall_config: None,
             anti_ddos_config: None,
+            access_log: false,
             legacy_endpoints: false,
             deprecation_warnings: false,
             cluster_peers: Vec::new(),
