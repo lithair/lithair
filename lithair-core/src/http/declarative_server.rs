@@ -24,7 +24,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::consensus::{ConsensusConfig, DeclarativeConsensus, ReplicatedModel};
-use crate::http::{DeclarativeHttpHandler, Firewall, FirewallConfig, HttpExposable};
+use crate::http::{log_access, DeclarativeHttpHandler, Firewall, FirewallConfig, HttpExposable};
 use crate::rbac::{RbacConfig, RbacMiddleware};
 
 type RespBody = BoxBody<Bytes, Infallible>;
@@ -938,7 +938,7 @@ where
         )
         .await;
         if config.access_log {
-            log_access(remote_addr, &method, &uri, &resp, start_time);
+            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
         }
         return Ok(resp);
     }
@@ -1000,7 +1000,7 @@ where
         )
         .await;
         if config.access_log {
-            log_access(remote_addr, &method, &uri, &resp, start_time);
+            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
         }
         return Ok(resp);
     }
@@ -1045,7 +1045,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1127,7 +1127,7 @@ where
         )
         .await;
         if config.access_log {
-            log_access(remote_addr, &method, &uri, &resp, start_time);
+            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
         }
         return Ok(resp);
     }
@@ -1157,7 +1157,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1180,7 +1180,7 @@ where
                         )
                         .await;
                         if config.access_log {
-                            log_access(remote_addr, &method, &uri, &resp, start_time);
+                            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                         }
                         return Ok(resp);
                     }
@@ -1199,7 +1199,7 @@ where
                         )
                         .await;
                         if config.access_log {
-                            log_access(remote_addr, &method, &uri, &resp, start_time);
+                            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                         }
                         return Ok(resp);
                     }
@@ -1238,7 +1238,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1274,7 +1274,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1296,7 +1296,7 @@ where
             .body(body_from(format!(r#"{{"status":"ready","model":"{}","service":"pure-lithair-declarative","base_path":"/api/{}","deprecated":true,"use_instead":"/ready"}}"#, model_name, T::http_base_path())))
             .expect("valid HTTP response"), accept_br, accept_gzip, effective_gzip.as_ref(), no_store).await;
         if config.access_log {
-            log_access(remote_addr, &method, &uri, &resp, start_time);
+            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
         }
         return Ok(resp);
     }
@@ -1328,7 +1328,7 @@ where
                         )
                         .await;
                         if config.access_log {
-                            log_access(remote_addr, &method, &uri, &resp, start_time);
+                            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                         }
                         return Ok(resp);
                     }
@@ -1347,7 +1347,7 @@ where
                         )
                         .await;
                         if config.access_log {
-                            log_access(remote_addr, &method, &uri, &resp, start_time);
+                            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                         }
                         return Ok(resp);
                     }
@@ -1387,7 +1387,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1424,7 +1424,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1532,7 +1532,7 @@ where
         )
         .await;
         if config.access_log {
-            log_access(remote_addr, &method, &uri, &resp, start_time);
+            log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
         }
         return Ok(resp);
     }
@@ -1552,7 +1552,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1569,7 +1569,7 @@ where
                 )
                 .await;
                 if config.access_log {
-                    log_access(remote_addr, &method, &uri, &resp, start_time);
+                    log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
                 }
                 return Ok(resp);
             }
@@ -1583,28 +1583,9 @@ where
         .body(body_from(r#"{"error":"Not found","hint":"Use /api/{model_base_path} for model operations, /status for server status"}"#))
         .expect("valid HTTP response"), accept_br, accept_gzip, effective_gzip.as_ref(), no_store).await;
     if config.access_log {
-        log_access(remote_addr, &method, &uri, &resp, start_time);
+        log_access(remote_addr, method.as_str(), &uri, &resp, start_time);
     }
     Ok(resp)
-}
-
-fn log_access(
-    remote: Option<std::net::SocketAddr>,
-    method: &Method,
-    uri: &str,
-    resp: &Response<RespBody>,
-    start: std::time::Instant,
-) {
-    let status = resp.status().as_u16();
-    let headers = resp.headers();
-    let len = headers.get("content-length").and_then(|v| v.to_str().ok()).unwrap_or("-");
-    let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
-    let dur_ms = start.elapsed().as_millis();
-    let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
-    log::info!(
-        "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
-        remote_ip, method, uri, status, len, enc, dur_ms
-    );
 }
 
 // ============================================================================

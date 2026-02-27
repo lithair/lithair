@@ -1366,7 +1366,7 @@ impl LithairServer {
 
                             if access_log {
                                 let Ok(ref resp) = result;
-                                Self::log_access(
+                                crate::http::log_access(
                                     Some(remote_addr),
                                     &req_method,
                                     &req_path,
@@ -1416,26 +1416,6 @@ impl LithairServer {
             );
         }
         hyper::Response::from_parts(parts, body)
-    }
-
-    /// Log an HTTP request in structured JSON format (same as DeclarativeServer).
-    fn log_access(
-        remote: Option<std::net::SocketAddr>,
-        method: &str,
-        path: &str,
-        resp: &hyper::Response<http_body_util::Full<bytes::Bytes>>,
-        start: std::time::Instant,
-    ) {
-        let status = resp.status().as_u16();
-        let headers = resp.headers();
-        let len = headers.get("content-length").and_then(|v| v.to_str().ok()).unwrap_or("-");
-        let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
-        let dur_ms = start.elapsed().as_millis();
-        let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
-        log::info!(
-            "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
-            remote_ip, method, path, status, len, enc, dur_ms
-        );
     }
 
     /// Match a path against a pattern with wildcard support

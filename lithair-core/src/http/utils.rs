@@ -240,6 +240,57 @@ pub async fn load_assets_with_logging(
     }
 }
 
+/// Escape a string for safe inclusion in a JSON value.
+///
+/// Handles `"`, `\`, and control characters (U+0000–U+001F).
+fn escape_json_value(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {
+                use std::fmt::Write;
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Log an HTTP access entry in structured JSON format.
+///
+/// Generic over the response body type — only reads status and headers.
+/// Used by both `LithairServer` and `DeclarativeServer`.
+pub fn log_access<B>(
+    remote: Option<std::net::SocketAddr>,
+    method: &str,
+    path: &str,
+    resp: &Response<B>,
+    start: std::time::Instant,
+) {
+    let status = resp.status().as_u16();
+    let headers = resp.headers();
+    let len = headers.get("content-length").and_then(|v| v.to_str().ok()).unwrap_or("-");
+    let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
+    let dur_ms = start.elapsed().as_millis();
+    let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
+    log::info!(
+        "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
+        escape_json_value(&remote_ip),
+        escape_json_value(method),
+        escape_json_value(path),
+        status,
+        escape_json_value(len),
+        escape_json_value(enc),
+        dur_ms
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +324,26 @@ mod tests {
         assert!(path_matches_prefix("/admin/sites/status", "/admin"));
         assert!(path_matches_prefix("/api/articles", "/api"));
         assert!(!path_matches_prefix("/about", "/admin"));
+    }
+
+    #[test]
+    fn test_escape_json_value_clean() {
+        assert_eq!(escape_json_value("/api/products"), "/api/products");
+        assert_eq!(escape_json_value("GET"), "GET");
+    }
+
+    #[test]
+    fn test_escape_json_value_quotes_and_backslash() {
+        assert_eq!(escape_json_value(r#"path/"with"quotes"#), r#"path/\"with\"quotes"#);
+        assert_eq!(escape_json_value(r"back\slash"), r"back\\slash");
+    }
+
+    #[test]
+    fn test_escape_json_value_control_chars() {
+        assert_eq!(escape_json_value("line\nnew"), r"line\nnew");
+        assert_eq!(escape_json_value("tab\there"), r"tab\there");
+        assert_eq!(escape_json_value("cr\rhere"), r"cr\rhere");
+        // Null byte
+        assert_eq!(escape_json_value("null\0byte"), r"null\u0000byte");
     }
 }
