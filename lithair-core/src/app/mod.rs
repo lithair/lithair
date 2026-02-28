@@ -1280,9 +1280,8 @@ impl LithairServer {
                             let start = std::time::Instant::now();
                             let req_method = req.method().to_string();
                             let req_path = req.uri().path().to_string();
-                            // Extract real client IP from proxy headers before req is consumed
-                            let client_ip = crate::http::extract_client_ip(&req)
-                                .unwrap_or_else(|| remote_addr.ip().to_string());
+                            // Resolve real client IP (trusts proxy headers only from loopback/private)
+                            let client_ip = crate::http::resolve_client_ip(&req, remote_addr);
 
                             let result = (async move {
                                 // Firewall check
