@@ -266,8 +266,27 @@ fn escape_json_value(s: &str) -> String {
 ///
 /// Generic over the response body type — only reads status and headers.
 /// Used by both `LithairServer` and `DeclarativeServer`.
+///
+/// The `remote` parameter is the TCP socket address. When behind a reverse
+/// proxy, use [`log_access_ip`] instead to pass the real client IP extracted
+/// from `X-Forwarded-For` / `X-Real-IP` headers.
 pub fn log_access<B>(
     remote: Option<std::net::SocketAddr>,
+    method: &str,
+    path: &str,
+    resp: &Response<B>,
+    start: std::time::Instant,
+) {
+    let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
+    log_access_ip(&remote_ip, method, path, resp, start);
+}
+
+/// Log an HTTP access entry using a pre-resolved client IP string.
+///
+/// Prefer this over [`log_access`] when the real client IP has already been
+/// extracted from proxy headers (`X-Forwarded-For`, `X-Real-IP`).
+pub fn log_access_ip<B>(
+    remote_ip: &str,
     method: &str,
     path: &str,
     resp: &Response<B>,
@@ -278,10 +297,9 @@ pub fn log_access<B>(
     let len = headers.get("content-length").and_then(|v| v.to_str().ok()).unwrap_or("-");
     let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
     let dur_ms = start.elapsed().as_millis();
-    let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
     log::info!(
         "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
-        escape_json_value(&remote_ip),
+        escape_json_value(remote_ip),
         escape_json_value(method),
         escape_json_value(path),
         status,
