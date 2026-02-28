@@ -17,28 +17,23 @@ pub fn body_from<T: Into<Bytes>>(data: T) -> RespBody {
     Full::new(data.into()).boxed()
 }
 
-/// Extract client IP from request headers or connection info
+/// Extract client IP from proxy headers (`X-Forwarded-For`, `X-Real-IP`).
 ///
-/// This function attempts to extract the real client IP address from various
-/// HTTP headers commonly used by proxies and load balancers.
+/// Returns `Some(ip)` only if a proxy header is present. Returns `None` when
+/// no proxy header is found, so callers can fall back to `remote_addr`.
 ///
-/// # Priority order:
-/// 1. X-Forwarded-For header (first IP in comma-separated list)
-/// 2. X-Real-IP header
-/// 3. Fallback to localhost for development
-///
-/// # Arguments
-/// * `req` - The HTTP request to extract IP from
-///
-/// # Returns
-/// * `Some(String)` - The extracted IP address
-/// * `None` - If IP could not be determined (rare in practice)
+/// **Security note:** These headers are trivially spoofed by clients. Only
+/// trust them when `remote_addr` is a known trusted proxy (e.g. loopback,
+/// private network). See [`resolve_client_ip`] for a safe wrapper.
 pub fn extract_client_ip<T>(req: &Request<T>) -> Option<String> {
     // Check X-Forwarded-For header first (for proxies)
     if let Some(forwarded) = req.headers().get("x-forwarded-for") {
         if let Ok(forwarded_str) = forwarded.to_str() {
             if let Some(first_ip) = forwarded_str.split(',').next() {
-                return Some(first_ip.trim().to_string());
+                let trimmed = first_ip.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
             }
         }
     }
@@ -46,13 +41,34 @@ pub fn extract_client_ip<T>(req: &Request<T>) -> Option<String> {
     // Check X-Real-IP header
     if let Some(real_ip) = req.headers().get("x-real-ip") {
         if let Ok(ip_str) = real_ip.to_str() {
-            return Some(ip_str.to_string());
+            let trimmed = ip_str.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
         }
     }
 
-    // For development, assume localhost
-    // In production, this would come from the connection info
-    Some("127.0.0.1".to_string())
+    None
+}
+
+/// Resolve the real client IP safely.
+///
+/// Only trusts proxy headers (`X-Forwarded-For`, `X-Real-IP`) when
+/// `remote_addr` is a loopback or private IP (i.e. a trusted reverse proxy).
+/// For direct connections from the internet, returns the TCP socket IP.
+pub fn resolve_client_ip<T>(req: &Request<T>, remote_addr: std::net::SocketAddr) -> String {
+    let ip = remote_addr.ip();
+    let is_trusted_proxy = ip.is_loopback()
+        || match ip {
+            std::net::IpAddr::V4(v4) => v4.is_private(),
+            std::net::IpAddr::V6(_) => false,
+        };
+
+    if is_trusted_proxy {
+        extract_client_ip(req).unwrap_or_else(|| ip.to_string())
+    } else {
+        ip.to_string()
+    }
 }
 
 /// Extract path from request URI
@@ -266,8 +282,27 @@ fn escape_json_value(s: &str) -> String {
 ///
 /// Generic over the response body type — only reads status and headers.
 /// Used by both `LithairServer` and `DeclarativeServer`.
+///
+/// The `remote` parameter is the TCP socket address. When behind a reverse
+/// proxy, use [`log_access_ip`] instead to pass the real client IP extracted
+/// from `X-Forwarded-For` / `X-Real-IP` headers.
 pub fn log_access<B>(
     remote: Option<std::net::SocketAddr>,
+    method: &str,
+    path: &str,
+    resp: &Response<B>,
+    start: std::time::Instant,
+) {
+    let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
+    log_access_ip(&remote_ip, method, path, resp, start);
+}
+
+/// Log an HTTP access entry using a pre-resolved client IP string.
+///
+/// Prefer this over [`log_access`] when the real client IP has already been
+/// extracted from proxy headers (`X-Forwarded-For`, `X-Real-IP`).
+pub fn log_access_ip<B>(
+    remote_ip: &str,
     method: &str,
     path: &str,
     resp: &Response<B>,
@@ -278,10 +313,9 @@ pub fn log_access<B>(
     let len = headers.get("content-length").and_then(|v| v.to_str().ok()).unwrap_or("-");
     let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
     let dur_ms = start.elapsed().as_millis();
-    let remote_ip = remote.map(|r| r.ip().to_string()).unwrap_or_else(|| "-".into());
     log::info!(
         "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
-        escape_json_value(&remote_ip),
+        escape_json_value(remote_ip),
         escape_json_value(method),
         escape_json_value(path),
         status,
@@ -313,10 +347,37 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_client_ip_fallback() {
+    fn test_extract_client_ip_no_headers() {
         let req = Request::builder().body(()).unwrap();
 
-        assert_eq!(extract_client_ip(&req), Some("127.0.0.1".to_string()));
+        assert_eq!(extract_client_ip(&req), None);
+    }
+
+    #[test]
+    fn test_resolve_client_ip_trusted_proxy() {
+        let req = Request::builder().header("x-forwarded-for", "203.0.113.42").body(()).unwrap();
+        let loopback: std::net::SocketAddr = "127.0.0.1:12345".parse().unwrap();
+
+        // Loopback is trusted → use proxy header
+        assert_eq!(resolve_client_ip(&req, loopback), "203.0.113.42");
+    }
+
+    #[test]
+    fn test_resolve_client_ip_untrusted_direct() {
+        let req = Request::builder().header("x-forwarded-for", "spoofed.ip").body(()).unwrap();
+        let public: std::net::SocketAddr = "82.67.19.159:54321".parse().unwrap();
+
+        // Public IP is NOT trusted → ignore proxy header, use socket IP
+        assert_eq!(resolve_client_ip(&req, public), "82.67.19.159");
+    }
+
+    #[test]
+    fn test_resolve_client_ip_private_network() {
+        let req = Request::builder().header("x-real-ip", "198.51.100.1").body(()).unwrap();
+        let private: std::net::SocketAddr = "192.168.1.50:8080".parse().unwrap();
+
+        // Private IP is trusted → use proxy header
+        assert_eq!(resolve_client_ip(&req, private), "198.51.100.1");
     }
 
     #[test]

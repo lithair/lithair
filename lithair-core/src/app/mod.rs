@@ -1280,6 +1280,8 @@ impl LithairServer {
                             let start = std::time::Instant::now();
                             let req_method = req.method().to_string();
                             let req_path = req.uri().path().to_string();
+                            // Resolve real client IP (trusts proxy headers only from loopback/private)
+                            let client_ip = crate::http::resolve_client_ip(&req, remote_addr);
 
                             let result = (async move {
                                 // Firewall check
@@ -1366,8 +1368,8 @@ impl LithairServer {
 
                             if access_log {
                                 let Ok(ref resp) = result;
-                                crate::http::log_access(
-                                    Some(remote_addr),
+                                crate::http::log_access_ip(
+                                    &client_ip,
                                     &req_method,
                                     &req_path,
                                     resp,

@@ -85,9 +85,9 @@ pub use three_tier::{ThreeTierHandler, ThreeTierResult, ThreeTierRouter, ThreeTi
 pub use url_handlers::{UrlHandler, UrlHandlerRegistry, UrlHandlerStats};
 pub use utils::{
     body_from, extract_client_ip, extract_method_str, extract_path, internal_server_error_response,
-    json_error_response, load_assets_with_logging, log_access, method_not_allowed_response,
-    not_found_response, parse_api_path_segments, path_matches_prefix, serve_dev_asset, Req, Resp,
-    RespBody,
+    json_error_response, load_assets_with_logging, log_access, log_access_ip,
+    method_not_allowed_response, not_found_response, parse_api_path_segments, path_matches_prefix,
+    resolve_client_ip, serve_dev_asset, Req, Resp, RespBody,
 };
 
 /// Result type for HTTP operations
