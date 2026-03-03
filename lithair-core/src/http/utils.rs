@@ -5,7 +5,9 @@
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{Request, Response};
+use std::collections::VecDeque;
 use std::convert::Infallible;
+use std::sync::OnceLock;
 
 /// Common HTTP type aliases for consistent usage across Lithair applications
 pub type RespBody = BoxBody<Bytes, Infallible>;
@@ -323,7 +325,85 @@ pub fn log_access_ip<B>(
         escape_json_value(enc),
         dur_ms
     );
+
+    // Push to in-memory buffer (if initialized)
+    if let Some(buf) = ACCESS_LOG_BUFFER.get() {
+        buf.push(AccessLogEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            remote: remote_ip.to_string(),
+            method: method.to_string(),
+            path: path.to_string(),
+            status,
+            len: len.to_string(),
+            enc: enc.to_string(),
+            dur_ms,
+        });
+    }
 }
+
+/// A single access log entry stored in the in-memory buffer.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct AccessLogEntry {
+    pub timestamp: String,
+    pub remote: String,
+    pub method: String,
+    pub path: String,
+    pub status: u16,
+    pub len: String,
+    pub enc: String,
+    pub dur_ms: u128,
+}
+
+/// Thread-safe ring buffer for access log entries.
+pub struct AccessLogBuffer {
+    entries: std::sync::Mutex<VecDeque<AccessLogEntry>>,
+    capacity: usize,
+}
+
+impl AccessLogBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self { entries: std::sync::Mutex::new(VecDeque::with_capacity(capacity)), capacity }
+    }
+
+    /// Push a new entry, evicting oldest if at capacity.
+    pub fn push(&self, entry: AccessLogEntry) {
+        let mut buf = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if buf.len() >= self.capacity {
+            buf.pop_front();
+        }
+        buf.push_back(entry);
+    }
+
+    /// Return a snapshot of all entries (oldest first).
+    pub fn snapshot(&self) -> Vec<AccessLogEntry> {
+        let buf = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        buf.iter().cloned().collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// Global access log buffer (initialized once by the server).
+static ACCESS_LOG_BUFFER: OnceLock<AccessLogBuffer> = OnceLock::new();
+
+/// Initialize the global buffer. Called once from `serve()`.
+pub fn init_access_log_buffer(capacity: usize) {
+    let _ = ACCESS_LOG_BUFFER.set(AccessLogBuffer::new(capacity));
+}
+
+/// Get a reference to the global buffer (None if not initialized).
+pub fn access_log_buffer() -> Option<&'static AccessLogBuffer> {
+    ACCESS_LOG_BUFFER.get()
+}
+
+/// Default buffer capacity (50,000 entries).
+pub const DEFAULT_ACCESS_LOG_CAPACITY: usize = 50_000;
 
 #[cfg(test)]
 mod tests {
