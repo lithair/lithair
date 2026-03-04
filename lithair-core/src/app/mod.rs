@@ -192,6 +192,9 @@ pub struct LithairServer {
 
     // Schema synchronization state for cluster-wide schema consensus
     schema_sync_state: Arc<tokio::sync::RwLock<crate::schema::SchemaSyncState>>,
+
+    // SSE real-time subscriptions broadcaster (shared across all model handlers)
+    sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
 }
 
 /// A CRUD operation to be submitted through Raft consensus
@@ -577,7 +580,13 @@ impl LithairServer {
         for info in &self.model_infos {
             log::info!("Creating handler for model: {}", info.name);
             match (info.factory)(info.data_path.clone()).await {
-                Ok(handler) => {
+                Ok(mut handler) => {
+                    // Wire SSE broadcaster into each model handler
+                    if let Some(ref broadcaster) = self.sse_broadcaster {
+                        if let Some(h) = Arc::get_mut(&mut handler) {
+                            h.set_sse_broadcaster(Arc::clone(broadcaster));
+                        }
+                    }
                     let mut models = self.models.write().await;
                     models.push(ModelRegistration {
                         name: info.name.clone(),
@@ -4670,6 +4679,7 @@ impl Default for LithairServer {
             )),
             openapi_enabled: false,
             openapi_spec_cache: std::sync::OnceLock::new(),
+            sse_broadcaster: None,
         }
     }
 }
