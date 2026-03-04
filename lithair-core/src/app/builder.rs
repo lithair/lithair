@@ -27,6 +27,7 @@ pub struct LithairServerBuilder {
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
     mfa_storage: Option<Arc<crate::mfa::MfaStorage>>, // MFA/TOTP storage
     access_log: bool,
+    access_log_capacity: usize,
     legacy_endpoints: bool,
     deprecation_warnings: bool,
 
@@ -67,6 +68,7 @@ impl LithairServerBuilder {
             anti_ddos_config: None,
             mfa_storage: None,
             access_log: false,
+            access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             legacy_endpoints: false,
             deprecation_warnings: false,
             frontend_configs: Vec::new(),
@@ -96,6 +98,7 @@ impl LithairServerBuilder {
             anti_ddos_config: None,
             mfa_storage: None,
             access_log: false,
+            access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             legacy_endpoints: false,
             deprecation_warnings: false,
             frontend_configs: Vec::new(),
@@ -460,6 +463,14 @@ impl LithairServerBuilder {
     /// Can also be enabled via `LT_HTTP_ACCESS_LOG=1` environment variable.
     pub fn with_access_log(mut self, enabled: bool) -> Self {
         self.access_log = enabled;
+        self
+    }
+
+    /// Set the capacity of the in-memory access log ring buffer.
+    ///
+    /// Default: 50,000 entries. Only relevant when access logging is enabled.
+    pub fn with_access_log_capacity(mut self, capacity: usize) -> Self {
+        self.access_log_capacity = capacity;
         self
     }
 
@@ -1548,6 +1559,7 @@ impl LithairServerBuilder {
             firewall_config: self.firewall_config,
             anti_ddos_config: self.anti_ddos_config,
             access_log: self.access_log,
+            access_log_capacity: self.access_log_capacity,
             legacy_endpoints: self.legacy_endpoints,
             deprecation_warnings: self.deprecation_warnings,
             // Raft cluster

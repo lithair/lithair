@@ -156,6 +156,7 @@ pub struct LithairServer {
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
     access_log: bool,
+    access_log_capacity: usize,
     legacy_endpoints: bool,
     deprecation_warnings: bool,
 
@@ -1224,6 +1225,10 @@ impl LithairServer {
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
+
+        if access_log {
+            crate::http::init_access_log_buffer(self.access_log_capacity);
+        }
 
         // Share server state
         let server = Arc::new(self);
@@ -4595,6 +4600,7 @@ impl Default for LithairServer {
             firewall_config: None,
             anti_ddos_config: None,
             access_log: false,
+            access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             legacy_endpoints: false,
             deprecation_warnings: false,
             cluster_peers: Vec::new(),

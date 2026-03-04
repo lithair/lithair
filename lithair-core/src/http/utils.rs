@@ -5,7 +5,9 @@
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{Request, Response};
+use std::collections::VecDeque;
 use std::convert::Infallible;
+use std::sync::OnceLock;
 
 /// Common HTTP type aliases for consistent usage across Lithair applications
 pub type RespBody = BoxBody<Bytes, Infallible>;
@@ -323,7 +325,106 @@ pub fn log_access_ip<B>(
         escape_json_value(enc),
         dur_ms
     );
+
+    // Push to in-memory buffer (if initialized)
+    if let Some(buf) = ACCESS_LOG_BUFFER.get() {
+        buf.push(AccessLogEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            remote: remote_ip.to_string(),
+            method: method.to_string(),
+            path: path.to_string(),
+            status,
+            len: len.to_string(),
+            enc: enc.to_string(),
+            dur_ms,
+        });
+    }
 }
+
+/// A single access log entry stored in the in-memory buffer.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct AccessLogEntry {
+    pub timestamp: String,
+    pub remote: String,
+    pub method: String,
+    pub path: String,
+    pub status: u16,
+    pub len: String,
+    pub enc: String,
+    pub dur_ms: u128,
+}
+
+/// Thread-safe ring buffer for access log entries.
+pub struct AccessLogBuffer {
+    entries: std::sync::Mutex<VecDeque<AccessLogEntry>>,
+    capacity: usize,
+}
+
+impl AccessLogBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self { entries: std::sync::Mutex::new(VecDeque::with_capacity(capacity)), capacity }
+    }
+
+    /// Push a new entry, evicting oldest if at capacity.
+    pub fn push(&self, entry: AccessLogEntry) {
+        let mut buf = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if buf.len() >= self.capacity {
+            buf.pop_front();
+        }
+        buf.push_back(entry);
+    }
+
+    /// Return a snapshot of all entries (oldest first).
+    pub fn snapshot(&self) -> Vec<AccessLogEntry> {
+        let buf = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        buf.iter().cloned().collect()
+    }
+
+    /// Return entries whose timestamp is >= `since` (RFC 3339 string comparison).
+    ///
+    /// Efficient for dashboard polling: only clone the tail instead of the full buffer.
+    pub fn entries_since(&self, since: &str) -> Vec<AccessLogEntry> {
+        let buf = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        // Entries are ordered chronologically; binary search for the first match
+        let pos = buf.partition_point(|e| e.timestamp.as_str() < since);
+        buf.range(pos..).cloned().collect()
+    }
+
+    /// Remove all entries from the buffer.
+    pub fn clear(&self) {
+        let mut buf = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        buf.clear();
+    }
+
+    /// Return the configured maximum capacity.
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// Global access log buffer (initialized once by the server).
+static ACCESS_LOG_BUFFER: OnceLock<AccessLogBuffer> = OnceLock::new();
+
+/// Initialize the global buffer. Called once from `serve()`.
+pub fn init_access_log_buffer(capacity: usize) {
+    let _ = ACCESS_LOG_BUFFER.set(AccessLogBuffer::new(capacity));
+}
+
+/// Get a reference to the global buffer (None if not initialized).
+pub fn access_log_buffer() -> Option<&'static AccessLogBuffer> {
+    ACCESS_LOG_BUFFER.get()
+}
+
+/// Default buffer capacity (50,000 entries).
+pub const DEFAULT_ACCESS_LOG_CAPACITY: usize = 50_000;
 
 #[cfg(test)]
 mod tests {
@@ -406,5 +507,90 @@ mod tests {
         assert_eq!(escape_json_value("cr\rhere"), r"cr\rhere");
         // Null byte
         assert_eq!(escape_json_value("null\0byte"), r"null\u0000byte");
+    }
+
+    // ========================================================================
+    // AccessLogBuffer tests
+    // ========================================================================
+
+    fn make_entry(path: &str, status: u16, timestamp: &str) -> AccessLogEntry {
+        AccessLogEntry {
+            timestamp: timestamp.to_string(),
+            remote: "127.0.0.1".to_string(),
+            method: "GET".to_string(),
+            path: path.to_string(),
+            status,
+            len: "42".to_string(),
+            enc: "-".to_string(),
+            dur_ms: 1,
+        }
+    }
+
+    #[test]
+    fn test_access_log_buffer_push_and_snapshot() {
+        let buf = AccessLogBuffer::new(10);
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
+        assert_eq!(buf.capacity(), 10);
+
+        buf.push(make_entry("/a", 200, "2026-03-03T00:00:00Z"));
+        buf.push(make_entry("/b", 404, "2026-03-03T00:00:01Z"));
+
+        assert_eq!(buf.len(), 2);
+        let snap = buf.snapshot();
+        assert_eq!(snap[0].path, "/a");
+        assert_eq!(snap[1].path, "/b");
+    }
+
+    #[test]
+    fn test_access_log_buffer_eviction_at_capacity() {
+        let buf = AccessLogBuffer::new(3);
+
+        buf.push(make_entry("/1", 200, "2026-03-03T00:00:01Z"));
+        buf.push(make_entry("/2", 200, "2026-03-03T00:00:02Z"));
+        buf.push(make_entry("/3", 200, "2026-03-03T00:00:03Z"));
+        assert_eq!(buf.len(), 3);
+
+        // Push a 4th entry — oldest (/1) should be evicted
+        buf.push(make_entry("/4", 200, "2026-03-03T00:00:04Z"));
+        assert_eq!(buf.len(), 3);
+
+        let snap = buf.snapshot();
+        assert_eq!(snap[0].path, "/2");
+        assert_eq!(snap[1].path, "/3");
+        assert_eq!(snap[2].path, "/4");
+    }
+
+    #[test]
+    fn test_access_log_buffer_clear() {
+        let buf = AccessLogBuffer::new(10);
+        buf.push(make_entry("/a", 200, "2026-03-03T00:00:00Z"));
+        buf.push(make_entry("/b", 200, "2026-03-03T00:00:01Z"));
+        assert_eq!(buf.len(), 2);
+
+        buf.clear();
+        assert!(buf.is_empty());
+        assert_eq!(buf.snapshot().len(), 0);
+    }
+
+    #[test]
+    fn test_access_log_buffer_entries_since() {
+        let buf = AccessLogBuffer::new(100);
+        buf.push(make_entry("/old", 200, "2026-03-03T00:00:00Z"));
+        buf.push(make_entry("/mid", 200, "2026-03-03T00:05:00Z"));
+        buf.push(make_entry("/new1", 200, "2026-03-03T00:10:00Z"));
+        buf.push(make_entry("/new2", 200, "2026-03-03T00:15:00Z"));
+
+        // Only entries from 00:10:00 onward
+        let recent = buf.entries_since("2026-03-03T00:10:00Z");
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].path, "/new1");
+        assert_eq!(recent[1].path, "/new2");
+
+        // Everything since epoch
+        assert_eq!(buf.entries_since("2000-01-01T00:00:00Z").len(), 4);
+
+        // Nothing in the future
+        assert_eq!(buf.entries_since("2099-01-01T00:00:00Z").len(), 0);
     }
 }

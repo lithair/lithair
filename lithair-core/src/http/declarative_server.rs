@@ -62,6 +62,7 @@ where
     gzip_config: Option<GzipConfig>,
     route_policies: Vec<(String, RoutePolicy)>,
     access_log: bool,
+    access_log_capacity: usize,
     // Logging configuration
     logging_config: Option<crate::logging::LoggingConfig>,
     // RBAC configuration
@@ -436,6 +437,7 @@ where
             gzip_config: None,
             route_policies: Vec::new(),
             access_log: false,
+            access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             // Logging configuration
             logging_config: None,
             // RBAC configuration
@@ -544,6 +546,11 @@ where
                 .ok()
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
+
+        if access_log_enabled {
+            crate::http::init_access_log_buffer(self.access_log_capacity);
+        }
+
         log::info!("Pure Lithair Declarative Server listening on http://127.0.0.1:{}", self.port);
 
         let listener = TcpListener::bind(addr).await?;
@@ -757,6 +764,12 @@ where
     /// Enable or disable simple access logging (stdout)
     pub fn with_access_log(mut self, enabled: bool) -> Self {
         self.access_log = enabled;
+        self
+    }
+
+    /// Set the capacity of the in-memory access log ring buffer.
+    pub fn with_access_log_capacity(mut self, capacity: usize) -> Self {
+        self.access_log_capacity = capacity;
         self
     }
 
