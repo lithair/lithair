@@ -40,6 +40,9 @@ pub struct LithairServerBuilder {
 
     // Schema sync policy (for cluster consensus)
     schema_vote_policy: Option<crate::schema::SchemaVotePolicy>,
+
+    // OpenAPI spec generation
+    openapi_enabled: bool,
 }
 
 impl LithairServerBuilder {
@@ -75,6 +78,7 @@ impl LithairServerBuilder {
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
+            openapi_enabled: false,
         }
     }
 
@@ -105,6 +109,7 @@ impl LithairServerBuilder {
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
+            openapi_enabled: false,
         }
     }
 
@@ -483,6 +488,16 @@ impl LithairServerBuilder {
     /// Enable deprecation warnings
     pub fn with_deprecation_warnings(mut self, enabled: bool) -> Self {
         self.deprecation_warnings = enabled;
+        self
+    }
+
+    /// Enable OpenAPI spec generation at `/openapi.json`
+    ///
+    /// When enabled, the server auto-generates an OpenAPI 3.1 specification
+    /// from all registered DeclarativeModel definitions and serves it at
+    /// `GET /openapi.json`. A minimal Swagger UI is also served at `GET /docs`.
+    pub fn with_openapi(mut self, enabled: bool) -> Self {
+        self.openapi_enabled = enabled;
         self
     }
 
@@ -1381,7 +1396,8 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 let handler = DeclarativeModelHandler::<T>::new(data_path)
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?
+                    .with_schema_spec(T::schema_spec());
                 Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
             })
         });
@@ -1562,6 +1578,8 @@ impl LithairServerBuilder {
             access_log_capacity: self.access_log_capacity,
             legacy_endpoints: self.legacy_endpoints,
             deprecation_warnings: self.deprecation_warnings,
+            openapi_enabled: self.openapi_enabled,
+            openapi_spec_cache: std::sync::OnceLock::new(),
             // Raft cluster
             cluster_peers: self.cluster_peers.clone(),
             node_id: self.node_id,

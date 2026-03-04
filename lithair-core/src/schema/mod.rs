@@ -81,6 +81,9 @@ pub struct FieldConstraints {
     /// When present, adding this field is safe (non-breaking)
     #[serde(default)]
     pub default_value: Option<String>,
+    /// Rust type name as string (e.g. "String", "Uuid", "i64") for OpenAPI generation
+    #[serde(default)]
+    pub field_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -663,6 +666,7 @@ mod persistence_tests {
                     owner_field: false,
                 },
                 default_value: None,
+                field_type: Some("Uuid".to_string()),
             },
         );
         fields.insert(
@@ -685,6 +689,7 @@ mod persistence_tests {
                     owner_field: false,
                 },
                 default_value: None,
+                field_type: Some("String".to_string()),
             },
         );
 
