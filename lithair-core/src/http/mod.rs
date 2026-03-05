@@ -44,6 +44,7 @@ pub mod response;
 pub mod route_guard; // Declarative route protection
 pub mod router;
 pub mod server;
+pub mod sse;
 pub mod three_tier;
 pub mod ultra_performance;
 pub mod url_handlers; // Direct URL-to-Function mapping system
@@ -84,6 +85,7 @@ pub use router::{
     CommandSender, EnhancedRouter, PathParams, Route, RouteHandler, Router,
 };
 pub use server::HttpServer;
+pub use sse::{create_broadcaster, ModelChangeEvent, SseEventBroadcaster};
 pub use three_tier::{ThreeTierHandler, ThreeTierResult, ThreeTierRouter, ThreeTierRouterBuilder};
 pub use url_handlers::{UrlHandler, UrlHandlerRegistry, UrlHandlerStats};
 pub use utils::{

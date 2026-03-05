@@ -31,6 +31,9 @@ pub struct LithairServerBuilder {
     legacy_endpoints: bool,
     deprecation_warnings: bool,
 
+    // SSE real-time subscriptions
+    sse_enabled: bool,
+
     // Frontend configurations (path_prefix -> static_dir)
     frontend_configs: Vec<(String, String)>, // (route_prefix, static_dir)
 
@@ -79,6 +82,7 @@ impl LithairServerBuilder {
             node_id: None,
             schema_vote_policy: None,
             openapi_enabled: false,
+            sse_enabled: false,
         }
     }
 
@@ -110,6 +114,7 @@ impl LithairServerBuilder {
             node_id: None,
             schema_vote_policy: None,
             openapi_enabled: false,
+            sse_enabled: false,
         }
     }
 
@@ -476,6 +481,15 @@ impl LithairServerBuilder {
     /// Default: 50,000 entries. Only relevant when access logging is enabled.
     pub fn with_access_log_capacity(mut self, capacity: usize) -> Self {
         self.access_log_capacity = capacity;
+        self
+    }
+
+    /// Enable SSE real-time subscriptions for model changes
+    ///
+    /// When enabled, each model gets a `GET /api/{model}/stream` endpoint
+    /// that streams create/update/delete events via Server-Sent Events.
+    pub fn with_sse(mut self, enabled: bool) -> Self {
+        self.sse_enabled = enabled;
         self
     }
 
@@ -1649,6 +1663,12 @@ impl LithairServerBuilder {
                     .map(crate::schema::SchemaSyncState::with_policy)
                     .unwrap_or_default(),
             )),
+            // SSE broadcaster (shared across all model handlers)
+            sse_broadcaster: if self.sse_enabled {
+                Some(crate::http::create_broadcaster())
+            } else {
+                None
+            },
         })
     }
 

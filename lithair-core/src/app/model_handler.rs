@@ -92,6 +92,9 @@ pub trait ModelHandler: Send + Sync {
     fn schema_spec(&self) -> Option<crate::schema::ModelSpec> {
         None
     }
+
+    /// Set the SSE broadcaster for real-time change notifications (no-op by default)
+    fn set_sse_broadcaster(&mut self, _broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {}
 }
 
 /// Wrapper for DeclarativeHttpHandler that implements ModelHandler
@@ -294,5 +297,9 @@ where
 
     fn schema_spec(&self) -> Option<crate::schema::ModelSpec> {
         self.cached_schema_spec.clone()
+    }
+
+    fn set_sse_broadcaster(&mut self, broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {
+        self.handler.sse_broadcaster = Some(broadcaster);
     }
 }

@@ -85,6 +85,8 @@ where
     #[allow(clippy::type_complexity)]
     permission_extractor: Option<Arc<dyn Fn(&Req) -> Vec<String> + Send + Sync>>,
     pub(crate) session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    /// Optional SSE broadcaster for real-time change notifications
+    pub(crate) sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
 }
 
 impl<T> DeclarativeHttpHandler<T>
@@ -136,6 +138,7 @@ where
             permission_checker: None,
             permission_extractor: None,
             session_store: None,
+            sse_broadcaster: None,
         };
 
         Ok(handler)
@@ -211,6 +214,15 @@ where
         F: Fn(&Req) -> Vec<String> + Send + Sync + 'static,
     {
         self.set_permission_extractor(extractor);
+        self
+    }
+
+    /// Set the SSE broadcaster for real-time change notifications
+    pub fn with_sse_broadcaster(
+        mut self,
+        broadcaster: Arc<crate::http::sse::SseEventBroadcaster>,
+    ) -> Self {
+        self.sse_broadcaster = Some(broadcaster);
         self
     }
 
@@ -488,6 +500,9 @@ where
             // GET /api/products - List all (with declarative read filtering)
             (&Method::GET, 0) => self.handle_list(&req).await,
 
+            // GET /api/products/stream - SSE real-time change subscription
+            (&Method::GET, 1) if path_segments[0] == "stream" => self.handle_sse_stream().await,
+
             // GET /api/products/count - Count items (lightweight read)
             (&Method::GET, 1) if path_segments[0] == "count" => self.handle_count().await,
 
@@ -525,7 +540,7 @@ where
                     self.method_not_allowed_response("GET, POST")
                 } else if path_segments.len() == 1 {
                     let seg = path_segments[0];
-                    if seg == "count" || seg == "random-id" {
+                    if seg == "count" || seg == "random-id" || seg == "stream" {
                         // Only GET allowed
                         self.method_not_allowed_response("GET")
                     } else if seg == "_bulk" {
@@ -622,6 +637,30 @@ where
                 .body(body_from(json))
                 .unwrap()),
             Err(_) => Ok(self.internal_error_response()),
+        }
+    }
+
+    /// GET /api/{model}/stream - SSE real-time change subscription
+    async fn handle_sse_stream(&self) -> Result<Resp, Infallible> {
+        match &self.sse_broadcaster {
+            Some(broadcaster) => {
+                let model_name = T::http_base_path();
+                Ok(broadcaster.create_sse_response(model_name).await)
+            }
+            None => Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("content-type", "application/json")
+                .body(body_from(r#"{"error":"SSE not enabled"}"#))
+                .unwrap()),
+        }
+    }
+
+    /// Broadcast an SSE event if the broadcaster is configured
+    async fn broadcast_sse(&self, operation: &str, item: &T) {
+        if let Some(ref broadcaster) = self.sse_broadcaster {
+            if let Ok(data) = serde_json::to_value(item) {
+                broadcaster.broadcast(T::http_base_path(), operation, data).await;
+            }
         }
     }
 
@@ -775,6 +814,8 @@ where
 
             log::debug!("Local: Item {} stored locally only", primary_key);
         }
+
+        self.broadcast_sse("create", &item).await;
 
         match serde_json::to_string(&item) {
             Ok(json) => Ok(Response::builder()
@@ -1052,6 +1093,8 @@ where
             return Ok(self.internal_error_response());
         }
 
+        self.broadcast_sse("update", &updated_item).await;
+
         match serde_json::to_string(&updated_item) {
             Ok(json) => Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -1129,6 +1172,8 @@ where
                                 return Ok(self.internal_error_response());
                             }
 
+                            self.broadcast_sse("delete", &item).await;
+
                             Ok(Response::builder()
                                 .status(StatusCode::NO_CONTENT)
                                 .body(body_from(Bytes::new()))
@@ -1156,6 +1201,8 @@ where
                     if (self.persist_to_event_store("Deleted", &item).await).is_err() {
                         return Ok(self.internal_error_response());
                     }
+
+                    self.broadcast_sse("delete", &item).await;
 
                     Ok(Response::builder()
                         .status(StatusCode::NO_CONTENT)
