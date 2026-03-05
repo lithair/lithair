@@ -546,7 +546,9 @@ where
 
     /// GET /api/{model} - List all items with filtering, sorting, and pagination
     async fn handle_list(&self, req: &Req) -> Result<Resp, Infallible> {
-        use crate::http::query::{compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE};
+        use crate::http::query::{
+            compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE,
+        };
 
         // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
@@ -556,21 +558,21 @@ where
         let query_str = req.uri().query().unwrap_or("");
         let params = parse_query_params(query_str);
 
-        let storage = self.storage.read().await;
-        // Apply declarative read filtering via HttpExposable::can_read
-        let items: Vec<&T> = storage.values().filter(|item| item.can_read(&user_perms)).collect();
+        // Clone readable items while holding the lock, then release before expensive transforms
+        let json_items: Vec<serde_json::Value> = {
+            let storage = self.storage.read().await;
+            storage
+                .values()
+                .filter(|item| item.can_read(&user_perms))
+                .filter_map(|item| serde_json::to_value(item).ok())
+                .collect()
+        };
 
-        // Serialize all items to JSON values for filtering/sorting
-        let mut json_items: Vec<serde_json::Value> = items
-            .into_iter()
-            .filter_map(|item| serde_json::to_value(item).ok())
-            .collect();
+        let mut json_items = json_items;
 
         // Apply filters
         if !params.filters.is_empty() {
-            json_items.retain(|item| {
-                params.filters.iter().all(|f| matches_filter(item, f))
-            });
+            json_items.retain(|item| params.filters.iter().all(|f| matches_filter(item, f)));
         }
 
         let total = json_items.len() as u64;
@@ -583,7 +585,11 @@ where
                 let va = a.get(&field).unwrap_or(&serde_json::Value::Null);
                 let vb = b.get(&field).unwrap_or(&serde_json::Value::Null);
                 let ord = compare_json_values(va, vb);
-                if desc { ord.reverse() } else { ord }
+                if desc {
+                    ord.reverse()
+                } else {
+                    ord
+                }
             });
         }
 

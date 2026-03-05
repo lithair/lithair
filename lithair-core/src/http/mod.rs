@@ -36,8 +36,8 @@ pub mod declarative_handlers; // Revolutionary Data-First routing system
 pub mod declarative_server;
 pub mod error;
 pub mod firewall;
-pub mod query;
 pub mod optimized_declarative; // T021 bincode optimization
+pub mod query;
 pub mod request;
 pub mod response;
 pub mod route_guard; // Declarative route protection

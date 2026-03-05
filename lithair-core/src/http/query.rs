@@ -86,11 +86,7 @@ pub fn parse_query_params(query: &str) -> QueryParams {
             }
             field if !RESERVED_PARAMS.contains(&field) => {
                 let (op, val) = parse_filter_value(value);
-                filters.push(FilterSpec {
-                    field: field.to_string(),
-                    op,
-                    value: val.to_string(),
-                });
+                filters.push(FilterSpec { field: field.to_string(), op, value: val.to_string() });
             }
             _ => {}
         }
@@ -130,10 +126,15 @@ pub fn matches_filter(item: &serde_json::Value, filter: &FilterSpec) -> bool {
     match filter.op {
         FilterOp::Eq => value_equals(field_value, &filter.value),
         FilterOp::Ne => !value_equals(field_value, &filter.value),
-        FilterOp::Gt => value_compare(field_value, &filter.value) == Some(std::cmp::Ordering::Greater),
+        FilterOp::Gt => {
+            value_compare(field_value, &filter.value) == Some(std::cmp::Ordering::Greater)
+        }
         FilterOp::Lt => value_compare(field_value, &filter.value) == Some(std::cmp::Ordering::Less),
-        FilterOp::Gte => value_compare(field_value, &filter.value).is_some_and(|o| o != std::cmp::Ordering::Less),
-        FilterOp::Lte => value_compare(field_value, &filter.value).is_some_and(|o| o != std::cmp::Ordering::Greater),
+        FilterOp::Gte => {
+            value_compare(field_value, &filter.value).is_some_and(|o| o != std::cmp::Ordering::Less)
+        }
+        FilterOp::Lte => value_compare(field_value, &filter.value)
+            .is_some_and(|o| o != std::cmp::Ordering::Greater),
         FilterOp::Contains => value_contains(field_value, &filter.value),
     }
 }
@@ -149,9 +150,7 @@ fn value_equals(value: &serde_json::Value, target: &str) -> bool {
                 n.to_string() == target
             }
         }
-        serde_json::Value::Bool(b) => {
-            (target == "true" && *b) || (target == "false" && !*b)
-        }
+        serde_json::Value::Bool(b) => (target == "true" && *b) || (target == "false" && !*b),
         serde_json::Value::Null => target == "null" || target.is_empty(),
         // Arrays and objects cannot be meaningfully compared via query string
         _ => false,
@@ -261,28 +260,64 @@ mod tests {
     #[test]
     fn test_matches_filter_eq() {
         let item = json!({"name": "Alice", "age": 30, "active": true});
-        assert!(matches_filter(&item, &FilterSpec { field: "name".into(), op: FilterOp::Eq, value: "Alice".into() }));
-        assert!(!matches_filter(&item, &FilterSpec { field: "name".into(), op: FilterOp::Eq, value: "Bob".into() }));
-        assert!(matches_filter(&item, &FilterSpec { field: "age".into(), op: FilterOp::Eq, value: "30".into() }));
-        assert!(matches_filter(&item, &FilterSpec { field: "active".into(), op: FilterOp::Eq, value: "true".into() }));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "name".into(), op: FilterOp::Eq, value: "Alice".into() }
+        ));
+        assert!(!matches_filter(
+            &item,
+            &FilterSpec { field: "name".into(), op: FilterOp::Eq, value: "Bob".into() }
+        ));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "age".into(), op: FilterOp::Eq, value: "30".into() }
+        ));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "active".into(), op: FilterOp::Eq, value: "true".into() }
+        ));
     }
 
     #[test]
     fn test_matches_filter_gt_lt() {
         let item = json!({"price": 50});
-        assert!(matches_filter(&item, &FilterSpec { field: "price".into(), op: FilterOp::Gt, value: "30".into() }));
-        assert!(!matches_filter(&item, &FilterSpec { field: "price".into(), op: FilterOp::Gt, value: "50".into() }));
-        assert!(matches_filter(&item, &FilterSpec { field: "price".into(), op: FilterOp::Lt, value: "100".into() }));
-        assert!(matches_filter(&item, &FilterSpec { field: "price".into(), op: FilterOp::Gte, value: "50".into() }));
-        assert!(matches_filter(&item, &FilterSpec { field: "price".into(), op: FilterOp::Lte, value: "50".into() }));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "price".into(), op: FilterOp::Gt, value: "30".into() }
+        ));
+        assert!(!matches_filter(
+            &item,
+            &FilterSpec { field: "price".into(), op: FilterOp::Gt, value: "50".into() }
+        ));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "price".into(), op: FilterOp::Lt, value: "100".into() }
+        ));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "price".into(), op: FilterOp::Gte, value: "50".into() }
+        ));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "price".into(), op: FilterOp::Lte, value: "50".into() }
+        ));
     }
 
     #[test]
     fn test_matches_filter_contains() {
         let item = json!({"name": "Alice Johnson"});
-        assert!(matches_filter(&item, &FilterSpec { field: "name".into(), op: FilterOp::Contains, value: "alice".into() }));
-        assert!(matches_filter(&item, &FilterSpec { field: "name".into(), op: FilterOp::Contains, value: "John".into() }));
-        assert!(!matches_filter(&item, &FilterSpec { field: "name".into(), op: FilterOp::Contains, value: "Bob".into() }));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "name".into(), op: FilterOp::Contains, value: "alice".into() }
+        ));
+        assert!(matches_filter(
+            &item,
+            &FilterSpec { field: "name".into(), op: FilterOp::Contains, value: "John".into() }
+        ));
+        assert!(!matches_filter(
+            &item,
+            &FilterSpec { field: "name".into(), op: FilterOp::Contains, value: "Bob".into() }
+        ));
     }
 
     #[test]
