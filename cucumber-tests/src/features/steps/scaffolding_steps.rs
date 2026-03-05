@@ -18,12 +18,19 @@ impl ScaffoldingWorld {
 
 fn lithair_binary() -> PathBuf {
     // Look for the binary relative to the workspace root
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.pop(); // cucumber-tests -> workspace root
-    path.push("target");
-    path.push("debug");
-    path.push("lithair");
-    path
+    let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    base.pop(); // cucumber-tests -> workspace root
+    let target_dir = base.join("target");
+
+    // Try release and ci profiles first (for CI builds), then debug (for local dev)
+    for profile in &["release", "ci"] {
+        let bin_path = target_dir.join(profile).join("lithair");
+        if bin_path.exists() {
+            return bin_path;
+        }
+    }
+
+    target_dir.join("debug").join("lithair")
 }
 
 #[given("a clean temporary directory")]
