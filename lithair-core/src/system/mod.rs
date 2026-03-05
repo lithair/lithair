@@ -111,8 +111,26 @@ pub fn system_metrics() -> Option<&'static SystemMetrics> {
     SYSTEM_METRICS.get()
 }
 
+/// Escape a string for use as a Prometheus label value.
+///
+/// Backslashes, double quotes, and newlines are escaped per the Prometheus
+/// text exposition format specification.
+fn escape_prometheus_label(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Format system + request metrics as Prometheus text exposition.
 pub fn prometheus_metrics(model_name: &str) -> String {
+    let model_name = escape_prometheus_label(model_name);
     let snap = SYSTEM_METRICS.get().map(|m| m.snapshot());
     let req = compute_request_stats(60);
 
@@ -173,7 +191,7 @@ pub fn prometheus_metrics(model_name: &str) -> String {
     out.push_str(&format!(
         "lithair_requests_per_second{{model=\"{}\"}} {:.2}\n",
         model_name,
-        req.as_ref().map(|r| r.rps_60s).unwrap_or(0.0)
+        req.as_ref().map(|r| r.rps).unwrap_or(0.0)
     ));
 
     out.push_str("# HELP lithair_latency_p50_ms 50th percentile latency in ms\n");

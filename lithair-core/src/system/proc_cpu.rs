@@ -47,7 +47,7 @@ pub fn cpu_usage_percent(prev: &CpuJiffies, curr: &CpuJiffies) -> f64 {
         return 0.0;
     }
     let idle_delta = curr.idle.saturating_sub(prev.idle);
-    let used = total_delta - idle_delta;
+    let used = total_delta.saturating_sub(idle_delta);
     (used as f64 / total_delta as f64) * 100.0
 }
 

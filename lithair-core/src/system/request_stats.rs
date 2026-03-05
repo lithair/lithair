@@ -3,7 +3,7 @@
 /// Request throughput and latency percentiles.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct RequestStats {
-    pub rps_60s: f64,
+    pub rps: f64,
     pub latency_p50_ms: f64,
     pub latency_p95_ms: f64,
     pub latency_p99_ms: f64,
@@ -38,7 +38,7 @@ pub fn compute_request_stats(window_seconds: u64) -> Option<RequestStats> {
     };
 
     Some(RequestStats {
-        rps_60s: rps,
+        rps,
         latency_p50_ms: p50,
         latency_p95_ms: p95,
         latency_p99_ms: p99,

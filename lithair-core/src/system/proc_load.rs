@@ -1,7 +1,7 @@
 //! Load average from `/proc/loadavg`.
 
 /// Parsed load average values.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LoadAvg {
     pub load_1: f64,
     pub load_5: f64,
