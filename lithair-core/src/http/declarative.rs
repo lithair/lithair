@@ -546,7 +546,7 @@ where
 
     /// GET /api/{model} - List all items with filtering, sorting, and pagination
     async fn handle_list(&self, req: &Req) -> Result<Resp, Infallible> {
-        use crate::http::query::{compare_json_values, matches_filter, parse_query_params};
+        use crate::http::query::{compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE};
 
         // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
@@ -595,21 +595,17 @@ where
             json_items.clear();
         }
 
-        let has_more = if let Some(take) = params.take {
-            let take = take as usize;
-            let more = json_items.len() > take;
-            json_items.truncate(take);
-            more
-        } else {
-            false
-        };
+        // Apply take limit (use default max if not specified to prevent unbounded responses)
+        let effective_take = params.take.unwrap_or(DEFAULT_MAX_TAKE) as usize;
+        let has_more = json_items.len() > effective_take;
+        json_items.truncate(effective_take);
 
         // Build wrapper response
         let response = serde_json::json!({
             "data": json_items,
             "total": total,
             "skip": params.skip,
-            "take": params.take,
+            "take": effective_take,
             "has_more": has_more,
         });
 

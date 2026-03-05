@@ -3,6 +3,10 @@
 //! Supports pagination (skip/take), sorting (sort=-price), and filtering
 //! (field=value, field=>value, field=<value, field=~value).
 
+/// Default maximum number of items returned per page when `take` is not specified.
+/// Prevents unbounded collection responses.
+pub const DEFAULT_MAX_TAKE: u64 = 1000;
+
 /// Parsed query parameters for collection list endpoints
 #[derive(Debug, Clone)]
 pub struct QueryParams {
@@ -138,15 +142,19 @@ pub fn matches_filter(item: &serde_json::Value, filter: &FilterSpec) -> bool {
 fn value_equals(value: &serde_json::Value, target: &str) -> bool {
     match value {
         serde_json::Value::String(s) => s == target,
-        serde_json::Value::Number(n) => n.to_string() == target,
+        serde_json::Value::Number(n) => {
+            if let (Some(val), Ok(tgt)) = (n.as_f64(), target.parse::<f64>()) {
+                (val - tgt).abs() < f64::EPSILON
+            } else {
+                n.to_string() == target
+            }
+        }
         serde_json::Value::Bool(b) => {
             (target == "true" && *b) || (target == "false" && !*b)
         }
         serde_json::Value::Null => target == "null" || target.is_empty(),
-        _ => {
-            let s = value.to_string();
-            s == target
-        }
+        // Arrays and objects cannot be meaningfully compared via query string
+        _ => false,
     }
 }
 
