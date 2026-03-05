@@ -496,6 +496,9 @@ impl LithairServerBuilder {
     /// When enabled, the server auto-generates an OpenAPI 3.1 specification
     /// from all registered DeclarativeModel definitions and serves it at
     /// `GET /openapi.json`. A minimal Swagger UI is also served at `GET /docs`.
+    ///
+    /// Only models that expose `schema_spec()` through their handler
+    /// are included in the generated spec.
     pub fn with_openapi(mut self, enabled: bool) -> Self {
         self.openapi_enabled = enabled;
         self

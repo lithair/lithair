@@ -1765,23 +1765,24 @@ impl LithairServer {
 
         // OpenAPI spec endpoint
         if self.openapi_enabled && path == "/openapi.json" && method == hyper::Method::GET {
-            let spec = self.openapi_spec_cache.get_or_init(|| {
-                let models = self.models.try_read();
-                let model_infos: Vec<crate::http::OpenApiModelInfo> = match models {
-                    Ok(models) => models
-                        .iter()
-                        .filter_map(|m| {
-                            m.handler.schema_spec().map(|spec| crate::http::OpenApiModelInfo {
-                                name: m.name.clone(),
-                                base_path: m.base_path.clone(),
-                                spec,
-                            })
+            let spec = if let Some(cached) = self.openapi_spec_cache.get() {
+                cached
+            } else {
+                let models = self.models.read().await;
+                let model_infos: Vec<crate::http::OpenApiModelInfo> = models
+                    .iter()
+                    .filter_map(|m| {
+                        m.handler.schema_spec().map(|spec| crate::http::OpenApiModelInfo {
+                            name: m.name.clone(),
+                            base_path: m.base_path.clone(),
+                            spec,
                         })
-                        .collect(),
-                    Err(_) => Vec::new(),
-                };
-                crate::http::generate_openapi_spec(&model_infos)
-            });
+                    })
+                    .collect();
+                let generated = crate::http::generate_openapi_spec(&model_infos);
+                let _ = self.openapi_spec_cache.set(generated);
+                self.openapi_spec_cache.get().expect("just set")
+            };
 
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::OK)

@@ -221,6 +221,24 @@ impl SchemaChangeDetector {
     ) -> Vec<DetectedSchemaChange> {
         let mut changes = Vec::new();
 
+        // Field type changes
+        if old_constraints.field_type != new_constraints.field_type {
+            changes.push(DetectedSchemaChange {
+                model: model_name.to_string(),
+                change_type: SchemaChangeType::ModifyFieldType,
+                field_name: Some(field_name.to_string()),
+                old_type: old_constraints.field_type.clone(),
+                new_type: new_constraints.field_type.clone(),
+                old_constraints: Some(old_constraints.clone()),
+                new_constraints: Some(new_constraints.clone()),
+                migration_strategy: MigrationStrategy::Breaking,
+                default_value: None,
+                requires_consensus: true,
+                migration_sql: None,
+                rollback_sql: None,
+            });
+        }
+
         // Changements de politique de rétention
         if old_constraints.retention != new_constraints.retention {
             changes.push(DetectedSchemaChange {

@@ -20,11 +20,10 @@ pub struct OpenApiModelInfo {
 /// Map a Rust type string to OpenAPI type + format
 fn rust_type_to_openapi(rust_type: &str) -> (String, Option<String>) {
     // Strip Option<> wrapper
-    let inner = if rust_type.starts_with("Option<") && rust_type.ends_with('>') {
-        &rust_type[7..rust_type.len() - 1]
-    } else {
-        rust_type
-    };
+    let inner = rust_type
+        .strip_prefix("Option<")
+        .and_then(|s| s.strip_suffix('>'))
+        .unwrap_or(rust_type);
 
     match inner {
         "String" | "string" => ("string".into(), None),
@@ -45,6 +44,28 @@ fn rust_type_to_openapi(rust_type: &str) -> (String, Option<String>) {
     }
 }
 
+/// Extract the inner type of a Vec<T> for OpenAPI items schema
+fn vec_items_schema(rust_type: &str) -> Option<Value> {
+    let inner = rust_type
+        .strip_prefix("Option<")
+        .and_then(|s| s.strip_suffix('>'))
+        .unwrap_or(rust_type);
+
+    if let Some(item_type) = inner.strip_prefix("Vec<").and_then(|s| s.strip_suffix('>')) {
+        if item_type == "u8" {
+            return None; // Vec<u8> is "string"/"byte", not array
+        }
+        let (t, f) = rust_type_to_openapi(item_type);
+        let mut schema = json!({ "type": t });
+        if let Some(fmt) = f {
+            schema["format"] = json!(fmt);
+        }
+        Some(schema)
+    } else {
+        None
+    }
+}
+
 /// Build the JSON schema for a single field
 fn field_to_schema(field_name: &str, constraints: &FieldConstraints) -> Value {
     let (type_str, format) = constraints
@@ -60,14 +81,24 @@ fn field_to_schema(field_name: &str, constraints: &FieldConstraints) -> Value {
             .map(|t| t.starts_with("Option<"))
             .unwrap_or(false);
 
-    let mut schema = json!({ "type": type_str });
+    // OpenAPI 3.1: nullable via type union ["type", "null"]
+    let mut schema = if is_nullable {
+        json!({ "type": [&type_str, "null"] })
+    } else {
+        json!({ "type": type_str })
+    };
 
     if let Some(fmt) = format {
         schema["format"] = json!(fmt);
     }
 
-    if is_nullable {
-        schema["nullable"] = json!(true);
+    // Add items schema for array types
+    if type_str == "array" {
+        if let Some(ref ft) = constraints.field_type {
+            if let Some(items) = vec_items_schema(ft) {
+                schema["items"] = items;
+            }
+        }
     }
 
     // Add validation hints
@@ -136,6 +167,24 @@ fn model_to_schema(info: &OpenApiModelInfo) -> Value {
     schema
 }
 
+/// Derive the OpenAPI schema for the model's primary key (for path params)
+fn id_param_schema(info: &OpenApiModelInfo) -> Value {
+    let (id_type, id_format) = info
+        .spec
+        .fields
+        .iter()
+        .find(|(_, c)| c.primary_key)
+        .and_then(|(_, c)| c.field_type.as_deref())
+        .map(rust_type_to_openapi)
+        .unwrap_or_else(|| ("string".into(), None));
+
+    let mut schema = json!({ "type": id_type });
+    if let Some(fmt) = id_format {
+        schema["format"] = json!(fmt);
+    }
+    schema
+}
+
 /// Build CRUD path operations for a model
 fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
     let model_name = &info.name;
@@ -143,20 +192,24 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
     let schema_ref = format!("#/components/schemas/{}", model_name);
     let tag = model_name.clone();
 
-    // Determine read permission annotation
-    let read_perm: Option<String> = info
-        .spec
-        .fields
-        .values()
-        .filter_map(|c| c.permissions.read_permission.as_ref())
-        .next()
-        .cloned();
+    // Deterministic read permission: sort and take first
+    let read_perm: Option<String> = {
+        let mut perms: Vec<String> = info
+            .spec
+            .fields
+            .values()
+            .filter_map(|c| c.permissions.read_permission.clone())
+            .collect();
+        perms.sort();
+        perms.into_iter().next()
+    };
 
     let perm_note = read_perm
         .as_ref()
         .map(|p| format!(" Requires `{}` permission.", p))
         .unwrap_or_default();
 
+    let id_schema = id_param_schema(info);
     let mut paths = Vec::new();
 
     // Collection endpoint: GET (list) + POST (create)
@@ -185,7 +238,7 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                                         "data": { "type": "array", "items": { "$ref": &schema_ref } },
                                         "total": { "type": "integer" },
                                         "skip": { "type": "integer" },
-                                        "take": { "type": "integer", "nullable": true },
+                                        "take": { "type": ["integer", "null"] },
                                         "has_more": { "type": "boolean" }
                                     }
                                 }
@@ -232,7 +285,7 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                 "summary": format!("Get {} by ID", model_name),
                 "operationId": format!("get{}", model_name),
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    { "name": "id", "in": "path", "required": true, "schema": id_schema.clone() }
                 ],
                 "responses": {
                     "200": {
@@ -251,7 +304,7 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                 "summary": format!("Update {}", model_name),
                 "operationId": format!("update{}", model_name),
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    { "name": "id", "in": "path", "required": true, "schema": id_schema.clone() }
                 ],
                 "requestBody": {
                     "required": true,
@@ -279,7 +332,7 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                 "summary": format!("Delete {}", model_name),
                 "operationId": format!("delete{}", model_name),
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    { "name": "id", "in": "path", "required": true, "schema": id_schema.clone() }
                 ],
                 "responses": {
                     "200": { "description": "Deleted" },
@@ -312,7 +365,7 @@ pub fn generate_openapi_spec(models: &[OpenApiModelInfo]) -> Value {
         "info": {
             "title": "Lithair API",
             "description": "Auto-generated API documentation from DeclarativeModel definitions",
-            "version": "0.2.0"
+            "version": env!("CARGO_PKG_VERSION")
         },
         "paths": paths,
         "components": {
@@ -470,7 +523,31 @@ mod tests {
         };
 
         let schema = field_to_schema("notes", &constraints);
-        assert_eq!(schema["type"], "string");
-        assert_eq!(schema["nullable"], true);
+        // OpenAPI 3.1: type union instead of nullable
+        assert_eq!(schema["type"], json!(["string", "null"]));
+    }
+
+    #[test]
+    fn test_id_param_uses_model_pk_type() {
+        let model = sample_model();
+        let id_schema = id_param_schema(&model);
+        // The sample model has Uuid PK
+        assert_eq!(id_schema["type"], "string");
+        assert_eq!(id_schema["format"], "uuid");
+    }
+
+    #[test]
+    fn test_vec_items_schema() {
+        let items = vec_items_schema("Vec<String>");
+        assert_eq!(items, Some(json!({ "type": "string" })));
+
+        let items_i64 = vec_items_schema("Vec<i64>");
+        assert_eq!(
+            items_i64,
+            Some(json!({ "type": "integer", "format": "int64" }))
+        );
+
+        // Vec<u8> is byte string, no items
+        assert_eq!(vec_items_schema("Vec<u8>"), None);
     }
 }
