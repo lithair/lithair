@@ -655,6 +655,15 @@ where
         }
     }
 
+    /// Broadcast an SSE event if the broadcaster is configured
+    async fn broadcast_sse(&self, operation: &str, item: &T) {
+        if let Some(ref broadcaster) = self.sse_broadcaster {
+            if let Ok(data) = serde_json::to_value(item) {
+                broadcaster.broadcast(T::http_base_path(), operation, data).await;
+            }
+        }
+    }
+
     /// POST /api/{model} - Create new item
     async fn handle_create(&self, req: Req) -> Result<Resp, Infallible> {
         // Agnostic write enforcement using permission_extractor + can_write()
@@ -806,12 +815,7 @@ where
             log::debug!("Local: Item {} stored locally only", primary_key);
         }
 
-        // Broadcast SSE event on successful create
-        if let Some(ref broadcaster) = self.sse_broadcaster {
-            if let Ok(data) = serde_json::to_value(&item) {
-                broadcaster.broadcast(T::http_base_path(), "create", data).await;
-            }
-        }
+        self.broadcast_sse("create", &item).await;
 
         match serde_json::to_string(&item) {
             Ok(json) => Ok(Response::builder()
@@ -1089,12 +1093,7 @@ where
             return Ok(self.internal_error_response());
         }
 
-        // Broadcast SSE event on successful update
-        if let Some(ref broadcaster) = self.sse_broadcaster {
-            if let Ok(data) = serde_json::to_value(&updated_item) {
-                broadcaster.broadcast(T::http_base_path(), "update", data).await;
-            }
-        }
+        self.broadcast_sse("update", &updated_item).await;
 
         match serde_json::to_string(&updated_item) {
             Ok(json) => Ok(Response::builder()
@@ -1173,14 +1172,7 @@ where
                                 return Ok(self.internal_error_response());
                             }
 
-                            // Broadcast SSE event on successful delete
-                            if let Some(ref broadcaster) = self.sse_broadcaster {
-                                if let Ok(data) = serde_json::to_value(&item) {
-                                    broadcaster
-                                        .broadcast(T::http_base_path(), "delete", data)
-                                        .await;
-                                }
-                            }
+                            self.broadcast_sse("delete", &item).await;
 
                             Ok(Response::builder()
                                 .status(StatusCode::NO_CONTENT)
@@ -1210,12 +1202,7 @@ where
                         return Ok(self.internal_error_response());
                     }
 
-                    // Broadcast SSE event on successful delete
-                    if let Some(ref broadcaster) = self.sse_broadcaster {
-                        if let Ok(data) = serde_json::to_value(&item) {
-                            broadcaster.broadcast(T::http_base_path(), "delete", data).await;
-                        }
-                    }
+                    self.broadcast_sse("delete", &item).await;
 
                     Ok(Response::builder()
                         .status(StatusCode::NO_CONTENT)

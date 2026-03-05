@@ -140,7 +140,6 @@ impl SseEventBroadcaster {
             .header("Content-Type", "text/event-stream")
             .header("Cache-Control", "no-cache")
             .header("Connection", "keep-alive")
-            .header("Access-Control-Allow-Origin", "*")
             .header("X-Accel-Buffering", "no")
             .body(stream_body.boxed())
             .expect("valid SSE response")

@@ -585,6 +585,11 @@ impl LithairServer {
                     if let Some(ref broadcaster) = self.sse_broadcaster {
                         if let Some(h) = Arc::get_mut(&mut handler) {
                             h.set_sse_broadcaster(Arc::clone(broadcaster));
+                        } else {
+                            log::warn!(
+                                "Could not set SSE broadcaster for model '{}': Arc has multiple strong references",
+                                info.name
+                            );
                         }
                     }
                     let mut models = self.models.write().await;
