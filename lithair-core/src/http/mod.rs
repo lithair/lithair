@@ -38,6 +38,7 @@ pub mod error;
 pub mod firewall;
 pub mod openapi;
 pub mod optimized_declarative; // T021 bincode optimization
+pub mod query;
 pub mod request;
 pub mod response;
 pub mod route_guard; // Declarative route protection

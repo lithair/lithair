@@ -544,17 +544,78 @@ where
         }
     }
 
-    /// GET /api/{model} - List all items (declarative read filtering)
+    /// GET /api/{model} - List all items with filtering, sorting, and pagination
     async fn handle_list(&self, req: &Req) -> Result<Resp, Infallible> {
+        use crate::http::query::{
+            compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE,
+        };
+
         // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
             self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
-        let storage = self.storage.read().await;
-        // Apply declarative read filtering via HttpExposable::can_read
-        let items: Vec<&T> = storage.values().filter(|item| item.can_read(&user_perms)).collect();
+        // Parse query parameters
+        let query_str = req.uri().query().unwrap_or("");
+        let params = parse_query_params(query_str);
 
-        match serde_json::to_string(&items) {
+        // Clone readable items while holding the lock, then release before expensive transforms
+        let json_items: Vec<serde_json::Value> = {
+            let storage = self.storage.read().await;
+            storage
+                .values()
+                .filter(|item| item.can_read(&user_perms))
+                .filter_map(|item| serde_json::to_value(item).ok())
+                .collect()
+        };
+
+        let mut json_items = json_items;
+
+        // Apply filters
+        if !params.filters.is_empty() {
+            json_items.retain(|item| params.filters.iter().all(|f| matches_filter(item, f)));
+        }
+
+        let total = json_items.len() as u64;
+
+        // Apply sorting
+        if let Some(ref sort) = params.sort {
+            let field = sort.field.clone();
+            let desc = sort.descending;
+            json_items.sort_by(|a, b| {
+                let va = a.get(&field).unwrap_or(&serde_json::Value::Null);
+                let vb = b.get(&field).unwrap_or(&serde_json::Value::Null);
+                let ord = compare_json_values(va, vb);
+                if desc {
+                    ord.reverse()
+                } else {
+                    ord
+                }
+            });
+        }
+
+        // Apply pagination
+        let skip = params.skip as usize;
+        if skip > 0 && skip < json_items.len() {
+            json_items = json_items.into_iter().skip(skip).collect();
+        } else if skip >= json_items.len() && !json_items.is_empty() {
+            json_items.clear();
+        }
+
+        // Apply take limit (use default max if not specified to prevent unbounded responses)
+        let effective_take = params.take.unwrap_or(DEFAULT_MAX_TAKE) as usize;
+        let has_more = json_items.len() > effective_take;
+        json_items.truncate(effective_take);
+
+        // Build wrapper response
+        let response = serde_json::json!({
+            "data": json_items,
+            "total": total,
+            "skip": params.skip,
+            "take": effective_take,
+            "has_more": has_more,
+        });
+
+        match serde_json::to_string(&response) {
             Ok(json) => Ok(Response::builder()
                 .status(StatusCode::OK)
                 .header("content-type", "application/json")
