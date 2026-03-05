@@ -34,7 +34,9 @@ fn rust_type_to_openapi(rust_type: &str) -> (String, Option<String>) {
         "f32" => ("number".into(), Some("float".into())),
         "f64" => ("number".into(), Some("double".into())),
         "bool" => ("boolean".into(), None),
-        "DateTime" | "NaiveDateTime" | "chrono::DateTime<Utc>"
+        "DateTime"
+        | "NaiveDateTime"
+        | "chrono::DateTime<Utc>"
         | "chrono::DateTime<chrono::Utc>" => ("string".into(), Some("date-time".into())),
         "NaiveDate" | "chrono::NaiveDate" => ("string".into(), Some("date".into())),
         "Vec<u8>" => ("string".into(), Some("byte".into())),
@@ -137,10 +139,7 @@ fn model_to_schema(info: &OpenApiModelInfo) -> Value {
     fields.sort_by_key(|(name, _)| (*name).clone());
 
     for (field_name, constraints) in &fields {
-        properties.insert(
-            field_name.to_string(),
-            field_to_schema(field_name, constraints),
-        );
+        properties.insert(field_name.to_string(), field_to_schema(field_name, constraints));
 
         // Non-nullable and non-primary-key fields are required for creation
         if !constraints.nullable
@@ -480,23 +479,11 @@ mod tests {
     #[test]
     fn test_rust_type_mapping() {
         assert_eq!(rust_type_to_openapi("String"), ("string".into(), None));
-        assert_eq!(
-            rust_type_to_openapi("Uuid"),
-            ("string".into(), Some("uuid".into()))
-        );
-        assert_eq!(
-            rust_type_to_openapi("i64"),
-            ("integer".into(), Some("int64".into()))
-        );
+        assert_eq!(rust_type_to_openapi("Uuid"), ("string".into(), Some("uuid".into())));
+        assert_eq!(rust_type_to_openapi("i64"), ("integer".into(), Some("int64".into())));
         assert_eq!(rust_type_to_openapi("bool"), ("boolean".into(), None));
-        assert_eq!(
-            rust_type_to_openapi("Option<String>"),
-            ("string".into(), None)
-        );
-        assert_eq!(
-            rust_type_to_openapi("f64"),
-            ("number".into(), Some("double".into()))
-        );
+        assert_eq!(rust_type_to_openapi("Option<String>"), ("string".into(), None));
+        assert_eq!(rust_type_to_openapi("f64"), ("number".into(), Some("double".into())));
     }
 
     #[test]
@@ -542,10 +529,7 @@ mod tests {
         assert_eq!(items, Some(json!({ "type": "string" })));
 
         let items_i64 = vec_items_schema("Vec<i64>");
-        assert_eq!(
-            items_i64,
-            Some(json!({ "type": "integer", "format": "int64" }))
-        );
+        assert_eq!(items_i64, Some(json!({ "type": "integer", "format": "int64" })));
 
         // Vec<u8> is byte string, no items
         assert_eq!(vec_items_schema("Vec<u8>"), None);
