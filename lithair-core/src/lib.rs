@@ -93,6 +93,7 @@ pub mod schema;
 pub mod security; // Core RBAC security - non-optional
 pub mod serialization; // JSON and binary serialization (simd-json, rkyv, bincode)
 pub mod session; // Session management with event sourcing
+pub mod system; // System metrics (CPU, RAM, load, RSS, request stats)
 
 // Proxy and gateway functionality
 pub mod cache;

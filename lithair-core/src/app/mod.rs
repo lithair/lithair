@@ -1246,6 +1246,9 @@ impl LithairServer {
             crate::http::init_access_log_buffer(self.access_log_capacity);
         }
 
+        // Initialize system metrics collector (CPU, RAM, load, RSS)
+        crate::system::init_system_metrics();
+
         // Share server state
         let server = Arc::new(self);
 
