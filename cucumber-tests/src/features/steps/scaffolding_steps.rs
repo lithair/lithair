@@ -22,10 +22,12 @@ fn lithair_binary() -> PathBuf {
     base.pop(); // cucumber-tests -> workspace root
     let target_dir = base.join("target");
 
-    // Try release first (CI builds with --release or --profile ci), then debug
-    let release_bin = target_dir.join("release").join("lithair");
-    if release_bin.exists() {
-        return release_bin;
+    // Try release and ci profiles first (for CI builds), then debug (for local dev)
+    for profile in &["release", "ci"] {
+        let bin_path = target_dir.join(profile).join("lithair");
+        if bin_path.exists() {
+            return bin_path;
+        }
     }
 
     target_dir.join("debug").join("lithair")
