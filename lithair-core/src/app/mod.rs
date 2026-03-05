@@ -159,6 +159,8 @@ pub struct LithairServer {
     access_log_capacity: usize,
     legacy_endpoints: bool,
     deprecation_warnings: bool,
+    openapi_enabled: bool,
+    openapi_spec_cache: std::sync::OnceLock<serde_json::Value>,
 
     // Raft cluster (distributed consensus)
     cluster_peers: Vec<String>,
@@ -1758,6 +1760,56 @@ impl LithairServer {
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(Full::new(Bytes::from(status.to_string())))
+                .expect("valid HTTP response"));
+        }
+
+        // OpenAPI spec endpoint
+        if self.openapi_enabled && path == "/openapi.json" && method == hyper::Method::GET {
+            let spec = if let Some(cached) = self.openapi_spec_cache.get() {
+                cached
+            } else {
+                let models = self.models.read().await;
+                let model_infos: Vec<crate::http::OpenApiModelInfo> = models
+                    .iter()
+                    .filter_map(|m| {
+                        m.handler.schema_spec().map(|spec| crate::http::OpenApiModelInfo {
+                            name: m.name.clone(),
+                            base_path: m.base_path.clone(),
+                            spec,
+                        })
+                    })
+                    .collect();
+                let generated = crate::http::generate_openapi_spec(&model_infos);
+                let _ = self.openapi_spec_cache.set(generated);
+                self.openapi_spec_cache.get().expect("just set")
+            };
+
+            return Ok(hyper::Response::builder()
+                .status(hyper::StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Full::new(Bytes::from(spec.to_string())))
+                .expect("valid HTTP response"));
+        }
+
+        // Swagger UI endpoint
+        if self.openapi_enabled && path == "/docs" && method == hyper::Method::GET {
+            let html = r##"<!DOCTYPE html>
+<html><head>
+<title>API Documentation</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"/>
+</head><body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>SwaggerUIBundle({url:"/openapi.json",dom_id:"#swagger-ui"})</script>
+</body></html>"##;
+
+            return Ok(hyper::Response::builder()
+                .status(hyper::StatusCode::OK)
+                .header("Content-Type", "text/html; charset=utf-8")
+                .body(Full::new(Bytes::from(html)))
                 .expect("valid HTTP response"));
         }
 
@@ -4616,6 +4668,8 @@ impl Default for LithairServer {
             schema_sync_state: Arc::new(tokio::sync::RwLock::new(
                 crate::schema::SchemaSyncState::default(),
             )),
+            openapi_enabled: false,
+            openapi_spec_cache: std::sync::OnceLock::new(),
         }
     }
 }

@@ -86,6 +86,12 @@ pub trait ModelHandler: Send + Sync {
     /// Apply a replicated DELETE from leader
     /// Called by followers when receiving DELETE replication from leader
     async fn apply_replicated_delete_json(&self, id: &str) -> Result<bool, String>;
+
+    /// Get the schema specification for this model (for OpenAPI generation)
+    /// Returns None if no schema spec is available
+    fn schema_spec(&self) -> Option<crate::schema::ModelSpec> {
+        None
+    }
 }
 
 /// Wrapper for DeclarativeHttpHandler that implements ModelHandler
@@ -96,6 +102,7 @@ where
     handler: DeclarativeHttpHandler<T>,
     model_name: String,
     base_path: String,
+    cached_schema_spec: Option<crate::schema::ModelSpec>,
 }
 
 impl<T> DeclarativeModelHandler<T>
@@ -107,7 +114,7 @@ where
         let model_name =
             std::any::type_name::<T>().split("::").last().unwrap_or("Unknown").to_string();
         let base_path = T::http_base_path().to_string();
-        Ok(Self { handler, model_name, base_path })
+        Ok(Self { handler, model_name, base_path, cached_schema_spec: None })
     }
 
     /// Override the base path used in metadata and JSON responses (e.g., `export_json`).
@@ -132,6 +139,12 @@ where
     /// Set the session store for extracting user roles
     pub fn with_session_store<S: 'static + Send + Sync>(mut self, store: Arc<S>) -> Self {
         self.handler = self.handler.with_session_store(store);
+        self
+    }
+
+    /// Set the cached schema spec for OpenAPI generation
+    pub fn with_schema_spec(mut self, spec: crate::schema::ModelSpec) -> Self {
+        self.cached_schema_spec = Some(spec);
         self
     }
 
@@ -277,5 +290,9 @@ where
     async fn apply_replicated_delete_json(&self, id: &str) -> Result<bool, String> {
         // Apply using the typed method on the handler
         self.handler.apply_replicated_delete(id).await
+    }
+
+    fn schema_spec(&self) -> Option<crate::schema::ModelSpec> {
+        self.cached_schema_spec.clone()
     }
 }

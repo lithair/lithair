@@ -81,6 +81,9 @@ pub struct FieldConstraints {
     /// When present, adding this field is safe (non-breaking)
     #[serde(default)]
     pub default_value: Option<String>,
+    /// Rust type name as string (e.g. "String", "Uuid", "i64") for OpenAPI generation
+    #[serde(default)]
+    pub field_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -217,6 +220,24 @@ impl SchemaChangeDetector {
         new_constraints: &FieldConstraints,
     ) -> Vec<DetectedSchemaChange> {
         let mut changes = Vec::new();
+
+        // Field type changes
+        if old_constraints.field_type != new_constraints.field_type {
+            changes.push(DetectedSchemaChange {
+                model: model_name.to_string(),
+                change_type: SchemaChangeType::ModifyFieldType,
+                field_name: Some(field_name.to_string()),
+                old_type: old_constraints.field_type.clone(),
+                new_type: new_constraints.field_type.clone(),
+                old_constraints: Some(old_constraints.clone()),
+                new_constraints: Some(new_constraints.clone()),
+                migration_strategy: MigrationStrategy::Breaking,
+                default_value: None,
+                requires_consensus: true,
+                migration_sql: None,
+                rollback_sql: None,
+            });
+        }
 
         // Changements de politique de rétention
         if old_constraints.retention != new_constraints.retention {
@@ -663,6 +684,7 @@ mod persistence_tests {
                     owner_field: false,
                 },
                 default_value: None,
+                field_type: Some("Uuid".to_string()),
             },
         );
         fields.insert(
@@ -685,6 +707,7 @@ mod persistence_tests {
                     owner_field: false,
                 },
                 default_value: None,
+                field_type: Some("String".to_string()),
             },
         );
 

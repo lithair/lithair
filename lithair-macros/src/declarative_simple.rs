@@ -39,7 +39,7 @@ fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
 // with modern syn API compatibility.
 
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use std::collections::HashMap;
 use syn::{parse2, Attribute, Data, DeriveInput, Error, Field, Fields, Meta};
 
@@ -87,6 +87,9 @@ struct FieldAttributes {
 
     // Migration attributes
     default_value: Option<String>, // Default value for schema migration (e.g., "0", "\"\"", "false")
+
+    // Type info (captured from field type for OpenAPI generation)
+    rust_type: String,
 }
 
 /// Struct-level firewall attributes parsed from #[firewall(...)]
@@ -666,7 +669,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             let field_name_str = field_name.to_string();
             field_names.push(field_name_str.clone());
 
-            let attrs = parse_field_attributes(field);
+            let mut attrs = parse_field_attributes(field);
+            // Capture the Rust type as a string for OpenAPI generation
+            attrs.rust_type = field.ty.to_token_stream().to_string().replace(' ', "");
             if attrs.replicate {
                 replicated_fields.push(field_name_str.clone());
             }
@@ -787,6 +792,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             None => quote! { None },
         };
 
+        // Type info
+        let rust_type_lit = syn::LitStr::new(&attrs.rust_type, Span::call_site());
+
         let field_name_lit = syn::LitStr::new(field_name.as_str(), Span::call_site());
         quote! {
             fields.insert(#field_name_lit.to_string(), #attrs_name {
@@ -824,6 +832,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
                 // Migration attributes
                 default_value: #default_value,
+
+                // Type info (captured from field definition for OpenAPI)
+                rust_type: #rust_type_lit.to_string(),
             });
         }
     });
@@ -938,6 +949,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
             // Migration attributes
             pub default_value: Option<String>,
+
+            // Type info
+            pub rust_type: String,
         }
 
         #[derive(Debug, Clone)]
@@ -994,6 +1008,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                             owner_field: attrs.owner_field,
                         },
                         default_value: attrs.default_value.clone(),
+                        field_type: if attrs.rust_type.is_empty() { None } else { Some(attrs.rust_type.clone()) },
                     };
 
                     schema_fields.insert(field_name.clone(), constraints);

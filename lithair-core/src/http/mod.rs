@@ -36,6 +36,7 @@ pub mod declarative_handlers; // Revolutionary Data-First routing system
 pub mod declarative_server;
 pub mod error;
 pub mod firewall;
+pub mod openapi;
 pub mod optimized_declarative; // T021 bincode optimization
 pub mod request;
 pub mod response;
@@ -72,6 +73,7 @@ pub use declarative_server::{
 };
 pub use error as http_error;
 pub use firewall::{Firewall, FirewallConfig};
+pub use openapi::{generate_openapi_spec, OpenApiModelInfo};
 pub use optimized_declarative::{OptimizedDeclarativeHttpHandler, OptimizedHttpExposable};
 pub use request::{HttpMethod, HttpRequest, HttpVersion};
 pub use response::{HttpResponse, StatusCode};
