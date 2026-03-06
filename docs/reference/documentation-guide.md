@@ -1,17 +1,21 @@
 # Lithair Documentation Guide
 
-_Created by Yoan Roblet - Disruptive database architecture with AI assistance_
+Created by Yoan Roblet with AI assistance.
 
 ## 📚 Complete Documentation Available
 
-Complete documentation with Mermaid diagrams has been created to clarify the Lithair architecture. Here are the new documents:
+Complete documentation with Mermaid diagrams has been created to clarify the
+Lithair architecture. Here are the new documents:
 
 ### 🎯 Main Documents Created
 
 1. **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)** - Complete system overview
-2. **[DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md)** - **NEW** - OpenRaft distributed consensus integration
-3. **[BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md)** - Performance optimization guide
-4. **[IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md)** - Massive IoT injection architecture
+2. **[DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md)** - **NEW** -
+   OpenRaft distributed consensus integration
+3. **[BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md)** -
+   Performance optimization guide
+4. **[IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md)** -
+   Massive IoT injection architecture
 
 ### 📖 Existing Documentation
 
@@ -28,19 +32,22 @@ The existing documentation in `docs/` already covers these aspects well:
 ### Architecture and Concepts
 
 - [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) - **NEW** - Overview with diagrams
-- [DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md) - **NEW** - Multi-node consensus with OpenRaft
+- [DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md) - **NEW** - Multi-node
+  consensus with OpenRaft
 - [architecture.md](architecture.md) - Detailed architecture
 - [event-sourcing.md](event-sourcing.md) - Event sourcing and persistence
 
 ### Performance and Optimizations
 
-- [BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md) - **NEW** - Optimization guide
+- [BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md) -
+  **NEW** - Optimization guide
 - [performance.md](performance.md) - Detailed benchmarks
 - [MEMORY_ARCHITECTURE.md](MEMORY_ARCHITECTURE.md) - Memory management
 
 ### Examples and Use Cases
 
-- [IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md) - **NEW** - IoT architecture
+- [IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md) - **NEW** -
+  IoT architecture
 - [EXAMPLES.md](EXAMPLES.md) - Examples guide
 - [ecommerce-tutorial.md](ecommerce-tutorial.md) - E-commerce tutorial
 
@@ -90,7 +97,8 @@ xychart-beta
 ### Disruptive Architecture
 
 - **Single binary** - Embedded database
-- **Direct memory access** - avoids a separate query layer for in-memory workloads
+- **Direct memory access** - avoids a separate query layer for in-memory
+  workloads
 - **Native event sourcing** - Complete audit trail
 - **Automatic deduplication** - Built-in idempotence support
 - **Distributed consensus** - OpenRaft multi-node clusters
@@ -127,11 +135,12 @@ xychart-beta
 
 ## 🎯 Next Steps
 
-The documentation is now complete and clear. To go further:
+The documentation is now more complete and easier to navigate. To go further:
 
 1. **Practical testing** - Use the guides to reproduce results
 2. **Customization** - Adapt configurations to your needs
 3. **Monitoring** - Implement recommended metrics
 4. **Optimizations** - Apply documented techniques
 
-All Mermaid diagrams are integrated and display correctly in GitHub/GitLab for optimal visual understanding of the Lithair system.
+All Mermaid diagrams are integrated and display correctly in GitHub/GitLab for
+a clearer visual understanding of the Lithair system.

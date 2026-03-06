@@ -1,8 +1,9 @@
 # Lithair Philosophy: The Origin Story
 
-**By Yoan Roblet**
+By Yoan Roblet
 
-_"I just wanted to build a simple website, and I was already exhausted by the architecture part, especially the database."_
+> "I just wanted to build a simple website, and I was already exhausted by
+> the architecture part, especially the database."
 
 ## 🎯 The Frustration That Started It All
 
@@ -82,14 +83,14 @@ What if web development could be as simple as writing a single Rust file and run
 
 **Traditional Path:**
 
-```
+```text
 Brilliant Idea → Architecture Hell → 6 Months Later → Still Configuring → Idea Dies
 ```
 
 **Lithair Path:**
 
-```
-Brilliant Idea → Write Business Logic → cargo build → Ship to Production → Success!
+```text
+Brilliant Idea → Write Business Logic → cargo build → Ship to Production
 ```
 
 ## 🎯 Core Principles
@@ -98,7 +99,10 @@ Brilliant Idea → Write Business Logic → cargo build → Ship to Production �
 
 _"The best architecture is the one you don't have to think about."_
 
-Lithair eliminates architectural decisions by making the right choices for you. Whether you're serving 10 users on your laptop or 1 million users on a Kubernetes cluster, the same binary scales naturally without architectural changes.
+Lithair tries to remove a large part of the architectural decision load by
+providing opinionated defaults. The same binary can cover small deployments
+and larger clustered setups, though the gains still depend on the workload and
+operating model.
 
 ### 2. **Developer Happiness**
 
@@ -116,13 +120,16 @@ By embedding the database in the application process, we eliminate the fundament
 
 _"Complexity should be optional, not mandatory."_
 
-Start simple with a single binary. When you need to scale, the same code that handles 10 users on your laptop seamlessly handles millions on Kubernetes. No rewrites, no architectural changes—just horizontal scaling.
+Start simple with a single binary. When you need to scale, the same codebase
+can evolve toward clustered deployments without forcing a total rewrite, even
+if production scaling still requires the usual operational work.
 
 ### 5. **Declarative Over Custom: The 90% Rule**
 
 _"Most websites need the same things. Why keep rebuilding them?"_
 
-Lithair embraces a powerful insight: **90% of websites share the same core requirements**:
+Lithair is built around the idea that many websites share a recurring set of
+core requirements:
 
 - User authentication and sessions
 - CRUD operations on data models
@@ -131,7 +138,8 @@ Lithair embraces a powerful insight: **90% of websites share the same core requi
 - Form validation
 - API endpoints
 
-Instead of forcing you to implement these patterns from scratch every time, Lithair provides **declarative defaults** that handle the common cases automatically:
+Instead of forcing you to implement these patterns from scratch every time,
+Lithair provides **declarative defaults** that handle many common cases:
 
 ```rust
 LithairServer::new()
@@ -144,11 +152,12 @@ LithairServer::new()
 **The Philosophy:**
 
 - ✅ **Declarative first**: Common patterns are built-in and configured, not coded
-- ✅ **Zero boilerplate**: No need to write authentication handlers for the 100th time
+- ✅ **Less boilerplate**: No need to rewrite authentication handlers repeatedly
 - ✅ **Convention over configuration**: Sensible defaults that work out of the box
 - ✅ **Customizable when needed**: Every declarative feature can be overridden with custom logic
 
-**But here's the key**: When you DO need custom behavior (the remaining 10%), it's **simple and explicit**:
+**But here's the key**: when you do need custom behavior, it stays explicit
+and close to normal Rust code:
 
 ```rust
 // Custom route when you need it
@@ -165,7 +174,9 @@ LithairServer::new()
 - 🎯 For 90% of use cases: Use declarative patterns, ship faster
 - 🔧 For 10% of special needs: Drop into custom code, stay in control
 
-This isn't about removing flexibility—it's about removing the **need** for it in common scenarios. Why write 50 lines of authentication code when `.with_rbac_config()` does it better?
+This isn't about removing flexibility—it's about reducing the **need** for it
+in common scenarios. Why keep rewriting authentication plumbing when
+`.with_rbac_config()` can cover the standard case?
 
 **The goal:** Spend your time on what makes YOUR app unique, not reimplementing authentication for the 100th time.
 

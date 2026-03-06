@@ -2,7 +2,10 @@
 
 ## 🎯 **Why Raft? Our Architectural Philosophy**
 
-Lithair makes an **opinionated choice**: **true distributed systems should be effortless for developers**. We chose the Raft consensus protocol as our foundation because it enables something revolutionary:
+Lithair makes an **opinionated choice**: we want distributed systems to be
+more approachable for application developers. We chose the Raft consensus
+protocol as a foundation because it lets Lithair expose replication through a
+smaller declarative surface:
 
 ```rust
 #[derive(DeclarativeModel)]
@@ -12,36 +15,39 @@ struct Product {
 }
 ```
 
-**Result**: Write normal code, get distributed consensus automatically.
+**Result**: write normal application code and let the framework handle the
+consensus path for replicated data.
 
 ## 🌟 **The Problem Raft Solves for Lithair**
 
 ### **Traditional Distributed Development:**
+
 ```rust
 // Complex manual replication
 fn create_product(product: Product) -> Result<()> {
     // 1. Validate leader status
     if !self.is_leader() { return Err("Not leader"); }
-    
+
     // 2. Replicate to followers
     for follower in &self.followers {
         follower.send_append_entries(product.clone())?;
     }
-    
+
     // 3. Wait for majority acknowledgment
     let acks = self.wait_for_majority_acks()?;
-    
+
     // 4. Apply to state machine
     if acks >= self.majority() {
         self.eventstore.append(product)?;
     }
-    
+
     // 5. Handle failures, retries, split-brain...
     // ... 50+ lines of consensus logic
 }
 ```
 
 ### **Lithair Declarative Approach:**
+
 ```rust
 #[derive(DeclarativeModel)]
 struct Product {
@@ -50,28 +56,28 @@ struct Product {
 }
 
 // HTTP POST → Raft consensus → All nodes updated
-// Zero manual replication code required
+// No separate manual replication layer in application code
 ```
 
 ## ⚡ **Why Raft Over Alternatives?**
 
 ### **Raft vs. Simple Database Replication**
 
-| Feature | Simple Replication | Raft Consensus |
-|---------|-------------------|----------------|
-| **Split-brain protection** | ❌ Manual handling | ✅ Automatic |
-| **Consistent ordering** | ❌ Race conditions | ✅ Guaranteed |
-| **Failure recovery** | ❌ Complex setup | ✅ Built-in |
-| **Network partitions** | ❌ Data loss risk | ✅ Safety guaranteed |
+| Feature                    | Simple Replication          | Raft Consensus                  |
+| -------------------------- | --------------------------- | ------------------------------- |
+| **Split-brain protection** | ❌ Manual handling          | ✅ Automatic                    |
+| **Consistent ordering**    | ❌ Easy to get wrong        | ✅ Ordered through the protocol |
+| **Failure recovery**       | ❌ Complex setup            | ✅ Built-in                     |
+| **Network partitions**     | ❌ Higher coordination risk | ✅ Explicit safety rules        |
 
 ### **Raft vs. External Services (Redis/PostgreSQL)**
 
-| Aspect | External Service | Lithair+Raft |
-|--------|------------------|-----------------|
-| **Dependencies** | Redis, PostgreSQL, etcd | Zero external deps |
-| **Network hops** | App → DB → Replication | Direct peer-to-peer |
-| **Configuration** | Complex cluster setup | `#[persistence(replicate)]` |
-| **Debugging** | Multi-service debugging | Single binary |
+| Aspect            | External Service        | Lithair+Raft                  |
+| ----------------- | ----------------------- | ----------------------------- |
+| **Dependencies**  | Redis, PostgreSQL, etcd | Fewer moving parts by default |
+| **Network hops**  | App → DB → Replication  | Direct peer-to-peer           |
+| **Configuration** | Complex cluster setup   | `#[persistence(replicate)]`   |
+| **Debugging**     | Multi-service debugging | Single binary                 |
 
 ## 🏗️ **Lithair's Raft Integration Architecture**
 
@@ -97,21 +103,22 @@ struct Product {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 💡 **The Magic: Transparent Distribution**
+## 💡 **Transparent Distribution in Practice**
 
 ### **Developer Experience**
+
 ```rust
 // Step 1: Define model (looks like normal Rust)
 #[derive(DeclarativeModel)]
 struct User {
     #[persistence(replicate)]
     pub email: String,
-    
+
     #[persistence]  // Local only
     pub cache_data: String,
 }
 
-// Step 2: Start cluster (no configuration complexity)
+// Step 2: Start cluster
 cargo run --bin myapp -- --peers 8082,8083
 
 // Step 3: Use normal HTTP APIs
@@ -119,21 +126,24 @@ POST /api/users {"email": "test@example.com"}
 ```
 
 ### **What Happens Under The Hood**
+
 1. **POST** hits any node in cluster
 2. **Raft leader** receives proposal
 3. **Consensus** across all nodes automatically
-4. **EventStore** updated on ALL nodes simultaneously
-5. **GET** from any node returns identical data
+4. **EventStore** updated on the committed nodes
+5. **GET** from any up-to-date node returns the same committed data
 
 ### **Guarantees Provided**
+
 - ✅ **Linearizability**: Operations appear atomic
 - ✅ **Durability**: Data persists across failures
-- ✅ **Consistency**: All nodes see same data
+- ✅ **Consistency**: Nodes converge on the same committed log
 - ✅ **Partition tolerance**: Cluster survives network splits
 
 ## 🎯 **Why This Matters for Real Applications**
 
 ### **E-commerce Platform Example**
+
 ```rust
 #[derive(DeclarativeModel)]
 struct Order {
@@ -143,16 +153,18 @@ struct Order {
     pub status: OrderStatus,
 }
 
-#[derive(DeclarativeModel)] 
+#[derive(DeclarativeModel)]
 struct ProductView {
     #[persistence]  // Cache, doesn't need replication
     pub rendered_html: String,
 }
 ```
 
-**Result**: Orders are guaranteed consistent across all nodes (payments, inventory), while caches remain local for performance.
+**Result**: orders can remain consistent across committed nodes for critical
+flows like payments or inventory, while caches remain local for performance.
 
 ### **Financial Services Example**
+
 ```rust
 #[derive(DeclarativeModel)]
 struct Transaction {
@@ -163,56 +175,66 @@ struct Transaction {
 }
 ```
 
-**Result**: Impossible to have inconsistent account balances across nodes.
+**Result**: the replicated log helps avoid divergent account state between
+healthy quorum members.
 
 ## 🔥 **Performance Benefits**
 
-### **Raft + EventStore = Optimal Combo**
-- **EventStore**: Append-only writes (ultra-fast)
-- **Raft**: Ordered consensus (consistent)
-- **Result**: Fast writes + guaranteed consistency
+### **Raft + EventStore**
+
+- **EventStore**: Append-only writes
+- **Raft**: Ordered consensus
+- **Result**: a coherent fit for replicated event streams, with the usual
+  latency cost of consensus
 
 ### **Benchmarks** (3-node cluster)
+
 - **240+ ops/sec** distributed writes
 - **Sub-10ms** consensus latency
-- **Zero data loss** during node failures
+- **No data loss observed in this scenario** during node failures
 
 ## 🚫 **What Lithair is NOT**
 
 ### **Not a Database**
+
 - No SQL queries
 - No complex indexes
 - Pure event sourcing model
 
 ### **Not for Every Use Case**
+
 - Single-node apps: Use `#[persistence]` (local EventStore)
 - Cache-heavy apps: Mix `#[persistence]` + `#[persistence(replicate)]`
 - Complex queries: Use read projections
 
 ### **Not Magic**
+
 - Network failures still exist
 - Consensus has latency cost
 - Minority partitions can't accept writes
 
 ## 📚 **When to Use Each Mode**
 
-| Data Type | Attribute | Reasoning |
-|-----------|-----------|-----------|
-| **User accounts** | `#[persistence(replicate)]` | Critical, must be consistent |
-| **Financial records** | `#[persistence(replicate)]` | Regulatory/accuracy requirements |
-| **Session data** | `#[persistence]` | Temporary, node-local OK |
-| **Rendered templates** | `#[persistence]` | Can be regenerated |
-| **Metrics/logs** | `#[persistence]` | Local aggregation acceptable |
+| Data Type              | Attribute                   | Reasoning                        |
+| ---------------------- | --------------------------- | -------------------------------- |
+| **User accounts**      | `#[persistence(replicate)]` | Critical, must be consistent     |
+| **Financial records**  | `#[persistence(replicate)]` | Regulatory/accuracy requirements |
+| **Session data**       | `#[persistence]`            | Temporary, node-local OK         |
+| **Rendered templates** | `#[persistence]`            | Can be regenerated               |
+| **Metrics/logs**       | `#[persistence]`            | Local aggregation acceptable     |
 
 ## 🎯 **Conclusion: Opinionated but Powerful**
 
 Lithair chooses Raft because we believe:
 
-1. **Distributed systems should be simple to use**
-2. **Consensus is better than eventual consistency for business logic**
-3. **Zero external dependencies reduces operational complexity**
-4. **Declarative beats imperative for distributed programming**
+1. **Distributed systems should be simpler to use**
+2. **Consensus is often a good default for critical business data**
+3. **Fewer external dependencies can reduce operational complexity**
+4. **Declarative tooling can reduce repeated distributed plumbing**
 
-The result: Write `#[persistence(replicate)]` and get enterprise-grade distributed systems automatically.
+The result: write `#[persistence(replicate)]` and get a replicated path that
+fits Lithair's opinionated model without wiring the consensus mechanics
+yourself.
 
-**This is the future of backend development.**
+For teams that want this model, it can be a practical way to keep distributed
+backend code smaller and more uniform.
