@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use lithair_core::server::LithairServer;
+//! use lithair_core::LithairServer;
 //! use lithair_core::session::{SessionManager, MemorySessionStore};
 //!
 //! # async fn example() -> anyhow::Result<()> {

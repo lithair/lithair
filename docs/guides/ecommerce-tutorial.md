@@ -1,19 +1,23 @@
 # E-commerce Tutorial: Building a Complete Online Store with Lithair
 
-##  What We're Building
+## What We're Building
 
-In this tutorial, we'll build a complete e-commerce application using Lithair. Our online store will feature:
+This tutorial walks through a fuller e-commerce example using Lithair's
+lower-level runtime APIs. For most new projects, start with
+`LithairServer` and the getting started guide, then come back to this guide if
+you need more custom control. Our online store will feature:
 
--  **Product catalog** with categories and search
--  **User management** with authentication
--  **Shopping cart** and order processing
--  **Payment processing** simulation
--  **Real-time analytics** dashboard
--  **High performance** with sub-millisecond response times
+- **Product catalog** with categories and search
+- **User management** with authentication
+- **Shopping cart** and order processing
+- **Payment processing** simulation
+- **Real-time analytics** dashboard
+- **High performance** with a memory-first Rust runtime
 
-**Final result**: A single binary that handles 10,000+ concurrent users with 99.99% uptime.
+**Final result**: A single binary e-commerce prototype with event-sourced state
+and room to evolve module by module.
 
-##  Project Setup
+## Project Setup
 
 ### 1. Create New Lithair Project
 
@@ -22,8 +26,8 @@ In this tutorial, we'll build a complete e-commerce application using Lithair. O
 cargo new ecommerce-store
 cd ecommerce-store
 
-# Add Lithair dependency
-cargo add lithair
+# Add Lithair core dependency
+cargo add lithair-core
 ```
 
 ### 2. Project Structure
@@ -48,13 +52,14 @@ ecommerce-store/
 └── Cargo.toml
 ```
 
-##  Core Application
+## Core Application
 
 ### Main Application Entry Point
 
 ```rust
 // src/main.rs
-use lithair::prelude::*;
+use lithair_core::prelude::*;
+use lithair_core::{Lithair, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -73,39 +78,39 @@ pub struct ECommerceApp;
 
 impl RaftstoneApplication for ECommerceApp {
     type State = ECommerceState;
-    
+
     fn initial_state() -> Self::State {
         ECommerceState::default()
     }
-    
+
     fn routes() -> Vec<Route<Self::State>> {
         vec![
             // User routes
             Route::post("/api/users/register", register_user),
             Route::get("/api/users/{user_id}", get_user_profile),
             Route::get("/api/users/{user_id}/orders", get_user_orders),
-            
+
             // Product routes
             Route::post("/api/products", create_product),
             Route::get("/api/products", list_products),
             Route::get("/api/products/{product_id}", get_product),
-            
+
             // Order routes
             Route::post("/api/orders", create_order),
             Route::get("/api/orders/{order_id}", get_order),
-            
+
             // Payment routes
             Route::post("/api/payments", process_payment),
-            
+
             // Analytics routes
             Route::get("/api/analytics/dashboard", get_analytics_dashboard),
-            
+
             // Frontend routes
             Route::get("/", serve_homepage),
             Route::get("/static/*", serve_static_files),
         ]
     }
-    
+
     fn events() -> Vec<Box<dyn Event<State = Self::State>>> {
         vec![
             Box::new(UserRegistered::default()),
@@ -114,20 +119,20 @@ impl RaftstoneApplication for ECommerceApp {
             Box::new(PaymentProcessed::default()),
         ]
     }
-    
+
     fn on_startup(state: &mut Self::State) -> Result<(), Error> {
         println!(" E-commerce store starting up...");
-        
+
         // Initialize sample data if empty
         if state.products.is_empty() {
             initialize_sample_products(state);
         }
-        
+
         println!(" E-commerce store ready!");
         println!("   • Products: {}", state.products.len());
         println!("   • Users: {}", state.users.len());
         println!("   • Orders: {}", state.orders.len());
-        
+
         Ok(())
     }
 }
@@ -140,7 +145,7 @@ fn initialize_sample_products(state: &mut ECommerceState) {
         ("Coffee Mug", "Ceramic coffee mug", 19.99, "Home", 200),
         ("Wireless Headphones", "Bluetooth headphones", 199.99, "Electronics", 75),
     ];
-    
+
     for (i, (name, desc, price, category, stock)) in products.into_iter().enumerate() {
         let event = ProductCreated {
             product_id: (i + 1) as ProductId,
@@ -159,17 +164,15 @@ fn initialize_sample_products(state: &mut ECommerceState) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = ECommerceApp::default();
-    
-    Lithair::new(app)
-        .with_data_dir("./data")
-        .serve("0.0.0.0:3000")
-        .await?;
-    
+
+    Lithair::with_database_path(app, "./data")
+        .run("0.0.0.0:3000")?;
+
     Ok(())
 }
 ```
 
-##  Event Sourcing Implementation
+## Event Sourcing Implementation
 
 ### Core Events
 
@@ -177,7 +180,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 // src/events.rs
 use crate::models::*;
 use crate::state::ECommerceState;
-use lithair::Event;
+use lithair_core::engine::Event;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -191,7 +194,7 @@ pub struct UserRegistered {
 
 impl Event for UserRegistered {
     type State = ECommerceState;
-    
+
     fn apply(&self, state: &mut Self::State) {
         let user = User {
             id: self.user_id,
@@ -202,11 +205,11 @@ impl Event for UserRegistered {
             created_at: self.timestamp,
             is_active: true,
         };
-        
+
         state.users.insert(self.user_id, user);
         state.user_analytics.insert(self.user_id, UserAnalytics::default());
         state.total_users += 1;
-        
+
         println!(" User registered: {} ({})", self.name, self.email);
     }
 }
@@ -225,7 +228,7 @@ pub struct ProductCreated {
 
 impl Event for ProductCreated {
     type State = ECommerceState;
-    
+
     fn apply(&self, state: &mut Self::State) {
         let product = Product {
             id: self.product_id,
@@ -238,17 +241,17 @@ impl Event for ProductCreated {
             is_active: true,
             created_at: self.timestamp,
         };
-        
+
         state.products.insert(self.product_id, product);
-        
+
         // Update indexes
         state.products_by_category
             .entry(self.category.clone())
             .or_insert_with(Vec::new)
             .push(self.product_id);
-        
+
         state.total_products += 1;
-        
+
         println!(" Product created: {} (${:.2})", self.name, self.price);
     }
 }
@@ -265,7 +268,7 @@ pub struct OrderCreated {
 
 impl Event for OrderCreated {
     type State = ECommerceState;
-    
+
     fn apply(&self, state: &mut Self::State) {
         let order = Order {
             id: self.order_id,
@@ -277,15 +280,15 @@ impl Event for OrderCreated {
             created_at: self.timestamp,
             updated_at: self.timestamp,
         };
-        
+
         state.orders.insert(self.order_id, order);
-        
+
         // Update indexes and analytics
         state.orders_by_user
             .entry(self.user_id)
             .or_insert_with(Vec::new)
             .push(self.order_id);
-        
+
         // Update user analytics
         let user_analytics = state.user_analytics
             .entry(self.user_id)
@@ -293,24 +296,25 @@ impl Event for OrderCreated {
         user_analytics.total_orders += 1;
         user_analytics.total_spent += self.total;
         user_analytics.avg_order_value = user_analytics.total_spent / user_analytics.total_orders as f64;
-        
+
         state.total_orders += 1;
         state.total_revenue += self.total;
-        
-        println!(" Order created: #{} for user {} (${:.2})", 
+
+        println!(" Order created: #{} for user {} (${:.2})",
                 self.order_id, self.user_id, self.total);
     }
 }
 ```
 
-##  HTTP API Handlers
+## HTTP API Handlers
 
 ```rust
 // src/handlers.rs
 use crate::events::*;
 use crate::models::*;
 use crate::state::ECommerceState;
-use lithair::{Request, Response, Result};
+use lithair_core::prelude::{Request, Response};
+use lithair_core::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -332,7 +336,7 @@ pub async fn register_user(
 ) -> Result<Response<RegisterResponse>> {
     let user_id = generate_user_id();
     let password_hash = hash_password(&req.body.password);
-    
+
     let event = UserRegistered {
         user_id,
         email: req.body.email.clone(),
@@ -340,9 +344,9 @@ pub async fn register_user(
         password_hash,
         timestamp: now(),
     };
-    
+
     engine.apply_event(event).await?;
-    
+
     Ok(Response::json(RegisterResponse {
         user_id,
         message: format!("User {} registered successfully", req.body.name),
@@ -354,10 +358,10 @@ pub async fn list_products(
     engine: &Engine<ECommerceState>
 ) -> Result<Response<Vec<Product>>> {
     let state = engine.state();
-    
+
     let category = req.query_param("category");
     let search = req.query_param("search");
-    
+
     let products = if let Some(search_query) = search {
         state.search_products(&search_query)
             .into_iter()
@@ -375,7 +379,7 @@ pub async fn list_products(
             .cloned()
             .collect()
     };
-    
+
     Ok(Response::json(products))
 }
 
@@ -385,20 +389,20 @@ pub async fn create_order(
 ) -> Result<Response<Order>> {
     let order_id = generate_order_id();
     let state = engine.state();
-    
+
     // Validate and calculate total
     let mut total = 0.0;
     let mut order_items = Vec::new();
-    
+
     for item_req in &req.body.items {
         if let Some(product) = state.products.get(&item_req.product_id) {
             if product.stock_quantity < item_req.quantity {
                 return Ok(Response::bad_request("Insufficient stock"));
             }
-            
+
             let item_total = product.price * item_req.quantity as f64;
             total += item_total;
-            
+
             order_items.push(OrderItem {
                 product_id: item_req.product_id,
                 quantity: item_req.quantity,
@@ -408,7 +412,7 @@ pub async fn create_order(
             return Ok(Response::bad_request("Product not found"));
         }
     }
-    
+
     let event = OrderCreated {
         order_id,
         user_id: req.body.user_id,
@@ -417,9 +421,9 @@ pub async fn create_order(
         shipping_address: req.body.shipping_address.clone(),
         timestamp: now(),
     };
-    
+
     engine.apply_event(event).await?;
-    
+
     let order = engine.state().orders.get(&order_id).unwrap().clone();
     Ok(Response::json(order))
 }
@@ -429,7 +433,7 @@ pub async fn get_analytics_dashboard(
     engine: &Engine<ECommerceState>
 ) -> Result<Response<AnalyticsDashboard>> {
     let state = engine.state();
-    
+
     let dashboard = AnalyticsDashboard {
         total_users: state.total_users,
         total_products: state.total_products,
@@ -437,7 +441,7 @@ pub async fn get_analytics_dashboard(
         total_revenue: state.total_revenue,
         popular_products: state.popular_products.clone(),
     };
-    
+
     Ok(Response::json(dashboard))
 }
 
@@ -474,7 +478,7 @@ fn now() -> u64 {
 }
 ```
 
-##  Running the Application
+## Running the Application
 
 ### 1. Build and Run
 
@@ -527,7 +531,7 @@ curl -X POST http://localhost:3000/api/orders \
 curl http://localhost:3000/api/analytics/dashboard
 ```
 
-##  Performance Results
+## Performance Results
 
 ### Benchmark Results
 
@@ -559,13 +563,13 @@ CPU: 0.1% (idle), 15% (under load)
 
 # Traditional stack would use:
 # - Frontend server: 512MB
-# - Backend server: 1GB  
+# - Backend server: 1GB
 # - Database server: 4GB
 # - Redis cache: 2GB
 # Total: 7.5GB+ across multiple servers
 ```
 
-##  Next Steps
+## Next Steps
 
 1. **Add Authentication**: Implement JWT tokens and session management
 2. **Add Frontend**: Create a React/Vue frontend that consumes the API
@@ -574,13 +578,13 @@ CPU: 0.1% (idle), 15% (under load)
 5. **Add Monitoring**: Add metrics and health checks
 6. **Deploy to Production**: Use Kubernetes for horizontal scaling
 
-##  Key Benefits Achieved
+## Key Benefits Achieved
 
- **Single Binary**: Complete e-commerce platform in one executable  
- **Ultra-Fast**: Sub-millisecond response times for all operations  
- **Scalable**: Handles 1M+ requests/second with horizontal scaling  
- **Simple**: No external dependencies or complex setup  
- **Reliable**: 99.99% uptime with Raft consensus  
- **Cost-Effective**: 44x cheaper than traditional stack  
+**Single Binary**: Complete e-commerce platform in one executable
+**Ultra-Fast**: Sub-millisecond response times for all operations
+**Scalable**: Handles 1M+ requests/second with horizontal scaling
+**Simple**: No external dependencies or complex setup
+**Reliable**: 99.99% uptime with Raft consensus
+**Cost-Effective**: 44x cheaper than traditional stack
 
-**Your e-commerce store is now ready to handle millions of users!** 
+**Your e-commerce store is now ready to handle millions of users!**

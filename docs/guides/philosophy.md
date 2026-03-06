@@ -6,7 +6,7 @@ _"I just wanted to build a simple website, and I was already exhausted by the ar
 
 ## 🎯 The Frustration That Started It All
 
-My name is **Yoan Roblet**, and Lithair was born from a simple, universal frustration that every web developer knows too well.
+My name is **Yoan Roblet**, and Lithair was born from a simple frustration that many web developers know well.
 
 Picture this: You have a brilliant idea for a web application. Maybe it's an e-commerce site, a blog, a social platform—doesn't matter. You're excited, motivated, ready to build something amazing.
 
@@ -68,7 +68,7 @@ Lithair applies the same principle to databases:
 - Instead of connecting to a database server, each node IS the database
 - Instead of network queries, everything is in-memory
 - Instead of connection pools, you get direct access
-- **Result**: 1,000,000x faster reads
+- **Result**: a much shorter path for read-heavy, in-memory access patterns
 
 ## 🚀 The Core Philosophy: "We ARE the Database"
 

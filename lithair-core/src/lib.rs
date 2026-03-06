@@ -1,13 +1,19 @@
 //! Lithair Framework - Core
 //!
-//! A declarative, memory-first web framework for building applications in Rust.
+//! A declarative framework for building APIs and websites in Rust with a coherent,
+//! memory-first runtime.
 //!
 //! # Overview
 //!
-//! Lithair is a "shell" framework - you define your data models with annotations,
-//! and Lithair generates the complete backend: REST endpoints, event sourcing,
-//! sessions, RBAC, and distributed consensus. It fuses backend and database into
-//! a single binary, eliminating the complexity of traditional 3-tier architectures.
+//! Lithair starts from a simple idea: many projects need to store data, expose it
+//! over HTTP, and serve a frontend without assembling a large stack of separate
+//! services. You define your data models with annotations and enable the pieces
+//! you need: REST endpoints, event sourcing, sessions, RBAC, frontend serving,
+//! and replication.
+//!
+//! The result is a modular framework with a simple default deployment model. You
+//! can start with one coherent binary and add complexity only when your use case
+//! truly requires it.
 //!
 //! # Quick Start
 //!
@@ -69,10 +75,10 @@
 //! # Features
 //!
 //! - **Declarative**: Define models, get full REST APIs automatically
-//! - **Ultra Performance**: Sub-millisecond reads, microsecond writes
+//! - **Performance-focused**: Native Rust runtime with memory-first serving
 //! - **Event Sourcing**: Built-in immutable event log with CQRS
 //! - **Type Safety**: Rust's type system prevents common errors
-//! - **Single Binary**: Deploy anywhere, no external services required
+//! - **Modular runtime**: Start with one binary, expand when needed
 
 // Public modules - Core framework only
 pub mod cluster;
@@ -581,9 +587,10 @@ fn create_stateless_router_with_shared_engine<A: crate::engine::RaftstoneApplica
     router
 }
 
-/// Initialize a new Lithair application and run it
+/// Initialize a lower-level Lithair application and run it
 ///
 /// This is a convenience function that combines `Lithair::new()` and `run()`.
+/// For most new applications, prefer [`LithairServer`] and its builder methods.
 ///
 /// # Example
 ///

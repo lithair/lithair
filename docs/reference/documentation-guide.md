@@ -1,6 +1,6 @@
 # Lithair Documentation Guide
 
-*Created by Yoan Roblet - Disruptive database architecture with AI assistance*
+_Created by Yoan Roblet - Disruptive database architecture with AI assistance_
 
 ## 📚 Complete Documentation Available
 
@@ -26,22 +26,26 @@ The existing documentation in `docs/` already covers these aspects well:
 ## 🔍 Quick Navigation by Topic
 
 ### Architecture and Concepts
+
 - [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) - **NEW** - Overview with diagrams
 - [DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md) - **NEW** - Multi-node consensus with OpenRaft
 - [architecture.md](architecture.md) - Detailed architecture
 - [event-sourcing.md](event-sourcing.md) - Event sourcing and persistence
 
 ### Performance and Optimizations
+
 - [BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md) - **NEW** - Optimization guide
 - [performance.md](performance.md) - Detailed benchmarks
 - [MEMORY_ARCHITECTURE.md](MEMORY_ARCHITECTURE.md) - Memory management
 
 ### Examples and Use Cases
+
 - [IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md) - **NEW** - IoT architecture
 - [EXAMPLES.md](EXAMPLES.md) - Examples guide
 - [ecommerce-tutorial.md](ecommerce-tutorial.md) - E-commerce tutorial
 
 ### Development
+
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Developer guide
 - [API_REFERENCE.md](API_REFERENCE.md) - API reference
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Quick start
@@ -49,6 +53,7 @@ The existing documentation in `docs/` already covers these aspects well:
 ## 🎨 New Mermaid Diagrams
 
 ### 1. Global Architecture
+
 ```mermaid
 graph TB
     subgraph "Application Lithair (Un seul binaire)"
@@ -60,6 +65,7 @@ graph TB
 ```
 
 ### 2. Event Flow
+
 ```mermaid
 sequenceDiagram
     Client->>HTTP: Requête
@@ -70,6 +76,7 @@ sequenceDiagram
 ```
 
 ### 3. Performance Benchmark
+
 ```mermaid
 xychart-beta
     title "Performance Improvement"
@@ -81,24 +88,27 @@ xychart-beta
 ## 🚀 Key Documented Points
 
 ### Disruptive Architecture
+
 - **Single binary** - Embedded database
-- **Direct memory access** - 1,000,000x faster
+- **Direct memory access** - avoids a separate query layer for in-memory workloads
 - **Native event sourcing** - Complete audit trail
-- **Automatic deduplication** - Guaranteed idempotence
+- **Automatic deduplication** - Built-in idempotence support
 - **Distributed consensus** - OpenRaft multi-node clusters
 - **Zero-dependency HTTP** - Pure std::net networking
 
 ### Validated Optimizations
+
 - **Disabled logging** - 4x performance improvement
 - **Optimized snapshots** - Reduced disk I/O
 - **Adaptive timeout** - Intelligent waiting
 - **Binary persistence** - High-performance option
 
 ### Massive IoT Injection
+
 - **80,000+ points/sec** - Production-validated throughput
 - **Adaptive mode** - Automatic load management
 - **Real-time monitoring** - Complete metrics
-- **Guaranteed integrity** - Automatic validation
+- **Integrity controls** - Automatic validation and consistency checks
 
 ## 📋 Documentation Checklist
 
