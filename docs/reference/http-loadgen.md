@@ -13,10 +13,10 @@ Purpose-built, high-performance HTTP load generator used to validate Lithair end
 
 ```bash
 # Build
-cargo build --release -p raft_replication_demo --bin http_loadgen_demo
+cargo build --release -p replication --bin replication-loadgen
 
 # Run single-node 10k CREATE (bulk mode)
-./target/release/http_loadgen_demo \
+./target/release/replication-loadgen \
   --leader http://127.0.0.1:8080 \
   --total 10000 \
   --concurrency 512 \
@@ -25,13 +25,14 @@ cargo build --release -p raft_replication_demo --bin http_loadgen_demo
 ```
 
 Output summary line:
+
 ```
 Loadgen (demo) completed: total=10000 dur=2.68s throughput=3729.10 ops/s mode=bulk bulk_size=1000 concurrency=512 leader=http://127.0.0.1:8080
 ```
 
 ## CLI Reference
 
-Flags correspond to `examples/raft_replication_demo/http_loadgen_demo.rs` (`Args`):
+Flags correspond to `examples/09-replication/http_loadgen_demo.rs` (`Args`):
 
 - --leader <url>
   - Base URL of the leader, e.g. `http://127.0.0.1:8080`
@@ -43,7 +44,7 @@ Flags correspond to `examples/raft_replication_demo/http_loadgen_demo.rs` (`Args
   - Items per `_bulk` request (only meaningful in `bulk` mode). Each bulk request posts an array of size `bulk-size`.
 - --mode <single|bulk|random>
   - `single`: N POST /api/products (one item per request)
-  - `bulk`: ⌈N/bulk⌉ POST /api/products/_bulk (arrays)
+  - `bulk`: ⌈N/bulk⌉ POST /api/products/\_bulk (arrays)
   - `random`: mix of CREATE/READ/UPDATE controlled by percentages
 - --create-pct <0..100>
 - --read-pct <0..100>
@@ -59,7 +60,8 @@ Flags correspond to `examples/raft_replication_demo/http_loadgen_demo.rs` (`Args
 
 ## Read Workloads: Heavy vs Light
 
-The bench script (`examples/raft_replication_demo/bench_1000_crud_parallel.sh`) exposes `LIGHT_READS` to control `--read-path`:
+The bench script (`examples/09-replication/bench_1000_crud_parallel.sh`)
+exposes `LIGHT_READS` to control `--read-path`:
 
 - LIGHT_READS=0 → `/api/products` (heavy: full list JSON)
 - LIGHT_READS=1|true|status → `/status` (very light)
@@ -77,6 +79,7 @@ On DELETE, an ID is selected from the pool (or fetched via `random-id`), the ite
 ## Common Scenarios (Cookbook)
 
 - 100% CREATE, single mode
+
 ```bash
 ./target/release/http_loadgen_demo \
   --leader http://127.0.0.1:8080 \
@@ -86,6 +89,7 @@ On DELETE, an ID is selected from the pool (or fetched via `random-id`), the ite
 ```
 
 - 100% CREATE, bulk ingestion
+
 ```bash
 ./target/release/http_loadgen_demo \
   --leader http://127.0.0.1:8080 \
@@ -96,6 +100,7 @@ On DELETE, an ID is selected from the pool (or fetched via `random-id`), the ite
 ```
 
 - Mixed workload (80% C / 15% R / 5% U) on 3 nodes with light reads
+
 ```bash
 ./target/release/http_loadgen_demo \
   --leader http://127.0.0.1:8080 \
@@ -108,13 +113,14 @@ On DELETE, an ID is selected from the pool (or fetched via `random-id`), the ite
 ```
 
 - READ A/B heavy vs light after pre-seed (via bench script)
+
 ```bash
 # Heavy list
 LIGHT_READS=0 PRESEED_PER_NODE=5000 CREATE_PERCENTAGE=0 READ_PERCENTAGE=100 UPDATE_PERCENTAGE=0 \
-  ./examples/raft_replication_demo/bench_1000_crud_parallel.sh 3000
+  ./examples/09-replication/bench_1000_crud_parallel.sh 3000
 # Light count
 LIGHT_READS=count PRESEED_PER_NODE=5000 CREATE_PERCENTAGE=0 READ_PERCENTAGE=100 UPDATE_PERCENTAGE=0 \
-  ./examples/raft_replication_demo/bench_1000_crud_parallel.sh 3000
+  ./examples/09-replication/bench_1000_crud_parallel.sh 3000
 ```
 
 ## Integration with Bench Script
@@ -123,7 +129,7 @@ The bench script orchestrates multi‑node clusters, readiness checks, and post�
 
 - Cleans data directories (including legacy), starts 1 or 3 nodes
 - Polls `/status` until ready
-- Runs `http_loadgen_demo` with arguments derived from env vars
+- Runs `replication-loadgen` with arguments derived from env vars
 - Validates convergence (counts + full list comparison) and persistence (.raftlog)
 
 Useful env vars when using the script:
@@ -147,6 +153,7 @@ At the end of a run, the tool prints a summary line with:
 - bulk_size, concurrency, leader
 
 Example:
+
 ```
 Loadgen (demo) completed: total=15000 dur=3.42s throughput=4380.94 ops/s mode=bulk bulk_size=100 concurrency=1024 leader=http://127.0.0.1:8080
 ```
@@ -177,7 +184,9 @@ These metrics complement the throughput line and are key to tracking tail latenc
 
 - `STORAGE_PROFILE=high_throughput`: set `LOADGEN_CONCURRENCY=256` for a strong throughput vs p95/p99 tail balance on 3‑node clusters.
 - `STORAGE_PROFILE=balanced` or `durable_security`: prefer lower concurrency (≤512) to avoid large CREATE tails (fsync/index/dedup, smaller buffers).
-- When using `BENCH_SUITE=durability_profiles` in `examples/raft_replication_demo/bench_1000_crud_parallel.sh`, the script restarts the cluster per profile so each round truly runs with the intended settings.
+- When using `BENCH_SUITE=durability_profiles` in
+  `examples/09-replication/bench_1000_crud_parallel.sh`, the script restarts
+  the cluster per profile so each round truly runs with the intended settings.
 
 ## Heavy vs Light: Observations (latest)
 
@@ -200,29 +209,35 @@ Measured on a 3‑node cluster with `PRESEED_PER_NODE=50000`, `LOADGEN_CONCURREN
 
 ## Benchmark Suites (via bench script)
 
-The orchestration script supports preset suites that run multiple rounds while the cluster is up. This is convenient for systematic comparisons. See `README_BENCHMARKS.md` for details. Quick usage:
+The orchestration script supports preset suites that run multiple rounds while
+the cluster is up. This is convenient for systematic comparisons. See
+`../guides/performance.md` for current benchmark entry points and validation
+workflow. Quick usage:
 
 - Concurrency scaling
+
 ```bash
 BENCH_SUITE=concurrency_scaling \
 LIGHT_READS=count CREATE_PERCENTAGE=60 READ_PERCENTAGE=25 UPDATE_PERCENTAGE=10 DELETE_PERCENTAGE=5 \
-examples/raft_replication_demo/bench_1000_crud_parallel.sh 5000
+examples/09-replication/bench_1000_crud_parallel.sh 5000
 # Customize concurrency list via CONC_LIST="128 256 512 1024 2048"
 ```
 
 - Heavy vs light reads (requires pre-seed)
+
 ```bash
 PRESEED_PER_NODE=50000 \
 BENCH_SUITE=heavy_vs_light_reads \
 CREATE_PERCENTAGE=0 READ_PERCENTAGE=100 UPDATE_PERCENTAGE=0 DELETE_PERCENTAGE=0 \
-examples/raft_replication_demo/bench_1000_crud_parallel.sh 3000
+examples/09-replication/bench_1000_crud_parallel.sh 3000
 ```
 
 - Bulk vs single ingestion
+
 ```bash
 BENCH_SUITE=bulk_vs_single \
 LOADGEN_BULK_SIZE=500 LOADGEN_MODE=bulk \
-examples/raft_replication_demo/bench_1000_crud_parallel.sh 10000
+examples/09-replication/bench_1000_crud_parallel.sh 10000
 ```
 
 ## Roadmap (Extending http_loadgen)

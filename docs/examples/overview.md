@@ -1,135 +1,114 @@
 # Vue d'Ensemble des Exemples Lithair
 
-Cette section présente tous les exemples disponibles dans Lithair, organisés par complexité et cas d'usage.
+Cette section présente les exemples réellement maintenus dans le workspace
+`examples/`.
 
-## 🎯 Exemple de Référence
+## 🎯 Catalogue canonique
 
-### [Simplified Consensus Demo](../../examples/raft_replication_demo/)
+Le point d'entrée principal est le catalogue racine :
 
-**Une démo de référence utile pour explorer la réplication, les scripts de bench
-et le comportement HTTP dans un scénario concret.**
+- [examples/README.md](../../examples/README.md)
 
-```bash
-cd examples/raft_replication_demo
-cargo run --bin simplified_consensus_demo
-```
+Ce fichier décrit les packages de démonstration qui font partie du workspace.
 
-**Ce que cette démo permet d’observer :**
+## 🚀 Parcours recommandé
 
-- ✅ 2 000 opérations CRUD aléatoires distribuées
-- ✅ 250,91 ops/sec de débit HTTP
-- ✅ État cohérent observé sur 3 nœuds dans ce scénario
-- ✅ Beaucoup de plomberie prise en charge par le framework et les scripts de démo
+### Démarrage
 
-## 🚀 Exemples par Complexité
+- **[01-hello-world](../../examples/01-hello-world/)** - builder
+  `LithairServer`, configuration minimale, démarrage rapide
+- **[03-rest-api](../../examples/03-rest-api/)** - CRUD déclaratif le plus simple
+- **[04-blog](../../examples/04-blog/)** - frontend, sessions, RBAC
 
-### Niveau Débutant
+### Authentification et sécurité
 
-- **[HTTP Firewall Demo](../../examples/http_firewall_demo/)** - Démonstration du système de sécurité
-- **[HTTP Hardening (stateless perf)](../../examples/raft_replication_demo/bench_http_server_stateless.sh)** - Endpoints `/perf/*`
+- **[06-auth-sessions](../../examples/06-auth-sessions/)** - sessions, login,
+  tokens et permissions
+- **[07-auth-rbac-mfa](../../examples/07-auth-rbac-mfa/)** - RBAC avancé, MFA,
+  patterns SSO
+- **[advanced/http-firewall](../../examples/advanced/http-firewall/)** - scripts
+  de validation firewall
+- **[advanced/http-hardening](../../examples/advanced/http-hardening/)** -
+  scripts de validation hardening HTTP
 
-### Niveau Intermédiaire
+### Données et évolution de schéma
 
-- **[Consensus Demo](../../examples/raft_replication_demo/)** - Cluster 3 nœuds + réplication
+- **[05-ecommerce](../../examples/05-ecommerce/)** - relations, modèles
+  multiples, workflow métier
+- **[08-schema-migration](../../examples/08-schema-migration/)** - évolution de
+  schéma et workflows de migration
 
-### Niveau Avancé
+### Distribué et validation
 
-- **[Schema Evolution](../../examples/schema_evolution/)** - Migration de schémas avancées
+- **[09-replication](../../examples/09-replication/)** - cluster multi-nœuds,
+  scripts de bench et loadgen
+- **[10-blog-distributed](../../examples/10-blog-distributed/)** - blog
+  distribué
+- **[advanced/consistency-test](../../examples/advanced/consistency-test/)** -
+  outil de validation de cohérence
+- **[advanced/stress-test](../../examples/advanced/stress-test/)** - outil de
+  stress et diagnostic
 
-## 🏗️ Exemples par Cas d'Usage
+## 🏗️ Deux familles à distinguer
 
-### 🛍️ E-commerce
+### Exemples d'apprentissage
 
-- **SCC2 Ecommerce Demo** - Architecture complète avec gestion des stocks
-- **Relations Database** - Modélisation produits/commandes/clients
+Ce sont les packages numérotés `examples/01-*` à `examples/15-*`.
 
-### 📝 Content Management
+- Ils servent de **références produit**.
+- Ils doivent rester **lisibles** et **documentés**.
+- Ils sont faits pour être cités dans la doc publique et dans la CI.
 
-- **Schema Evolution** - Évolution de contenu dans le temps
+### Outils de validation avancés
 
-### 📊 Monitoring & Analytics
+Les dossiers `examples/advanced/*` servent surtout à valider un comportement ou
+à reproduire des scénarios de charge.
 
-- **Dashboard Performance** - Visualisation de métriques temps réel
-- **Consensus Demo** - Métriques distribuées et réplication
+- Ils restent utiles dans le repo.
+- Ils ne doivent pas être confondus avec les exemples d'introduction.
+- Certains sont plus proches d'outils de test que de tutoriels.
 
-### 🔒 Sécurité
+## 🔧 Structure attendue
 
-- **HTTP Firewall Demo** - Protection contre les attaques
-- **Tous les exemples** - RBAC intégré par défaut
+Dans l'organisation actuelle, un exemple racine est en général un package cargo
+du workspace :
 
-## 🔧 Structure Type d'un Exemple
-
-Chaque exemple Lithair suit cette structure :
-
-```
-exemple_name/
+```text
+examples/04-blog/
+├── Cargo.toml
+├── README.md
 ├── src/
-│   ├── main.rs              # Point d'entrée
-│   ├── models.rs            # Modèles déclaratifs
-│   └── config.rs            # Configuration
-├── Cargo.toml              # Dépendances
-├── README.md               # Documentation spécifique
-├── run_demo.sh            # Script de démonstration
-└── data/                  # Données persistées
+├── frontend/
+└── run_blog_tests.sh
 ```
 
-## 🎨 Modèles Déclaratifs par Exemple
+Les outils avancés peuvent avoir une structure un peu différente, mais ils
+restent rangés sous `examples/advanced/` pour éviter de les mélanger avec les
+exemples d'apprentissage.
 
-> Les anciens exemples full‑stack (Blog NextJS) ont été retirés. Les démos maintenues se concentrent sur le serveur HTTP, la réplication et le hardening.
-
-### Modèle exemple (simplifié)
-
-```rust
-#[derive(DeclarativeModel)]
-pub struct Product {
-    #[db(primary_key, indexed)]
-    #[http(expose)]
-    pub id: Uuid,
-
-    #[http(expose, validate = "non_empty")]
-    pub name: String,
-
-    #[http(expose, validate = "min_value(0.01)")]
-    #[lifecycle(audited)]
-    pub price: f64,
-}
-```
-
-## 📈 Métriques de Performance
-
-> Ces chiffres sont des mesures indicatives issues des démos associées. Ils ne
-> doivent pas être lus comme des garanties générales pour tous les workloads.
-
-| Exemple               | Débit (ops/sec) | Latence (ms) | Nœuds | Données            |
-| --------------------- | --------------- | ------------ | ----- | ------------------ |
-| **Consensus Demo**    | **250.91**      | **~4ms**     | **3** | **1,270 produits** |
-| Blog NextJS           | 180.5           | ~5ms         | 1     | 500 articles       |
-| E-commerce SCC2       | 320.2           | ~3ms         | 1     | 1,000 produits     |
-| Dashboard Performance | 450.8           | ~2ms         | 1     | 10,000 métriques   |
-
-## 🚀 Lancer Tous les Exemples
+## ▶️ Commandes utiles
 
 ```bash
-# Script pour valider les démos principales
-bash examples/raft_replication_demo/bench_http_server_stateless.sh
-./examples/raft_replication_demo/bench_1000_crud_parallel.sh 10000
-bash examples/http_firewall_demo/run_declarative_demo.sh
+task examples:list
+task examples:test
+task examples:hello-world
+task examples:rbac-session
+task examples:blog:test
+task examples:replication:firewall
+task examples:replication:hardening
 ```
 
-## 📚 Ressources Complémentaires
+## 📚 Ressources complémentaires
 
-- **[Comparaison Data-First](data-first-comparison.md)** - Lithair vs approche traditionnelle
-- **[Rapport d'Audit](audit-report.md)** - Analyse de qualité des exemples
-- **[Guide de Performance](../guides/performance.md)** - Optimisations et benchmarks
-
-## 🎯 Prochains Exemples
-
-- **GraphQL API** - API GraphQL auto-générée
-- **Microservices** - Architecture distribuée complète
-- **IoT Integration** - Ingestion de données IoT haute fréquence
-- **ML Pipeline** - Pipeline de machine learning intégré
+- **[Comparaison Data-First](data-first-comparison.md)** - Lithair vs approche
+  traditionnelle
+- **[Rapport d'Audit](audit-report.md)** - analyse historique du dossier
+  examples
+- **[Guide de Performance](../guides/performance.md)** - optimisations et
+  benchmarks
 
 ---
 
-**💡 Conseil :** Commencez par l'exemple **Simplified Consensus Demo** pour voir
-un scénario complet, puis explorez les autres selon votre cas d'usage.
+**Conseil :** commencez par `01-hello-world`, puis `03-rest-api` ou
+`06-auth-sessions`, avant d'aller vers `09-replication` et les dossiers
+`advanced/`.

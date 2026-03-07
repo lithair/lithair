@@ -1,225 +1,129 @@
-# ✅ Lithair Examples - Test Results
+# ✅ Lithair Examples - Validation Notes
 
-**Date:** 2025-10-01 11:10  
-**Status:** All tasks functional ✅
-
----
-
-## 🧪 Tests Effectués
-
-### 1. `task examples:list` ✅
-**Status:** ✅ Fonctionne parfaitement
-
-**Output:**
-```
-📚 Lithair Examples:
-
-🏗️ Workspace Projects:
-  1. raft_replication_demo/ (5 binaries)
-  2. scc2_server_demo/ (1 binary) ⭐ REFERENCE
-
-📄 Standalone Examples:
-  - simple_working_demo.rs (not in workspace)
-  - frontend_declarative_demo.rs (not in workspace)
-```
+**Date:** 2026-03-07
+**Status:** current validation model documented
 
 ---
 
-### 2. `task examples:test` ✅
-**Status:** ✅ Compilation réussie
+## Purpose of This Page
 
-**Results:**
-- ✅ `raft_replication_demo` - 5 binaries compilés
-- ✅ `scc2_server_demo` - 1 binary compilé
-- ⚠️ 6 warnings (5 deprecation + 1 unused import)
+This page is no longer a snapshot of the old demo-based task surface.
 
-**Warnings:**
-- 5x `AdminHandler` deprecated (lithair-core)
-- 1x `AntiDDoSProtection` unused import (http_hardening_node)
+Its role is to document how example validation is now organized after the
+cleanup of legacy internal demos and historical example aliases.
 
 ---
 
-### 3. `task examples:scc2` ✅
-**Status:** ✅ Serveur démarre correctement
+## Current Validation Model
 
-**Output:**
-```
-🚀 SCC2 server demo listening on http://127.0.0.1:18321
-```
+### Public examples
 
-**Validation:**
-- Port configurable via `PORT=18321`
-- Host configurable via `HOST=127.0.0.1`
-- Démarrage instantané
-- Serveur Hyper opérationnel
+Public examples are validated through the root catalog and its workspace
+packages:
 
----
+- `examples/01-*` to `examples/15-*`
+- `examples/advanced/*`
+- `examples/README.md` as the authoritative index
 
-### 4. `task examples:firewall` ✅
-**Status:** ✅ Serveur démarre avec firewall
+### Framework behavior
 
-**Output:**
-```
-🏗️  Creating Pure Declarative Lithair Server
-   Model: Product
-   Port: 18322
-📂 Loaded 7 events from log
-✅ Declarative Server ready
+Framework behavior is validated separately:
 
-📡 Auto-generated endpoints:
-   GET/POST/PUT/DELETE /api/products
-   GET /health, /ready, /info
-```
+- focused tests inside `lithair-core`
+- crate tests under `lithair-core/tests/`
+- BDD coverage under `cucumber-tests/`
 
-**Features validées:**
-- Event sourcing (7 events chargés)
-- Endpoints CRUD auto-générés
-- Health checks actifs
+This means internal behavior is no longer “tested” by keeping fake demos in
+`lithair-core/examples`.
 
 ---
 
-### 5. `task examples:hardening` ✅
-**Status:** ✅ Serveur démarre avec hardening
+## Current Taskfile Entry Points
 
-**Output:**
-```
-🏗️  Creating Pure Declarative Lithair Server
-   Port: 18323
-📂 Loaded 1 events from log
-✅ Declarative Server ready
-
-📡 Auto-generated endpoints:
-   GET/POST/PUT/DELETE /api/products
-   GET /health, /ready, /info, /observe/metrics
-   POST /observe/perf/echo
-   GET /observe/perf/json, /observe/perf/bytes
-```
-
-**Features validées:**
-- Event sourcing actif
-- Endpoints observability
-- Performance endpoints
-- Prometheus metrics
-
----
-
-### 6. `task examples:pure-node` ⚠️
-**Status:** ⚠️ Nécessite argument `--node-id`
-
-**Issue:**
-```
-error: the following required arguments were not provided:
-  --node-id <NODE_ID>
-```
-
-**Solution:**
-```bash
-# Utilisation correcte
-cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 18324
-```
-
-**Validation manuelle:** ✅ Fonctionne avec `--node-id`
-
-**Output:**
-```
-🚀 Starting Lithair Declarative Cluster Node
-   Node ID: 1
-   Port: 18324
-   Mode: PURE DECLARATIVE
-
-📡 Auto-generated endpoints from DeclarativeModel (TRUE Raft consensus):
-   GET/POST/PUT/DELETE /api/products
-   POST /internal/replicate - TRUE Raft replication
-```
-
----
-
-## 📊 Résumé des Tests
-
-| Task | Status | Notes |
-|------|--------|-------|
-| `examples:list` | ✅ | Parfait |
-| `examples:test` | ✅ | 6 warnings mineurs |
-| `examples:scc2` | ✅ | Reference demo OK |
-| `examples:firewall` | ✅ | Event sourcing OK |
-| `examples:hardening` | ✅ | Observability OK |
-| `examples:pure-node` | ⚠️ | Nécessite --node-id |
-| `examples:loadgen` | ⏭️ | Non testé (nécessite serveur cible) |
-| `examples:benchmark` | ⏭️ | Non testé (long) |
-| `examples:demo` | ⏭️ | Non testé (script complet) |
-
----
-
-## 🔧 Corrections Nécessaires
-
-### Haute Priorité
-1. **Mettre à jour `task examples:pure-node`** pour inclure `--node-id`
-   ```yaml
-   examples:pure-node:
-     cmds:
-       - cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port {{.PORT}}
-   ```
-
-### Moyenne Priorité
-2. **Corriger warning** dans `http_hardening_node.rs`
-   ```rust
-   // Supprimer l'import inutilisé
-   use lithair_core::http::firewall::{AntiDDoSConfig}; // Enlever AntiDDoSProtection
-   ```
-
-3. **Nettoyer deprecations** dans `lithair-core/src/http/admin.rs`
-   - Migrer vers `ServerMetrics` trait
-   - Remplacer `dispatch_admin_route` par `handle_auto_admin_endpoints`
-
----
-
-## ✅ Validation Globale
-
-**Tous les exemples fonctionnent correctement !** 🎉
-
-### Points Positifs
-- ✅ Compilation rapide (< 1s pour la plupart)
-- ✅ Démarrage instantané des serveurs
-- ✅ Event sourcing fonctionnel
-- ✅ Endpoints auto-générés
-- ✅ Configuration flexible (PORT, HOST)
-
-### Améliorations Suggérées
-1. Ajouter `--node-id` par défaut dans task `examples:pure-node`
-2. Corriger les 6 warnings
-3. Ajouter validation CI pour tous les exemples
-4. Documenter les arguments requis pour chaque exemple
-
----
-
-## 🚀 Commandes Validées
+The current public shortcuts are the ones aligned with the real catalog:
 
 ```bash
-# Lister les exemples
-task examples:list              ✅
-
-# Tester la compilation
-task examples:test              ✅
-
-# Lancer la démo de référence
-task examples:scc2              ✅
-
-# Autres exemples
-task examples:firewall          ✅
-task examples:hardening         ✅
-task examples:pure-node         ⚠️ (nécessite fix)
-
-# Non testés (mais devraient fonctionner)
-task examples:loadgen           ⏭️
-task examples:benchmark         ⏭️
-task examples:demo              ⏭️
+task examples:list
+task examples:test
+task examples:hello-world
+task examples:rbac-session
+task examples:blog:serve
+task examples:blog:test
+task examples:replication:firewall
+task examples:replication:hardening
 ```
+
+These replace the older task naming model based on obsolete demo names.
 
 ---
 
-## 📝 Prochaines Étapes
+## What Was Validated During Cleanup
 
-1. **Immédiat:** Corriger task `examples:pure-node` avec `--node-id`
-2. **Court terme:** Corriger les 6 warnings
-3. **Moyen terme:** Ajouter tests CI pour tous les exemples
-4. **Long terme:** Créer guide d'utilisation détaillé par exemple
+The cleanup pass focused on three validation goals.
+
+### 1. Keep public examples at the repository root
+
+Confirmed and documented:
+
+- the root `examples/` directory is the user-facing catalog
+- advanced scenarios remain public under `examples/advanced/`
+- docs and Taskfile now point to these real paths
+
+### 2. Remove fake examples from `lithair-core`
+
+Completed:
+
+- `frontend_http_server.rs` removed
+- `frontend_memory_demo.rs` removed
+- `rbac_password_test.rs` removed
+
+### 3. Preserve coverage where those files were previously compensating
+
+Completed:
+
+- minimal frontend server tests added in `lithair-core/src/frontend/server.rs`
+- minimal admin asset tests added in `lithair-core/src/frontend/admin.rs`
+
+---
+
+## What This Page No Longer Assumes
+
+This page should not be read as evidence that these historical names are still
+valid:
+
+- `scc2_server_demo`
+- `raft_replication_demo`
+- `simplified_consensus_demo`
+- `examples:scc2`
+- `examples:firewall`
+- `examples:hardening`
+
+They belong to the repository's historical documentation layer, not to the
+current public examples contract.
+
+---
+
+## Practical Validation Guidance
+
+If you want to validate the catalog today:
+
+1. use `task examples:list` to inspect the current public index
+2. use `task examples:test` to compile the current workspace examples
+3. use `task examples:hello-world` or `task examples:rbac-session` for quick
+   smoke runs
+4. use `task examples:blog:test` for a fuller end-to-end example script
+5. use `task examples:replication:firewall` and
+   `task examples:replication:hardening` for advanced operational scenarios
+
+---
+
+## Conclusion
+
+The repository now validates examples and framework behavior through clearer,
+separate channels:
+
+- public examples are cataloged and run from the root
+- advanced validation scenarios stay under `examples/advanced/`
+- framework regressions are covered by tests, not hidden demos
+
+That split is the main result this page should preserve.

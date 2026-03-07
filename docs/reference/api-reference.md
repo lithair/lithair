@@ -375,7 +375,8 @@ Lithair is data-first: the right configuration depends on your workload. A ticke
   - **Heavy list**: `GET /api/{model}` (full JSON). Very expensive; use only to stress worst‑case.
   - **Light count**: `GET /api/{model}/count`. Recommended for perf validation.
   - **Status**: `GET /status`. Lightest endpoint; good to isolate write/consensus/persistence cost.
-  - See measured results in `docs/HTTP_LOADGEN.md` under “Heavy vs Light: Observations (latest)”.
+  - See measured results in `./http-loadgen.md` under “Heavy vs Light:
+    Observations (latest)”.
 
 - **Concurrency sweet spots**
   - On a 3‑node cluster with `STORAGE_PROFILE=high_throughput`, we observed the best throughput vs tail balance around `LOADGEN_CONCURRENCY=256`. Tails grow quickly beyond this; for `balanced`/`durable_security`, stay ≤512.
@@ -385,9 +386,12 @@ Lithair is data-first: the right configuration depends on your workload. A ticke
   - EventStore (see bench script): `LT_OPT_PERSIST`, `LT_BUFFER_SIZE`, `LT_MAX_EVENTS_BUFFER`, `LT_FLUSH_INTERVAL_MS`, `LT_FSYNC_ON_APPEND`, `LT_ENABLE_BINARY`, `LT_DISABLE_INDEX`, `LT_DEDUP_PERSIST`.
 
 - **Where to go next**
-  - `README_BENCHMARKS.md` → suites and methodology; “Recommended Defaults”.
-  - `docs/HTTP_LOADGEN.md` → CLI, best practices, recommended defaults, and heavy vs light observations.
-  - `examples/raft_replication_demo/README.md` → scenario guidance and measured A/B results.
+  - `../guides/performance.md` → current benchmark entry points and
+    validation workflow.
+  - `./http-loadgen.md` → CLI, best practices, recommended defaults, and
+    heavy vs light observations.
+  - `../../examples/09-replication/README.md` → scenario guidance and
+    measured A/B results.
 
 We welcome proposals and contributions: both to Lithair itself and to configuration recipes for specific domains.
 
@@ -804,7 +808,7 @@ These endpoints are available in the pure declarative demo server to support lig
 - `GET /api/{model}/count` – Returns item count only: `{ "count": N }`
 - `GET /api/{model}/random-id` – Returns one existing id: `{ "id": "..." }`
 
-Related benchmark flags (see `examples/raft_replication_demo/bench_1000_crud_parallel.sh`):
+Related benchmark flags (see `examples/09-replication/bench_1000_crud_parallel.sh`):
 
 - `LIGHT_READS=0` → `GET /api/{model}` (heavy: full list JSON)
 - `LIGHT_READS=1|true|status` → `GET /status` (very light)

@@ -7,13 +7,17 @@ By Yoan Roblet
 
 ## 🎯 The Frustration That Started It All
 
-My name is **Yoan Roblet**, and Lithair was born from a simple frustration that many web developers know well.
+My name is **Yoan Roblet**, and Lithair was born from a simple frustration that
+many web developers know well.
 
-Picture this: You have a brilliant idea for a web application. Maybe it's an e-commerce site, a blog, a social platform—doesn't matter. You're excited, motivated, ready to build something amazing.
+Picture this: You have a brilliant idea for a web application. Maybe it's an
+e-commerce site, a blog, a social platform—doesn't matter. You're excited,
+motivated, ready to build something amazing.
 
 Then reality hits.
 
-Before you can write a single line of business logic, you're drowning in architectural decisions:
+Before you can write a single line of business logic, you're drowning in
+architectural decisions:
 
 - **Frontend**: React or Vue? Webpack or Vite? TypeScript or JavaScript?
 - **Backend**: Node.js, Python, Go, or Rust? Express, FastAPI, or Gin?
@@ -23,19 +27,25 @@ Before you can write a single line of business logic, you're drowning in archite
 
 **For what? Three simple tables!**
 
-I found myself spending 80% of my time on infrastructure and only 20% on the actual product. The thing I was passionate about—the business logic, the user experience, the problem I wanted to solve—became an afterthought.
+I found myself spending 80% of my time on infrastructure and only 20% on the
+actual product. The thing I was passionate about—the business logic, the user
+experience, the problem I wanted to solve—became an afterthought.
 
 ## 💡 The Epiphany
 
-One day, after setting up yet another PostgreSQL connection pool for a simple CRUD application, I had an epiphany:
+One day, after setting up yet another PostgreSQL connection pool for a simple
+CRUD application, I had an epiphany:
 
 **"What if we didn't need all this complexity?"**
 
 ## 🤝 A Note on Respect
 
-**Let me be crystal clear**: I'm not criticizing existing tools. I use PostgreSQL, React, Kubernetes, and all these amazing technologies every day. They are incredible achievements that have enabled the modern web.
+**Let me be crystal clear**: I'm not criticizing existing tools. I use
+PostgreSQL, React, Kubernetes, and all these amazing technologies every day.
+They are incredible achievements that have enabled the modern web.
 
-This isn't about what's wrong with current tools—it's about **what's possible with a different approach**.
+This isn't about what's wrong with current tools—it's about **what's possible
+with a different approach**.
 
 ## 🔮 A Modern Vision of Computing
 
@@ -73,9 +83,11 @@ Lithair applies the same principle to databases:
 
 ## 🚀 The Core Philosophy: "We ARE the Database"
 
-This became Lithair's foundation: What if, instead of connecting TO a database, we simply ARE the database?
+This became Lithair's foundation: What if, instead of connecting TO a database,
+we simply ARE the database?
 
-What if web development could be as simple as writing a single Rust file and running `cargo build`?
+What if web development could be as simple as writing a single Rust file and
+running `cargo build`?
 
 **This isn't criticism—it's evolution.**
 
@@ -108,13 +120,15 @@ operating model.
 
 _"If you're not having fun building it, your users won't have fun using it."_
 
-Web development should be joyful, not a chore. Lithair brings back the joy by letting you focus on what matters: your product.
+Web development should be joyful, not a chore. Lithair tries to bring back some
+of that joy by letting you focus on what matters: your product.
 
 ### 3. **Performance by Design**
 
 _"Why accept milliseconds when you can have nanoseconds?"_
 
-By embedding the database in the application process, we eliminate the fundamental bottleneck of all web applications: network latency to the database.
+By embedding the database in the application process, Lithair can remove one
+common bottleneck for some workloads: network latency to a separate database.
 
 ### 4. **Natural Scalability**
 
@@ -199,7 +213,7 @@ Now I:
 - Write business logic from day one
 - Deploy with `cargo build && ./my-app`
 - Scale naturally when needed
-- Pay $5/month for infrastructure that can serve millions
+- Often start with smaller infrastructure bills and scale later when needed
 - Actually ship products instead of configuring them
 
 ## 🎯 The Mission
@@ -219,23 +233,39 @@ Time to focus on:
 
 People sometimes ask: "Why not just use existing solutions?"
 
-Honestly, existing solutions work great. PostgreSQL, React, Express—they're all solid tools that I use regularly.
+Honestly, existing solutions work great. PostgreSQL, React, Express—they're all
+solid tools that I use regularly.
 
-But I kept finding myself in the same situation: wanting to build something simple, then spending days setting up the infrastructure before writing any actual business logic.
+But I kept finding myself in the same situation: wanting to build something
+simple, then spending days setting up the infrastructure before writing any
+actual business logic.
 
-So I thought, "What if I just tried a different approach?" What if the database was just... part of the app? No separate server, no connection strings, no migrations.
+So I thought, "What if I just tried a different approach?" What if the database
+was just... part of the app? No separate server, no connection strings, no
+migrations.
 
-Lithair is basically that experiment. It might be a terrible idea, but I wanted to see what would happen.
+Lithair is basically that experiment. It might be a terrible idea, but I wanted
+to see what would happen.
 
-Plus, honestly, it's also a learning project for me. I wanted to explore beyond basic SQL and see what technologies like Raft consensus and event sourcing could bring to modern web development. It's been pretty interesting to dive into these concepts.
+Plus, honestly, it's also a learning project for me. I wanted to explore beyond
+basic SQL and see what technologies like Raft consensus and event sourcing
+could bring to modern web development. It's been pretty interesting to dive
+into these concepts.
 
-I should mention that this experimentation wouldn't have been possible without AI assistance (specifically Claude). The amount of techniques involved—Raft consensus, event sourcing, HTTP parsing, Rust async programming—would have taken me years to learn and implement on my own. Having an AI pair programming partner made it possible to actually explore these ideas instead of just reading about them.
+I should mention that this experimentation wouldn't have been possible without
+AI assistance. The amount of techniques involved—Raft consensus, event
+sourcing, HTTP parsing, Rust async programming—would have taken me years to
+learn and implement on my own. Having an AI pair programming partner made it
+possible to actually explore these ideas instead of just reading about them.
 
 ## 🤷 That's It
 
-This might not make sense for most projects. If your current setup works well, stick with it.
+This might not make sense for most projects. If your current setup works well,
+stick with it.
 
-But if you've ever started a new project and felt overwhelmed by all the setup before you could write your first line of business logic, maybe this approach could be interesting.
+But if you've ever started a new project and felt overwhelmed by all the setup
+before you could write your first line of business logic, maybe this approach
+could be interesting.
 
 It's just one way of doing things. Not better or worse, just different.
 

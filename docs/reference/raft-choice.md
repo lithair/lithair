@@ -81,7 +81,7 @@ struct Product {
 
 ## 🏗️ **Lithair's Raft Integration Architecture**
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Lithair Node                           │
 ├─────────────────────────────────────────────────────────────┤
@@ -108,21 +108,28 @@ struct Product {
 ### **Developer Experience**
 
 ```rust
-// Step 1: Define model (looks like normal Rust)
 #[derive(DeclarativeModel)]
-struct User {
+struct Product {
     #[persistence(replicate)]
-    pub email: String,
+    pub name: String,
 
-    #[persistence]  // Local only
-    pub cache_data: String,
+    #[persistence]
+    pub local_cache_hint: String,
 }
+```
 
-// Step 2: Start cluster
-cargo run --bin myapp -- --peers 8082,8083
+```bash
+# Runnable public example
+cd examples/09-replication
+cargo run -p replication --bin replication-declarative-node -- \
+  --node-id 1 --port 8080
+```
 
-// Step 3: Use normal HTTP APIs
-POST /api/users {"email": "test@example.com"}
+```http
+POST /api/products
+Content-Type: application/json
+
+{"name": "test-product"}
 ```
 
 ### **What Happens Under The Hood**
@@ -187,10 +194,10 @@ healthy quorum members.
 - **Result**: a coherent fit for replicated event streams, with the usual
   latency cost of consensus
 
-### **Benchmarks** (3-node cluster)
+### **Illustrative benchmark snapshot** (3-node scenario)
 
-- **240+ ops/sec** distributed writes
-- **Sub-10ms** consensus latency
+- **240+ ops/sec** distributed writes in a representative workload
+- **Sub-10ms** consensus latency in that scenario
 - **No data loss observed in this scenario** during node failures
 
 ## 🚫 **What Lithair is NOT**

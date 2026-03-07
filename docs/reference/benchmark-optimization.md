@@ -153,9 +153,10 @@ database shape or deployment model.
 
 ## 📚 Learn More
 
-- [System Overview](SYSTEM_OVERVIEW.md) - Core Lithair philosophy
-- [Developer Guide](DEVELOPER_GUIDE.md) - Building Lithair applications
-- [API Reference](API_REFERENCE.md) - Complete API documentation
+- [System Overview](../architecture/overview.md) - Core Lithair philosophy
+- [Developer Guide](../guides/developer-guide.md) - Building Lithair
+  applications
+- [API Reference](./api-reference.md) - Complete API documentation
 
 ---
 

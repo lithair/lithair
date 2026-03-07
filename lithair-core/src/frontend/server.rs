@@ -294,3 +294,79 @@ impl FrontendServer {
         handler_system.route_request(req, server, firewall, custom_registry).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::{StaticAsset, VirtualHostLocation};
+    use std::collections::HashMap;
+
+    fn asset(path: &str, content: &[u8]) -> StaticAsset {
+        StaticAsset::new(path.to_string(), content.to_vec())
+    }
+
+    fn legacy_state_with_hosts() -> Arc<RwLock<FrontendState>> {
+        let mut state = FrontendState::default();
+
+        let index_asset = asset("/index.html", b"<h1>home</h1>");
+        let docs_asset = asset("/guide/index.html", b"guide");
+
+        let mut root_host = VirtualHostLocation {
+            host_id: "main".to_string(),
+            base_path: "/".to_string(),
+            assets: HashMap::new(),
+            path_index: HashMap::new(),
+            static_root: String::new(),
+            active: true,
+        };
+        root_host.path_index.insert("/index.html".to_string(), index_asset.id);
+        root_host.assets.insert(index_asset.id, index_asset);
+
+        let mut docs_host = VirtualHostLocation {
+            host_id: "docs".to_string(),
+            base_path: "/docs".to_string(),
+            assets: HashMap::new(),
+            path_index: HashMap::new(),
+            static_root: String::new(),
+            active: true,
+        };
+        docs_host.path_index.insert("/guide/index.html".to_string(), docs_asset.id);
+        docs_host.assets.insert(docs_asset.id, docs_asset);
+
+        state.virtual_hosts.insert("main".to_string(), root_host);
+        state.virtual_hosts.insert("docs".to_string(), docs_host);
+
+        Arc::new(RwLock::new(state))
+    }
+
+    #[tokio::test]
+    async fn legacy_asset_server_serves_root_fallback() {
+        let server = AssetServer::new(legacy_state_with_hosts());
+
+        let served = server.serve_asset("/").await;
+
+        let (content, mime) = served.expect("root fallback should resolve /index.html");
+        assert_eq!(mime, "text/html");
+        assert_eq!(content, b"<h1>home</h1>");
+    }
+
+    #[tokio::test]
+    async fn legacy_asset_server_resolves_virtual_host_base_path() {
+        let server = AssetServer::new(legacy_state_with_hosts());
+
+        let served = server.serve_asset("/docs/guide/index.html").await;
+
+        let (content, mime) = served.expect("docs virtual host should resolve nested asset");
+        assert_eq!(mime, "text/html");
+        assert_eq!(content, b"guide");
+    }
+
+    #[tokio::test]
+    async fn legacy_asset_server_returns_none_for_missing_asset() {
+        let server = AssetServer::new(legacy_state_with_hosts());
+
+        let served = server.serve_asset("/missing.txt").await;
+
+        assert!(served.is_none());
+    }
+}

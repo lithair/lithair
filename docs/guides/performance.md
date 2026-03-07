@@ -9,31 +9,47 @@ and what you compare it against.
 
 ## 📊 Benchmark Comparisons
 
-### Realistic Persistence Benchmarks (2025)
+### Illustrative persistence benchmark snapshot (2025)
 
 **Tested with complete persistence and reload cycles:**
 
-| Dataset Size        | Operation        | SQLite | Lithair | Lithair Advantage                |
-| ------------------- | ---------------- | ------ | ------- | -------------------------------- |
-| **1,000 products**  | Bulk INSERT      | 7.3ms  | 363μs   | **20.1x faster**                 |
-| **1,000 products**  | SAVE to disk     | 14μs   | 2.3ms   | SQLite faster (optimized binary) |
-| **1,000 products**  | RELOAD from disk | 158μs  | 2.2ms   | SQLite faster (binary format)    |
-| **1,000 products**  | **TOTAL cycle**  | 7.5ms  | 4.9ms   | **1.5x faster overall**          |
-| **10,000 products** | Bulk INSERT      | 20.4ms | 3.4ms   | **6.1x faster**                  |
-| **10,000 products** | SAVE to disk     | 24μs   | 23.4ms  | SQLite faster                    |
-| **10,000 products** | RELOAD from disk | 256μs  | 32ms    | SQLite faster                    |
-| **10,000 products** | **TOTAL cycle**  | 20.7ms | 58.8ms  | SQLite faster (larger datasets)  |
+| Dataset Size        | Operation        | SQLite | Lithair | Observed outcome in this scenario |
+| ------------------- | ---------------- | ------ | ------- | --------------------------------- |
+| **1,000 products**  | Bulk INSERT      | 7.3ms  | 363μs   | Lithair faster                    |
+| **1,000 products**  | SAVE to disk     | 14μs   | 2.3ms   | SQLite faster                     |
+| **1,000 products**  | RELOAD from disk | 158μs  | 2.2ms   | SQLite faster                     |
+| **1,000 products**  | **TOTAL cycle**  | 7.5ms  | 4.9ms   | Lithair faster overall            |
+| **10,000 products** | Bulk INSERT      | 20.4ms | 3.4ms   | Lithair faster                    |
+| **10,000 products** | SAVE to disk     | 24μs   | 23.4ms  | SQLite faster                     |
+| **10,000 products** | RELOAD from disk | 256μs  | 32ms    | SQLite faster                     |
+| **10,000 products** | **TOTAL cycle**  | 20.7ms | 58.8ms  | SQLite faster overall             |
 
-### Developer Experience Benchmarks
+### Developer experience indicators
 
-| Metric               | Traditional ORM             | Lithair      | Lithair Advantage  |
-| -------------------- | --------------------------- | ------------ | ------------------ |
-| **Entity Creation**  | ~10x network overhead       | 3.58μs       | **10x faster**     |
-| **Query Execution**  | ~5-10x SQL parsing          | 405ns        | **5-10x faster**   |
-| **Setup Complexity** | 50+ lines (tables, schemas) | 1 line       | **50x simpler**    |
-| **Code Maintenance** | 3 places to update          | 1 place      | **3x easier**      |
-| **Type Safety**      | Runtime SQL errors          | Compile-time | **90% fewer bugs** |
-| **Time to Market**   | Baseline                    | 2.5x faster  | **2.5x speedup**   |
+- **Entity creation**
+  - Traditional stack: schema + model coordination
+  - Lithair: Rust struct + state logic
+  - Typical effect: often simpler
+- **Query execution**
+  - Traditional stack: planner + SQL parsing
+  - Lithair: in-memory lookup or projection
+  - Typical effect: often shorter paths
+- **Setup complexity**
+  - Traditional stack: several moving parts
+  - Lithair: smaller default surface
+  - Typical effect: often simpler
+- **Code maintenance**
+  - Traditional stack: multiple layers to update
+  - Lithair: fewer layers in one codebase
+  - Typical effect: often easier
+- **Type safety**
+  - Traditional stack: some runtime query mismatch risk
+  - Lithair: compile-time Rust checks
+  - Typical effect: different failure mode
+- **Time to market**
+  - Traditional stack: depends on stack choices
+  - Lithair: can be faster for a good fit
+  - Typical effect: workload-dependent
 
 ### Storage Efficiency
 
@@ -44,58 +60,57 @@ and what you compare it against.
 
 ## 🧪 Running Benchmarks
 
-### Available Benchmark Suites
+### Current validation entry points
 
 Lithair includes benchmark suites to help characterize performance on your own
 workload:
 
 ```bash
-# Navigate to benchmark directory
-cd examples/benchmark_comparison
+# Core benchmark-oriented test
+cargo test -p lithair-core --test benchmark_tests -- --nocapture
 
-# 1. Realistic persistence benchmark (with full save/reload cycles)
-cargo run --bin realistic_benchmark --release
+# File storage benchmark binary
+cargo run -p cucumber-tests --bin filestorage_bench --release
 
-# 2. Developer experience benchmark (setup complexity, code lines, type safety)
-cargo run --bin dev_experience_benchmark --release
+# Database-oriented performance binary
+cargo run -p cucumber-tests --bin database_perf_test --release
 
-# 3. Bulk operations benchmark (large datasets, scalability)
-cargo run --bin bulk_benchmark --release
-
-# 4. Simple CRUD comparison
-cargo run --bin simple_benchmark --release
+# Stress-oriented engine binary
+cargo run -p cucumber-tests --bin engine_stress_test --release
 ```
 
 ### Benchmark Results Validation
 
-All benchmarks create test files in `/tmp/` for verification:
+Many benchmark and durability runs emit artifacts under temporary paths or
+test-specific working directories. Inspect the paths printed by the benchmark,
+then verify generated logs, snapshots, or output files directly.
 
 ```bash
-# View Lithair event logs
-cat /tmp/lithair_realistic_1000.events
-
-# View Lithair state snapshots
-cat /tmp/lithair_realistic_1000.snapshot
-
-# Compare file sizes
-ls -la /tmp/*realistic* /tmp/*sqlite*
+# Example: inspect temporary benchmark outputs
+find /tmp -maxdepth 1 -type f | grep -E 'lithair|snapshot|raftlog|sqlite'
 ```
 
 ### Key Findings Summary
 
-- **INSERT operations**: Lithair 6-20x faster than SQLite
-- **RUNTIME queries**: Can be dramatically faster when data is already in memory
+- **INSERT operations**: Lithair can be much faster in append-only,
+  memory-first scenarios
+- **RUNTIME queries**: Can be dramatically faster when data is already
+  in memory
 - **Developer setup**: Often much smaller in memory-first use cases
-- **Type safety**: Compile-time validation can reduce a class of runtime mistakes
+- **Type safety**: Compile-time validation can reduce a class of runtime
+  mistakes
 - **Audit trail**: Built-in event sourcing vs manual SQL triggers
-- **Storage trade-off**: 2.7-3x larger files but includes complete audit history
-- **Memory trade-off**: Lithair uses ~1.2x data size in RAM vs SQLite's constant ~25MB
+- **Storage trade-off**: 2.7-3x larger files in this comparison, with a
+  complete audit history
+- **Memory trade-off**: Lithair often uses RAM roughly proportional to the
+  dataset kept hot in memory
 
 ## 🧠 Memory Architecture Trade-offs
 
 ### The Fundamental Difference
 
-Lithair uses **eager loading** (everything in memory) while traditional databases use **lazy loading** (load on demand):
+Lithair uses **eager loading** (everything in memory) while traditional
+databases use **lazy loading** (load on demand):
 
 | Architecture | Memory Usage    | Cold Start      | Runtime Queries                   | Best For         |
 | ------------ | --------------- | --------------- | --------------------------------- | ---------------- |
@@ -126,7 +141,8 @@ Lithair uses **eager loading** (everything in memory) while traditional database
 - **Memory-constrained environments** (edge, IoT)
 - **Write-heavy applications** with constant updates
 
-**📚 For detailed analysis, see [Memory Architecture Guide](MEMORY_ARCHITECTURE.md)**
+**📚 For detailed analysis, see**
+**[Memory Architecture Guide](../architecture/memory-architecture.md)**
 
 ## ⚡ Performance Sources
 
@@ -134,7 +150,9 @@ Lithair uses **eager loading** (everything in memory) while traditional database
 
 ```rust
 // Traditional approach - network overhead
-let user = db.query("SELECT * FROM users WHERE id = ?", user_id).await?; // 1-10ms
+let user = db
+    .query("SELECT * FROM users WHERE id = ?", user_id)
+    .await?; // 1-10ms
 // Network roundtrip + TCP overhead + serialization
 
 // Lithair - direct memory access
@@ -147,15 +165,19 @@ an actual remote or layered query path.
 
 ### 2. Pre-calculated Indexes
 
-```rust
-// Traditional SQL - computed at query time
+```sql
 SELECT u.name, COUNT(o.id) as orders, SUM(o.total) as spent
 FROM users u LEFT JOIN orders o ON u.id = o.user_id
-WHERE u.id = 123; -- 50-200ms (joins + aggregations)
+WHERE u.id = 123;
+```
 
-// Lithair - pre-calculated projections
+```rust
 let analytics = state.user_analytics.get(&123)?; // 5ns
-println!("Orders: {}, Spent: ${}", analytics.total_orders, analytics.total_spent);
+println!(
+    "Orders: {}, Spent: ${}",
+    analytics.total_orders,
+    analytics.total_spent,
+);
 ```
 
 Pre-computed projections can remove a large amount of repeated query and
@@ -164,12 +186,11 @@ write time.
 
 ### 3. No Serialization Overhead
 
-```rust
-// Traditional - multiple serialization steps
+```text
 Database → SQL Result → ORM Object → JSON → HTTP Response
-// Each step adds 100μs-1ms overhead
+```
 
-// Lithair - zero-copy access
+```rust
 let product = &state.products[&product_id]; // Direct reference, no copying
 Response::json(product) // Single serialization step
 ```
@@ -179,15 +200,16 @@ paths.
 
 ### 4. Lock-Free Reads
 
-```rust
-// Traditional database - lock contention
-BEGIN TRANSACTION; -- Wait for locks
-SELECT * FROM products WHERE category = 'Electronics'; -- Shared locks
-COMMIT; -- Release locks
+```sql
+BEGIN TRANSACTION;
+SELECT * FROM products WHERE category = 'Electronics';
+COMMIT;
+```
 
-// Lithair - immutable data structures
-let products = state.products_by_category.get("Electronics")?; // No locks needed
-// Concurrent reads without blocking
+```rust
+let products = state
+    .products_by_category
+    .get("Electronics")?; // No locks needed
 ```
 
 Immutable or read-optimized structures can also help make read latency more
@@ -200,7 +222,7 @@ predictable under concurrency.
 **Test Setup:**
 
 - 1M products, 100K users, 500K orders
-- 1000 concurrent connections
+- 1,000 concurrent connections
 - Mixed read/write workload
 
 ```bash
@@ -221,8 +243,8 @@ Transfer/sec: 281.23MB
 
 - **1.14M requests/second** sustained throughput
 - **0.89ms average latency** (including HTTP overhead)
-- **99.9% of requests under 5ms**
-- **Zero database connection errors**
+- **99.9% of requests under 5ms** in that run
+- **No separate database connection pool** in this architecture
 
 Treat these numbers as scenario-specific measurements, not universal defaults.
 
@@ -308,7 +330,8 @@ impl Event for OrderCreated {
             .or_insert_with(UserAnalytics::default);
         analytics.total_orders += 1;
         analytics.total_spent += self.total;
-        analytics.avg_order_value = analytics.total_spent / analytics.total_orders as f64;
+        analytics.avg_order_value =
+            analytics.total_spent / analytics.total_orders as f64;
 
         // All updates are O(1) and happen in a single atomic operation!
     }
@@ -319,7 +342,10 @@ impl Event for OrderCreated {
 
 ```rust
 impl Lithair {
-    pub async fn process_event_batch(&mut self, events: Vec<Event>) -> Result<()> {
+    pub async fn process_event_batch(
+        &mut self,
+        events: Vec<Event>,
+    ) -> Result<()> {
         // Process multiple events in a single transaction
         let mut state_clone = self.state.clone();
 
@@ -353,13 +379,13 @@ spec:
   # ... configuration
 ```
 
-**Illustrative scaling results:**
+**Illustrative scaling results from a read-heavy scenario:**
 
 - **1 node**: 1.1M req/sec
 - **3 nodes**: 3.2M req/sec (95% linear scaling)
 - **10 nodes**: 10.5M req/sec (95% linear scaling)
 
-**Why near-linear scaling?**
+**Why near-linear scaling can happen in this kind of workload?**
 
 - Reads are fully local (no coordination needed)
 - Writes use Raft consensus (minimal coordination overhead)
@@ -388,7 +414,8 @@ pub fn get_user_stats(&self, user_id: UserId) -> UserStats {
     UserStats {
         total_orders: orders.len(),
         total_spent: orders.iter().map(|o| o.total).sum(),
-        avg_order: orders.iter().map(|o| o.total).sum::<f64>() / orders.len() as f64,
+        avg_order: orders.iter().map(|o| o.total).sum::<f64>()
+            / orders.len() as f64,
     }
 }
 
@@ -409,8 +436,10 @@ pub struct SlowState {
 // ✅ Good: Hash-based access
 pub struct FastState {
     orders: HashMap<OrderId, Order>,           // O(1) lookups
-    orders_by_user: HashMap<UserId, Vec<OrderId>>, // O(1) user queries
-    orders_by_status: HashMap<OrderStatus, Vec<OrderId>>, // O(1) status queries
+    orders_by_user: HashMap<UserId, Vec<OrderId>>,
+    // O(1) user queries
+    orders_by_status: HashMap<OrderStatus, Vec<OrderId>>,
+    // O(1) status queries
 }
 ```
 
@@ -436,15 +465,16 @@ pub fn get_user_orders(&self, user_id: UserId) -> Vec<&Order> {
 
 Lithair can achieve strong performance in the right workload through:
 
-1. **Embedded Architecture**: Database in same process = zero network latency
+1. **Embedded Architecture**: The database path can run in the same process,
+   removing network latency to a separate database
 2. **Event Sourcing**: Append-only writes + pre-calculated reads
-3. **In-Memory State**: All data in RAM for instant access
+3. **In-Memory State**: Hot application state stays in RAM for fast access
 4. **Smart Indexing**: Pre-calculated projections for complex queries
-5. **Zero Dependencies**: No external bottlenecks or overhead
+5. **Fewer Moving Parts**: Smaller default operational surface
 
 The practical result is usually lower query latency, simpler deployment, and a
 different set of memory/storage trade-offs to validate in context.
 
 For teams whose data fits comfortably in memory, this can be a compelling fit.
-For larger or more heterogeneous workloads, the benchmark data should be used as
-input for evaluation rather than as a guarantee.
+For larger or more heterogeneous workloads, the benchmark data should be used
+as input for evaluation rather than as a guarantee.

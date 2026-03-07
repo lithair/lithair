@@ -48,7 +48,7 @@ Preflight handling:
 - If a request exceeds this time budget on an API route, the server returns:
 
 ```json
-{"error":"request timeout"}
+{ "error": "request timeout" }
 ```
 
 with HTTP `504 Gateway Timeout`.
@@ -56,7 +56,7 @@ with HTTP `504 Gateway Timeout`.
 ## Request Body Size Limits
 
 - Single-item endpoints (POST/PUT): `LT_HTTP_MAX_BODY_BYTES_SINGLE` (2 MiB by default)
-- Bulk ingestion (POST /_bulk): `LT_HTTP_MAX_BODY_BYTES_BULK` (12 MiB by default)
+- Bulk ingestion (POST /\_bulk): `LT_HTTP_MAX_BODY_BYTES_BULK` (12 MiB by default)
 - Exceeding a limit yields HTTP `413 Payload Too Large`.
 
 ## Content-Type Validation
@@ -80,19 +80,22 @@ with HTTP `504 Gateway Timeout`.
 JSON error shape (representative):
 
 ```json
-{"error":"bad_request","message":"invalid json"}
+{ "error": "bad_request", "message": "invalid json" }
 ```
 
-Some endpoints may return specialized `error` codes (e.g. `rbac_denied`, `unsupported_media_type`, `payload_too_large`, `request timeout`).
+Some endpoints may return specialized `error` codes (e.g. `rbac_denied`,
+`unsupported_media_type`, `payload_too_large`, `request timeout`).
 
 ## TLS Termination
 
-Lithair supports native TLS via rustls. When `LT_TLS_CERT` and `LT_TLS_KEY` are set, the server:
+Lithair supports native TLS via rustls. When `LT_TLS_CERT` and `LT_TLS_KEY`
+are set, the server:
 
 1. Loads the PEM certificate chain and private key at startup
 2. Logs the leaf certificate SHA-256 fingerprint
 3. Accepts TLS connections with a 10-second handshake timeout (slow/stalled handshakes are dropped)
-4. Adds `Strict-Transport-Security: max-age=31536000; includeSubDomains` to all responses
+4. Adds `Strict-Transport-Security: max-age=31536000; includeSubDomains` to all
+   responses
 
 HSTS is only sent when TLS is active. Plain HTTP responses never include the header.
 
@@ -100,22 +103,29 @@ See `docs/guides/tls.md` for setup instructions.
 
 ## Graceful Shutdown
 
-- The server drains connections when receiving Ctrl-C / SIGTERM, reducing in-flight request loss during restarts.
+- The server drains connections when receiving Ctrl-C / SIGTERM, reducing
+  in-flight request loss during restarts.
 
 ## Recommended Defaults
 
-- For latency-sensitive APIs, leave the default 10s timeout and adjust per route via upstream proxy if needed.
-- Keep single-item body limit at 2 MiB; increase bulk limit only when your ingestion batches require it (observe 413s under load tests to tune).
-- Prefer light reads (`/status`, `/api/{model}/count`) when benchmarking write paths to avoid serialization overhead of large lists.
+- For latency-sensitive APIs, leave the default 10s timeout and adjust per
+  route via upstream proxy if needed.
+- Keep single-item body limit at 2 MiB; increase bulk limit only when your
+  ingestion batches require it (observe 413s under load tests to tune).
+- Prefer light reads (`/status`, `/api/{model}/count`) when benchmarking write
+  paths to avoid serialization overhead of large lists.
 
 ## Related Documents
 
 - `docs/guides/tls.md` – TLS setup, certificates, and HSTS.
-- `docs/API_REFERENCE.md` – high-level reference; includes a summary under "HTTP Hardening & Error Semantics".
+- `docs/API_REFERENCE.md` – high-level reference; includes a summary under
+  "HTTP Hardening & Error Semantics".
 - `docs/HTTP_LOADGEN.md` – benchmarking & scenarios.
-- `examples/raft_replication_demo/README.md` – demo scenario guidance.
+- `examples/09-replication/README.md` – demo scenario guidance.
 
 ## Roadmap
 
-- Firewall middleware (IP allow/deny, per-IP and per-route rate limiting) – to be introduced in a subsequent PR.
-- Unified error helper usage across all modules (RBAC, replication internals) – gradual refactor to ensure consistent error shapes everywhere.
+- Firewall middleware (IP allow/deny, per-IP and per-route rate limiting) – to
+  be introduced in a subsequent PR.
+- Unified error helper usage across all modules (RBAC, replication internals) –
+  gradual refactor to ensure consistent error shapes everywhere.

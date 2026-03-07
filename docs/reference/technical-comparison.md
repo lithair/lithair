@@ -107,9 +107,10 @@ operations when the requested state is already resident in memory.
 
 - **Configuration Parameters**: 300+ tunable parameters
 - **Required Expertise**: Database Administrator (DBA) role
-- **Monitoring Points**: 50+ critical metrics (connections, locks, buffer hit ratio, etc.)
+- **Monitoring Points**: 50+ critical metrics (connections, locks, buffer hit
+  ratio, etc.)
 - **Backup Strategy**: Complex (pg_dump, pg_basebackup, PITR)
-- **High Availability**: Master-slave replication, failover procedures
+- **High Availability**: Replication and failover procedures
 - **Maintenance**: Regular VACUUM, ANALYZE, index rebuilding
 
 ### Lithair Operational Complexity
@@ -121,7 +122,7 @@ operations when the requested state is already resident in memory.
 - **High Availability**: Built-in Raft consensus
 - **Maintenance**: Automatic compaction with a lighter manual ops surface
 
-## Why SQL Databases Haven't Evolved
+## Why SQL Architectures Remain Dominant
 
 ### Technical Reasons
 
@@ -134,7 +135,8 @@ operations when the requested state is already resident in memory.
 
 1. **Risk Aversion**: Enterprise customers prefer proven technology
 2. **Investment Protection**: Existing DBA skills and tooling
-3. **Vendor Interests**: Complexity justifies high licensing costs
+3. **Commercial Ecosystems**: Tooling, support, and training are built around
+   established database models
 4. **Market Inertia**: "Nobody gets fired for choosing PostgreSQL"
 
 ### Innovation Attempts
@@ -153,7 +155,8 @@ consistency semantics, and operational complexity.
 
 ### Trade-offs Accepted
 
-1. **Storage Size**: 3-6x larger files vs SQL (JSON vs binary)
+1. **Storage Size**: Often larger files than compact SQL storage engines,
+   especially with JSON events
 2. **Query Flexibility**: Event sourcing vs arbitrary SQL queries
 3. **Ecosystem**: New tooling vs mature SQL ecosystem
 4. **Learning Curve**: New concepts vs familiar SQL
@@ -214,9 +217,9 @@ broader SQL ecosystem.
 Lithair represents a different architectural choice optimized for:
 
 - Modern hardware capabilities (abundant RAM, fast SSDs)
-- Developer productivity over storage efficiency
+- Developer productivity over storage efficiency in the targeted model
 - Operational simplicity over feature completeness
-- Audit trail and reliability over query flexibility
+- Audit trail and replayability over broad query flexibility
 
 For teams whose workload aligns with those priorities, it can feel like a
 substantial shift in how backend applications are assembled and operated.

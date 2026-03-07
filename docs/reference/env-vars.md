@@ -88,6 +88,6 @@ This page lists the core environment variables supported by Lithair.
 
 ## See also
 
-- `docs/guides/tls.md` for TLS setup and certificate management
-- `docs/guides/serving-modes.md` for Dev/Prod/Hybrid modes and reload endpoint
-- `docs/guides/admin-protection.md` for firewall and admin endpoints
+- `../guides/tls.md` for TLS setup and certificate management
+- `../guides/serving-modes.md` for Dev/Prod/Hybrid modes and reload endpoint
+- `../guides/admin-protection.md` for firewall and admin endpoints

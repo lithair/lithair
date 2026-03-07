@@ -5,57 +5,62 @@ Created by Yoan Roblet with AI assistance.
 ## 📚 Complete Documentation Available
 
 Complete documentation with Mermaid diagrams has been created to clarify the
-Lithair architecture. Here are the new documents:
+Lithair architecture. Here are the current anchor documents:
 
 ### 🎯 Main Documents Created
 
-1. **[SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)** - Complete system overview
-2. **[DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md)** - **NEW** -
-   OpenRaft distributed consensus integration
-3. **[BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md)** -
-   Performance optimization guide
-4. **[IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md)** -
-   Massive IoT injection architecture
+1. **[overview.md](../architecture/overview.md)** - Complete system overview
+2. **[distributed-consensus.md](../modules/consensus/distributed-consensus.md)**
+   - OpenRaft distributed consensus integration
+3. **[benchmark-optimization.md](benchmark-optimization.md)** - Performance
+   optimization guide
+4. **[iot-architecture.md](../architecture/iot-architecture.md)** -
+   High-throughput IoT ingestion architecture
 
 ### 📖 Existing Documentation
 
 The existing documentation in `docs/` already covers these aspects well:
 
-- **[architecture.md](architecture.md)** - Architecture générale du framework
-- **[event-sourcing.md](event-sourcing.md)** - Event sourcing avec compaction intelligente
-- **[performance.md](performance.md)** - Benchmarks et métriques de performance
-- **[EXAMPLES.md](EXAMPLES.md)** - Guide des exemples disponibles
-- **[API_REFERENCE.md](API_REFERENCE.md)** - Référence API complète
+- **[README.md](../architecture/README.md)** - Architecture générale du
+  framework
+- **[event-chain.md](../features/persistence/event-chain.md)** - Event
+  sourcing et chaîne d'événements
+- **[performance.md](../guides/performance.md)** - Benchmarks et métriques de
+  performance
+- **[overview.md](../examples/overview.md)** - Guide des exemples disponibles
+- **[api-reference.md](api-reference.md)** - Référence API complète
 
 ## 🔍 Quick Navigation by Topic
 
 ### Architecture and Concepts
 
-- [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md) - **NEW** - Overview with diagrams
-- [DISTRIBUTED_CONSENSUS.md](DISTRIBUTED_CONSENSUS.md) - **NEW** - Multi-node
-  consensus with OpenRaft
-- [architecture.md](architecture.md) - Detailed architecture
-- [event-sourcing.md](event-sourcing.md) - Event sourcing and persistence
+- [overview.md](../architecture/overview.md) - Overview with diagrams
+- [distributed-consensus.md](../modules/consensus/distributed-consensus.md) -
+  Multi-node consensus with OpenRaft
+- [system-design.md](../architecture/system-design.md) - Detailed architecture
+- [event-chain.md](../features/persistence/event-chain.md) - Event sourcing and
+  persistence
 
 ### Performance and Optimizations
 
-- [BENCHMARK_OPTIMIZATION_GUIDE.md](BENCHMARK_OPTIMIZATION_GUIDE.md) -
-  **NEW** - Optimization guide
-- [performance.md](performance.md) - Detailed benchmarks
-- [MEMORY_ARCHITECTURE.md](MEMORY_ARCHITECTURE.md) - Memory management
+- [benchmark-optimization.md](benchmark-optimization.md) - Optimization guide
+- [performance.md](../guides/performance.md) - Detailed benchmarks
+- [memory-architecture.md](../architecture/memory-architecture.md) - Memory
+  management
 
 ### Examples and Use Cases
 
-- [IOT_INJECTION_ARCHITECTURE.md](IOT_INJECTION_ARCHITECTURE.md) - **NEW** -
-  IoT architecture
-- [EXAMPLES.md](EXAMPLES.md) - Examples guide
-- [ecommerce-tutorial.md](ecommerce-tutorial.md) - E-commerce tutorial
+- [iot-architecture.md](../architecture/iot-architecture.md) - IoT
+  architecture
+- [overview.md](../examples/overview.md) - Examples guide
+- [ecommerce-tutorial.md](../guides/ecommerce-tutorial.md) - E-commerce
+  tutorial
 
 ### Development
 
-- [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Developer guide
-- [API_REFERENCE.md](API_REFERENCE.md) - API reference
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Quick start
+- [developer-guide.md](../guides/developer-guide.md) - Developer guide
+- [api-reference.md](api-reference.md) - API reference
+- [getting-started.md](../guides/getting-started.md) - Quick start
 
 ## 🎨 New Mermaid Diagrams
 
@@ -94,15 +99,15 @@ xychart-beta
 
 ## 🚀 Key Documented Points
 
-### Disruptive Architecture
+### Core Architecture Themes
 
-- **Single binary** - Embedded database
+- **Single binary** - Integrated runtime and application surface
 - **Direct memory access** - avoids a separate query layer for in-memory
   workloads
 - **Native event sourcing** - Complete audit trail
 - **Automatic deduplication** - Built-in idempotence support
 - **Distributed consensus** - OpenRaft multi-node clusters
-- **Zero-dependency HTTP** - Pure std::net networking
+- **Embedded HTTP stack** - Fewer layers to operate in the default setup
 
 ### Validated Optimizations
 
@@ -113,7 +118,8 @@ xychart-beta
 
 ### Massive IoT Injection
 
-- **80,000+ points/sec** - Production-validated throughput
+- **High-throughput ingestion** - workload-specific throughput depending on
+  hardware and configuration
 - **Adaptive mode** - Automatic load management
 - **Real-time monitoring** - Complete metrics
 - **Integrity controls** - Automatic validation and consistency checks
@@ -123,7 +129,7 @@ xychart-beta
 - ✅ System overview with diagrams
 - ✅ Detailed event sourcing architecture
 - ✅ Distributed consensus with OpenRaft
-- ✅ Zero-dependency HTTP stack documentation
+- ✅ Embedded HTTP stack documentation
 - ✅ Performance optimization guide
 - ✅ Massive IoT injection architecture
 - ✅ Data flows with sequences
@@ -142,5 +148,5 @@ The documentation is now more complete and easier to navigate. To go further:
 3. **Monitoring** - Implement recommended metrics
 4. **Optimizations** - Apply documented techniques
 
-All Mermaid diagrams are integrated and display correctly in GitHub/GitLab for
-a clearer visual understanding of the Lithair system.
+All Mermaid diagrams are integrated and display correctly in GitHub/GitLab,
+providing a clearer visual understanding of the Lithair system.
