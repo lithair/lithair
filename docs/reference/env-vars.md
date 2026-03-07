@@ -53,11 +53,27 @@ This page lists the core environment variables supported by Lithair.
 
 ## CORS
 
-- `LT_COLT_ENABLED`
+- `LT_CORS_ENABLED`
   - Enable CORS support. Default: `false`.
+  - `LT_COLT_ENABLED` is still accepted as a legacy alias.
 
-- `LT_COLT_ORIGINS`
+- `LT_CORS_ORIGINS`
   - Allowed CORS origins (comma-separated). Default: `*`.
+  - `LT_COLT_ORIGINS` is still accepted as a legacy alias.
+
+## Frontend
+
+- `LT_FRONTEND_ENABLED`
+  - Enable frontend asset serving.
+
+- `LT_FRONTEND_STATIC_DIR`
+  - Directory containing static assets to serve.
+
+- `LT_FRONTEND_WATCH`
+  - Enable frontend directory watch mode.
+
+- `LT_FRONTEND_COMPRESS`
+  - Enable frontend asset compression. Default: `true`.
 
 ## Benchmarks & Demos (examples)
 
@@ -72,6 +88,6 @@ This page lists the core environment variables supported by Lithair.
 
 ## See also
 
-- `docs/guides/tls.md` for TLS setup and certificate management
-- `docs/guides/serving-modes.md` for Dev/Prod/Hybrid modes and reload endpoint
-- `docs/guides/admin-protection.md` for firewall and admin endpoints
+- `../guides/tls.md` for TLS setup and certificate management
+- `../guides/serving-modes.md` for Dev/Prod/Hybrid modes and reload endpoint
+- `../guides/admin-protection.md` for firewall and admin endpoints

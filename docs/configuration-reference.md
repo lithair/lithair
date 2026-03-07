@@ -2,7 +2,7 @@
 
 Complete reference for all configuration variables in Lithair.
 
-##  Table of Contents
+## Table of Contents
 
 - [Configuration Hierarchy](#configuration-hierarchy)
 - [Server Configuration](#server-configuration)
@@ -14,6 +14,7 @@ Complete reference for all configuration variables in Lithair.
 - [Logging Configuration](#logging-configuration)
 - [Storage Configuration](#storage-configuration)
 - [Performance Configuration](#performance-configuration)
+- [Frontend Configuration](#frontend-configuration)
 - [Hot-Reload Support](#hot-reload-support)
 
 ---
@@ -35,6 +36,7 @@ Lithair uses a layered configuration system with the following priority (lowest 
 ```
 
 **Example:**
+
 ```rust
 // 1. Default: port = 8080
 // 2. config.toml: port = 3000
@@ -50,19 +52,20 @@ LithairServer::new()
 
 Core HTTP server settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `port` | `8080` |  | `LT_PORT` | `.with_port(u16)` |  | Server listening port |
-| `host` | `"127.0.0.1"` |  | `LT_HOST` | `.with_host(String)` |  | Server listening address |
-| `workers` | `num_cpus` |  | `LT_WORKERS` | `.with_workers(usize)` |  | Number of Tokio worker threads |
-| `cors_enabled` | `false` |  | `LT_COLT_ENABLED` | `.with_cors(bool)` |  | Enable CORS support |
-| `cors_origins` | `["*"]` |  | `LT_COLT_ORIGINS` | `.with_cors_origins(Vec<String>)` |  | Allowed CORS origins (comma-separated in env) |
-| `request_timeout` | `30` |  | `LT_REQUEST_TIMEOUT` | `.with_timeout(u64)` |  | Request timeout in seconds |
-| `max_body_size` | `10485760` |  | `LT_MAX_BODY_SIZE` | `.with_max_body_size(usize)` |  | Maximum request body size in bytes (10MB default) |
+| Variable          | Default       | Config File | Env Var              | Code Builder                      | Hot-Reload | Description                                       |
+| ----------------- | ------------- | ----------- | -------------------- | --------------------------------- | ---------- | ------------------------------------------------- |
+| `port`            | `8080`        |             | `LT_PORT`            | `.with_port(u16)`                 |            | Server listening port                             |
+| `host`            | `"127.0.0.1"` |             | `LT_HOST`            | `.with_host(String)`              |            | Server listening address                          |
+| `workers`         | `num_cpus`    |             | `LT_WORKERS`         | `.with_workers(usize)`            |            | Number of Tokio worker threads                    |
+| `cors_enabled`    | `false`       |             | `LT_CORS_ENABLED`    | `.with_cors(bool)`                |            | Enable CORS support                               |
+| `cors_origins`    | `["*"]`       |             | `LT_CORS_ORIGINS`    | `.with_cors_origins(Vec<String>)` |            | Allowed CORS origins (comma-separated in env)     |
+| `request_timeout` | `30`          |             | `LT_REQUEST_TIMEOUT` | `.with_timeout(u64)`              |            | Request timeout in seconds                        |
+| `max_body_size`   | `10485760`    |             | `LT_MAX_BODY_SIZE`   | `.with_max_body_size(usize)`      |            | Maximum request body size in bytes (10MB default) |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [server]
 port = 8080
@@ -75,17 +78,21 @@ max_body_size = 10485760
 ```
 
 **Environment:**
+
 ```bash
 LT_PORT=8080
 LT_HOST=0.0.0.0
 LT_WORKERS=4
-LT_COLT_ENABLED=true
-LT_COLT_ORIGINS=https://app.example.com,https://admin.example.com
+LT_CORS_ENABLED=true
+LT_CORS_ORIGINS=https://app.example.com,https://admin.example.com
 LT_REQUEST_TIMEOUT=30
 LT_MAX_BODY_SIZE=10485760
 ```
 
+Legacy aliases `LT_COLT_ENABLED` and `LT_COLT_ORIGINS` are still accepted for compatibility.
+
 **Code:**
+
 ```rust
 LithairServer::new()
     .with_port(8080)
@@ -106,19 +113,20 @@ LithairServer::new()
 
 Session management and authentication settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `true` |  | `LT_SESSION_ENABLED` | `.with_sessions(SessionManager)` |  | Enable session management |
-| `cleanup_interval` | `300` |  | `LT_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)` |  | Cleanup interval in seconds (5 min default) |
-| `max_age` | `3600` |  | `LT_SESSION_MAX_AGE` | `.with_session_max_age(u64)` |  | Session lifetime in seconds (1 hour default) |
-| `cookie_enabled` | `true` |  | `LT_SESSION_COOKIE_ENABLED` | `.with_session_cookie(bool)` |  | Enable cookie-based sessions |
-| `cookie_secure` | `true` |  | `LT_SESSION_COOKIE_SECURE` | - |  | Set Secure flag on cookies (HTTPS only) |
-| `cookie_httponly` | `true` |  | `LT_SESSION_COOKIE_HTTPONLY` | - |  | Set HttpOnly flag on cookies (XSS protection) |
-| `cookie_samesite` | `"Lax"` |  | `LT_SESSION_COOKIE_SAMESITE` | - |  | SameSite policy (Strict/Lax/None) |
+| Variable           | Default | Config File | Env Var                       | Code Builder                     | Hot-Reload | Description                                   |
+| ------------------ | ------- | ----------- | ----------------------------- | -------------------------------- | ---------- | --------------------------------------------- |
+| `enabled`          | `true`  |             | `LT_SESSION_ENABLED`          | `.with_sessions(SessionManager)` |            | Enable session management                     |
+| `cleanup_interval` | `300`   |             | `LT_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)`     |            | Cleanup interval in seconds (5 min default)   |
+| `max_age`          | `3600`  |             | `LT_SESSION_MAX_AGE`          | `.with_session_max_age(u64)`     |            | Session lifetime in seconds (1 hour default)  |
+| `cookie_enabled`   | `true`  |             | `LT_SESSION_COOKIE_ENABLED`   | `.with_session_cookie(bool)`     |            | Enable cookie-based sessions                  |
+| `cookie_secure`    | `true`  |             | `LT_SESSION_COOKIE_SECURE`    | -                                |            | Set Secure flag on cookies (HTTPS only)       |
+| `cookie_httponly`  | `true`  |             | `LT_SESSION_COOKIE_HTTPONLY`  | -                                |            | Set HttpOnly flag on cookies (XSS protection) |
+| `cookie_samesite`  | `"Lax"` |             | `LT_SESSION_COOKIE_SAMESITE`  | -                                |            | SameSite policy (Strict/Lax/None)             |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [sessions]
 enabled = true
@@ -131,6 +139,7 @@ cookie_samesite = "Lax"
 ```
 
 **Environment:**
+
 ```bash
 LT_SESSION_ENABLED=true
 LT_SESSION_CLEANUP_INTERVAL=300
@@ -142,6 +151,7 @@ LT_SESSION_COOKIE_SAMESITE=Lax
 ```
 
 **Code:**
+
 ```rust
 use lithair_core::session::{SessionManager, SessionManagerConfig, MemorySessionStore};
 
@@ -162,18 +172,19 @@ LithairServer::new()
 
 Role-Based Access Control settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `false` |  | `LT_RBAC_ENABLED` | `.with_rbac(RbacConfig)` |  | Enable RBAC system |
-| `default_role` | `"guest"` |  | `LT_RBAC_DEFAULT_ROLE` | `.with_default_role(String)` |  | Default role for unauthenticated users |
-| `audit_enabled` | `true` |  | `LT_RBAC_AUDIT_ENABLED` | `.with_audit(bool)` |  | Enable audit trail for RBAC events |
-| `rate_limit_enabled` | `false` |  | `LT_RBAC_RATE_LIMIT` | `.with_rate_limit(bool)` |  | Enable rate limiting on login attempts |
-| `max_login_attempts` | `5` |  | `LT_RBAC_MAX_LOGIN_ATTEMPTS` | - |  | Maximum login attempts before lockout |
-| `lockout_duration` | `300` |  | `LT_RBAC_LOCKOUT_DURATION` | - |  | Account lockout duration in seconds (5 min) |
+| Variable             | Default   | Config File | Env Var                      | Code Builder                 | Hot-Reload | Description                                 |
+| -------------------- | --------- | ----------- | ---------------------------- | ---------------------------- | ---------- | ------------------------------------------- |
+| `enabled`            | `false`   |             | `LT_RBAC_ENABLED`            | `.with_rbac(RbacConfig)`     |            | Enable RBAC system                          |
+| `default_role`       | `"guest"` |             | `LT_RBAC_DEFAULT_ROLE`       | `.with_default_role(String)` |            | Default role for unauthenticated users      |
+| `audit_enabled`      | `true`    |             | `LT_RBAC_AUDIT_ENABLED`      | `.with_audit(bool)`          |            | Enable audit trail for RBAC events          |
+| `rate_limit_enabled` | `false`   |             | `LT_RBAC_RATE_LIMIT`         | `.with_rate_limit(bool)`     |            | Enable rate limiting on login attempts      |
+| `max_login_attempts` | `5`       |             | `LT_RBAC_MAX_LOGIN_ATTEMPTS` | -                            |            | Maximum login attempts before lockout       |
+| `lockout_duration`   | `300`     |             | `LT_RBAC_LOCKOUT_DURATION`   | -                            |            | Account lockout duration in seconds (5 min) |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [rbac]
 enabled = true
@@ -185,6 +196,7 @@ lockout_duration = 300
 ```
 
 **Environment:**
+
 ```bash
 LT_RBAC_ENABLED=true
 LT_RBAC_DEFAULT_ROLE=guest
@@ -195,13 +207,10 @@ LT_RBAC_LOCKOUT_DURATION=300
 ```
 
 **Code:**
+
 ```rust
 LithairServer::new()
-    .with_rbac(RbacConfig::new()
-        .with_role("customer", vec!["product:read"])
-        .with_role("employee", vec!["product:read", "product:create"])
-        .with_role("admin", vec!["*"])
-    )
+    .with_rbac(true)
     .with_default_role("guest")
     .with_audit(true)
     .with_rate_limit(true)
@@ -213,18 +222,19 @@ LithairServer::new()
 
 Raft consensus and cluster replication settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `false` |  | `LT_REPLICATION_ENABLED` | `.with_replication(bool)` |  | Enable Raft replication |
-| `node_id` | `auto` |  | `LT_NODE_ID` | `.with_node_id(String)` |  | Unique node identifier |
-| `cluster_nodes` | `[]` |  | `LT_CLUSTER_NODES` | `.with_cluster(Vec<String>)` |  | List of cluster nodes (comma-separated in env) |
-| `election_timeout` | `150` |  | `LT_ELECTION_TIMEOUT` | - |  | Election timeout in milliseconds |
-| `heartbeat_interval` | `50` |  | `LT_HEARTBEAT_INTERVAL` | - |  | Heartbeat interval in milliseconds |
-| `snapshot_threshold` | `1000` |  | `LT_SNAPSHOT_THRESHOLD` | - |  | Number of log entries before snapshot |
+| Variable             | Default | Config File | Env Var                  | Code Builder                 | Hot-Reload | Description                                    |
+| -------------------- | ------- | ----------- | ------------------------ | ---------------------------- | ---------- | ---------------------------------------------- |
+| `enabled`            | `false` |             | `LT_REPLICATION_ENABLED` | `.with_replication(bool)`    |            | Enable Raft replication                        |
+| `node_id`            | `auto`  |             | `LT_NODE_ID`             | `.with_node_id(String)`      |            | Unique node identifier                         |
+| `cluster_nodes`      | `[]`    |             | `LT_CLUSTER_NODES`       | `.with_cluster(Vec<String>)` |            | List of cluster nodes (comma-separated in env) |
+| `election_timeout`   | `150`   |             | `LT_ELECTION_TIMEOUT`    | -                            |            | Election timeout in milliseconds               |
+| `heartbeat_interval` | `50`    |             | `LT_HEARTBEAT_INTERVAL`  | -                            |            | Heartbeat interval in milliseconds             |
+| `snapshot_threshold` | `1000`  |             | `LT_SNAPSHOT_THRESHOLD`  | -                            |            | Number of log entries before snapshot          |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [replication]
 enabled = true
@@ -236,6 +246,7 @@ snapshot_threshold = 1000
 ```
 
 **Environment:**
+
 ```bash
 LT_REPLICATION_ENABLED=true
 LT_NODE_ID=node-1
@@ -246,6 +257,7 @@ LT_SNAPSHOT_THRESHOLD=1000
 ```
 
 **Code:**
+
 ```rust
 LithairServer::new()
     .with_replication(true)
@@ -262,38 +274,40 @@ LithairServer::new()
 
 Administrative interface and monitoring settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `enabled` | `true` |  | `LT_ADMIN_ENABLED` | `.with_admin_panel(bool)` |  | Enable admin panel |
-| `path` | `"/admin"` |  | `LT_ADMIN_PATH` | `.with_admin_path(String)` |  | Admin panel base path |
-| `auth_required` | `true` |  | `LT_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)` |  | Require authentication for admin panel |
-| `metrics_enabled` | `true` |  | `LT_ADMIN_METRICS` | `.with_metrics(bool)` |  | Enable Prometheus metrics endpoint |
-| `metrics_path` | `"/metrics"` |  | `LT_ADMIN_METRICS_PATH` | - |  | Prometheus metrics endpoint path |
+| Variable          | Default      | Config File | Env Var                  | Code Builder               | Hot-Reload | Description                            |
+| ----------------- | ------------ | ----------- | ------------------------ | -------------------------- | ---------- | -------------------------------------- |
+| `enabled`         | `true`       |             | `LT_ADMIN_ENABLED`       | `.with_admin_panel(bool)`  |            | Enable admin panel                     |
+| `path`            | `"/admin"`   |             | `LT_ADMIN_PATH`          | `.with_admin_path(String)` |            | Admin panel base path                  |
+| `auth_required`   | `true`       |             | `LT_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)`   |            | Require authentication for admin panel |
+| `metrics_enabled` | `true`       |             | `LT_ADMIN_METRICS`       | `.with_metrics(bool)`      |            | Enable Prometheus metrics endpoint     |
+| `metrics_path`    | `"/metrics"` |             | `LT_ADMIN_METRICS_PATH`  | -                          |            | Prometheus metrics endpoint path       |
 
 ---
 
 ## Development Configuration
 
- **DEVELOPMENT ONLY** - These settings should NEVER be used in production environments.
+**DEVELOPMENT ONLY** - These settings should NEVER be used in production environments.
 
 **Security Note**: The variables in this section are **environment-variable-only** for security reasons. They will be **rejected** if found in `config.toml` to prevent accidental git commits of secrets.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `dev_reload_token` | `None` |  **BLOCKED** |  **REQUIRED** | - |  | Development bypass token for TOTP/MFA authentication + hot reload endpoint ( **DEV ONLY**) |
+| Variable           | Default | Config File | Env Var      | Code Builder | Hot-Reload | Description                                                                                |
+| ------------------ | ------- | ----------- | ------------ | ------------ | ---------- | ------------------------------------------------------------------------------------------ |
+| `dev_reload_token` | `None`  | **BLOCKED** | **REQUIRED** | -            |            | Development bypass token for TOTP/MFA authentication + hot reload endpoint ( **DEV ONLY**) |
 
 ### LT_DEV_RELOAD_TOKEN
 
 **Purpose**: Simplified development workflow - bypasses TOTP/MFA authentication and enables hot reload without full RBAC.
 
-**Security Warning**:  **NEVER use in production!** The server displays a visible warning at startup when this token is enabled.
+**Security Warning**: **NEVER use in production!** The server displays a visible warning at startup when this token is enabled.
 
 **Effects**:
+
 - **Login Bypass**: Admin login works with username/password only (no TOTP code required)
 - **Reload Bypass**: Reload endpoint accepts `X-Reload-Token` header instead of full RBAC/MFA authentication
 - **Development Focus**: Eliminates need to configure authenticator app during development iterations
 
 **Usage**:
+
 ```bash
 # Development mode with bypass token
 LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev
@@ -312,6 +326,7 @@ curl -X POST http://localhost:3007/admin/sites/reload \
 ```
 
 **Config File Validation** :
+
 ```toml
 #  THIS WILL BE REJECTED AT STARTUP!
 [development]
@@ -324,6 +339,7 @@ dev_reload_token = "dev123"
 ```
 
 **Correct Usage - Environment Variable Only** :
+
 ```bash
 # Use environment variable
 export LT_DEV_RELOAD_TOKEN=dev123
@@ -335,6 +351,7 @@ LT_DEV_RELOAD_TOKEN=dev123 cargo run -- --dev
 ### Example
 
 **config.toml:**
+
 ```toml
 [admin]
 enabled = true
@@ -345,6 +362,7 @@ metrics_path = "/metrics"
 ```
 
 **Environment:**
+
 ```bash
 LT_ADMIN_ENABLED=true
 LT_ADMIN_PATH=/admin
@@ -354,6 +372,7 @@ LT_ADMIN_METRICS_PATH=/metrics
 ```
 
 **Code:**
+
 ```rust
 LithairServer::new()
     .with_admin_panel(true)
@@ -368,18 +387,19 @@ LithairServer::new()
 
 Application logging and observability settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `level` | `"info"` |  | `LT_LOG_LEVEL` | `.with_log_level(String)` |  | Log level (trace/debug/info/warn/error) |
-| `format` | `"json"` |  | `LT_LOG_FORMAT` | `.with_log_format(String)` |  | Log format (json/text/pretty) |
-| `file_enabled` | `false` |  | `LT_LOG_FILE_ENABLED` | `.with_log_file(bool)` |  | Enable logging to file |
-| `file_path` | `"./logs"` |  | `LT_LOG_FILE_PATH` | - |  | Log file directory path |
-| `file_rotation` | `"daily"` |  | `LT_LOG_FILE_ROTATION` | - |  | Log rotation policy (daily/hourly/size) |
-| `file_max_size` | `100` |  | `LT_LOG_FILE_MAX_SIZE` | - |  | Max log file size in MB |
+| Variable        | Default    | Config File | Env Var                | Code Builder               | Hot-Reload | Description                             |
+| --------------- | ---------- | ----------- | ---------------------- | -------------------------- | ---------- | --------------------------------------- |
+| `level`         | `"info"`   |             | `LT_LOG_LEVEL`         | `.with_log_level(String)`  |            | Log level (trace/debug/info/warn/error) |
+| `format`        | `"json"`   |             | `LT_LOG_FORMAT`        | `.with_log_format(String)` |            | Log format (json/text/pretty)           |
+| `file_enabled`  | `false`    |             | `LT_LOG_FILE_ENABLED`  | `.with_log_file(bool)`     |            | Enable logging to file                  |
+| `file_path`     | `"./logs"` |             | `LT_LOG_FILE_PATH`     | -                          |            | Log file directory path                 |
+| `file_rotation` | `"daily"`  |             | `LT_LOG_FILE_ROTATION` | -                          |            | Log rotation policy (daily/hourly/size) |
+| `file_max_size` | `100`      |             | `LT_LOG_FILE_MAX_SIZE` | -                          |            | Max log file size in MB                 |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [logging]
 level = "info"
@@ -391,6 +411,7 @@ file_max_size = 100
 ```
 
 **Environment:**
+
 ```bash
 LT_LOG_LEVEL=info
 LT_LOG_FORMAT=json
@@ -401,6 +422,7 @@ LT_LOG_FILE_MAX_SIZE=100
 ```
 
 **Code:**
+
 ```rust
 LithairServer::new()
     .with_log_level("debug")
@@ -414,19 +436,20 @@ LithairServer::new()
 
 Data persistence and storage settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `data_dir` | `"./data"` |  | `LT_DATA_DIR` | `.with_data_dir(String)` |  | Base directory for data storage |
-| `snapshot_interval` | `1000` |  | `LT_SNAPSHOT_INTERVAL` | - |  | Number of events before creating snapshot |
-| `compaction_enabled` | `true` |  | `LT_COMPACTION_ENABLED` | - |  | Enable automatic log compaction |
-| `compaction_threshold` | `10000` |  | `LT_COMPACTION_THRESHOLD` | - |  | Events threshold for compaction |
-| `backup_enabled` | `false` |  | `LT_BACKUP_ENABLED` | `.with_backup(bool)` |  | Enable automatic backups |
-| `backup_interval` | `86400` |  | `LT_BACKUP_INTERVAL` | - |  | Backup interval in seconds (24h default) |
-| `backup_path` | `"./backups"` |  | `LT_BACKUP_PATH` | - |  | Backup directory path |
+| Variable               | Default       | Config File | Env Var                   | Code Builder             | Hot-Reload | Description                               |
+| ---------------------- | ------------- | ----------- | ------------------------- | ------------------------ | ---------- | ----------------------------------------- |
+| `data_dir`             | `"./data"`    |             | `LT_DATA_DIR`             | `.with_data_dir(String)` |            | Base directory for data storage           |
+| `snapshot_interval`    | `1000`        |             | `LT_SNAPSHOT_INTERVAL`    | -                        |            | Number of events before creating snapshot |
+| `compaction_enabled`   | `true`        |             | `LT_COMPACTION_ENABLED`   | -                        |            | Enable automatic log compaction           |
+| `compaction_threshold` | `10000`       |             | `LT_COMPACTION_THRESHOLD` | -                        |            | Events threshold for compaction           |
+| `backup_enabled`       | `false`       |             | `LT_BACKUP_ENABLED`       | `.with_backup(bool)`     |            | Enable automatic backups                  |
+| `backup_interval`      | `86400`       |             | `LT_BACKUP_INTERVAL`      | -                        |            | Backup interval in seconds (24h default)  |
+| `backup_path`          | `"./backups"` |             | `LT_BACKUP_PATH`          | -                        |            | Backup directory path                     |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [storage]
 data_dir = "./data"
@@ -439,6 +462,7 @@ backup_path = "./backups"
 ```
 
 **Environment:**
+
 ```bash
 LT_DATA_DIR=./data
 LT_SNAPSHOT_INTERVAL=1000
@@ -450,6 +474,7 @@ LT_BACKUP_PATH=./backups
 ```
 
 **Code:**
+
 ```rust
 LithairServer::new()
     .with_data_dir("./data")
@@ -462,18 +487,19 @@ LithairServer::new()
 
 Performance tuning and optimization settings.
 
-| Variable | Default | Config File | Env Var | Code Builder | Hot-Reload | Description |
-|----------|---------|-------------|---------|--------------|------------|-------------|
-| `cache_enabled` | `true` |  | `LT_CACHE_ENABLED` | `.with_cache(bool)` |  | Enable in-memory caching |
-| `cache_size` | `1000` |  | `LT_CACHE_SIZE` | - |  | Maximum number of cached items |
-| `cache_ttl` | `300` |  | `LT_CACHE_TTL` | - |  | Cache TTL in seconds (5 min default) |
-| `connection_pool_size` | `10` |  | `LT_POOL_SIZE` | - |  | Connection pool size |
-| `batch_size` | `100` |  | `LT_BATCH_SIZE` | - |  | Default batch size for operations |
-| `compression_enabled` | `false` |  | `LT_COMPRESSION_ENABLED` | - |  | Enable response compression |
+| Variable               | Default | Config File | Env Var                  | Code Builder        | Hot-Reload | Description                          |
+| ---------------------- | ------- | ----------- | ------------------------ | ------------------- | ---------- | ------------------------------------ |
+| `cache_enabled`        | `true`  |             | `LT_CACHE_ENABLED`       | `.with_cache(bool)` |            | Enable in-memory caching             |
+| `cache_size`           | `1000`  |             | `LT_CACHE_SIZE`          | -                   |            | Maximum number of cached items       |
+| `cache_ttl`            | `300`   |             | `LT_CACHE_TTL`           | -                   |            | Cache TTL in seconds (5 min default) |
+| `connection_pool_size` | `10`    |             | `LT_POOL_SIZE`           | -                   |            | Connection pool size                 |
+| `batch_size`           | `100`   |             | `LT_BATCH_SIZE`          | -                   |            | Default batch size for operations    |
+| `compression_enabled`  | `false` |             | `LT_COMPRESSION_ENABLED` | -                   |            | Enable response compression          |
 
 ### Example
 
 **config.toml:**
+
 ```toml
 [performance]
 cache_enabled = true
@@ -485,6 +511,7 @@ compression_enabled = false
 ```
 
 **Environment:**
+
 ```bash
 LT_CACHE_ENABLED=true
 LT_CACHE_SIZE=1000
@@ -495,6 +522,7 @@ LT_COMPRESSION_ENABLED=false
 ```
 
 **Code:**
+
 ```rust
 LithairServer::new()
     .with_cache(true)
@@ -504,7 +532,7 @@ LithairServer::new()
 
 ## Hot-Reload Support
 
-###  Hot-Reloadable (No Restart Required)
+### Hot-Reloadable (No Restart Required)
 
 These settings can be changed at runtime via the admin API:
 
@@ -517,7 +545,7 @@ These settings can be changed at runtime via the admin API:
 - **Storage:** `snapshot_interval`, `compaction_*`, `backup_*` settings
 - **Performance:** All settings
 
-###  Requires Restart
+### Requires Restart
 
 These settings require a server restart to take effect:
 
@@ -559,6 +587,7 @@ Content-Type: application/json
 ## Complete Example
 
 **config.toml:**
+
 ```toml
 [server]
 port = 8080
@@ -610,28 +639,70 @@ cache_size = 1000
 ```
 
 **Code:**
+
 ```rust
-use lithair_core::server::LithairServer;
+use lithair_core::LithairServer;
 use lithair_core::session::{SessionManager, MemorySessionStore};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     LithairServer::new()
         // Config loaded from file + env vars automatically
-        
+
         // Override specific settings
         .with_port(8080)
         .with_sessions(SessionManager::new(MemorySessionStore::new()))
         .with_admin_panel(true)
-        
+
         // Add models
         .with_model::<Product>("./data/products.events", "/api/products")
         .with_model::<User>("./data/users.events", "/api/users")
-        
+
         // Start server
         .serve()
         .await
 }
+```
+
+---
+
+## Frontend Configuration
+
+Static asset serving settings.
+
+| Variable     | Default | Config File | Env Var                  | Code Builder             | Hot-Reload | Description                          |
+| ------------ | ------- | ----------- | ------------------------ | ------------------------ | ---------- | ------------------------------------ |
+| `enabled`    | `false` |             | `LT_FRONTEND_ENABLED`    | `.with_frontend(String)` |            | Enable frontend asset serving        |
+| `static_dir` | `None`  |             | `LT_FRONTEND_STATIC_DIR` | `.with_frontend(String)` |            | Directory containing static assets   |
+| `watch`      | `false` |             | `LT_FRONTEND_WATCH`      | -                        |            | Watch frontend directory for changes |
+| `compress`   | `true`  |             | `LT_FRONTEND_COMPRESS`   | -                        |            | Compress frontend assets             |
+
+### Example
+
+**config.toml:**
+
+```toml
+[frontend]
+enabled = true
+static_dir = "./frontend/dist"
+watch = false
+compress = true
+```
+
+**Environment:**
+
+```bash
+LT_FRONTEND_ENABLED=true
+LT_FRONTEND_STATIC_DIR=./frontend/dist
+LT_FRONTEND_WATCH=false
+LT_FRONTEND_COMPRESS=true
+```
+
+**Code:**
+
+```rust
+LithairServer::new()
+    .with_frontend("./frontend/dist")
 ```
 
 ---

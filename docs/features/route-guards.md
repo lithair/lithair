@@ -3,6 +3,7 @@
 ## 🎯 Philosophy
 
 Following Lithair's **90% Rule**, route guards provide declarative protection for common scenarios:
+
 - ✅ Authentication checks
 - ✅ Role-based access
 - ✅ Rate limiting
@@ -44,6 +45,7 @@ RouteGuard::RequireAuth {
 ```
 
 **Use cases:**
+
 - Admin panels
 - User dashboards
 - Protected content areas
@@ -60,6 +62,7 @@ RouteGuard::RequireRole {
 ```
 
 **Use cases:**
+
 - Admin-only sections
 - Manager dashboards
 - Role-specific features
@@ -76,6 +79,7 @@ RouteGuard::RateLimit {
 ```
 
 **Use cases:**
+
 - API endpoints
 - Login forms
 - Resource-intensive operations
@@ -104,25 +108,25 @@ RouteGuard::Custom(Arc::new(|req| {
 ```rust
 LithairServer::new()
     .with_rbac_config(rbac_config)
-    
+
     // Protect admin panel
     .with_route_guard("/admin/*", RouteGuard::RequireAuth {
         redirect_to: Some("/admin/login/".to_string()),
         exclude: vec!["/admin/login/".to_string()],
     })
-    
+
     // Protect API with rate limiting
     .with_route_guard("/api/*", RouteGuard::RateLimit {
         max_requests: 100,
         window_secs: 60,
     })
-    
+
     // Protect settings with role check
     .with_route_guard("/settings/*", RouteGuard::RequireRole {
         roles: vec!["Admin".to_string()],
         redirect_to: Some("/unauthorized".to_string()),
     })
-    
+
     .serve()
     .await?;
 ```
@@ -169,7 +173,7 @@ LithairServer::new()
 async fn admin_guard(req: Request) -> Result<Response> {
     let token = extract_token(&req)?;
     let session_store = get_session_store()?;
-    
+
     if let Some(session) = session_store.get(&token).await? {
         if session.is_valid() {
             Ok(next_handler(req).await?)
@@ -219,13 +223,15 @@ Request → Match Guards → Validate Session → Allow/Deny
 ## 📚 Examples
 
 See working examples in:
-- `examples/blog_server/` - Admin panel protection
-- `examples/ecommerce/` - Multi-level guards
+
+- `examples/04-blog/` - Admin panel protection
+- `examples/05-ecommerce/` - Multi-level guards
 - `Lithair-Blog/` - Production usage
 
 ## 💡 Philosophy Recap
 
 **The 90% Rule in action:**
+
 - 🎯 **90% of routes** need simple auth checks → `RouteGuard::RequireAuth`
 - 🔧 **10% need custom logic** → `RouteGuard::Custom`
 - ✅ **Zero boilerplate** for common cases

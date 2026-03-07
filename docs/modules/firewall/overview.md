@@ -23,13 +23,13 @@ Examples:
 
 ```bash
 # Deny localhost entirely
-LT_FW_ENABLE=1 LT_FW_IP_DENY=127.0.0.1 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
+LT_FW_ENABLE=1 LT_FW_IP_DENY=127.0.0.1 cargo run -p replication --bin replication-declarative-node -- --node-id 1 --port 8080
 
 # Only allow a single IP
-LT_FW_ENABLE=1 LT_FW_IP_ALLOW=192.168.1.50 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
+LT_FW_ENABLE=1 LT_FW_IP_ALLOW=192.168.1.50 cargo run -p replication --bin replication-declarative-node -- --node-id 1 --port 8080
 
 # Rate limit globally and per IP
-LT_FW_ENABLE=1 LT_FW_RATE_GLOBAL_QPS=500 LT_FW_RATE_PERIP_QPS=50 cargo run -p raft_replication_demo --bin pure_declarative_node -- --node-id 1 --port 8080
+LT_FW_ENABLE=1 LT_FW_RATE_GLOBAL_QPS=500 LT_FW_RATE_PERIP_QPS=50 cargo run -p replication --bin replication-declarative-node -- --node-id 1 --port 8080
 ```
 
 ## Error semantics
@@ -39,19 +39,19 @@ LT_FW_ENABLE=1 LT_FW_RATE_GLOBAL_QPS=500 LT_FW_RATE_PERIP_QPS=50 cargo run -p ra
 - Error body (JSON):
 
 ```json
-{"error":"forbidden","message":"IP not in allow list"}
+{ "error": "forbidden", "message": "IP not in allow list" }
 ```
 
 or
 
 ```json
-{"error":"rate_limited","message":"Global QPS limit exceeded"}
+{ "error": "rate_limited", "message": "Global QPS limit exceeded" }
 ```
 
 Per-IP overflow returns:
 
 ```json
-{"error":"ip_rate_limited","message":"Per-IP QPS limit exceeded"}
+{ "error": "ip_rate_limited", "message": "Per-IP QPS limit exceeded" }
 ```
 
 ## Notes
@@ -101,13 +101,13 @@ Route scoping semantics:
 ## Example binaries and scripts
 
 - Fully declarative example (model attribute only):
-  - Binary: `examples/raft_replication_demo/http_firewall_declarative.rs`
-  - Run: `cargo run -p raft_replication_demo --bin http_firewall_declarative -- --port 8081`
-  - Script: `examples/http_firewall_demo/run_declarative_demo.sh`
+  - Binary: `examples/09-replication/http_firewall_declarative.rs`
+  - Run: `cargo run -p replication --bin replication-firewall-declarative -- --port 8081`
+  - Script: `examples/advanced/http-firewall/run_declarative_demo.sh`
 
 - CLI-configurable example (flags override attribute/env):
-  - Binary: `examples/raft_replication_demo/http_firewall_node.rs`
-  - Script: `examples/http_firewall_demo/run_demo.sh`
+  - Binary: `examples/09-replication/http_firewall_node.rs`
+  - Script: `examples/advanced/http-firewall/run_demo.sh`
   - Use `--fw-protected-prefixes "/api/products"` and `--fw-exempt-prefixes "/status,/health"` for route-scoped protection
 
 ## What you can run now (Quickstart)
@@ -115,13 +115,13 @@ Route scoping semantics:
 Fully declarative (model attribute only):
 
 ```bash
-bash examples/http_firewall_demo/run_declarative_demo.sh
+bash examples/advanced/http-firewall/run_declarative_demo.sh
 ```
 
 Or manual:
 
 ```bash
-cargo run -p raft_replication_demo --bin http_firewall_declarative -- --port 8081
+cargo run -p replication --bin replication-firewall-declarative -- --port 8081
 curl http://127.0.0.1:8081/status
 curl http://127.0.0.1:8081/api/products
 ```
@@ -129,7 +129,7 @@ curl http://127.0.0.1:8081/api/products
 CLI-configurable demo (flags):
 
 ```bash
-bash examples/http_firewall_demo/run_demo.sh
+bash examples/advanced/http-firewall/run_demo.sh
 ```
 
 Demonstrates deny/allow and rate limiting with route scoping.

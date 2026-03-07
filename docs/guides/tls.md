@@ -30,10 +30,10 @@ You should see `strict-transport-security: max-age=31536000; includeSubDomains` 
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
+| Variable      | Description                                     |
+| ------------- | ----------------------------------------------- |
 | `LT_TLS_CERT` | Path to PEM-encoded certificate file (or chain) |
-| `LT_TLS_KEY` | Path to PEM-encoded private key file |
+| `LT_TLS_KEY`  | Path to PEM-encoded private key file            |
 
 Both variables must be set together. If neither is set, the server starts in plain HTTP mode.
 
@@ -103,14 +103,14 @@ If validation fails, the server exits with a descriptive error message.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `LT_TLS_KEY is missing` | Only cert is set | Set both `LT_TLS_CERT` and `LT_TLS_KEY` |
-| `TLS certificate file not found` | Wrong path | Check file path and permissions |
-| `Invalid TLS certificate/key pair` | Mismatched cert/key | Regenerate or use matching pair |
-| `curl: (60) SSL certificate problem` | Self-signed cert | Use `curl -k` or add cert to trust store |
+| Symptom                              | Cause               | Fix                                      |
+| ------------------------------------ | ------------------- | ---------------------------------------- |
+| `LT_TLS_KEY is missing`              | Only cert is set    | Set both `LT_TLS_CERT` and `LT_TLS_KEY`  |
+| `TLS certificate file not found`     | Wrong path          | Check file path and permissions          |
+| `Invalid TLS certificate/key pair`   | Mismatched cert/key | Regenerate or use matching pair          |
+| `curl: (60) SSL certificate problem` | Self-signed cert    | Use `curl -k` or add cert to trust store |
 
 ## See Also
 
-- `docs/reference/env-vars.md` for all environment variables
-- `docs/internal/HTTP_HARDENING.md` for security headers
+- `../reference/env-vars.md` for all environment variables
+- `../internal/HTTP_HARDENING.md` for security headers

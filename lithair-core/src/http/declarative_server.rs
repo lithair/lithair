@@ -551,6 +551,8 @@ where
             crate::http::init_access_log_buffer(self.access_log_capacity);
         }
 
+        crate::system::init_system_metrics();
+
         log::info!("Pure Lithair Declarative Server listening on http://127.0.0.1:{}", self.port);
 
         let listener = TcpListener::bind(addr).await?;
@@ -1152,11 +1154,7 @@ where
 
             // /observe/metrics - Prometheus metrics endpoint
             if uri == format!("{}/metrics", base) && method == Method::GET && cfg.metrics_enabled {
-                // Note: returns placeholder metrics; full Prometheus instrumentation is not yet implemented
-                let metrics_body = format!(
-                    "# HELP lithair_requests_total Total HTTP requests\n# TYPE lithair_requests_total counter\nlithair_requests_total{{model=\"{}\"}} 0\n",
-                    model_name
-                );
+                let metrics_body = crate::system::prometheus_metrics(model_name);
                 let resp = finalize_response_async(
                     Response::builder()
                         .status(StatusCode::OK)

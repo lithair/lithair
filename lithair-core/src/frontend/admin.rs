@@ -196,3 +196,68 @@ impl StaticAsset {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::StatusCode;
+
+    #[tokio::test]
+    async fn upload_and_list_assets_reports_expected_counts() {
+        let state = Arc::new(RwLock::new(FrontendState::default()));
+        let handler = AssetAdminHandler::new(state);
+
+        let upload = handler
+            .upload_asset_to_host(
+                "docs",
+                "/index.html".to_string(),
+                b"<h1>docs</h1>".to_vec(),
+                Some("v1".to_string()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(upload.status(), StatusCode::Ok);
+
+        let listed = handler.list_assets().await.unwrap();
+        let body = std::str::from_utf8(listed.body_bytes()).unwrap();
+
+        assert_eq!(listed.status(), StatusCode::Ok);
+        assert!(body.contains("\"total_count\":1"));
+        assert!(body.contains("\"virtual_host\":\"docs\""));
+    }
+
+    #[tokio::test]
+    async fn delete_asset_updates_stats() {
+        let state = Arc::new(RwLock::new(FrontendState::default()));
+        let handler = AssetAdminHandler::new(state.clone());
+
+        handler
+            .upload_asset_to_host(
+                "default",
+                "/app.js".to_string(),
+                b"console.log('ok')".to_vec(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let asset_id = {
+            let guard = state.read().await;
+            *guard
+                .virtual_hosts
+                .get("default")
+                .and_then(|vh| vh.assets.keys().next())
+                .expect("uploaded asset should exist")
+        };
+
+        let deleted = handler.delete_asset(asset_id).await.unwrap();
+        assert_eq!(deleted.status(), StatusCode::Ok);
+
+        let stats = handler.get_stats().await.unwrap();
+        let body = std::str::from_utf8(stats.body_bytes()).unwrap();
+
+        assert_eq!(stats.status(), StatusCode::Ok);
+        assert!(body.contains("\"total_assets\":0"));
+    }
+}

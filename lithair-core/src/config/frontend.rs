@@ -1,6 +1,8 @@
 //! Frontend configuration for static asset serving
 
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
+use std::env;
 
 /// Frontend configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +31,29 @@ impl FrontendConfig {
         Self { enabled: true, ..Default::default() }
     }
 
+    pub fn merge(&mut self, other: Self) {
+        *self = other;
+    }
+
+    pub fn apply_env_vars(&mut self) {
+        if let Ok(enabled) = env::var("LT_FRONTEND_ENABLED") {
+            self.enabled = enabled.parse().unwrap_or(false);
+        }
+
+        if let Ok(static_dir) = env::var("LT_FRONTEND_STATIC_DIR") {
+            self.static_dir = Some(static_dir);
+            self.enabled = true;
+        }
+
+        if let Ok(watch) = env::var("LT_FRONTEND_WATCH") {
+            self.watch = watch.parse().unwrap_or(false);
+        }
+
+        if let Ok(compress) = env::var("LT_FRONTEND_COMPRESS") {
+            self.compress = compress.parse().unwrap_or(true);
+        }
+    }
+
     pub fn with_static_dir(mut self, dir: impl Into<String>) -> Self {
         self.static_dir = Some(dir.into());
         self.enabled = true;
@@ -38,5 +63,16 @@ impl FrontendConfig {
     pub fn with_hot_reload(mut self) -> Self {
         self.watch = true;
         self
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.enabled {
+            match self.static_dir.as_deref() {
+                Some(dir) if !dir.trim().is_empty() => {}
+                _ => bail!("Frontend is enabled but no static_dir is configured"),
+            }
+        }
+
+        Ok(())
     }
 }
