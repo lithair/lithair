@@ -42,39 +42,42 @@ cargo run --bin playground_node -- --node-id 2 --port 8082 --peers 8080,8081
 ## Endpoints
 
 ### Playground API
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/_playground/cluster/status` | GET | Full cluster status |
-| `/_playground/benchmark/start` | POST | Start benchmark |
-| `/_playground/benchmark/status` | GET | Benchmark progress |
-| `/_playground/benchmark/stop` | POST | Stop benchmark |
-| `/_playground/events/replication` | GET | SSE replication events |
-| `/_playground/events/cluster` | GET | SSE cluster events |
-| `/_playground/events/benchmark` | GET | SSE benchmark events |
+
+| Endpoint                          | Method | Description            |
+| --------------------------------- | ------ | ---------------------- |
+| `/_playground/cluster/status`     | GET    | Full cluster status    |
+| `/_playground/benchmark/start`    | POST   | Start benchmark        |
+| `/_playground/benchmark/status`   | GET    | Benchmark progress     |
+| `/_playground/benchmark/stop`     | POST   | Stop benchmark         |
+| `/_playground/events/replication` | GET    | SSE replication events |
+| `/_playground/events/cluster`     | GET    | SSE cluster events     |
+| `/_playground/events/benchmark`   | GET    | SSE benchmark events   |
 
 ### Data API
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/items` | GET | List all items |
-| `/api/items` | POST | Create item (replicated) |
-| `/api/items/:id` | GET | Get item |
-| `/api/items/:id` | PUT | Update item (replicated) |
+
+| Endpoint         | Method | Description              |
+| ---------------- | ------ | ------------------------ |
+| `/api/items`     | GET    | List all items           |
+| `/api/items`     | POST   | Create item (replicated) |
+| `/api/items/:id` | GET    | Get item                 |
+| `/api/items/:id` | PUT    | Update item (replicated) |
 | `/api/items/:id` | DELETE | Delete item (replicated) |
 
 ### Admin
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/_admin` | GET | Admin UI dashboard |
-| `/_raft/health` | GET | Raft cluster health |
+
+| Endpoint        | Method | Description         |
+| --------------- | ------ | ------------------- |
+| `/_admin`       | GET    | Admin UI dashboard  |
+| `/_raft/health` | GET    | Raft cluster health |
 
 ## Benchmark Configuration
 
 ```json
 {
-  "benchmark_type": "write",  // "write", "read", or "mixed"
-  "concurrency": 10,          // Number of concurrent workers
-  "duration_secs": 10,        // Test duration
-  "payload_size": 256         // Payload size in bytes
+  "benchmark_type": "write", // "write", "read", or "mixed"
+  "concurrency": 10, // Number of concurrent workers
+  "duration_secs": 10, // Test duration
+  "payload_size": 256 // Payload size in bytes
 }
 ```
 
@@ -107,15 +110,15 @@ playground/
 
 ## Lithair Features Demonstrated
 
-| Feature | Demo |
-|---------|------|
-| Raft Consensus | Leader election, automatic failover |
-| Log Replication | Live commit index, term tracking |
-| SCC2 Engine | Lock-free concurrent operations |
-| DeclarativeModel | Automatic CRUD generation |
-| Event Sourcing | WAL persistence |
-| Admin UI | Data browser, cluster monitoring |
-| HTTP Server | Hyper-based routing |
+| Feature          | Demo                                |
+| ---------------- | ----------------------------------- |
+| Raft Consensus   | Leader election, automatic failover |
+| Log Replication  | Live commit index, term tracking    |
+| SCC2 Engine      | Lock-free concurrent operations     |
+| DeclarativeModel | Automatic CRUD generation           |
+| Event Sourcing   | WAL persistence                     |
+| Admin UI         | Data browser, cluster monitoring    |
+| HTTP Server      | Hyper-based routing                 |
 
 ## Development
 
@@ -133,5 +136,5 @@ cargo test -p playground
 ## See Also
 
 - [PLAN.md](./PLAN.md) - Detailed implementation plan
-- [10-blog-distributed](../10-blog-distributed/) - Blog with replication
-- [scc2_server_demo](../scc2_server_demo/) - Pure performance demo
+- [10-blog-distributed](../../10-blog-distributed/) - Blog with replication
+- [01-hello-world](../../01-hello-world/) - Minimal server example

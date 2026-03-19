@@ -19,7 +19,7 @@ It validates:
 From repo root:
 
 ```bash
-bash examples/http_firewall_demo/run_demo.sh
+bash examples/advanced/http-firewall/run_demo.sh
 ```
 
 The script will:
@@ -34,7 +34,7 @@ The script will:
   - Global QPS limit: flood → some 429
   - Per-IP QPS limit: flood → some 429
 
-Logs are written to `examples/http_firewall_demo/node_demo.log`.
+Logs are written to `examples/advanced/http-firewall/node_demo.log`.
 
 ## Environment variables
 

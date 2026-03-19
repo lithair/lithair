@@ -71,7 +71,8 @@ let fw_cfg = self
 
 ## Demo and CLI
 
-The example demo (`examples/http_firewall_demo/run_demo.sh`) uses CLI flags to make scenarios explicit and testable:
+The example demo (`examples/advanced/http-firewall/run_demo.sh`) uses CLI flags
+to make scenarios explicit and testable:
 
 - `--fw-enable true|false`
 - `--fw-allow <CSV>`
@@ -106,13 +107,13 @@ struct MyModel { ... }
 Fully declarative (model attribute only):
 
 ```bash
-bash examples/http_firewall_demo/run_declarative_demo.sh
+bash examples/advanced/http-firewall/run_declarative_demo.sh
 ```
 
 Or manual:
 
 ```bash
-cargo run -p raft_replication_demo --bin http_firewall_declarative -- --port 8081
+cargo run -p replication --bin replication-firewall-declarative -- --port 8081
 curl http://127.0.0.1:8081/status
 curl http://127.0.0.1:8081/api/products
 ```
@@ -120,7 +121,7 @@ curl http://127.0.0.1:8081/api/products
 CLI-configurable demo (flags):
 
 ```bash
-bash examples/http_firewall_demo/run_demo.sh
+bash examples/advanced/http-firewall/run_demo.sh
 ```
 
 Demonstrates deny/allow and rate limiting with route scoping.

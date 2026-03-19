@@ -43,7 +43,7 @@ Lithair implements consensus communication using **Pure Hyper** - chosen for **m
 Lithair distributed consensus uses **only essential components**:
 
 1. **SCC2 Engine** - Lock-free concurrent operations
-2. **Pure Hyper HTTP** - Maximum implementation freedom  
+2. **Pure Hyper HTTP** - Maximum implementation freedom
 3. **Event Sourcing** - Home-grown persistence
 4. **OpenRaft** - Battle-tested Raft implementation
 5. **Declarative Models** - Data-first configuration
@@ -59,19 +59,19 @@ Lithair distributed consensus uses **only essential components**:
 pub struct DistributedUser {
     #[db(primary_key)]
     #[lifecycle(immutable)]               // ← Never changes after creation
-    #[http(expose)]                      // ← Available via HTTP API  
+    #[http(expose)]                      // ← Available via HTTP API
     #[persistence(replicate, track_history)] // ← Distributed + audit trail
     pub id: Uuid,
-    
+
     #[db(unique)]                        // ← Database constraint
     #[http(expose)]                      // ← Exposed via API
     #[persistence(replicate, track_history)] // ← Replicated with full history
     pub username: String,
-    
+
     #[http(expose)]
     #[persistence(replicate)]            // ← Replicated without history
     pub email: String,
-    
+
     #[lifecycle(immutable)]              // ← Audit-friendly timestamp
     #[http(expose)]
     pub created_at: DateTime<Utc>,
@@ -90,25 +90,26 @@ Lithair's HTTP stack is built **entirely on Pure Hyper** for maximum implementat
 // Lithair native HTTP routes for Raft consensus
 pub fn setup_raft_routes(&mut self) -> Result<Router<()>> {
     let mut router = Router::new();
-    
+
     // Raft consensus endpoints (Pure Hyper handlers)
     let append_entries_handler = |_req: &HttpRequest, _params: &PathParams, _state: &()| {
         HttpResponse::new(StatusCode::Ok)
             .header("Content-Type", "application/json")
             .body(consensus_response.as_bytes().to_vec())
     };
-    
+
     router = router.post("/raft/append-entries", append_entries_handler);
     router = router.post("/raft/vote", vote_handler);
     router = router.post("/raft/install-snapshot", snapshot_handler);
-    
+
     Ok(router)
 }
 ```
 
 **Benefits:**
+
 - **Pure Implementation**: No heavyweight frameworks like Axum
-- **Maximum Freedom**: Direct Hyper control 
+- **Maximum Freedom**: Direct Hyper control
 - **Deployment Freedom**: Single binary with everything embedded
 - **Resource Efficiency**: Minimal memory footprint
 
@@ -176,11 +177,11 @@ pub struct DistributedOrder {
     #[lifecycle(immutable)]
     #[persistence(replicate, track_history)]
     pub id: Uuid,
-    
+
     #[persistence(replicate, track_history)]
     #[validation(min = 0.01)]
     pub amount: f64,
-    
+
     #[persistence(replicate)]
     pub status: OrderStatus,
 }
@@ -195,14 +196,14 @@ impl RaftNode {
     pub async fn new(node_id: u64, cluster: HashMap<u64, String>) -> Result<Self> {
         // Initialize OpenRaft with Lithair integration
         let raft = Raft::new(node_id, config, network, log_store, state_machine).await?;
-        
+
         // Setup Pure Hyper HTTP server with Raft routes
         let router = self.setup_raft_routes()?;
         let server = HttpServer::new().with_router(router);
-        
+
         Ok(Self { raft, http_server: server, orders: Arc::new(RwLock::new(HashMap::new())) })
     }
-    
+
     pub async fn distributed_write(&self, order: DistributedOrder) -> Result<()> {
         // Automatic consensus through declarative attributes
         let write_request = ClientRequest {
@@ -210,7 +211,7 @@ impl RaftNode {
             serial: rand::random(),
             status: serde_json::to_string(&order)?,
         };
-        
+
         self.raft.client_write(write_request).await?;
         Ok(())
     }
@@ -227,7 +228,7 @@ cargo run --bin lithair_node -- \
     --cluster "2=127.0.0.1:8081,3=127.0.0.1:8082" \
     --init
 
-# Node 2 (Follower)  
+# Node 2 (Follower)
 cargo run --bin lithair_node -- \
     --node-id 2 \
     --addr 127.0.0.1:8081 \
@@ -247,7 +248,7 @@ cargo run --bin lithair_node -- \
 ### **Consensus Latency**
 
 - **Leader Election**: ~200ms for 3-node cluster
-- **Single Write**: <10ms consensus latency  
+- **Single Write**: <10ms consensus latency
 - **Batch Writes**: 1000+ operations/second
 - **Network Overhead**: Minimal (Pure Hyper efficiency)
 
@@ -271,6 +272,7 @@ ENTRYPOINT ["/lithair_node"]
 ```
 
 **Benefits:**
+
 - **5MB Binary**: Complete distributed database + HTTP server
 - **No Dependencies**: Runs on any Linux without runtime requirements
 - **Single Process**: No orchestration complexity
@@ -285,7 +287,7 @@ ENTRYPOINT ["/lithair_node"]
 services:
   web1: { image: nginx, depends_on: [app1] }
   app1: { image: node:18, depends_on: [db, redis] }
-  web2: { image: nginx, depends_on: [app2] }  
+  web2: { image: nginx, depends_on: [app2] }
   app2: { image: node:18, depends_on: [db, redis] }
   db: { image: postgres:15, volumes: [...] }
   redis: { image: redis:7 }
@@ -312,7 +314,7 @@ services:
 ### **Planned Enhancements**
 
 1. **Dynamic Membership** - Add/remove nodes without downtime
-2. **Snapshot Optimization** - Advanced state transfer mechanisms  
+2. **Snapshot Optimization** - Advanced state transfer mechanisms
 3. **Cross-Datacenter** - WAN-optimized consensus protocols
 4. **Monitoring Integration** - Built-in Prometheus metrics
 5. **Backup Strategies** - Automated state backup/restore
@@ -329,8 +331,9 @@ services:
 ## 📚 **Integration Examples**
 
 For complete implementation examples, see:
-- [`examples/raft_replication_demo/`](../examples/raft_replication_demo/) - Basic multi-node setup
-- [`examples/distributed_ecommerce/`](../examples/distributed_ecommerce/) - Production-ready e-commerce
-- [`examples/iot_sensor_cluster/`](../examples/iot_sensor_cluster/) - Edge deployment patterns
+
+- [`examples/09-replication/`](../../../examples/09-replication/) - Basic multi-node setup
+- [`examples/10-blog-distributed/`](../../../examples/10-blog-distributed/) - Full application with replication
+- [`examples/advanced/stress-test/`](../../../examples/advanced/stress-test/) - Validation and stress scenarios
 
 **Key Insight**: Lithair's **data-first declarative approach** combined with **Pure Hyper HTTP** and **OpenRaft consensus** delivers the simplicity of single-node development with the reliability of distributed systems.

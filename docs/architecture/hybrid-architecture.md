@@ -36,12 +36,12 @@ This document analyzes the feasibility and implications of a hybrid Lithair arch
 
 ### 1. Performance Overhead
 
-| Operation | Native Lithair | Hybrid Lithair | Overhead Factor |
-|-----------|------------------|------------------|-----------------|
-| **Simple Write** | 100μs | 2-11ms | **20-110x slower** |
-| **Bulk Insert** | 10ms | 100-500ms | **10-50x slower** |
-| **Read Query** | 10ns | 0.1-1ms | **10,000-100,000x slower** |
-| **Complex Query** | 100ns | 5-20ms | **50,000-200,000x slower** |
+| Operation         | Native Lithair | Hybrid Lithair | Overhead Factor            |
+| ----------------- | -------------- | -------------- | -------------------------- |
+| **Simple Write**  | 100μs          | 2-11ms         | **20-110x slower**         |
+| **Bulk Insert**   | 10ms           | 100-500ms      | **10-50x slower**          |
+| **Read Query**    | 10ns           | 0.1-1ms        | **10,000-100,000x slower** |
+| **Complex Query** | 100ns          | 5-20ms         | **50,000-200,000x slower** |
 
 ### 2. Network Latency Impact
 
@@ -59,10 +59,10 @@ let product = db.query("SELECT * FROM products WHERE id = ?", id).await; // ~0.1
 
 ### 3. Serialization Overhead
 
-| Architecture | Serialization Steps | CPU Impact |
-|--------------|-------------------|------------|
-| **Native** | Struct → JSON (1x) | Baseline |
-| **Hybrid** | Struct → Lithair → SQL → Network (3x) | **+200-300% CPU** |
+| Architecture | Serialization Steps                   | CPU Impact        |
+| ------------ | ------------------------------------- | ----------------- |
+| **Native**   | Struct → JSON (1x)                    | Baseline          |
+| **Hybrid**   | Struct → Lithair → SQL → Network (3x) | **+200-300% CPU** |
 
 ### 4. Type Mapping Overhead
 
@@ -77,7 +77,7 @@ struct Product {
 // Hybrid: Type mapping required
 struct Product {
     id: u32,           // Maps to SQL INTEGER
-    price: f64,        // Maps to SQL DECIMAL(10,2) 
+    price: f64,        // Maps to SQL DECIMAL(10,2)
     created_at: u64,   // Maps to SQL TIMESTAMP
 }
 // ⚠️ Back to ORM impedance mismatch problems!
@@ -93,6 +93,7 @@ struct Product {
 ```
 
 **Requirements:**
+
 - 1 binary file
 - 0 configuration files
 - 0 external services
@@ -109,6 +110,7 @@ docker-compose up -d postgres
 ```
 
 **Requirements:**
+
 - 1 application binary
 - 1 PostgreSQL instance
 - Database configuration
@@ -123,25 +125,25 @@ docker-compose up -d postgres
 
 ### Time to Market Impact
 
-| Phase | Native Lithair | Hybrid Lithair | Time Difference |
-|-------|------------------|------------------|-----------------|
-| **Setup** | 5 minutes | 2-4 hours | **24-48x longer** |
-| **Schema Design** | Define structs | Structs + SQL tables | **3x longer** |
-| **Query Development** | Native Rust | Rust + SQL | **2x longer** |
-| **Testing** | Unit tests only | Unit + integration + DB tests | **3x longer** |
-| **Deployment** | Single binary | Multi-service orchestration | **5x longer** |
+| Phase                 | Native Lithair  | Hybrid Lithair                | Time Difference   |
+| --------------------- | --------------- | ----------------------------- | ----------------- |
+| **Setup**             | 5 minutes       | 2-4 hours                     | **24-48x longer** |
+| **Schema Design**     | Define structs  | Structs + SQL tables          | **3x longer**     |
+| **Query Development** | Native Rust     | Rust + SQL                    | **2x longer**     |
+| **Testing**           | Unit tests only | Unit + integration + DB tests | **3x longer**     |
+| **Deployment**        | Single binary   | Multi-service orchestration   | **5x longer**     |
 
 **Total development time: 2-3x longer for hybrid approach**
 
 ### Maintenance Burden
 
-| Aspect | Native | Hybrid | Maintenance Factor |
-|--------|--------|--------|-------------------|
-| **Dependencies** | 0 external | PostgreSQL + drivers | **+∞** |
-| **Monitoring** | Application only | App + DB + network | **+300%** |
-| **Backup** | File copy | Database backup strategy | **+500%** |
-| **Scaling** | Horizontal (Raft) | Vertical (DB bottleneck) | **-50% scalability** |
-| **Security** | Single surface | App + DB + network | **+200% attack surface** |
+| Aspect           | Native            | Hybrid                   | Maintenance Factor       |
+| ---------------- | ----------------- | ------------------------ | ------------------------ |
+| **Dependencies** | 0 external        | PostgreSQL + drivers     | **+∞**                   |
+| **Monitoring**   | Application only  | App + DB + network       | **+300%**                |
+| **Backup**       | File copy         | Database backup strategy | **+500%**                |
+| **Scaling**      | Horizontal (Raft) | Vertical (DB bottleneck) | **-50% scalability**     |
+| **Security**     | Single surface    | App + DB + network       | **+200% attack surface** |
 
 ## 🚫 Loss of Core Value Propositions
 
@@ -172,7 +174,7 @@ let audit_trail = engine.get_events(); // Complete history
 
 // Hybrid: Manual audit implementation
 // Need triggers, audit tables, complex queries
-CREATE TRIGGER audit_products_trigger 
+CREATE TRIGGER audit_products_trigger
 AFTER INSERT OR UPDATE OR DELETE ON products
 FOR EACH ROW EXECUTE FUNCTION audit_products();
 ```
@@ -229,32 +231,33 @@ if let Some(bridge) = &config.external_bridge {
 
 ## 🎯 Conclusion and Recommendations
 
-### ❌ Hybrid Architecture: Not Recommended
+### ⚠️ Hybrid Architecture: Usually a Trade-off
 
 **Reasons:**
-1. **Performance degradation**: 20-100,000x slower operations
-2. **Complexity explosion**: +500% operational overhead
-3. **Value proposition loss**: Return to ORM problems
-4. **Development slowdown**: 2-3x longer time to market
+
+1. **Potential performance degradation**: extra coordination, serialization, or query-layer overhead
+2. **Higher operational complexity**: more moving parts to deploy and maintain
+3. **Value dilution**: some Lithair advantages matter less once more layers return
+4. **Development slowdown**: integration work can lengthen delivery time
 5. **Maintenance burden**: Multiple services to manage
 
 ### ✅ Recommended Approach
 
-1. **Keep Lithair core pure** for maximum performance and simplicity
+1. **Keep Lithair core focused** when performance and simplicity are the main goals
 2. **Implement optional event bridges** for integration needs
 3. **Focus on native advantages**: Developer experience, performance, audit trail
 4. **Provide migration tools** for legacy system integration
 
 ### Strategic Insight
 
-Lithair's revolutionary value comes from **eliminating layers**, not adding them. A hybrid architecture would:
+Lithair's value is strongest when it can remove layers rather than add them. A hybrid architecture can:
 
-- Destroy the performance advantage
-- Eliminate the developer experience benefits
-- Reintroduce the complexity Lithair was designed to avoid
-- Contradict the "single binary" philosophy
+- Reduce part of the performance advantage
+- Reduce some of the developer experience benefits
+- Reintroduce complexity Lithair was designed to avoid where integration is not necessary
+- Move away from the default single-binary deployment model
 
-**The path forward is architectural purity with optional integration bridges, not hybrid complexity.**
+**A good default is to keep the core simple and add integration bridges only where they clearly pay for themselves.**
 
 ## 📚 Related Documentation
 

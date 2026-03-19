@@ -1,301 +1,184 @@
 # 🎯 Lithair Examples Philosophy
 
-**Date:** 2025-10-01  
-**Vision:** Clear separation between technical demos and complete applications
+**Date:** 2026-03-07
+**Vision:** clear public examples at the repo root, framework validation in tests,
+and advanced operational scenarios kept discoverable without mixing roles
 
 ---
 
-## 🧭 Core Principle
+## Core Principle
 
-> **Examples demonstrate features. Applications demonstrate possibilities.**
+> **Examples should teach runnable patterns. Tests should validate framework
+> behavior.**
 
-Lithair follows a clear distinction between:
-1. **Technical Examples** - Focused feature demonstrations (in this repo)
-2. **Complete Applications** - Production-ready apps (separate repos)
+Lithair now separates three concerns more explicitly:
 
----
+1. **Root examples** teach the framework progressively
+2. **Advanced examples** exercise operational and validation scenarios
+3. **Framework tests** verify internal behavior inside `lithair-core`
 
-## 📦 Technical Examples (This Repository)
-
-### Purpose
-Demonstrate **specific Lithair features** with minimal, focused code.
-
-### Characteristics
-- ✅ **Focused** - One feature per example
-- ✅ **Minimal** - 100-500 lines of code
-- ✅ **Educational** - Easy to understand in 5 minutes
-- ✅ **Self-contained** - No external dependencies beyond Lithair
-- ✅ **Living documentation** - Code that teaches
-
-### Current Examples
-
-#### 1. `scc2_server_demo/` ⭐ REFERENCE
-**Feature:** High-performance HTTP server with SCC2 engine
-
-**What it demonstrates:**
-- Hyper HTTP server integration
-- SCC2 lock-free operations
-- Stateless performance endpoints (`/perf/*`)
-- Gzip compression
-
-**Use case:** "How fast can Lithair serve HTTP requests?"
-
-**Run:**
-```bash
-task scc2:serve
-```
+This avoids mixing product-facing examples with internal experiments or
+test-like artifacts.
 
 ---
 
-#### 2. `http_firewall_demo/`
-**Feature:** Web application firewall
+## What Counts as a Public Example
 
-**What it demonstrates:**
-- IP filtering (allow/deny lists)
-- Rate limiting (global + per-IP)
-- Route-level protection
-- DDoS protection
+Public examples are runnable, documented, and part of the catalog users should
+discover first.
 
-**Use case:** "How do I protect my Lithair API?"
+### Progressive learning path
 
-**Run:**
-```bash
-cd examples/raft_replication_demo
-cargo run --bin http_firewall_declarative
-```
+The root `examples/` directory is the main learning surface:
 
----
+- `01-hello-world`
+- `02-static-site`
+- `03-rest-api`
+- `04-blog`
+- `05-ecommerce`
+- `06-auth-sessions`
+- `07-auth-rbac-mfa`
+- `08-schema-migration`
+- `09-replication`
+- `10-blog-distributed`
+- `11-react` to `15-astro`
 
-#### 3. `http_hardening_demo/`
-**Feature:** HTTP hardening & observability
+These examples are intentionally diverse. Some are minimal, some are fuller
+applications, but they all belong to the public catalog because they are useful
+entry points for users.
 
-**What it demonstrates:**
-- Prometheus metrics
-- Performance testing endpoints
-- Health checks (`/health`, `/ready`, `/info`)
-- Structured logging
+### Advanced operational scenarios
 
-**Use case:** "How do I monitor my Lithair application?"
+`examples/advanced/` contains scenarios that are still public, but more focused
+on validation, experimentation, or operational behavior:
 
-**Run:**
-```bash
-cd examples/raft_replication_demo
-cargo run --bin http_hardening_node
-```
+- `datatable`
+- `stress-test`
+- `consistency-test`
+- `playground`
+- `http-firewall`
+- `http-hardening`
 
----
-
-#### 4. `raft_consensus_demo/`
-**Feature:** Distributed consensus with Raft
-
-**What it demonstrates:**
-- Multi-node clustering
-- Leader election
-- Data replication
-- Consensus-based writes
-
-**Use case:** "How do I build a distributed Lithair cluster?"
-
-**Run:**
-```bash
-cd examples/raft_replication_demo
-cargo run --bin pure_declarative_node -- --node-id 1 --port 8001
-```
+They are examples too, but they are not the default learning path.
 
 ---
 
-## 🏗️ Complete Applications (Separate Repositories)
+## What Should Not Live as an Example
 
-### Purpose
-Demonstrate **real-world applications** built with Lithair.
+The repository should avoid treating these as public examples:
 
-### Characteristics
-- ✅ **Production-ready** - Full features, error handling, tests
-- ✅ **Complete stack** - Frontend + Backend + Database
-- ✅ **Documented** - User guides, API docs, deployment guides
-- ✅ **Maintained** - Active development, versioning, releases
-- ✅ **Realistic** - Solves real problems
+- internal debugging artifacts
+- coverage stand-ins for missing tests
+- fake demos that only exist to exercise framework internals
+- obsolete demo names kept only for historical reasons
 
-### Current Applications
-
-#### 1. Lithair-Blog ✅
-**Repository:** `../Lithair-Blog/`
-
-**What it is:**
-- Complete blog platform
-- Astro frontend (SSG)
-- Lithair backend with event sourcing
-- Memory-first architecture
-- RBAC with multiple roles
-
-**Features:**
-- Article management (CRUD)
-- User authentication
-- Comment system
-- Admin dashboard
-- Documentation site
-
-**Use case:** "I want to build a blog with Lithair"
-
-**Run:**
-```bash
-cd ../Lithair-Blog
-task blog:dev
-```
+That is why `lithair-core/examples` was removed during the cleanup. The files in
+that folder were closer to internal validation than to user-facing examples.
 
 ---
 
-#### 2. Lithair-ECommerce 🎯 (Planned)
-**Repository:** `Lithair-ECommerce/` (future)
+## Role of Tests
 
-**What it will be:**
-- Complete e-commerce platform
-- Product catalog
-- Shopping cart
-- Order management
-- Payment integration
-- Admin panel
+Tests are now the right place for framework validation.
 
-**Use case:** "I want to build an online store with Lithair"
+### In practice
 
----
+- frontend asset serving is covered by tests in `lithair-core`
+- admin asset handling is covered by tests in `lithair-core`
+- BDD coverage stays in `cucumber-tests/`
 
-#### 3. Lithair-Dashboard 🎯 (Planned)
-**Repository:** `Lithair-Dashboard/` (future)
-
-**What it will be:**
-- Real-time monitoring dashboard
-- Metrics visualization
-- Alert management
-- Multi-tenant support
-
-**Use case:** "I want to build a monitoring system with Lithair"
+This keeps examples focused on showing how to use Lithair, instead of silently
+carrying framework regression coverage.
 
 ---
 
-## 🎓 Learning Path
+## How to Choose the Right Example
 
-### For Beginners
-1. **Start with:** `scc2_server_demo` - Understand the basics
-2. **Then try:** `http_firewall_demo` - Add security
-3. **Finally:** `Lithair-Blog` - See a complete application
+There is no single “reference demo” anymore.
 
-### For Advanced Users
-1. **Study:** `raft_consensus_demo` - Understand distributed systems
-2. **Explore:** `http_hardening_demo` - Production observability
-3. **Build:** Your own application using Lithair
+Choose the example that matches your goal:
 
----
-
-## 📝 Guidelines for Contributors
-
-### Adding a Technical Example
-**Ask yourself:**
-- ✅ Does it demonstrate ONE specific feature?
-- ✅ Can it be understood in < 5 minutes?
-- ✅ Is it < 500 lines of code?
-- ✅ Does it teach something new?
-
-**If yes:** Add it to `examples/`
-
-**If no:** Consider creating a complete application instead
-
-### Creating a Complete Application
-**Ask yourself:**
-- ✅ Is it production-ready?
-- ✅ Does it solve a real problem?
-- ✅ Does it showcase multiple Lithair features?
-- ✅ Would users deploy this?
-
-**If yes:** Create a separate repository
-
-**If no:** Consider simplifying it into a technical example
+- **First server setup** → `01-hello-world`
+- **Declarative CRUD** → `03-rest-api`
+- **Sessions, RBAC, frontend assets** → `04-blog`
+- **Auth flows** → `06-auth-sessions`
+- **Replication and clustering** → `09-replication`
+- **Operational hardening** → `advanced/http-hardening`
+- **Firewall behavior** → `advanced/http-firewall`
+- **Stress and consistency work** → `advanced/stress-test` and
+  `advanced/consistency-test`
 
 ---
 
-## 🎯 Benefits of This Approach
+## Guidance for Contributors
 
-### For Developers
-- **Quick learning** - Examples teach features fast
-- **Real inspiration** - Applications show what's possible
-- **Clear path** - From learning to building
+### Add something to `examples/` when
 
-### For the Project
-- **Focused core** - Framework stays lean
-- **Flexible apps** - Applications evolve independently
-- **Better maintenance** - Each repo has its own lifecycle
+- it is useful to users directly
+- it has a clear README or obvious entry point
+- it demonstrates a pattern worth reusing
+- it can be part of the public catalog without extra explanation
 
-### For Documentation
-- **Examples = Reference** - Technical documentation
-- **Applications = Tutorials** - Practical guides
-- **Clear separation** - No confusion about purpose
+### Add something to `examples/advanced/` when
 
----
+- it is still public and runnable
+- it targets operational behavior, validation, or experimentation
+- it is valuable, but not ideal as a first-step learning example
 
-## 📊 Comparison Table
+### Add something to tests instead when
 
-| Aspect | Technical Example | Complete Application |
-|--------|------------------|---------------------|
-| **Location** | `Lithair/examples/` | Separate repository |
-| **Size** | 100-500 lines | 1000+ lines |
-| **Purpose** | Teach one feature | Solve real problem |
-| **Audience** | Developers learning | Users deploying |
-| **Maintenance** | Framework team | App maintainers |
-| **Dependencies** | Lithair only | Full stack |
-| **Documentation** | Code comments | User guides |
-| **Updates** | With framework | Independent |
+- the goal is framework regression coverage
+- the artifact only validates internal behavior
+- the scenario would confuse users if presented as a public example
 
 ---
 
-## 🚀 Current Status
+## Why This Matters
 
-### Technical Examples ✅
-- ✅ `scc2_server_demo` - Performance reference
-- ✅ `http_firewall_demo` - Security features
-- ✅ `http_hardening_demo` - Observability
-- ✅ `raft_consensus_demo` - Distributed systems
+This organization improves the repository in several ways.
 
-### Complete Applications
-- ✅ `Lithair-Blog` - Blog platform (active)
-- 🎯 `Lithair-ECommerce` - E-commerce (planned)
-- 🎯 `Lithair-Dashboard` - Monitoring (planned)
+### For users
 
----
+- the catalog is easier to navigate
+- example names map to real, runnable directories
+- learning paths are clearer
 
-## 💡 Philosophy in Action
+### For maintainers
 
-### Example: Adding Firewall Support
+- CI can target the actual public catalog
+- framework coverage lives where it belongs
+- docs do not need to preserve dead historical aliases
 
-**Technical Example (in core repo):**
-```rust
-// examples/http_firewall_demo/
-// 200 lines showing how to use firewall
-let firewall = Firewall::new()
-    .allow_ip("192.168.1.0/24")
-    .rate_limit(100);
-```
+### For documentation
 
-**Complete Application (separate repo):**
-```rust
-// Lithair-SecureAPI/
-// Full API with authentication, RBAC, firewall, monitoring
-// 5000+ lines, production-ready
-```
-
-### Example: Learning Path
-
-1. **Read** `http_firewall_demo` → Understand firewall API
-2. **Study** `Lithair-Blog` → See firewall in production
-3. **Build** Your own app → Apply what you learned
+- `examples/README.md` is the authoritative index
+- docs can link to stable, real paths
+- advanced scenarios remain visible without becoming the default narrative
 
 ---
 
-## 🎯 Conclusion
+## Current Working Mental Model
 
-This philosophy ensures:
-- ✅ **Clear purpose** - Examples teach, applications inspire
-- ✅ **Easy learning** - From simple to complex
-- ✅ **Maintainable** - Each repo has clear scope
-- ✅ **Scalable** - Add examples/apps without bloating core
+Think of the repository like this:
 
-**Remember:** If you're teaching a feature, write an example. If you're solving a problem, build an application.
+- `examples/` = public catalog and learning path
+- `examples/advanced/` = advanced demos and validation tools
+- `lithair-core` = framework implementation and tests
+- `cucumber-tests/` = behavior-level integration coverage
+
+That model is simpler than the older demo-centric structure and matches how the
+project is now organized in practice.
+
+---
+
+## Conclusion
+
+The examples philosophy is now straightforward:
+
+- examples teach usage
+- advanced examples validate richer scenarios
+- tests protect framework behavior
+
+If a file helps users discover Lithair, it belongs in the public examples
+catalog. If it mainly protects the framework from regressions, it belongs in
+tests.

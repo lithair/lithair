@@ -314,7 +314,9 @@ pub fn log_access_ip<B>(
     let headers = resp.headers();
     let len = headers.get("content-length").and_then(|v| v.to_str().ok()).unwrap_or("-");
     let enc = headers.get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or("-");
-    let dur_ms = start.elapsed().as_millis();
+    let elapsed = start.elapsed();
+    let dur_ms = elapsed.as_millis();
+    let dur_us = elapsed.as_micros();
     log::info!(
         "{{\"remote\":\"{}\",\"method\":\"{}\",\"path\":\"{}\",\"status\":{},\"len\":\"{}\",\"enc\":\"{}\",\"dur_ms\":{}}}",
         escape_json_value(remote_ip),
@@ -337,6 +339,7 @@ pub fn log_access_ip<B>(
             len: len.to_string(),
             enc: enc.to_string(),
             dur_ms,
+            dur_us,
         });
     }
 }
@@ -352,6 +355,9 @@ pub struct AccessLogEntry {
     pub len: String,
     pub enc: String,
     pub dur_ms: u128,
+    /// Duration in microseconds (for sub-millisecond precision in stats).
+    #[serde(skip)]
+    pub dur_us: u128,
 }
 
 /// Thread-safe ring buffer for access log entries.
@@ -523,6 +529,7 @@ mod tests {
             len: "42".to_string(),
             enc: "-".to_string(),
             dur_ms: 1,
+            dur_us: 1000,
         }
     }
 

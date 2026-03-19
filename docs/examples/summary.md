@@ -1,202 +1,127 @@
 # 📊 Lithair Examples - Executive Summary
 
-**Date:** 2025-10-01  
-**Status:** ✅ All examples functional
+**Date:** 2026-03-07
+**Status:** ✅ Catalog clarified and public references consolidated
 
 ---
 
-## 🎯 New Reference Demo
+## Executive Summary
 
-**Previous:** `simplified_consensus_demo.rs` (❌ no longer exists)  
-**New Reference:** `scc2_server_demo` ⭐
+Lithair now uses a simpler public model for examples:
 
-### Why SCC2 Server Demo?
+- root examples in `examples/` are the main user-facing catalog
+- advanced demos and validation tools live in `examples/advanced/`
+- framework behavior is validated by tests, not by hidden demos inside
+  `lithair-core`
 
-- ✅ **Clean, minimal codebase** - Easy to understand
-- ✅ **Pure performance focus** - Demonstrates Lithair's speed
-- ✅ **Zero warnings** - Production-ready code
-- ✅ **Well-documented** - Complete with scripts
-- ✅ **Hyper + SCC2** - Best-in-class technologies
-
-### Quick Start
-
-```bash
-# Run the reference demo
-task examples:scc2
-
-# Run with custom port
-task examples:scc2 PORT=8080
-
-# Run in release mode
-task examples:scc2:release
-```
+The older demo-centric naming scheme is no longer the source of truth.
 
 ---
 
-## 📚 All Available Examples
+## Current Public Catalog
 
-### Workspace Projects (2)
+### Progressive examples
 
-#### 1. `scc2_server_demo/` ⭐ REFERENCE
-**Purpose:** High-performance HTTP server with SCC2 lock-free operations
+The main learning path lives at the repository root:
 
-**Features:**
-- Minimal Hyper server
-- `/perf/*` endpoints (JSON, echo, bytes)
-- `/scc2/*` endpoints (put, get, bulk)
-- Gzip compression support
+- `01-hello-world`
+- `02-static-site`
+- `03-rest-api`
+- `04-blog`
+- `05-ecommerce`
+- `06-auth-sessions`
+- `07-auth-rbac-mfa`
+- `08-schema-migration`
+- `09-replication`
+- `10-blog-distributed`
+- `11-react` to `15-astro`
 
-**Run:**
-```bash
-task examples:scc2              # Debug mode
-task examples:scc2:release      # Release mode
-task examples:demo              # Full demo with benchmarks
-```
+### Advanced examples
 
-#### 2. `raft_replication_demo/`
-**Purpose:** Distributed replication and HTTP hardening demos
+Operational and validation-oriented scenarios live in `examples/advanced/`:
 
-**Binaries (5):**
-- `pure_declarative_node` - Pure declarative approach
-- `http_firewall_node` - Firewall protection
-- `http_firewall_declarative` - Declarative firewall
-- `http_hardening_node` - HTTP hardening features
-- `http_loadgen_demo` - Load generator
-
-**Run:**
-```bash
-task examples:firewall          # Firewall demo
-task examples:hardening         # Hardening demo
-task examples:pure-node         # Declarative node
-task examples:loadgen           # Load generator
-task examples:benchmark         # CRUD benchmark
-```
+- `datatable`
+- `stress-test`
+- `consistency-test`
+- `playground`
+- `http-firewall`
+- `http-hardening`
 
 ---
 
-## 🧪 Testing & Validation
+## Recommended Entry Points
 
-### Compilation Status
-```bash
-✅ raft_replication_demo (5 binaries)
-✅ scc2_server_demo (1 binary)
-```
+There is no longer a single “reference demo” that should dominate all other
+examples. Instead, the best entry point depends on the goal:
 
-### Known Issues
-- ⚠️ 1 warning in `http_hardening_node.rs` (unused import)
-- ⚠️ 5 deprecation warnings in `lithair-core` (AdminHandler)
-
-### Test All Examples
-```bash
-task examples:test              # Compile all examples
-task examples:list              # List all examples
-```
+- `01-hello-world` for the smallest server setup
+- `03-rest-api` for declarative CRUD
+- `04-blog` for a fuller application with sessions and frontend assets
+- `06-auth-sessions` for auth and RBAC flows
+- `09-replication` for clustering and replication
 
 ---
 
-## 🚀 Common Tasks
+## Taskfile Shortcuts
+
+The Taskfile is aligned with the current catalog:
 
 ```bash
-# List all examples
 task examples:list
-
-# Test compilation
 task examples:test
-
-# Run reference demo
-task examples:scc2
-
-# Run specific demos
-task examples:firewall
-task examples:hardening
-task examples:loadgen
-task examples:benchmark
-
-# Full demo with benchmarks
-task examples:demo
+task examples:hello-world
+task examples:rbac-session
+task examples:blog:serve
+task examples:replication:firewall
+task examples:replication:hardening
 ```
 
----
-
-## 📁 File Structure
-
-```
-Lithair/examples/
-├── raft_replication_demo/          # Distributed demos
-│   ├── pure_declarative_node.rs
-│   ├── http_firewall_node.rs
-│   ├── http_firewall_declarative.rs
-│   ├── http_hardening_node.rs
-│   ├── http_loadgen_demo.rs
-│   ├── bench_1000_crud_parallel.sh
-│   └── bench_http_server_stateless.sh
-│
-├── scc2_server_demo/               # Reference demo ⭐
-│   ├── src/main.rs
-│   ├── run_demo.sh
-│   └── run_gzip_compare.sh
-│
-├── simple_working_demo.rs          # (not in workspace)
-└── frontend_declarative_demo.rs    # (not in workspace)
-```
+For the full list, see `Taskfile.yml` and `examples/README.md`.
 
 ---
 
-## 🎯 Recommendations
+## What Was Cleaned Up
 
-### Immediate Actions
-1. ✅ **Update documentation** - Replace `simplified_consensus_demo` references with `scc2_server_demo`
-2. ⚠️ **Fix warning** - Remove unused `AntiDDoSProtection` import
-3. ⚠️ **Clean deprecations** - Update AdminHandler usage in core
+This documentation pass completed the example/test boundary cleanup:
 
-### Documentation Updates Needed
-- [ ] `README.md` - Update reference demo section
-- [ ] `CLAUDE.md` - Update benchmark references
-- [ ] `docs/` - Update example references
-
----
-
-## 📊 Performance Characteristics
-
-### SCC2 Server Demo (Reference)
-- **Throughput:** 10K+ req/s (single node)
-- **Latency:** < 1ms (memory-first)
-- **Concurrency:** Lock-free SCC2 operations
-- **Features:** Gzip, stateless perf endpoints
-
-### Raft Replication Demo
-- **Throughput:** 250+ ops/s (3-node cluster)
-- **Consistency:** Strong (Raft consensus)
-- **Features:** Firewall, hardening, load testing
+- legacy internal demos under `lithair-core/examples` were removed
+- frontend coverage was preserved by adding focused tests in `lithair-core`
+- docs and Taskfile entries were realigned to the root examples catalog
+- obsolete names such as `scc2_server_demo`, `raft_replication_demo`,
+  `rbac_session_demo`, and `simplified_consensus_demo` were removed from the
+  public narrative
 
 ---
 
-## 🔧 Development Workflow
+## Practical Guidance
 
-```bash
-# 1. List available examples
-task examples:list
+### If you want to learn Lithair progressively
 
-# 2. Test compilation
-task examples:test
+Start here:
 
-# 3. Run reference demo
-task examples:scc2
+1. `01-hello-world`
+2. `03-rest-api`
+3. `04-blog`
+4. `06-auth-sessions`
+5. `09-replication`
 
-# 4. In another terminal, run load tests
-task examples:loadgen LEADER=http://127.0.0.1:18321
+### If you want validation or operational scenarios
 
-# 5. Run benchmarks
-task examples:benchmark
-```
+Start here:
+
+1. `advanced/http-firewall`
+2. `advanced/http-hardening`
+3. `advanced/stress-test`
+4. `advanced/consistency-test`
+5. `advanced/playground`
 
 ---
 
-## ✅ Conclusion
+## Conclusion
 
-All Lithair examples are **functional and tested**. The new reference demo (`scc2_server_demo`) provides a clean, high-performance baseline for demonstrating Lithair's capabilities.
+The examples story is now simpler and more maintainable:
 
-**Next Steps:**
-1. Update documentation to reflect new reference
-2. Fix minor warnings
-3. Add CI validation for examples
+- public examples live at the root
+- advanced tools remain discoverable under `examples/advanced/`
+- test coverage stays in test code
+- documentation now points to the actual catalog users can run today

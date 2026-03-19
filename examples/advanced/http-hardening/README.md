@@ -19,10 +19,11 @@ This demo validates the HTTP hardening features of the Pure Declarative server:
 
 ```bash
 # From repo root
-bash examples/http_hardening_demo/run_demo.sh
+bash examples/advanced/http-hardening/run_demo.sh
 ```
 
 This script:
+
 - Kills lingering nodes
 - Builds the demo binaries
 - Starts a single declarative node on :8080
@@ -39,6 +40,7 @@ This script:
 - 504 Gateway Timeout (best‑effort) when LT_HTTP_TIMEOUT_MS is set very low
 
 Notes:
+
 - Timeouts depend on scheduling; setting `LT_HTTP_TIMEOUT_MS=1` ms typically yields 504 on commodity hosts, but is not guaranteed on very fast responses. Consider raising to a tiny value like 5–10ms if needed.
 - You can tune size limits via `LT_HTTP_MAX_BODY_BYTES_SINGLE`/`LT_HTTP_MAX_BODY_BYTES_BULK` to make 413 more or less strict.
 

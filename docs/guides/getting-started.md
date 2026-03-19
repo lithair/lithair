@@ -98,12 +98,12 @@ curl -X DELETE http://localhost:3000/api/products/1
 
 From **10 lines of code**, Lithair automatically provided:
 
- **5 REST endpoints** (GET, GET/:id, POST, PUT, DELETE)
- **Event sourcing** - All changes persisted in `.raftlog` files
- **JSON serialization** - Automatic conversion
- **HTTP routing** - Path matching and request handling
- **Error handling** - Proper status codes (400, 404, 500)
- **State reconstruction** - Events replayed on server restart
+**5 REST endpoints** (GET, GET/:id, POST, PUT, DELETE)
+**Event sourcing** - All changes persisted in `.raftlog` files
+**JSON serialization** - Automatic conversion
+**HTTP routing** - Path matching and request handling
+**Error handling** - Proper status codes (400, 404, 500)
+**State reconstruction** - Events replayed on server restart
 
 You wrote **zero** lines for any of this infrastructure!
 
@@ -181,6 +181,7 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 **Lithair now automatically:**
+
 - Extracts role from Bearer token
 - Checks permissions before CREATE, UPDATE, DELETE
 - Returns `403 Forbidden` if unauthorized
@@ -243,7 +244,8 @@ LithairServer::new()
 
 ## Next Steps
 
-- **[Session Management Guide](./sessions.md)** - Deep dive into authentication
+- **[Session Management Guide](../features/security/sessions.md)** - Deep dive
+  into authentication
 - **[RBAC Guide](./rbac.md)** - Advanced permission patterns
 - **[Event Sourcing](../modules/storage/event-sourcing.md)** - Understanding .raftlog files
 - **[Examples](../../examples/README.md)** - Working reference implementations
@@ -253,10 +255,10 @@ LithairServer::new()
 
 All examples are in the `examples/` directory with full documentation:
 
-- **`rbac_session_demo`** - Sessions + RBAC (recommended starting point)
-- **`raft_replication_demo`** - Distributed 3-node cluster
-- **`http_firewall_demo`** - DDoS protection and rate limiting
-- **`admin_google_sso`** - Google OAuth integration
+- **`06-auth-sessions`** - Sessions + RBAC (recommended starting point)
+- **`09-replication`** - Distributed 3-node cluster and load-testing scripts
+- **`advanced/http-firewall`** - DDoS protection and rate limiting scripts
+- **`07-auth-rbac-mfa`** - Advanced RBAC and MFA flows
 
 Run any example:
 
@@ -265,7 +267,7 @@ Run any example:
 task examples:rbac-session
 
 # Or manually
-cargo run -p rbac_session_demo
+cargo run -p auth-sessions
 ```
 
 ## Key Concepts
@@ -280,6 +282,7 @@ Every change creates an immutable event in `.raftlog` files:
 ```
 
 On restart, Lithair replays events to reconstruct state. You get:
+
 - Full audit trail
 - Time travel debugging
 - Automatic persistence
@@ -303,17 +306,19 @@ LithairServer::new()
 ### Zero Boilerplate
 
 You **never write**:
--  Route definitions
--  Request parsing
--  JSON serialization
--  Database queries
--  Permission checks in handlers
--  Error handling
+
+- Route definitions
+- Request parsing
+- JSON serialization
+- Database queries
+- Permission checks in handlers
+- Error handling
 
 You **only write**:
--  Data structures (`struct Product`)
--  Business rules (`PermissionChecker`)
--  Configuration (`.with_X()`)
+
+- Data structures (`struct Product`)
+- Business rules (`PermissionChecker`)
+- Configuration (`.with_X()`)
 
 ## Troubleshooting
 
@@ -348,6 +353,7 @@ Lithair follows the **"Declare, Don't Implement"** principle:
 > **Lithair generates HOW to build it (routes, validation, persistence)**
 
 This reduces:
+
 - 99% less boilerplate code
 - Zero infrastructure bugs
 - Faster development
@@ -355,4 +361,6 @@ This reduces:
 
 ---
 
-**Ready to build?** Check out the [RBAC Session Demo](../../examples/rbac_session_demo/README.md) for a complete working example!
+**Ready to build?** Check out the
+[Auth Sessions example](../../examples/06-auth-sessions/README.md) for a
+complete working example!

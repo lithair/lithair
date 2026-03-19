@@ -23,6 +23,7 @@ Data Access:
 ```
 
 **Memory Characteristics:**
+
 - **Constant memory usage** regardless of data size
 - **Disk I/O on every query** (unless cached)
 - **Page-based caching** with LRU eviction
@@ -44,6 +45,7 @@ Data Access:
 ```
 
 **Memory Characteristics:**
+
 - **Proportional memory usage** to data size
 - **Zero I/O during queries** (ultra-fast)
 - **Complete state in memory** at all times
@@ -52,25 +54,26 @@ Data Access:
 
 Based on our comprehensive memory benchmarks:
 
-| Dataset Size | SQLite Memory | Lithair Memory | Cold Start (SQLite) | Cold Start (Lithair) |
-|-------------|---------------|------------------|---------------------|------------------------|
-| **1,000 records** | ~25MB | 0.57MB | 223µs | 2.78ms |
-| **10,000 records** | ~25MB | 5.37MB | 226µs | 19.78ms |
-| **50,000 records** | ~25MB | 25.64MB | 567µs | 98.24ms |
-| **Projected 1M records** | ~25MB | ~500MB | ~1ms | ~2s |
+| Dataset Size             | SQLite Memory | Lithair Memory | Cold Start (SQLite) | Cold Start (Lithair) |
+| ------------------------ | ------------- | -------------- | ------------------- | -------------------- |
+| **1,000 records**        | ~25MB         | 0.57MB         | 223µs               | 2.78ms               |
+| **10,000 records**       | ~25MB         | 5.37MB         | 226µs               | 19.78ms              |
+| **50,000 records**       | ~25MB         | 25.64MB        | 567µs               | 98.24ms              |
+| **Projected 1M records** | ~25MB         | ~500MB         | ~1ms                | ~2s                  |
 
 ### Key Findings
 
 1. **SQLite memory is constant** (~25MB) regardless of data size
 2. **Lithair memory scales linearly** with data size
 3. **Lithair cold start degrades** as data grows
-4. **Lithair runtime queries are 10,000-100,000x faster**
+4. **Lithair runtime queries can be dramatically faster when data is already in memory**
 
 ## 🎯 Use Case Analysis
 
 ### ✅ Lithair Optimal Use Cases
 
 #### Small to Medium Datasets (< 100MB)
+
 - **Web applications** with typical user/product/order data
 - **SaaS applications** with per-tenant isolation
 - **Prototyping and MVP development**
@@ -78,15 +81,17 @@ Based on our comprehensive memory benchmarks:
 - **Gaming leaderboards** and session data
 
 **Example Scenarios:**
+
 ```
 E-commerce site:
 ├── 10,000 products × ~2KB = ~20MB
-├── 50,000 users × ~1KB = ~50MB  
+├── 50,000 users × ~1KB = ~50MB
 ├── 100,000 orders × ~500B = ~50MB
 └── Total: ~120MB → Lithair uses ~150MB RAM
 ```
 
 #### Read-Heavy Applications
+
 - **Content management systems**
 - **Configuration services**
 - **Catalog browsing**
@@ -94,6 +99,7 @@ E-commerce site:
 - **API gateways** with routing tables
 
 #### Audit-Critical Applications
+
 - **Financial transactions** requiring complete audit trail
 - **Compliance systems** with event sourcing
 - **Healthcare records** with change tracking
@@ -102,18 +108,21 @@ E-commerce site:
 ### ⚠️ Lithair Challenging Use Cases
 
 #### Large Datasets (> 500MB)
+
 - **Data warehouses** with millions of records
 - **Log aggregation systems**
 - **Historical data archives**
 - **Large-scale analytics platforms**
 
 #### Memory-Constrained Environments
+
 - **Edge computing** devices
 - **IoT gateways** with limited RAM
 - **Serverless functions** with memory limits
 - **Container environments** with strict resource quotas
 
 #### Write-Heavy Applications
+
 - **High-frequency trading** systems
 - **Real-time data ingestion**
 - **Logging systems** with constant writes
@@ -122,6 +131,7 @@ E-commerce site:
 ## 💡 Memory Optimization Strategies
 
 ### Current Architecture (v1.0)
+
 ```rust
 // Simple eager loading - everything in memory
 struct LithairState {
@@ -132,6 +142,7 @@ struct LithairState {
 ```
 
 **Characteristics:**
+
 - ✅ Ultra-fast reads (nanosecond access)
 - ✅ Simple implementation
 - ❌ Memory usage = data size
@@ -140,6 +151,7 @@ struct LithairState {
 ### Future Optimizations (Roadmap)
 
 #### 1. Intelligent Lazy Loading
+
 ```rust
 struct LazyLithair {
     hot_cache: LruCache<u32, Product>,     // 100MB limit
@@ -149,11 +161,13 @@ struct LazyLithair {
 ```
 
 **Benefits:**
+
 - Constant memory usage (configurable)
 - Fast access for frequently used data
 - Graceful degradation for cold data
 
 #### 2. Adaptive Memory Management
+
 ```rust
 enum LoadingStrategy {
     EagerAll,           // < 100MB: everything in memory
@@ -163,11 +177,13 @@ enum LoadingStrategy {
 ```
 
 **Benefits:**
+
 - Automatic strategy selection based on data size
 - Optimal performance for each use case
 - Transparent to application code
 
 #### 3. Compressed In-Memory Storage
+
 ```rust
 struct CompressedRecord {
     id: u32,
@@ -177,11 +193,13 @@ struct CompressedRecord {
 ```
 
 **Benefits:**
+
 - 50-80% memory reduction
 - Decompression only on access
 - Maintains audit trail integrity
 
 #### 4. Tiered Storage Architecture
+
 ```rust
 struct TieredLithair {
     tier1_memory: HashMap<u32, Product>,      // Hot data
@@ -191,6 +209,7 @@ struct TieredLithair {
 ```
 
 **Benefits:**
+
 - Multi-level performance optimization
 - Automatic data migration between tiers
 - Configurable tier sizes and policies
@@ -198,6 +217,7 @@ struct TieredLithair {
 ## 🎯 Sizing Guidelines
 
 ### Memory Planning Formula
+
 ```
 Lithair Memory = (Data Size × 1.2) + JVM Overhead + OS Overhead
 
@@ -210,15 +230,16 @@ Where:
 
 ### Recommended Limits by Environment
 
-| Environment | Max Dataset | Max Memory | Recommendation |
-|------------|-------------|------------|----------------|
-| **Development** | 50MB | 100MB | Perfect fit |
-| **Small Production** | 100MB | 200MB | Excellent |
-| **Medium Production** | 500MB | 1GB | Good with monitoring |
-| **Large Production** | 1GB+ | 2GB+ | Consider lazy loading |
-| **Enterprise** | 10GB+ | 20GB+ | Requires optimization |
+| Environment           | Max Dataset | Max Memory | Recommendation        |
+| --------------------- | ----------- | ---------- | --------------------- |
+| **Development**       | 50MB        | 100MB      | Perfect fit           |
+| **Small Production**  | 100MB       | 200MB      | Excellent             |
+| **Medium Production** | 500MB       | 1GB        | Good with monitoring  |
+| **Large Production**  | 1GB+        | 2GB+       | Consider lazy loading |
+| **Enterprise**        | 10GB+       | 20GB+      | Requires optimization |
 
 ### Container Resource Planning
+
 ```yaml
 # Docker/Kubernetes resource limits
 resources:
@@ -231,6 +252,7 @@ resources:
 ## 🔍 Monitoring & Alerting
 
 ### Memory Usage Monitoring
+
 ```rust
 impl LithairEngine {
     pub fn get_memory_stats(&self) -> MemoryStats {
@@ -245,6 +267,7 @@ impl LithairEngine {
 ```
 
 ### Recommended Alerts
+
 - **Memory usage > 80% of container limit**
 - **Cold start time > 30 seconds**
 - **Memory growth rate > 10% per hour**
@@ -253,6 +276,7 @@ impl LithairEngine {
 ## 🚀 Migration Strategies
 
 ### From SQL to Lithair
+
 1. **Assess data size** using our sizing calculator
 2. **Profile memory usage** in development
 3. **Load test** with realistic datasets
@@ -260,13 +284,14 @@ impl LithairEngine {
 5. **Scale vertically** or implement lazy loading as needed
 
 ### Gradual Optimization Path
+
 ```
 Phase 1: Direct migration (< 100MB datasets)
 ├── Use current eager loading
 ├── Monitor memory usage
 └── Validate performance gains
 
-Phase 2: Optimization (100MB-1GB datasets)  
+Phase 2: Optimization (100MB-1GB datasets)
 ├── Implement LRU caching
 ├── Add compression
 └── Tune cache sizes
@@ -289,6 +314,7 @@ ROI = Performance Gain / Memory Cost
 ```
 
 **Optimal scenarios:**
+
 - High query frequency (> 1000 QPS)
 - Small to medium datasets (< 500MB)
 - Read-heavy workloads (90%+ reads)
@@ -297,12 +323,14 @@ ROI = Performance Gain / Memory Cost
 ### When to Choose Alternatives
 
 **Consider traditional SQL when:**
+
 - Dataset > 1GB and memory is constrained
 - Write-heavy workloads (> 50% writes)
 - Complex relational queries required
 - Existing SQL expertise and tooling
 
 **Consider hybrid approaches when:**
+
 - Mixed workload patterns
 - Gradual migration requirements
 - Legacy system integration needs
@@ -313,15 +341,18 @@ ROI = Performance Gain / Memory Cost
 Lithair's eager loading architecture represents a **conscious trade-off**:
 
 ### The Trade-off
+
 - **Sacrifice:** Memory proportional to data size
-- **Gain:** 10,000-100,000x faster query performance
+- **Gain:** Much lower query latency for in-memory, read-heavy access patterns
 
 ### The Sweet Spot
-- **Datasets < 100MB:** Exceptional performance with minimal memory impact
+
+- **Datasets < 100MB:** Often a strong fit with manageable memory impact
 - **Read-heavy applications:** Maximum benefit from in-memory architecture
 - **Modern hardware:** RAM is abundant and cheap compared to developer time
 
 ### The Future
+
 - **Lazy loading optimizations** for larger datasets
 - **Adaptive strategies** based on usage patterns
 - **Transparent scaling** as applications grow

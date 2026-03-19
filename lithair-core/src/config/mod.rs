@@ -122,6 +122,7 @@ impl LithairConfig {
         self.logging.merge(other.logging);
         self.storage.merge(other.storage);
         self.performance.merge(other.performance);
+        self.frontend.merge(other.frontend);
         self.raft.merge(other.raft);
     }
 
@@ -135,6 +136,7 @@ impl LithairConfig {
         self.logging.apply_env_vars();
         self.storage.apply_env_vars();
         self.performance.apply_env_vars();
+        self.frontend.apply_env_vars();
         self.raft.apply_env_vars();
     }
 
@@ -148,6 +150,7 @@ impl LithairConfig {
         self.logging.validate()?;
         self.storage.validate()?;
         self.performance.validate()?;
+        self.frontend.validate()?;
         self.raft.validate()?;
         Ok(())
     }

@@ -1,26 +1,36 @@
-#  Lithair: Data-First Philosophy
+# Lithair: Data-First Philosophy
 
-##  **The Mental Model Revolution**
+## **The Mental Model Revolution**
 
-Lithair fundamentally changes how we think about backend applications. Instead of **separating** business logic and persistence, we **unify** everything in the data definition.
+Lithair fundamentally changes how we think about backend applications. Instead
+of **separating** business logic and persistence, we **unify** everything in
+the data definition.
 
-##  **PROVEN: Real-World Results**
+## **Illustrative Results from the Current Catalog**
 
-Our `simplified_consensus_demo.rs` benchmark **proves** the Data-First philosophy works:
-- **1 DeclarativeModel struct → Complete distributed backend**
-- **2,000 random CRUD operations** with perfect consistency across 3 nodes
-- **250.91 ops/sec HTTP throughput** via auto-generated REST endpoints
-- **97.2% code reduction** compared to traditional 3-tier architecture
+The current `examples/09-replication` package is the best public scenario for
+seeing the Data-First philosophy applied to a distributed workload:
+
+- **1 declarative model definition** can drive API exposure, validation,
+  persistence, and replication behavior together
+- **multi-node CRUD workloads** can be exercised through the root replication
+  example and its benchmark scripts
+- **measured throughput and latency** depend on workload shape, storage profile,
+  and read path choice
+- **code volume stays lower** than a hand-assembled stack because a single model
+  definition carries more intent
 
 ```bash
-# See the proof yourself:
-cd examples/raft_replication_demo
-cargo run --bin simplified_consensus_demo
+# Explore the current
+# replication example
+cd examples/09-replication
+cargo run -p replication --bin replication-declarative-node -- \
+  --node-id 1 --port 8080
 ```
 
-###  **Traditional 3-Tier Architecture**
+### **Traditional 3-Tier Architecture**
 
-```
+```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   PRESENTATION  │    │    BUSINESS     │    │   DATA LAYER    │
 │                 │    │     LOGIC       │    │                 │
@@ -31,16 +41,17 @@ cargo run --bin simplified_consensus_demo
 ```
 
 **Problems:**
--  **Scattered complexity**: Business logic spread across 3 layers
--  **Desynchronization**: Models, migrations, validations diverge
--  **Massive boilerplate**: Repetitive CRUD, ORM mapping, DTOs...
--  **Gaps**: History, audit, permissions added as afterthoughts
 
-###  **Lithair: Data-First Unification** (PROVEN)
+- **Scattered complexity**: Business logic spread across 3 layers
+- **Desynchronization**: Models, migrations, validations diverge
+- **Massive boilerplate**: Repetitive CRUD, ORM mapping, DTOs...
+- **Gaps**: History, audit, permissions added as afterthoughts
 
-```
+### **Lithair: Data-First Unification**
+
+```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                ConsensusProduct (FROM REAL BENCHMARK)          │
+│                A declarative model (representative pattern)    │
 │                                                                 │
 │  #[derive(DeclarativeModel)]                                    │
 │  pub struct ConsensusProduct {                                  │
@@ -61,17 +72,16 @@ cargo run --bin simplified_consensus_demo
   └──────────┘ └──────────┘ └──────────┘ └──────────┘
 ```
 
-**BENCHMARK RESULTS:**
- **2,000 random CRUD operations**  
- **Perfect data consistency** across 3 nodes  
- **250.91 ops/sec HTTP throughput**  
- **Zero manual processing**
+**Representative outcome:**
+**One model can express persistence, HTTP exposure, replication, and RBAC in
+one place**, which keeps the mental model smaller than a traditional layered
+stack.
 
-##  **Comparative Examples**
+## **Comparative Examples**
 
-###  **Need: User with Email History**
+### **Need: User with Email History**
 
-####  **Traditional 3-Tier Approach**
+#### **Traditional 3-Tier Approach**
 
 ```sql
 -- Migration 1: Main table
@@ -135,15 +145,15 @@ impl UserService {
         if !is_valid_email(&new_email) {
             return Err("Invalid email format");
         }
-        
+
         // 2. Check permissions (separate logic)
         if !self.auth.can_update_user(user_id) {
             return Err("Insufficient permissions");
         }
-        
+
         // 3. Complex transaction
         let mut tx = self.db.begin().await?;
-        
+
         // 4. Fetch old email
         let old_user = sqlx::query_as::<_, User>(
             "SELECT * FROM users WHERE id = $1"
@@ -151,16 +161,16 @@ impl UserService {
         .bind(user_id)
         .fetch_one(&mut tx)
         .await?;
-        
+
         // 5. Insert into history (manually)
         sqlx::query!(
-            "INSERT INTO user_email_history (user_id, old_email, new_email, changed_by) 
+            "INSERT INTO user_email_history (user_id, old_email, new_email, changed_by)
              VALUES ($1, $2, $3, $4)",
             user_id, old_user.current_email, new_email, self.current_user_id
         )
         .execute(&mut tx)
         .await?;
-        
+
         // 6. Update user
         sqlx::query!(
             "UPDATE users SET current_email = $1 WHERE id = $2",
@@ -168,12 +178,12 @@ impl UserService {
         )
         .execute(&mut tx)
         .await?;
-        
+
         tx.commit().await?;
-        
+
         // 7. Cache invalidation (often forgotten)
         self.cache.invalidate(&format!("user:{}", user_id));
-        
+
         Ok(())
     }
 }
@@ -186,7 +196,7 @@ pub async fn update_user_email(
     service: web::Data<UserService>
 ) -> Result<HttpResponse> {
     let user_id = path.into_inner();
-    
+
     match service.update_email(user_id, body.new_email.clone()).await {
         Ok(_) => Ok(HttpResponse::Ok().json("Email updated")),
         Err(e) => Ok(HttpResponse::BadRequest().json(format!("Error: {}", e)))
@@ -195,12 +205,13 @@ pub async fn update_user_email(
 ```
 
 **Problems:**
--  **50+ lines of code** for a simple update
--  **3 places to maintain** (migration, model, service)
--  **Frequent bugs**: forgotten history, permissions, cache
--  **Duplicated logic** across different services
 
-####  **Lithair Data-First Approach**
+- **50+ lines of code** for a simple update
+- **3 places to maintain** (migration, model, service)
+- **Frequent bugs**: forgotten history, permissions, cache
+- **Duplicated logic** across different services
+
+#### **Lithair Data-First Approach**
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
@@ -209,17 +220,17 @@ pub struct User {
     #[lifecycle(immutable)]
     #[http(expose)]
     pub id: Uuid,
-    
+
     #[db(unique, indexed)]
     #[lifecycle(audited)]  // ◄── Automatic history!
     #[http(expose, validate = "email")]  // ◄── Automatic validation!
     #[permission(write = "UserEmailUpdate")]  // ◄── Declared permissions!
     pub email: String,
-    
+
     #[db(unique, indexed)]
     #[http(expose)]
     pub username: String,
-    
+
     #[lifecycle(immutable)]
     #[http(expose)]
     pub created_at: DateTime<Utc>,
@@ -227,24 +238,27 @@ pub struct User {
 ```
 
 **That's IT!** Lithair automatically generates:
--  **Event sourcing** with complete history
--  **Email validation** built-in  
--  **RBAC permissions**
--  **HTTP API** with CRUD routes
--  **JSON serialization**
--  **Database constraints**
 
-##  **Mental Model Shift**
+- **Event sourcing** with complete history
+- **Email validation** built-in
+- **RBAC permissions**
+- **HTTP API** with CRUD routes
+- **JSON serialization**
+- **Database constraints**
 
-###  **3-Tier Thinking: "How to store?"**
-```
+## **Mental Model Shift**
+
+### **3-Tier Thinking: "How to store?"**
+
+```text
 Business Logic ──► "How do I save this?" ──► Database Design
      ▲                                              │
      └─────────── "How do I retrieve this?" ◄──────┘
 ```
 
-###  **Lithair Thinking: "What is this?"**
-```
+### **Lithair Thinking: "What is this?"**
+
+```text
 Data Model ──► "What is this data?"
     │
     ├─► #[lifecycle(audited)]     ──► "It needs history"
@@ -254,14 +268,16 @@ Data Model ──► "What is this data?"
     └─► #[http(expose)]           ──► "It's exposed in API"
 ```
 
-##  **Revolutionary Advantages**
+## **Revolutionary Advantages**
 
-###  **Single Source of Truth**
+### **Single Source of Truth**
+
 - **1 definition** → Everything generated consistently
 - **No desync** between model, DB, API
 - **Safe refactoring**: change 1 line propagates everywhere
 
-###  **Development Velocity**
+### **Development Velocity**
+
 ```rust
 // Add field with history and permissions
 #[lifecycle(audited)]
@@ -269,24 +285,28 @@ Data Model ──► "What is this data?"
 pub phone: Option<String>,  // ◄── 3 lines = complete feature!
 ```
 
-###  **Security by Design**
+### **Security by Design**
+
 - Permissions **declared** in the model
 - Impossible to forget validations
 - Audit trail **automatic**
 
-###  **Schema Evolution**
+### **Schema Evolution**
+
 ```rust
 // Automatic migration with history preservation
 #[lifecycle(audited, retention = 365)]  // ◄── Keep 1 year of history
 pub email: String,
 ```
 
-###  **Natural Mental Flow**
+### **Natural Mental Flow**
+
 1.  **"I need a User with email"**
 2.  **Describe structure + attributes**
 3.  **Lithair does the rest**
 
 Vs traditional approach:
+
 1.  "I need a User"
 2.  Write the model
 3.  Create migration
@@ -296,74 +316,80 @@ Vs traditional approach:
 7.  Handle permissions
 8.  History (often forgotten)
 
-##  **Advanced Patterns**
+## **Advanced Patterns**
 
-###  **Temporal Evolution**
+### **Temporal Evolution**
+
 ```rust
 #[derive(DeclarativeModel)]
 pub struct Product {
     #[lifecycle(versioned = 5)]  // ◄── Keep 5 versions
     pub price: f64,
-    
+
     #[lifecycle(immutable)]      // ◄── Never changes
     pub sku: String,
-    
+
     #[lifecycle(snapshot_only)]  // ◄── No intermediate events
     pub stock_count: u32,
 }
 ```
 
-###  **Intelligent Distribution**
+### **Intelligent Distribution**
+
 ```rust
 #[derive(DeclarativeModel)]
 pub struct Order {
     #[persistence(replicate, track_history)]  // ◄── Critical
     pub status: OrderStatus,
-    
+
     #[persistence(memory_only)]               // ◄── Local cache
     pub processing_metadata: serde_json::Value,
-    
+
     #[persistence(auto_persist)]              // ◄── Auto-save
     pub customer_notes: String,
 }
 ```
 
-###  **Multi-Level Security**
+### **Multi-Level Security**
+
 ```rust
 #[derive(DeclarativeModel)]
 pub struct User {
     #[permission(read = "UserReadAny", write = "UserWriteAny")]
     pub email: String,
-    
+
     #[permission(read = "UserReadOwn", write = "UserWriteOwn")]
     #[rbac(owner_field)]  // ◄── Owner-based permissions
     pub private_notes: String,
-    
+
     #[permission(write = "AdminOnly")]
     pub admin_flags: AdminFlags,
 }
 ```
 
-##  **Psychological Impact**
+## **Psychological Impact**
 
-###  **Reduced Cognitive Load**
+### **Reduced Cognitive Load**
+
 - **Focus on WHAT** (the data) instead of HOW (implementation)
 - **Less context switching** between layers
 - **Living documentation** in code
 
-###  **10x Productivity**
+### **10x Productivity**
+
 - **Features in minutes** instead of hours
 - **Fewer bugs** (consistent generation)
 - **Simplified maintenance** (1 place to change)
 
-###  **Accelerated Innovation**
+### **Accelerated Innovation**
+
 - **Rapid prototyping** of new ideas
 - **Fearless refactoring**
 - **Safe experimentation**
 
 ---
 
-##  **Conclusion: The Future of Backend**
+## **Conclusion: The Future of Backend**
 
 Lithair doesn't just **simplify** backend development - it **revolutionizes** how we think about applications.
 
@@ -372,4 +398,4 @@ Lithair doesn't just **simplify** backend development - it **revolutionizes** ho
 
 This **Data-First** approach transforms accidental complexity into declarative expressiveness, allowing developers to focus on **business value** rather than technical plumbing.
 
-*Code becomes documentation. Documentation becomes code. Data becomes architecture.*
+_Code becomes documentation. Documentation becomes code. Data becomes architecture._

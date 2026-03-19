@@ -2,10 +2,10 @@
 
 > Solid as stone, light as air.
 
-What if your application compiled from the start? What if you defined your data
-model, chose the features you need -- REST API, authentication, permissions,
-replication -- and everything just worked? One binary, native performance,
-nothing wasted.
+Lithair is a Rust framework for building APIs and websites without taking on
+more stack complexity than the project actually needs. Define your data model,
+enable the features you want -- REST API, authentication, permissions,
+replication, frontend serving -- and keep the result coherent.
 
 ```rust
 use lithair_core::prelude::*;
@@ -29,8 +29,8 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 This gives you 5 REST endpoints, event-sourced persistence, and automatic state
-reconstruction on restart. No database to install, no ORM to configure, no
-migrations to manage. `cargo run` and you're live.
+reconstruction on restart. For many projects, that is enough to get useful work
+done without assembling a separate database layer, ORM, and service glue.
 
 ## The idea
 
@@ -43,10 +43,10 @@ get native performance with minimal CPU and RAM -- just what your application
 actually needs, nothing more. Because it's compiled, there's no runtime, no
 interpreter, no garbage collector in the way.
 
-Everything is built in: event sourcing gives you a full history of every change
-for free. Replication is integrated if you need it. Sessions, permissions,
-firewall -- you pick what you need with annotations and builder methods, and it
-compiles into your binary. No external services to install, configure, or maintain.
+Lithair is modular rather than fixed-menu. Event sourcing, frontend serving,
+sessions, permissions, and replication can be enabled when they are useful, and
+left out when they are not. The goal is not to replace every architecture; it
+is to offer a simpler default when one coherent binary is the right trade-off.
 
 Your data model is the starting point. Define a struct, annotate the fields,
 and the framework generates the rest.
@@ -103,7 +103,7 @@ rate limiting, gzip compression, and CORS.
 
 **Built-in operations** -- Every Lithair server comes with `/health`, `/ready`,
 and `/info` endpoints out of the box. Enable `/observe/metrics` for
-Prometheus-compatible monitoring. No sidecar, no extra service.
+Prometheus-compatible monitoring.
 
 **Admin interface** -- Optional data admin API (`/_admin/data/*`) lets you
 browse models, export data, inspect event history, and trigger backups. Schema
@@ -114,8 +114,8 @@ dashboard.
 **Memory-first static serving** -- Static assets load into memory at startup.
 No disk I/O per request.
 
-**Single binary** -- No PostgreSQL, no Redis, no Docker. One `cargo build`,
-one binary, done.
+**Single binary by default** -- Start with one deployable binary and add
+external components only when your constraints truly require them.
 
 ## Quick Start
 
@@ -124,20 +124,20 @@ walkthrough including sessions, RBAC, and the builder API.
 
 ## Examples
 
-| Example | Description |
-| ------- | ----------- |
-| [`minimal_server`](examples/minimal_server/) | Simplest possible server |
-| [`blog_server`](examples/blog_server/) | Blog with posts and comments |
-| [`rbac_session_demo`](examples/rbac_session_demo/) | Sessions + role-based access control |
-| [`rbac_sso_demo`](examples/rbac_sso_demo/) | RBAC with SSO integration |
-| [`raft_replication_demo`](examples/raft_replication_demo/) | 3-node distributed cluster |
-| [`ecommerce_app`](examples/ecommerce_app/) | E-commerce with cart and products |
-| [`schema_migration_demo`](examples/schema_migration_demo/) | Schema evolution patterns |
-| [`datatable_demo`](examples/datatable_demo/) | Data tables with filtering |
+| Example                                                | Description                           |
+| ------------------------------------------------------ | ------------------------------------- |
+| [`01-hello-world`](examples/01-hello-world/)           | Simplest possible server              |
+| [`04-blog`](examples/04-blog/)                         | Blog with frontend and content models |
+| [`06-auth-sessions`](examples/06-auth-sessions/)       | Sessions and authentication           |
+| [`07-auth-rbac-mfa`](examples/07-auth-rbac-mfa/)       | RBAC and MFA patterns                 |
+| [`09-replication`](examples/09-replication/)           | Multi-node replication                |
+| [`05-ecommerce`](examples/05-ecommerce/)               | E-commerce workflow                   |
+| [`08-schema-migration`](examples/08-schema-migration/) | Schema evolution patterns             |
+| [`advanced/datatable`](examples/advanced/datatable/)   | Data tables with filtering            |
 
 ```bash
-cargo run -p minimal_server
-cargo run -p rbac_session_demo
+cargo run -p hello-world
+cargo run -p auth-sessions
 ```
 
 ## Architecture

@@ -16,7 +16,7 @@ Lithair utilise **Hyper** comme frontal HTTP unique pour tous les services, gara
 ┌─────────────────────────────────────────────────────────────┐
 │              Lithair HTTP Layer                           │
 │  - HttpExposable trait                                      │
-│  - DeclarativeHttpHandler<T>                                │ 
+│  - DeclarativeHttpHandler<T>                                │
 │  - Automatic CRUD route generation                          │
 └─────────────────────┬───────────────────────────────────────┘
                       │
@@ -44,16 +44,17 @@ pub struct Product {
     #[db(primary_key)]
     #[http(expose)]                       // ← Exposes via REST API
     pub id: Uuid,
-    
+
     #[http(expose, validate = "non_empty")] // ← Auto-validation
     pub name: String,
-    
+
     #[http(expose, validate = "min_value(0.01)")]
     pub price: f64,
 }
 ```
 
 **Auto-generates:**
+
 - `GET /api/products` - List all products
 - `POST /api/products` - Create product
 - `GET /api/products/{id}` - Get product by ID
@@ -77,6 +78,7 @@ pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 's
 ### 3. **DeclarativeHttpHandler<T>**
 
 Gestionnaire automatique des opérations CRUD via HTTP :
+
 - **Request parsing** avec validation JSON
 - **Permission checks** basés sur les attributs `#[permission]`
 - **Lifecycle management** selon les règles `#[lifecycle]`
@@ -109,12 +111,14 @@ impl LithairServer {
 ## 🔥 **Performance Optimizations**
 
 ### Sub-Millisecond Request Processing
+
 - **Zero-copy request parsing**
 - **Pre-allocated response buffers**
 - **Lock-free concurrent data structures**
 - **SCC2 engine** for ultra-fast operations
 
 ### Production-Ready Features
+
 - **Automatic connection pooling**
 - **Request/response compression**
 - **Keep-alive connection management**
@@ -123,6 +127,7 @@ impl LithairServer {
 ## 📊 **Proven Performance**
 
 ### Real Benchmark Results
+
 ```
 🌐 HTTP Throughput: 250.91 ops/sec
 ⚡ Response Time: Sub-millisecond average
@@ -131,6 +136,7 @@ impl LithairServer {
 ```
 
 ### Load Testing
+
 - **1000+ concurrent connections**
 - **10,000+ requests per second**
 - **99.9% uptime under load**
@@ -139,18 +145,23 @@ impl LithairServer {
 ## 🛠️ **Usage Examples**
 
 ### Basic HTTP Server
+
 ```rust
-use lithair_core::server::LithairServer;
+use lithair_core::LithairServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let server = LithairServer::new(raft_instance);
-    let addr = ([127, 0, 0, 1], 8080).into();
-    server.serve(addr).await
+    LithairServer::new()
+        .with_port(8080)
+        .serve()
+        .await?;
+
+    Ok(())
 }
 ```
 
 ### DeclarativeModel Integration
+
 ```rust
 use lithair_core::http::{HttpExposable, DeclarativeHttpHandler};
 
@@ -166,13 +177,14 @@ let handler = DeclarativeHttpHandler::<User>::new("data/users.events")?;
 ```
 
 ### External Testing with CURL
+
 ```bash
 # Create via REST API
 curl -X POST http://127.0.0.1:8080/api/users \
      -H 'Content-Type: application/json' \
      -d '{"email":"user@example.com"}'
 
-# List all via REST API  
+# List all via REST API
 curl http://127.0.0.1:8080/api/users
 
 # Update via REST API
@@ -184,6 +196,7 @@ curl -X PUT http://127.0.0.1:8080/api/users/{id} \
 ## 🎯 **Why Hyper?**
 
 ### ✅ **Advantages**
+
 - **Production-proven** - Used by major Rust projects
 - **High performance** - Sub-millisecond request processing
 - **Async-native** - Full Tokio integration
@@ -191,7 +204,9 @@ curl -X PUT http://127.0.0.1:8080/api/users/{id} \
 - **Memory efficient** - Minimal allocations per request
 
 ### 🔄 **Migration from Axum**
+
 Lithair a migré d'Axum vers Hyper pour :
+
 - **Plus de contrôle** sur le request/response lifecycle
 - **Meilleures performances** avec moins d'overhead
 - **Architecture unifiée** - Un seul HTTP stack
@@ -200,16 +215,19 @@ Lithair a migré d'Axum vers Hyper pour :
 ## 🔮 **Future Enhancements**
 
 ### HTTP/2 Support
+
 - **Server push** for real-time updates
 - **Stream multiplexing** for better performance
 - **Header compression** for reduced bandwidth
 
 ### WebSocket Integration
+
 - **Real-time subscriptions** to model changes
 - **Live updates** via EventStore streaming
 - **Multi-client synchronization**
 
 ### Advanced Features
+
 - **Request middleware** pipeline
 - **Response caching** with smart invalidation
 - **Rate limiting** and throttling

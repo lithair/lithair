@@ -1,8 +1,8 @@
 # lithair-core
 
-Declarative, memory-first web framework for Rust. Define your data models and Lithair
-generates the complete backend: REST endpoints, event sourcing, sessions, RBAC, and
-distributed consensus.
+Declarative framework for building APIs and websites in Rust. Define your data
+models, enable the features you need, and keep the result coherent: REST
+endpoints, event sourcing, sessions, RBAC, frontend serving, and replication.
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ with `.raftlog` persistence, and automatic state reconstruction on restart.
 - **Event Sourcing**: All mutations stored as immutable events
 - **Sessions**: Built-in session management with persistence
 - **RBAC**: Role-based access control with field-level permissions
-- **Single Binary**: No external databases or services required
+- **Modular**: Start with one binary and add external pieces only when needed
 
 Derive macros from `lithair-macros` are included by default via the `macros` feature.
 

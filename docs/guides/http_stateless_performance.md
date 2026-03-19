@@ -4,10 +4,11 @@ This guide explains how to enable and use the stateless performance endpoints, s
 
 - Target files:
   - `lithair-core/src/http/declarative_server.rs`
-  - `examples/raft_replication_demo/http_hardening_node.rs`
-  - `examples/raft_replication_demo/bench_http_server_stateless.sh`
+  - `examples/09-replication/http_hardening_node.rs`
+  - `examples/09-replication/bench_http_server_stateless.sh`
 
 ## Overview
+
 - Stateless perf endpoints for HTTP-only benchmarking with zero persistence.
 - Gzip compression (HTTP/1.1) with Accept-Encoding negotiation.
 - Per-route policies (force gzip on/off, no-store, per-route min-bytes).
@@ -20,6 +21,7 @@ This guide explains how to enable and use the stateless performance endpoints, s
 ---
 
 ## Declarative Performance Endpoints
+
 The performance endpoints are off the model API path and never interact with persistence. They are intended to measure the HTTP stack end-to-end with controlled payload sizes.
 
 - Endpoints (assuming base path `/perf`):
@@ -30,6 +32,7 @@ The performance endpoints are off the model API path and never interact with per
 - Maximum payload: controlled by env `LT_PERF_MAX_BYTES` (default: 2,000,000 bytes).
 
 ### Enable in code
+
 ```rust
 use lithair_core::http::declarative_server::{DeclarativeServer, PerfEndpointsConfig};
 
@@ -41,11 +44,13 @@ let server = DeclarativeServer::<Product>::new("./data/product.events", 18320)?
 ```
 
 ### Environment overrides
+
 - `LT_PERF_ENABLED=1` or `true` → Enable even if disabled in code.
 - `LT_PERF_BASE=/bench` → Change base path without code change.
 - `LT_PERF_MAX_BYTES=2000000` → Cap for `json`/`bytes` endpoints.
 
 ### Quick usage
+
 ```bash
 # Echo 1MB (POST)
 curl -X POST http://127.0.0.1:18320/perf/echo --data-binary @/path/to/1mb.bin -o /dev/null -s -w "%{http_code}\n"
@@ -60,9 +65,11 @@ curl "http://127.0.0.1:18320/perf/bytes?n=1048576" -s -o /dev/null -w "%{size_do
 ---
 
 ## Gzip Compression (HTTP/1.1)
+
 Gzip is negotiated via `Accept-Encoding: gzip`. When enabled, Lithair compresses eligible responses and adds `Vary: Accept-Encoding`.
 
 - Code configuration:
+
 ```rust
 use lithair_core::http::declarative_server::GzipConfig;
 
@@ -75,21 +82,25 @@ let server = server
   - `LT_HTTP_GZIP_MIN=1024` → minimum body size before compressing.
 
 - Verification:
+
 ```bash
 # Should return Content-Encoding: gzip when Accept-Encoding includes gzip
 curl -sI -H 'Accept-Encoding: gzip' http://127.0.0.1:18320/status | grep -i '^content-encoding: gzip'
 ```
 
 Notes:
+
 - Small bodies below `min_bytes` are not compressed.
 - Responses already having `Content-Encoding` are not recompressed.
 
 ---
 
 ## Per-route Policies
+
 You can override gzip and caching for specific URI prefixes using `RoutePolicy`. The longest matching prefix wins.
 
 - Data type:
+
 ```rust
 #[derive(Clone, Debug, Default)]
 pub struct RoutePolicy {
@@ -100,6 +111,7 @@ pub struct RoutePolicy {
 ```
 
 - Usage:
+
 ```rust
 use lithair_core::http::declarative_server::RoutePolicy;
 
@@ -112,6 +124,7 @@ let server = server
 ```
 
 Behavior:
+
 - `gzip: Some(true)`
   - Forces gzip even if global gzip is disabled.
 - `gzip: Some(false)`
@@ -124,6 +137,7 @@ Behavior:
 ---
 
 ## Static Files: ETag and Cache-Control
+
 Static file serving is enabled by setting `LT_STATIC_DIR` to a directory containing `index.html` and an `assets/` folder.
 
 - Endpoints:
@@ -136,6 +150,7 @@ Static file serving is enabled by setting `LT_STATIC_DIR` to a directory contain
   - `assets/...`: `Cache-Control: public, max-age=31536000, immutable`
 
 - Conditional requests using ETag:
+
 ```bash
 # Get ETag for index.html
 ETAG=$(curl -sI http://127.0.0.1:18320/index.html | awk -F": " '/^ETag/ {print $2}' | tr -d '\r')
@@ -147,39 +162,47 @@ curl -sI -H "If-None-Match: $ETAG" http://127.0.0.1:18320/index.html | head -n 1
 ---
 
 ## Load Generation & Benchmarking
+
 There is a dedicated load generator and a ready-to-run benchmarking script.
 
 ### Load generator (modes)
-`examples/raft_replication_demo/http_loadgen_demo.rs` supports:
+
+`examples/09-replication/http_loadgen_demo.rs` (`replication-loadgen`) supports:
+
 - `perf-status`: GET a configured status/perf path.
 - `perf-json`: GET `{base}?bytes=N`.
 - `perf-bytes`: GET `{base}?n=N` (or `bytes=` as alias).
 - `perf-echo`: POST body of N bytes to `{base}`.
 
 Examples:
+
 ```bash
 # 10k requests, concurrency 512, JSON 1KB
-cargo run --release -p raft_replication_demo --bin http_loadgen_demo -- \
+cargo run --release -p replication --bin replication-loadgen -- \
   --leader http://127.0.0.1:18320 --total 10000 --concurrency 512 \
   --mode perf-json --perf-path /perf/json --perf-bytes 1024
 ```
 
 ### Benchmark script
-`examples/raft_replication_demo/bench_http_server_stateless.sh` runs a suite and writes a Markdown report under `baseline_results/`.
+
+`examples/09-replication/bench_http_server_stateless.sh` runs a suite and
+writes a Markdown report under `baseline_results/`.
 
 Environment knobs:
+
 - `PORT`, `CONCURRENCY`, `TIMEOUT_S`
 - Totals per scenario (examples): `TOTAL_STATUS`, `TOTAL_JSON_1KB`, `TOTAL_BYTES_1KB`, `TOTAL_ECHO_1KB`, ...
 - `LT_HTTP_GZIP`, `LT_HTTP_GZIP_MIN` for compression
 - `LT_PERF_MAX_BYTES` for perf endpoints size caps
 
 Run:
+
 ```bash
 # Without gzip
-tbash examples/raft_replication_demo/bench_http_server_stateless.sh
+bash examples/09-replication/bench_http_server_stateless.sh
 
 # With gzip forced
-tLT_HTTP_GZIP=1 LT_HTTP_GZIP_MIN=1024 bash examples/raft_replication_demo/bench_http_server_stateless.sh
+LT_HTTP_GZIP=1 LT_HTTP_GZIP_MIN=1024 bash examples/09-replication/bench_http_server_stateless.sh
 ```
 
 The report includes throughput and latency percentiles (p50, p95, p99) per operation type.
@@ -187,7 +210,9 @@ The report includes throughput and latency percentiles (p50, p95, p99) per opera
 ---
 
 ## CI Smoke Tests
+
 The workflow `/.github/workflows/ci.yml` includes:
+
 - A fast stateless perf smoke run with moderate concurrency and capped payload sizes.
 - A gzip negotiation step that verifies `Content-Encoding: gzip` on `/status` and `/perf/json?bytes=1024`.
 
@@ -196,6 +221,7 @@ These checks help detect regressions early without running heavy benchmarks.
 ---
 
 ## Troubleshooting
+
 - Payload rejected / truncated
   - Ensure `LT_PERF_MAX_BYTES` is large enough for your test.
 - No gzip in response
@@ -209,6 +235,7 @@ These checks help detect regressions early without running heavy benchmarks.
 ---
 
 ## Security Considerations
+
 - The stateless perf endpoints are for benchmarking; disable them in production or protect them via the Firewall config.
 - Use `RoutePolicy { no_store: true }` on routes that must never be cached by intermediaries or clients.
 - All responses include CORS and security headers by default (e.g., `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`).
@@ -216,7 +243,9 @@ These checks help detect regressions early without running heavy benchmarks.
 ---
 
 ## Full example (excerpt)
-Below is the minimal example showing all features together in `examples/raft_replication_demo/http_hardening_node.rs`:
+
+Below is the minimal example showing all features together in
+`examples/09-replication/http_hardening_node.rs`:
 
 ```rust
 use lithair_core::http::declarative_server::{
@@ -240,6 +269,7 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 You can override behavior per environment with:
+
 ```bash
 export LT_PERF_ENABLED=1
 export LT_PERF_BASE=/bench

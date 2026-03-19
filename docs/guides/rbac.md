@@ -93,14 +93,14 @@ async fn main() -> anyhow::Result<()> {
 
 Lithair automatically checks permissions at these points:
 
-| HTTP Method | Operation | Required Permission | When Checked |
-|-------------|-----------|---------------------|--------------|
+| HTTP Method | Operation | Required Permission | When Checked         |
+| ----------- | --------- | ------------------- | -------------------- |
 | `POST`      | Create    | `ProductWrite`      | Before creating item |
 | `PUT`       | Update    | `ProductWrite`      | Before updating item |
 | `DELETE`    | Delete    | `ProductDelete`     | Before deleting item |
-| `GET`       | Read      | Not enforced*       | N/A |
+| `GET`       | Read      | Not enforced\*      | N/A                  |
 
-*Read operations don't require permissions by default (assumes authenticated users can read)
+\*Read operations don't require permissions by default (assumes authenticated users can read)
 
 ## Permission Naming Convention
 
@@ -487,7 +487,8 @@ struct Product {
 
 ## Complete Working Example
 
-See [`examples/rbac_session_demo`](../../examples/rbac_session_demo/README.md) for a fully functional RBAC system with:
+See [`examples/06-auth-sessions`](../../examples/06-auth-sessions/README.md)
+for a fully functional RBAC system with:
 
 - User login with username/password
 - Session management with Bearer tokens
@@ -507,15 +508,16 @@ task examples:rbac-session:test
 
 Lithair's RBAC system:
 
- **Declarative** - Define rules, framework enforces
- **Automatic** - Zero permission checks in handlers
- **Flexible** - Support any permission model (RBAC, ABAC, etc.)
- **Type-safe** - Compile-time guarantees
- **Testable** - Easy to unit test permission logic
- **Zero overhead** - Checks only on write operations
+**Declarative** - Define rules, framework enforces
+**Automatic** - Zero permission checks in handlers
+**Flexible** - Support any permission model (RBAC, ABAC, etc.)
+**Type-safe** - Compile-time guarantees
+**Testable** - Easy to unit test permission logic
+**Zero overhead** - Checks only on write operations
 
 **You focus on business rules, Lithair handles security enforcement.**
 
 ---
 
-**Next:** [Session Management Guide](./sessions.md) | [Examples](../../examples/README.md)
+**Next:** [Session Management Guide](../features/security/sessions.md) |
+[Examples](../../examples/README.md)

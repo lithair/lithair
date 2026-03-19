@@ -495,11 +495,11 @@ xychart-beta
 
 ### Architectural Advantages
 
-1. **Single binary** - No external database
-2. **Direct memory access** - 1,000,000x faster than SQL
+1. **Single binary by default** - A coherent deployment model for projects that do not need an external database
+2. **Direct memory access** - Avoids the overhead of a separate query layer for in-memory workloads
 3. **Native event sourcing** - Complete audit trail
 4. **Pre-calculated indexes** - O(1) queries
-5. **Automatic deduplication** - Guaranteed idempotence
+5. **Automatic deduplication** - Built-in idempotence support
 
 ### Applied Optimizations
 

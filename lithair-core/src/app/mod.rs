@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use lithair_core::server::LithairServer;
+//! use lithair_core::LithairServer;
 //! use lithair_core::session::{SessionManager, MemorySessionStore};
 //!
 //! # async fn example() -> anyhow::Result<()> {
@@ -1245,6 +1245,9 @@ impl LithairServer {
         if access_log {
             crate::http::init_access_log_buffer(self.access_log_capacity);
         }
+
+        // Initialize system metrics collector (CPU, RAM, load, RSS)
+        crate::system::init_system_metrics();
 
         // Share server state
         let server = Arc::new(self);
