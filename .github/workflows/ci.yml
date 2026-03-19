@@ -51,6 +51,8 @@ jobs:
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
+          trivy-config: ''
+          version: 'v0.62.1'
 
   build-test-smoke:
     runs-on: blacksmith-4vcpu-ubuntu-2404
