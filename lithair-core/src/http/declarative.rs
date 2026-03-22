@@ -517,20 +517,20 @@ where
 
             // GET /api/products/{id} - Get by ID (with declarative read filtering)
             (&Method::GET, 1) => {
-                let id = path_segments[0];
-                self.handle_get(id, &req).await
+                let id = crate::http::query::percent_decode(path_segments[0]);
+                self.handle_get(&id, &req).await
             }
 
             // PUT /api/products/{id} - Update
             (&Method::PUT, 1) => {
-                let id = path_segments[0];
-                self.handle_update(id, req).await
+                let id = crate::http::query::percent_decode(path_segments[0]);
+                self.handle_update(&id, req).await
             }
 
             // DELETE /api/products/{id} - Delete
             (&Method::DELETE, 1) => {
-                let id = path_segments[0];
-                self.handle_delete(id, req).await
+                let id = crate::http::query::percent_decode(path_segments[0]);
+                self.handle_delete(&id, req).await
             }
 
             _ => {

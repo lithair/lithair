@@ -53,6 +53,38 @@ pub enum FilterOp {
 /// Reserved query parameter names that are not treated as filters
 const RESERVED_PARAMS: &[&str] = &["skip", "take", "sort"];
 
+/// Decode a percent-encoded URL string (e.g. "hello%20world" → "hello world")
+pub fn percent_decode(input: &str) -> String {
+    let mut out = Vec::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                out.push(hi << 4 | lo);
+                i += 3;
+                continue;
+            }
+        } else if bytes[i] == b'+' {
+            out.push(b' ');
+            i += 1;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// Parse query string into structured QueryParams
 pub fn parse_query_params(query: &str) -> QueryParams {
     let mut skip = 0u64;
@@ -65,19 +97,20 @@ pub fn parse_query_params(query: &str) -> QueryParams {
     }
 
     for pair in query.split('&') {
-        let (key, value) = match pair.split_once('=') {
+        let (key, raw_value) = match pair.split_once('=') {
             Some((k, v)) => (k, v),
             None => continue,
         };
 
         match key {
             "skip" => {
-                skip = value.parse().unwrap_or(0);
+                skip = raw_value.parse().unwrap_or(0);
             }
             "take" => {
-                take = value.parse().ok();
+                take = raw_value.parse().ok();
             }
             "sort" => {
+                let value = percent_decode(raw_value);
                 if let Some(field) = value.strip_prefix('-') {
                     sort = Some(SortSpec { field: field.to_string(), descending: true });
                 } else {
@@ -85,8 +118,10 @@ pub fn parse_query_params(query: &str) -> QueryParams {
                 }
             }
             field if !RESERVED_PARAMS.contains(&field) => {
-                let (op, val) = parse_filter_value(value);
-                filters.push(FilterSpec { field: field.to_string(), op, value: val.to_string() });
+                let decoded_value = percent_decode(raw_value);
+                let (op, val) = parse_filter_value(&decoded_value);
+                let decoded_field = percent_decode(field);
+                filters.push(FilterSpec { field: decoded_field, op, value: val.to_string() });
             }
             _ => {}
         }
@@ -335,5 +370,36 @@ mod tests {
         assert_eq!(params.filters[0].value, "100");
         assert_eq!(params.filters[1].op, FilterOp::Lte);
         assert_eq!(params.filters[1].value, "30");
+    }
+
+    #[test]
+    fn test_percent_decode_basic() {
+        assert_eq!(percent_decode("hello%20world"), "hello world");
+        assert_eq!(percent_decode("foo%26bar"), "foo&bar");
+        assert_eq!(percent_decode("100%25"), "100%");
+        assert_eq!(percent_decode("no+encoding+needed"), "no encoding needed");
+    }
+
+    #[test]
+    fn test_percent_decode_passthrough() {
+        assert_eq!(percent_decode("simple"), "simple");
+        assert_eq!(percent_decode(""), "");
+        assert_eq!(percent_decode("abc-123_def.txt"), "abc-123_def.txt");
+    }
+
+    #[test]
+    fn test_percent_decode_incomplete() {
+        // Incomplete sequences are left as-is
+        assert_eq!(percent_decode("foo%2"), "foo%2");
+        assert_eq!(percent_decode("foo%"), "foo%");
+        assert_eq!(percent_decode("foo%ZZ"), "foo%ZZ");
+    }
+
+    #[test]
+    fn test_filter_with_encoded_value() {
+        let params = parse_query_params("name=hello%20world&city=S%C3%A3o+Paulo");
+        assert_eq!(params.filters.len(), 2);
+        assert_eq!(params.filters[0].value, "hello world");
+        assert_eq!(params.filters[1].value, "São Paulo");
     }
 }
