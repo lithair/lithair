@@ -561,6 +561,86 @@ fn extract_u64_value(token_str: &str) -> Option<u64> {
     }
 }
 
+/// Generate a compile-time validation check for a field and rule.
+///
+/// Supported rules:
+/// - `non_empty`         → `.is_empty()` check (String, Vec, etc.)
+/// - `min_length(N)`     → `.len() < N`
+/// - `max_length(N)`     → `.len() > N`
+/// - `min_value(N)`      → `< N` (numeric fields)
+/// - `max_value(N)`      → `> N` (numeric fields)
+/// - `not_negative`      → `< 0` (numeric fields)
+fn generate_validation_check(
+    field_name: &str,
+    field_ident: &syn::Ident,
+    rule: &str,
+) -> Option<proc_macro2::TokenStream> {
+    let field_name_lit = syn::LitStr::new(field_name, Span::call_site());
+
+    if rule == "non_empty" {
+        return Some(quote! {
+            if self.#field_ident.is_empty() {
+                return Err(format!("'{}' must not be empty", #field_name_lit));
+            }
+        });
+    }
+
+    if rule == "not_negative" {
+        return Some(quote! {
+            if self.#field_ident < 0 {
+                return Err(format!("'{}' must not be negative", #field_name_lit));
+            }
+        });
+    }
+
+    // Rules with parameters: min_length(N), max_length(N), min_value(N), max_value(N)
+    if let Some(inner) = extract_rule_param(rule, "min_length") {
+        let n: usize = inner.parse().ok()?;
+        return Some(quote! {
+            if self.#field_ident.len() < #n {
+                return Err(format!("'{}' must be at least {} characters", #field_name_lit, #n));
+            }
+        });
+    }
+
+    if let Some(inner) = extract_rule_param(rule, "max_length") {
+        let n: usize = inner.parse().ok()?;
+        return Some(quote! {
+            if self.#field_ident.len() > #n {
+                return Err(format!("'{}' must be at most {} characters", #field_name_lit, #n));
+            }
+        });
+    }
+
+    if let Some(inner) = extract_rule_param(rule, "min_value") {
+        let value: proc_macro2::TokenStream = inner.parse().ok()?;
+        return Some(quote! {
+            if self.#field_ident < #value {
+                return Err(format!("'{}' must be at least {}", #field_name_lit, #value));
+            }
+        });
+    }
+
+    if let Some(inner) = extract_rule_param(rule, "max_value") {
+        let value: proc_macro2::TokenStream = inner.parse().ok()?;
+        return Some(quote! {
+            if self.#field_ident > #value {
+                return Err(format!("'{}' must be at most {}", #field_name_lit, #value));
+            }
+        });
+    }
+
+    None // Unknown rule, skip silently
+}
+
+/// Extract the parameter from a rule like "min_length(3)" → Some("3")
+fn extract_rule_param<'a>(rule: &'a str, prefix: &str) -> Option<&'a str> {
+    rule.strip_prefix(prefix)
+        .and_then(|s| s.strip_prefix('('))
+        .and_then(|s| s.strip_suffix(')'))
+        .map(|s| s.trim())
+}
+
 /// Generate the DeclarativeModel implementation
 #[allow(unreachable_code, unused_variables)]
 pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
@@ -741,6 +821,18 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             field_specs.insert(field_name_str, attrs);
         }
     }
+
+    // Generate compile-time validation checks from #[http(validate = "...")] attributes
+    let validation_checks: Vec<proc_macro2::TokenStream> = field_specs
+        .iter()
+        .flat_map(|(field_name, attrs)| {
+            let field_ident = syn::Ident::new(field_name, Span::call_site());
+            attrs
+                .validation
+                .iter()
+                .filter_map(move |rule| generate_validation_check(field_name, &field_ident, rule))
+        })
+        .collect();
 
     // Generate model-specific type names
     let spec_name = syn::Ident::new(&format!("{}DeclarativeSpec", name), name.span());
@@ -1182,30 +1274,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
 
             fn validate(&self) -> Result<(), String> {
-                // Auto-generate basic validation from #[http(validate = "...")] attributes
-                let spec = Self::get_declarative_spec();
-
-                for (field_name, attrs) in &spec.fields {
-                    if attrs.expose {
-                        for validation_rule in &attrs.validation {
-                            match validation_rule.as_str() {
-                                "non_empty" => {
-                                    // TODO: Use reflection to check if field is empty
-                                    // For now, assume validation passes
-                                }
-                                rule if rule.starts_with("min_value(") => {
-                                    // TODO: Parse min_value and validate
-                                    // For now, assume validation passes
-                                }
-                                _ => {
-                                    // Unknown validation rule, assume valid
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Ok(()) // All validations passed
+                #(#validation_checks)*
+                Ok(())
             }
 
             // INJECTED FUNCTIONS
