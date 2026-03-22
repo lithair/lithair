@@ -90,3 +90,6 @@ pub use crate::config::SchemaMigrationMode;
 
 // === Model inspection ===
 pub use crate::model_inspect::Inspectable;
+
+// === Testing utilities ===
+pub use crate::testing::TestHandler;

@@ -116,7 +116,6 @@ pub mod admin_ui;
 
 // No internal examples - keep framework API clean
 
-#[cfg(test)]
 pub mod testing;
 
 // Internal modules (not in public API)
