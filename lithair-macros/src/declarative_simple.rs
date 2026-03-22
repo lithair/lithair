@@ -224,6 +224,29 @@ fn parse_server_attributes(input: &DeriveInput) -> ServerAttributes {
     server_attrs
 }
 
+/// Parse struct-level #[schema(version = N)] attribute.
+/// Defaults to 1 if not specified.
+fn parse_schema_version(input: &DeriveInput) -> u32 {
+    for attr in &input.attrs {
+        if attr.path().is_ident("schema") {
+            if let Meta::List(meta_list) = &attr.meta {
+                let nested_str = meta_list.tokens.to_string();
+                for token in nested_str.split(',') {
+                    let token = token.trim();
+                    if token.starts_with("version") {
+                        if let Some(val) = token.split('=').nth(1) {
+                            if let Ok(v) = val.trim().parse::<u32>() {
+                                return v;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    1
+}
+
 /// Parse attributes from a field using modern syn API
 fn parse_field_attributes(field: &Field) -> FieldAttributes {
     let mut attrs = FieldAttributes {
@@ -660,6 +683,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
     // Parse firewall and http attributes
     let fw_attrs = parse_firewall_attributes(&input);
+    let schema_version = parse_schema_version(&input);
     let http_model_attrs = parse_model_http_attributes(&input);
 
     // Generate fw_fn
@@ -1189,7 +1213,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
                 ModelSpec {
                     model_name: #name_lit.to_string(),
-                    version: 1, // TODO: extraire depuis un attribut #[schema(version = 2)]
+                    version: #schema_version,
                     fields: schema_fields,
                     indexes,
                     foreign_keys,
@@ -1204,7 +1228,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
 
             fn schema_version(&self) -> u32 {
-                1 // TODO: extraire depuis un attribut #[schema(version = 2)]
+                #schema_version
             }
 
             fn field_constraints(&self, field_name: &str) -> Option<lithair_core::schema::FieldConstraints> {
