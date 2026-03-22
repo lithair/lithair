@@ -432,6 +432,27 @@ where
         }
     }
 
+    /// Check that no immutable fields have been modified between the existing and updated item.
+    /// Uses JSON serialization to compare field values without requiring the Inspectable trait bound.
+    fn check_immutable_fields(existing: &T, updated: &T) -> Result<(), String> {
+        let old_json = serde_json::to_value(existing).map_err(|e| e.to_string())?;
+        let new_json = serde_json::to_value(updated).map_err(|e| e.to_string())?;
+
+        for field_name in existing.all_field_names() {
+            if existing.is_field_immutable(field_name) {
+                let old_val = old_json.get(field_name);
+                let new_val = new_json.get(field_name);
+                if old_val != new_val {
+                    return Err(format!(
+                        "'{}' is immutable and cannot be modified",
+                        field_name
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// GET /api/{model}/count - Return item count only (lightweight read)
     async fn handle_count(&self) -> Result<Resp, Infallible> {
         let count = self.storage_count().await as u64;
@@ -1044,6 +1065,16 @@ where
             }
         }
 
+        // Enforce immutable fields: reject updates that modify #[lifecycle(immutable)] fields
+        {
+            let storage = self.storage.read().await;
+            if let Some(existing) = storage.get(id) {
+                if let Err(immutable_err) = Self::check_immutable_fields(existing, &updated_item) {
+                    return Ok(self.bad_request_response(&immutable_err));
+                }
+            }
+        }
+
         // Validate
         if let Err(validation_error) = updated_item.validate() {
             return Ok(self.bad_request_response(&validation_error));
@@ -1382,8 +1413,12 @@ where
         }
 
         // Deserialize back to item
+        let original = item.clone();
         item = serde_json::from_value(item_json)
             .map_err(|e| format!("Failed to apply changes: {}", e))?;
+
+        // Enforce immutable fields
+        Self::check_immutable_fields(&original, &item)?;
 
         // Validate the updated item
         if let Err(validation_error) = item.validate() {
