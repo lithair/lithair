@@ -554,6 +554,12 @@ where
                 self.handle_delete(&id, req).await
             }
 
+            // PATCH /api/products/{id} - Partial update (JSON merge)
+            (&Method::PATCH, 1) => {
+                let id = crate::http::query::percent_decode(path_segments[0]);
+                self.handle_patch(&id, req).await
+            }
+
             _ => {
                 // Provide 405 Method Not Allowed for known resources with wrong methods
                 let resp = if path_segments.is_empty() {
@@ -568,8 +574,8 @@ where
                         // Only POST allowed
                         self.method_not_allowed_response("POST")
                     } else {
-                        // Item resource: GET, PUT, DELETE allowed
-                        self.method_not_allowed_response("GET, PUT, DELETE")
+                        // Item resource: GET, PUT, PATCH, DELETE allowed
+                        self.method_not_allowed_response("GET, PUT, PATCH, DELETE")
                     }
                 } else {
                     // Unknown nested path → 404
@@ -1133,6 +1139,48 @@ where
                 .body(body_from(json))
                 .unwrap()),
             Err(_) => Ok(self.internal_error_response()),
+        }
+    }
+
+    /// PATCH /api/{model}/{id} - Partial update via JSON merge
+    async fn handle_patch(&self, id: &str, req: Req) -> Result<Resp, Infallible> {
+        // Validate content type
+        if !Self::has_json_content_type(&req) {
+            return Ok(self.unsupported_media_type_response());
+        }
+        if let Some(cl) = Self::content_length(&req) {
+            if cl > Self::max_body_bytes_single() {
+                return Ok(self.entity_too_large_response(Self::max_body_bytes_single()));
+            }
+        }
+
+        let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
+            Ok(bytes) => bytes,
+            Err(_) => return Ok(self.bad_request_response("Invalid body")),
+        };
+        if body_bytes.len() > Self::max_body_bytes_single() {
+            return Ok(self.entity_too_large_response(Self::max_body_bytes_single()));
+        }
+
+        let changes: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+            Ok(v) => v,
+            Err(_) => return Ok(self.bad_request_response("Invalid JSON")),
+        };
+
+        match self.submit_admin_edit(id, changes).await {
+            Ok(item) => {
+                // Broadcast SSE event
+                self.broadcast_sse("patched", &item).await;
+
+                let body = serde_json::to_string(&item).unwrap_or_default();
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(body_from(body))
+                    .unwrap())
+            }
+            Err(e) if e.contains("not found") => Ok(self.not_found_response()),
+            Err(e) => Ok(self.bad_request_response(&e)),
         }
     }
 
