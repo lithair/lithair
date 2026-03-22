@@ -490,6 +490,67 @@ fn extract_usize_value(token_str: &str) -> Option<usize> {
     }
 }
 
+/// Convert a CamelCase identifier to snake_case
+/// e.g. "ProductCategory" -> "product_category", "StaticAsset" -> "static_asset"
+fn to_snake_case(name: &str) -> String {
+    let mut result = String::with_capacity(name.len() + 4);
+    for (i, ch) in name.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_lowercase().next().unwrap_or(ch));
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+/// Simple English pluralization for URL path segments
+/// Handles common cases: category -> categories, address -> addresses, box -> boxes
+fn pluralize(word: &str) -> String {
+    if word.is_empty() {
+        return word.to_string();
+    }
+
+    // Words ending in s, sh, ch, x, z → add "es"
+    if word.ends_with('s')
+        || word.ends_with("sh")
+        || word.ends_with("ch")
+        || word.ends_with('x')
+        || word.ends_with('z')
+    {
+        return format!("{}es", word);
+    }
+
+    // Words ending in consonant + y → replace y with ies
+    if word.ends_with('y') && word.len() >= 2 {
+        let before_y = word.as_bytes()[word.len() - 2];
+        if !matches!(before_y, b'a' | b'e' | b'i' | b'o' | b'u') {
+            return format!("{}ies", &word[..word.len() - 1]);
+        }
+    }
+
+    // Default: add "s"
+    format!("{}s", word)
+}
+
+/// Generate a pluralized snake_case base path from a CamelCase struct name
+/// e.g. "Product" -> "products", "ProductCategory" -> "product_categories",
+///      "StaticAsset" -> "static_assets", "VirtualHost" -> "virtual_hosts"
+fn generate_base_path(struct_name: &str) -> String {
+    let snake = to_snake_case(struct_name);
+    // Only pluralize the last segment (after the last underscore)
+    if let Some(pos) = snake.rfind('_') {
+        let prefix = &snake[..pos];
+        let last = &snake[pos + 1..];
+        format!("{}_{}", prefix, pluralize(last))
+    } else {
+        pluralize(&snake)
+    }
+}
+
 /// Extract u64 value from attribute token
 fn extract_u64_value(token_str: &str) -> Option<u64> {
     if let Some(eq_pos) = token_str.find('=') {
@@ -511,6 +572,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, Span::call_site());
+    let base_path = generate_base_path(&name_str);
+    let base_path_lit = syn::LitStr::new(&base_path, Span::call_site());
 
     // Keep server attributes parsed so later (currently unreachable) code compiles
     let server_attrs = parse_server_attributes(&input);
@@ -1107,20 +1170,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         // Auto-generate HttpExposable implementation
         impl lithair_core::http::HttpExposable for #name {
             fn http_base_path() -> &'static str {
-                // Auto-generate base path from struct name: Product -> "products"
-                match #name_lit {
-                    "Product" => "products",
-                    "User" => "users",
-                    "Order" => "orders",
-                    "Article" => "articles",
-                    "StaticAsset" => "assets",
-                    "Author" => "authors",
-                    "Category" => "categories",
-                    "Comment" => "comments",
-                    "ConsensusProduct" => "consensus_products",
-                    "VirtualHost" => "virtual_hosts",
-                    _ => "items" // Generic fallback
-                }
+                #base_path_lit
             }
 
             fn primary_key_field() -> &'static str {

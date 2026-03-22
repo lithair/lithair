@@ -7,7 +7,6 @@
 use proc_macro::TokenStream;
 
 mod declarative_simple;
-mod declarative_types;
 mod lifecycle;
 mod lithair_model;
 mod page;
