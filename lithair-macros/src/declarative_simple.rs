@@ -1,7 +1,8 @@
-/// Model-level HTTP attributes (e.g., public_if condition)
+/// Model-level HTTP attributes (e.g., public_if condition, base_path override)
 #[derive(Debug, Default, Clone)]
 struct ModelHttpAttributes {
     public_if: Option<(String, String)>, // (field, value)
+    base_path: Option<String>,           // Override auto-generated base path
 }
 
 /// Parse struct-level #[http(...)] attributes
@@ -13,8 +14,15 @@ fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
                 let nested_str = meta_list.tokens.to_string();
                 for token in nested_str.split(',') {
                     let token = token.trim();
-                    // Expect patterns like public_if = "status=Published" or "status==Published"
-                    if token.starts_with("public_if") {
+                    if token.starts_with("base_path") {
+                        if let Some(val) = extract_string_value(token) {
+                            // Strip leading slash if present for consistency
+                            let val = val.strip_prefix('/').unwrap_or(&val).to_string();
+                            if !val.is_empty() {
+                                http.base_path = Some(val);
+                            }
+                        }
+                    } else if token.starts_with("public_if") {
                         if let Some(val) = extract_string_value(token) {
                             let s = val.replace("==", "=");
                             if let Some((field, value)) = s.split_once('=') {
@@ -675,9 +683,6 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, Span::call_site());
-    let base_path = generate_base_path(&name_str);
-    let base_path_lit = syn::LitStr::new(&base_path, Span::call_site());
-
     // Keep server attributes parsed so later (currently unreachable) code compiles
     let server_attrs = parse_server_attributes(&input);
 
@@ -685,6 +690,13 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     let fw_attrs = parse_firewall_attributes(&input);
     let schema_version = parse_schema_version(&input);
     let http_model_attrs = parse_model_http_attributes(&input);
+
+    // Use #[http(base_path = "custom")] if specified, otherwise auto-generate
+    let base_path = http_model_attrs
+        .base_path
+        .clone()
+        .unwrap_or_else(|| generate_base_path(&name_str));
+    let base_path_lit = syn::LitStr::new(&base_path, Span::call_site());
 
     // Generate fw_fn
     let fw_fn = if fw_attrs.present {
