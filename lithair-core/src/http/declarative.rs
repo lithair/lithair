@@ -552,6 +552,13 @@ where
         let method = req.method();
 
         match (method, path_segments.len()) {
+            // OPTIONS - CORS preflight (any path)
+            (&Method::OPTIONS, _) => Ok(Response::builder()
+                .status(StatusCode::NO_CONTENT)
+                .header("allow", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+                .body(body_from(Bytes::new()))
+                .unwrap()),
+
             // GET /api/products - List all (with declarative read filtering)
             (&Method::GET, 0) => self.handle_list(&req).await,
 

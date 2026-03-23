@@ -294,7 +294,7 @@ fn add_common_headers(resp: Resp) -> Resp {
     headers.insert("access-control-allow-origin", "*".parse().expect("valid header value"));
     headers.insert(
         "access-control-allow-methods",
-        "GET, POST, PUT, DELETE, OPTIONS".parse().expect("valid header value"),
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS".parse().expect("valid header value"),
     );
     headers.insert(
         "access-control-allow-headers",
