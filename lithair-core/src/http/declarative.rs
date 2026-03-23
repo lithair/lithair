@@ -487,6 +487,39 @@ where
         Ok(())
     }
 
+    /// Log changes to audited fields between old and new versions.
+    /// Fields annotated with #[lifecycle(audited)] get their changes recorded via the log crate.
+    fn log_audited_changes(existing: &T, updated: &T) {
+        let old_json = match serde_json::to_value(existing) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let new_json = match serde_json::to_value(updated) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let model_name = std::any::type_name::<T>().rsplit("::").next().unwrap_or("Unknown");
+        let id = updated.get_primary_key();
+
+        for field_name in existing.all_field_names() {
+            if !existing.is_field_audited(field_name) {
+                continue;
+            }
+            let old_val = old_json.get(field_name);
+            let new_val = new_json.get(field_name);
+            if old_val != new_val {
+                log::info!(
+                    "AUDIT {}/{}: field '{}' changed from {} to {}",
+                    model_name,
+                    id,
+                    field_name,
+                    old_val.map(|v| v.to_string()).unwrap_or_else(|| "null".into()),
+                    new_val.map(|v| v.to_string()).unwrap_or_else(|| "null".into()),
+                );
+            }
+        }
+    }
+
     /// GET /api/{model}/count - Return item count only (lightweight read)
     async fn handle_count(&self) -> Result<Resp, Infallible> {
         let count = self.storage_count().await as u64;
@@ -1121,13 +1154,14 @@ where
             }
         }
 
-        // Enforce immutable fields: reject updates that modify #[lifecycle(immutable)] fields
+        // Enforce immutable fields and log audited changes
         {
             let storage = self.storage.read().await;
             if let Some(existing) = storage.get(id) {
                 if let Err(immutable_err) = Self::check_immutable_fields(existing, &updated_item) {
                     return Ok(self.bad_request_response(&immutable_err));
                 }
+                Self::log_audited_changes(existing, &updated_item);
             }
         }
 
@@ -1524,8 +1558,9 @@ where
         item = serde_json::from_value(item_json)
             .map_err(|e| format!("Failed to apply changes: {}", e))?;
 
-        // Enforce immutable fields
+        // Enforce immutable fields and log audited changes
         Self::check_immutable_fields(&original, &item)?;
+        Self::log_audited_changes(&original, &item);
 
         // Enforce unique constraints
         self.check_unique_constraints(&item, Some(id))
