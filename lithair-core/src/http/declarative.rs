@@ -580,7 +580,7 @@ where
     /// GET /api/{model}/count - Return item count only (lightweight read)
     async fn handle_count(&self) -> Result<Resp, Infallible> {
         let count = self.storage_count().await as u64;
-        let body = format!(r#"{{"count":{}}}"#, count);
+        let body = serde_json::json!({"count": count}).to_string();
         Ok(Response::builder()
             .status(StatusCode::OK)
             .header("content-type", "application/json")
@@ -592,7 +592,7 @@ where
     async fn handle_random_id(&self) -> Result<Resp, Infallible> {
         let storage = self.storage.read().await;
         if let Some((id, _)) = storage.iter().next() {
-            let body = format!(r#"{{"id":"{}"}}"#, id);
+            let body = serde_json::json!({"id": id}).to_string();
             Ok(Response::builder()
                 .status(StatusCode::OK)
                 .header("content-type", "application/json")
@@ -916,11 +916,7 @@ where
 
         // Enforce unique constraints
         if let Err(unique_err) = self.check_unique_constraints(&item, None).await {
-            return Ok(Response::builder()
-                .status(StatusCode::CONFLICT)
-                .header("content-type", "application/json")
-                .body(body_from(format!(r#"{{"error":"{}"}}"#, unique_err)))
-                .unwrap());
+            return Ok(self.json_error_response(StatusCode::CONFLICT, &unique_err));
         }
 
         // Apply lifecycle rules
@@ -974,11 +970,10 @@ where
                     log::info!("Raft: Successfully replicated item {} across cluster", primary_key);
                 }
                 Err(e) => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .header("content-type", "application/json")
-                        .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
-                        .unwrap());
+                    return Ok(self.json_error_response(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        &format!("Consensus failed: {}", e),
+                    ));
                 }
             }
         } else {
@@ -1046,11 +1041,7 @@ where
             }
             // Enforce unique constraints
             if let Err(unique_err) = self.check_unique_constraints(&item, None).await {
-                return Ok(Response::builder()
-                    .status(StatusCode::CONFLICT)
-                    .header("content-type", "application/json")
-                    .body(body_from(format!(r#"{{"error":"{}"}}"#, unique_err)))
-                    .unwrap());
+                return Ok(self.json_error_response(StatusCode::CONFLICT, &unique_err));
             }
             if let Err(e) = item.apply_lifecycle() {
                 return Ok(self.bad_request_response(&e));
@@ -1085,14 +1076,10 @@ where
                             created.push(item);
                         }
                         Err(e) => {
-                            return Ok(Response::builder()
-                                .status(StatusCode::SERVICE_UNAVAILABLE)
-                                .header("content-type", "application/json")
-                                .body(body_from(format!(
-                                    r#"{{"error":"Consensus failed: {}"}}"#,
-                                    e
-                                )))
-                                .unwrap());
+                            return Ok(self.json_error_response(
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                &format!("Consensus failed: {}", e),
+                            ));
                         }
                     }
                 } else {
@@ -1250,11 +1237,7 @@ where
 
         // Enforce unique constraints (exclude self from check)
         if let Err(unique_err) = self.check_unique_constraints(&updated_item, Some(id)).await {
-            return Ok(Response::builder()
-                .status(StatusCode::CONFLICT)
-                .header("content-type", "application/json")
-                .body(body_from(format!(r#"{{"error":"{}"}}"#, unique_err)))
-                .unwrap());
+            return Ok(self.json_error_response(StatusCode::CONFLICT, &unique_err));
         }
 
         // Apply lifecycle
@@ -1280,11 +1263,10 @@ where
                     storage.insert(id.to_string(), updated_item.clone());
                 }
                 Err(e) => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .header("content-type", "application/json")
-                        .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
-                        .unwrap());
+                    return Ok(self.json_error_response(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        &format!("Consensus failed: {}", e),
+                    ));
                 }
             }
         } else {
@@ -1432,11 +1414,10 @@ where
                         None => Ok(self.not_found_response()),
                     }
                 }
-                Err(e) => Ok(Response::builder()
-                    .status(StatusCode::SERVICE_UNAVAILABLE)
-                    .header("content-type", "application/json")
-                    .body(body_from(format!(r#"{{"error": "Consensus failed: {}"}}"#, e)))
-                    .unwrap()),
+                Err(e) => Ok(self.json_error_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("Consensus failed: {}", e),
+                )),
             }
         } else {
             // No consensus - delete directly (single-node mode)
@@ -1503,45 +1484,44 @@ where
     }
 
     fn bad_request_response(&self, message: &str) -> Resp {
-        let json = format!(r#"{{"error":"{}"}}"#, message);
-        Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .header("content-type", "application/json")
-            .body(body_from(json))
-            .unwrap()
+        self.json_error_response(StatusCode::BAD_REQUEST, message)
     }
 
     fn internal_error_response(&self) -> Resp {
-        Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .header("content-type", "application/json")
-            .body(body_from(r#"{"error":"Internal server error"}"#))
-            .unwrap()
+        self.json_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
     }
 
     fn unsupported_media_type_response(&self) -> Resp {
-        Response::builder()
-            .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
-            .header("content-type", "application/json")
-            .body(body_from(r#"{"error":"unsupported media type, expected application/json"}"#))
-            .unwrap()
+        self.json_error_response(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported media type, expected application/json",
+        )
     }
 
     fn entity_too_large_response(&self, max: usize) -> Resp {
-        let msg = format!("request body too large (max {} bytes)", max);
-        Response::builder()
-            .status(StatusCode::PAYLOAD_TOO_LARGE)
-            .header("content-type", "application/json")
-            .body(body_from(format!(r#"{{"error":"{}"}}"#, msg)))
-            .unwrap()
+        self.json_error_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            &format!("request body too large (max {} bytes)", max),
+        )
     }
 
     fn method_not_allowed_response(&self, allowed: &str) -> Resp {
+        let body = serde_json::json!({"error": "method not allowed", "allow": allowed});
         Response::builder()
             .status(StatusCode::METHOD_NOT_ALLOWED)
             .header("content-type", "application/json")
             .header("allow", allowed)
-            .body(body_from(format!(r#"{{"error":"method not allowed","allow":"{}"}}"#, allowed)))
+            .body(body_from(body.to_string()))
+            .unwrap()
+    }
+
+    /// Build a JSON error response with proper escaping (prevents JSON injection)
+    fn json_error_response(&self, status: StatusCode, message: &str) -> Resp {
+        let body = serde_json::json!({"error": message});
+        Response::builder()
+            .status(status)
+            .header("content-type", "application/json")
+            .body(body_from(body.to_string()))
             .unwrap()
     }
 
