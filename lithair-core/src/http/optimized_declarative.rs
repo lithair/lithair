@@ -324,18 +324,20 @@ where
     // Response helpers
 
     fn bad_request_response(&self, message: &str) -> Resp {
+        let body = serde_json::json!({"error": message}).to_string();
         Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .header("content-type", "application/json")
-            .body(body_from(format!(r#"{{"error": "{}"}}"#, message)))
+            .body(body_from(body))
             .unwrap()
     }
 
     fn internal_error_response(&self, message: &str) -> Resp {
+        let body = serde_json::json!({"error": message}).to_string();
         Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .header("content-type", "application/json")
-            .body(body_from(format!(r#"{{"error": "{}"}}"#, message)))
+            .body(body_from(body))
             .unwrap()
     }
 

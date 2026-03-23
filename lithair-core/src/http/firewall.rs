@@ -186,7 +186,7 @@ impl Firewall {
     }
 
     fn json_error(status: StatusCode, code: &str, message: &str) -> Resp {
-        let body = format!(r#"{{"error":"{}","message":"{}"}}"#, code, message);
+        let body = serde_json::json!({"error": code, "message": message}).to_string();
         Response::builder()
             .status(status)
             .header("content-type", "application/json")
