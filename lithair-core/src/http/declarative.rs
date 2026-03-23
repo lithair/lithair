@@ -432,6 +432,43 @@ where
         }
     }
 
+    /// Check that unique constraints are satisfied.
+    /// Scans storage for any other item with the same value on a unique field.
+    async fn check_unique_constraints(
+        &self,
+        item: &T,
+        exclude_id: Option<&str>,
+    ) -> Result<(), String> {
+        let item_json = serde_json::to_value(item).map_err(|e| e.to_string())?;
+        let storage = self.storage.read().await;
+
+        for field_name in item.all_field_names() {
+            if let Some(policy) = item.lifecycle_policy_for_field(field_name) {
+                if !policy.unique {
+                    continue;
+                }
+                let new_val = match item_json.get(field_name) {
+                    Some(v) if !v.is_null() => v,
+                    _ => continue,
+                };
+                for (existing_id, existing_item) in storage.iter() {
+                    if exclude_id == Some(existing_id.as_str()) {
+                        continue;
+                    }
+                    if let Ok(existing_json) = serde_json::to_value(existing_item) {
+                        if existing_json.get(field_name) == Some(new_val) {
+                            return Err(format!(
+                                "'{}' must be unique: value {} already exists",
+                                field_name, new_val
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Check that no immutable fields have been modified between the existing and updated item.
     /// Uses JSON serialization to compare field values without requiring the Inspectable trait bound.
     fn check_immutable_fields(existing: &T, updated: &T) -> Result<(), String> {
@@ -770,6 +807,15 @@ where
             return Ok(self.bad_request_response(&validation_error));
         }
 
+        // Enforce unique constraints
+        if let Err(unique_err) = self.check_unique_constraints(&item, None).await {
+            return Ok(Response::builder()
+                .status(StatusCode::CONFLICT)
+                .header("content-type", "application/json")
+                .body(body_from(format!(r#"{{"error":"{}"}}"#, unique_err)))
+                .unwrap());
+        }
+
         // Apply lifecycle rules
         if let Err(lifecycle_error) = item.apply_lifecycle() {
             return Ok(self.bad_request_response(&lifecycle_error));
@@ -1084,6 +1130,15 @@ where
         // Validate
         if let Err(validation_error) = updated_item.validate() {
             return Ok(self.bad_request_response(&validation_error));
+        }
+
+        // Enforce unique constraints (exclude self from check)
+        if let Err(unique_err) = self.check_unique_constraints(&updated_item, Some(id)).await {
+            return Ok(Response::builder()
+                .status(StatusCode::CONFLICT)
+                .header("content-type", "application/json")
+                .body(body_from(format!(r#"{{"error":"{}"}}"#, unique_err)))
+                .unwrap());
         }
 
         // Apply lifecycle
@@ -1467,6 +1522,11 @@ where
 
         // Enforce immutable fields
         Self::check_immutable_fields(&original, &item)?;
+
+        // Enforce unique constraints
+        self.check_unique_constraints(&item, Some(id))
+            .await
+            .map_err(|e| format!("Unique constraint: {}", e))?;
 
         // Validate the updated item
         if let Err(validation_error) = item.validate() {
