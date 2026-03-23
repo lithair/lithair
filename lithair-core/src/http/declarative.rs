@@ -28,6 +28,12 @@ fn body_from<T: Into<Bytes>>(data: T) -> RespBody {
     Full::new(data.into()).boxed()
 }
 
+/// Strip the body from a response, keeping status and headers (for HEAD requests)
+fn strip_body(resp: Resp) -> Resp {
+    let (parts, _body) = resp.into_parts();
+    Response::from_parts(parts, Full::new(Bytes::new()).boxed())
+}
+
 /// Trait for models that can be exposed via HTTP
 ///
 /// This trait is automatically implemented by the DeclarativeModel macro
@@ -594,12 +600,17 @@ where
 
             // GET /api/products - List all (with declarative read filtering)
             (&Method::GET, 0) => self.handle_list(&req).await,
+            // HEAD /api/products - Same headers as GET list, no body
+            (&Method::HEAD, 0) => self.handle_list(&req).await.map(strip_body),
 
             // GET /api/products/stream - SSE real-time change subscription
             (&Method::GET, 1) if path_segments[0] == "stream" => self.handle_sse_stream().await,
 
             // GET /api/products/count - Count items (lightweight read)
             (&Method::GET, 1) if path_segments[0] == "count" => self.handle_count().await,
+            (&Method::HEAD, 1) if path_segments[0] == "count" => {
+                self.handle_count().await.map(strip_body)
+            }
 
             // GET /api/products/random-id - Return a single existing id (lightweight)
             (&Method::GET, 1) if path_segments[0] == "random-id" => self.handle_random_id().await,
@@ -614,6 +625,11 @@ where
             (&Method::GET, 1) => {
                 let id = crate::http::query::percent_decode(path_segments[0]);
                 self.handle_get(&id, &req).await
+            }
+            // HEAD /api/products/{id} - Same headers as GET, no body
+            (&Method::HEAD, 1) => {
+                let id = crate::http::query::percent_decode(path_segments[0]);
+                self.handle_get(&id, &req).await.map(strip_body)
             }
 
             // PUT /api/products/{id} - Update
@@ -973,6 +989,14 @@ where
         for mut item in items.drain(..) {
             if let Err(e) = item.validate() {
                 return Ok(self.bad_request_response(&e));
+            }
+            // Enforce unique constraints
+            if let Err(unique_err) = self.check_unique_constraints(&item, None).await {
+                return Ok(Response::builder()
+                    .status(StatusCode::CONFLICT)
+                    .header("content-type", "application/json")
+                    .body(body_from(format!(r#"{{"error":"{}"}}"#, unique_err)))
+                    .unwrap());
             }
             if let Err(e) = item.apply_lifecycle() {
                 return Ok(self.bad_request_response(&e));
