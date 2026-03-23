@@ -268,13 +268,14 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                         }
                     },
                     "400": { "description": "Invalid input" },
-                    "403": { "description": "Insufficient permissions" }
+                    "403": { "description": "Insufficient permissions" },
+                    "409": { "description": "Unique constraint violation" }
                 }
             }
         }),
     ));
 
-    // Item endpoint: GET + PUT + DELETE
+    // Item endpoint: GET + PUT + PATCH + DELETE
     let item_path = format!("{}/{{id}}", base);
     paths.push((
         item_path,
@@ -322,8 +323,39 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                             }
                         }
                     },
+                    "400": { "description": "Invalid input or immutable field modified" },
                     "404": { "description": "Not found" },
-                    "400": { "description": "Invalid input" }
+                    "409": { "description": "Unique constraint violation" }
+                }
+            },
+            "patch": {
+                "tags": [&tag],
+                "summary": format!("Partially update {}", model_name),
+                "description": format!("Merge-patch: only provided fields are updated. Immutable fields cannot be changed."),
+                "operationId": format!("patch{}", model_name),
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": id_schema.clone() }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": &schema_ref }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Patched",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": &schema_ref }
+                            }
+                        }
+                    },
+                    "400": { "description": "Invalid input or immutable field modified" },
+                    "404": { "description": "Not found" },
+                    "409": { "description": "Unique constraint violation" }
                 }
             },
             "delete": {
@@ -334,7 +366,7 @@ fn model_to_paths(info: &OpenApiModelInfo) -> Vec<(String, Value)> {
                     { "name": "id", "in": "path", "required": true, "schema": id_schema.clone() }
                 ],
                 "responses": {
-                    "200": { "description": "Deleted" },
+                    "204": { "description": "Deleted" },
                     "404": { "description": "Not found" }
                 }
             }
