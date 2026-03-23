@@ -69,10 +69,7 @@ where
     pub async fn create(&self, mut item: T) -> Result<T, String> {
         item.validate()?;
         item.apply_lifecycle()?;
-        self.handler
-            .apply_replicated_item(item.clone())
-            .await
-            .map(|_| item)
+        self.handler.apply_replicated_item(item.clone()).await.map(|_| item)
     }
 
     /// Get a single item by ID, or None if not found.

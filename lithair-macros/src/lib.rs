@@ -68,7 +68,18 @@ pub fn derive_lifecycle_aware(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_derive(
     DeclarativeModel,
-    attributes(db, lifecycle, http, permission, rbac, relation, persistence, server, firewall, schema)
+    attributes(
+        db,
+        lifecycle,
+        http,
+        permission,
+        rbac,
+        relation,
+        persistence,
+        server,
+        firewall,
+        schema
+    )
 )]
 pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     declarative_simple::derive_declarative_model(input.into()).into()

@@ -664,7 +664,11 @@ where
         log::info!("   POST   /api/{:<20} - Create item", T::http_base_path());
         log::info!("   GET    /api/{}/{{id}}{:<10} - Get item by ID", T::http_base_path(), "");
         log::info!("   PUT    /api/{}/{{id}}{:<10} - Update item (full)", T::http_base_path(), "");
-        log::info!("   PATCH  /api/{}/{{id}}{:<10} - Update item (partial)", T::http_base_path(), "");
+        log::info!(
+            "   PATCH  /api/{}/{{id}}{:<10} - Update item (partial)",
+            T::http_base_path(),
+            ""
+        );
         log::info!("   DELETE /api/{}/{{id}}{:<10} - Delete item", T::http_base_path(), "");
         log::info!(
             "   GET    /api/{}/count{:<10} - Lightweight item count",

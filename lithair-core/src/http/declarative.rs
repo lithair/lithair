@@ -480,10 +480,7 @@ where
                 let old_val = old_json.get(field_name);
                 let new_val = new_json.get(field_name);
                 if old_val != new_val {
-                    return Err(format!(
-                        "'{}' is immutable and cannot be modified",
-                        field_name
-                    ));
+                    return Err(format!("'{}' is immutable and cannot be modified", field_name));
                 }
             }
         }
