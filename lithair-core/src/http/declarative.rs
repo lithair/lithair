@@ -526,6 +526,57 @@ where
         }
     }
 
+    /// GET /api/{model}/_schema - Expose the declarative model specification as JSON
+    async fn handle_schema(&self) -> Result<Resp, Infallible> {
+        let model_name = std::any::type_name::<T>().rsplit("::").next().unwrap_or("Unknown");
+        // Build a dummy instance via JSON to access trait methods
+        // Use the storage to get a real item, or build field info from an empty default
+        let storage = self.storage.read().await;
+        let sample = storage.values().next();
+
+        let mut fields = serde_json::Map::new();
+        if let Some(item) = sample {
+            for field_name in item.all_field_names() {
+                let mut info = serde_json::Map::new();
+                if let Some(policy) = item.lifecycle_policy_for_field(field_name) {
+                    info.insert("immutable".into(), serde_json::json!(policy.immutable));
+                    info.insert("audited".into(), serde_json::json!(policy.audited));
+                    info.insert("unique".into(), serde_json::json!(policy.unique));
+                    info.insert("indexed".into(), serde_json::json!(policy.indexed));
+                    if policy.version_limit > 0 {
+                        info.insert(
+                            "version_limit".into(),
+                            serde_json::json!(policy.version_limit),
+                        );
+                    }
+                    if policy.fk {
+                        info.insert("foreign_key".into(), serde_json::json!(true));
+                    }
+                }
+                fields.insert(field_name.to_string(), serde_json::Value::Object(info));
+            }
+        }
+
+        let count = storage.len();
+        drop(storage);
+
+        let schema = serde_json::json!({
+            "model": model_name,
+            "base_path": format!("/api/{}", T::http_base_path()),
+            "primary_key": T::primary_key_field(),
+            "item_count": count,
+            "fields": fields,
+            "methods": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        });
+
+        let body = serde_json::to_string_pretty(&schema).unwrap_or_default();
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .body(body_from(body))
+            .unwrap())
+    }
+
     /// GET /api/{model}/count - Return item count only (lightweight read)
     async fn handle_count(&self) -> Result<Resp, Infallible> {
         let count = self.storage_count().await as u64;
@@ -614,6 +665,9 @@ where
 
             // GET /api/products/random-id - Return a single existing id (lightweight)
             (&Method::GET, 1) if path_segments[0] == "random-id" => self.handle_random_id().await,
+
+            // GET /api/products/_schema - Declarative model introspection
+            (&Method::GET, 1) if path_segments[0] == "_schema" => self.handle_schema().await,
 
             // POST /api/products - Create
             (&Method::POST, 0) => self.handle_create(req).await,
