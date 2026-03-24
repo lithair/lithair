@@ -51,9 +51,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
 struct Category {
     #[http(expose)]
+    #[lifecycle(immutable)]
     id: String,
 
-    #[http(expose)]
+    #[http(expose, validate = "non_empty")]
     name: String,
 }
 
@@ -61,12 +62,14 @@ struct Category {
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
 struct Product {
     #[http(expose)]
+    #[lifecycle(immutable)]
     id: String,
 
-    #[http(expose)]
+    #[http(expose, validate = "non_empty")]
     name: String,
 
     #[http(expose)]
+    #[lifecycle(audited)]
     price: f64,
 
     #[http(expose)]
@@ -80,6 +83,7 @@ struct Product {
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
 struct Order {
     #[http(expose)]
+    #[lifecycle(immutable)]
     id: String,
 
     #[http(expose)]
