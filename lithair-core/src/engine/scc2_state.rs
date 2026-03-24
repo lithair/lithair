@@ -1,7 +1,7 @@
 /// SCC2-based lock-free StateEngine
 /// 
-/// Performance: 40M+ ops/sec lectures (vs 10K/sec avec RwLock)
-/// Zero contention entre lectures et écritures
+/// Performance: 40M+ ops/sec reads (vs 10K/sec with RwLock)
+/// Zero contention between reads and writes
 use scc::HashMap as SccHashMap;
 use std::sync::Arc;
 
@@ -19,26 +19,26 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
     V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    /// Créer un nouveau SCC2StateEngine
+    /// Create a new SCC2StateEngine
     pub fn new() -> Self {
         Self {
             map: Arc::new(SccHashMap::new()),
         }
     }
 
-    /// Insérer ou mettre à jour une valeur (lock-free!)
+    /// Insert or update a value (lock-free!)
     pub async fn insert(&self, key: K, value: V) -> Result<(), String> {
         self.map.insert_async(key, value).await
             .map_err(|e| format!("SCC2 insert error: {:?}", e))?;
         Ok(())
     }
 
-    /// Lire une valeur (ultra-rapide, lock-free!)
+    /// Read a value (ultra-fast, lock-free!)
     pub async fn get(&self, key: &K) -> Option<V> {
         self.map.read_async(key, |_k, v| v.clone()).await
     }
 
-    /// Supprimer une valeur (lock-free!)
+    /// Remove a value (lock-free!)
     pub async fn remove(&self, key: &K) -> Result<Option<V>, String> {
         match self.map.remove_async(key).await {
             Some((_, v)) => Ok(Some(v)),
@@ -46,41 +46,41 @@ where
         }
     }
 
-    /// Compter les éléments
+    /// Count elements
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
-    /// Vérifier si vide
+    /// Check if empty
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
 
-    /// Itérer sur tous les éléments (snapshot)
+    /// Iterate over all elements (snapshot)
     pub async fn iter_all(&self) -> Vec<(K, V)> {
         let results = Arc::new(std::sync::Mutex::new(Vec::new()));
         let results_clone = results.clone();
         
-        // Scanner toute la map avec retain_async (garde tous les éléments)
+        // Scan the entire map with retain_async (keeps all elements)
         self.map.retain_async(|k, v| {
-            // Capturer les éléments dans le vecteur
+            // Capture elements into the vector
             if let Ok(mut vec) = results_clone.lock() {
                 vec.push((k.clone(), v.clone()));
             }
-            true // Garder tous les éléments
+            true // Keep all elements
         }).await;
         
-        // Extraire les résultats
+        // Extract the results
         let final_vec = results.lock().expect("iter results lock poisoned").clone();
         final_vec
     }
 
-    /// Effacer toutes les données
+    /// Clear all data
     pub async fn clear(&self) {
         self.map.clear_async().await;
     }
 
-    /// Clone du state engine (partage la même map sous-jacente via Arc)
+    /// Clone the state engine (shares the same underlying map via Arc)
     pub fn clone_engine(&self) -> Self {
         Self {
             map: Arc::clone(&self.map),
@@ -176,7 +176,7 @@ mod tests {
         let all = engine.iter_all().await;
         assert_eq!(all.len(), 3);
         
-        // Vérifier que toutes les clés sont présentes
+        // Verify all keys are present
         let keys: Vec<String> = all.iter().map(|(k, _)| k.clone()).collect();
         assert!(keys.contains(&"a".to_string()));
         assert!(keys.contains(&"b".to_string()));
@@ -207,7 +207,7 @@ mod tests {
         
         println!("SCC2 Read Performance: {} ops/sec", ops_per_sec);
         
-        // On s'attend à > 1M ops/sec en mode async
-        assert!(ops_per_sec > 100_000, "Performance trop faible: {} ops/sec", ops_per_sec);
+        // Expect > 1M ops/sec in async mode
+        assert!(ops_per_sec > 100_000, "Performance too low: {} ops/sec", ops_per_sec);
     }
 }

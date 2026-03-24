@@ -1222,7 +1222,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
                     schema_fields.insert(field_name.clone(), constraints);
 
-                    // Générer les index automatiquement
+                    // Auto-generate indexes
                     if attrs.indexed {
                         indexes.push(IndexSpec {
                             name: format!("idx_{}_{}", #name_lit.to_lowercase(), field_name),
@@ -1231,12 +1231,12 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                         });
                     }
 
-                    // Générer les clés étrangères automatiquement
+                    // Auto-generate foreign keys
                     if let Some(ref fk_table) = attrs.foreign_key {
                         foreign_keys.push(ForeignKeySpec {
                             field: field_name.clone(),
                             references_table: fk_table.clone(),
-                            references_field: "id".to_string(), // Convention par défaut
+                            references_field: "id".to_string(), // Default convention
                         });
                     }
                 }
@@ -1251,7 +1251,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Implémentation automatique du trait DeclarativeSpecExtractor
+        // Auto-implement the DeclarativeSpecExtractor trait
         impl lithair_core::schema::DeclarativeSpecExtractor for #name {
             fn extract_model_spec(&self) -> lithair_core::schema::ModelSpec {
                 Self::extract_schema_spec()
@@ -1266,7 +1266,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Implémentation du trait HasSchemaSpec pour l'extraction statique
+        // Implement HasSchemaSpec trait for static extraction
         impl lithair_core::schema::HasSchemaSpec for #name {
             fn schema_spec() -> lithair_core::schema::ModelSpec {
                 Self::extract_schema_spec()
@@ -1344,7 +1344,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Si #[server(main)] est présent, auto-générer la fonction main() complète
+    // If #[server(main)] is present, auto-generate the complete main() function
     let main_function = if server_attrs.generate_main {
         let default_port = server_attrs.default_port;
         let cli_args = if server_attrs.cli {
@@ -1457,7 +1457,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Combine toutes les générations
+    // Combine all generated code
     let final_expanded = quote! {
         #expanded
 

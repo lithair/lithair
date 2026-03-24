@@ -1,43 +1,43 @@
 use serde::{Deserialize, Serialize};
 
-/// Définition de la politique de gestion d'un champ (colonne)
+/// Field management policy definition (column)
 ///
-/// Cette structure permet de définir déclarativement le comportement
-/// du moteur Lithair pour chaque attribut de vos entités.
+/// This structure allows declaratively defining the behavior
+/// of the Lithair engine for each entity attribute.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FieldPolicy {
-    /// Nombre d'événements historiques à conserver pour ce champ
-    /// 0 = Pas d'historique (juste l'état actuel snapshoté)
-    /// N = Garder les N dernières modifications
+    /// Number of historical events to retain for this field
+    /// 0 = No history (only the current snapshotted state)
+    /// N = Keep the last N modifications
     pub retention_limit: usize,
 
-    /// Si vrai, le moteur garantira l'unicité de la valeur sur l'ensemble des agrégats
-    /// (Nécessite un index global coûteux, à utiliser avec parcimonie)
+    /// If true, the engine will enforce value uniqueness across all aggregates
+    /// (Requires an expensive global index, use sparingly)
     pub unique: bool,
 
-    /// Si vrai, ce champ sera indexé pour des recherches rapides (Lookups)
+    /// If true, this field will be indexed for fast lookups
     pub indexed: bool,
 
-    /// Si vrai, ce champ n'est stocké que dans le snapshot (état courant)
-    /// et ne génère pas d'événements persistés individuellement (optimisation)
+    /// If true, this field is only stored in the snapshot (current state)
+    /// and does not generate individually persisted events (optimization)
     pub snapshot_only: bool,
 
-    /// Si vrai, ce champ est une clé étrangère (référence un autre agrégat)
-    /// Le moteur pourra vérifier l'intégrité référentielle
+    /// If true, this field is a foreign key (references another aggregate)
+    /// The engine can verify referential integrity
     pub fk: bool,
 
-    /// Nom de la collection/table ciblée par la clé étrangère
-    /// Ex: "products", "users", "categories"
+    /// Name of the collection/table targeted by the foreign key
+    /// e.g. "products", "users", "categories"
     pub fk_collection: Option<String>,
 }
 
-/// Trait que doivent implémenter les spécifications de modèle
+/// Trait that model specifications must implement
 pub trait ModelSpec: Send + Sync {
-    /// Retourne la politique pour un champ donné (par nom)
+    /// Return the policy for a given field (by name)
     fn get_policy(&self, field_name: &str) -> Option<FieldPolicy>;
 
-    /// Retourne la liste de tous les champs gérés
-    /// Utile pour l'itération lors de l'indexation automatique
+    /// Return the list of all managed fields
+    /// Useful for iteration during automatic indexing
     fn get_all_fields(&self) -> Vec<String> {
         Vec::new() // Default to empty to maintain backward compat where possible
     }

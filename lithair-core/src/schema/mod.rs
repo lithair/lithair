@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-// Module pour les relations et foreign keys
+// Module for relations and foreign keys
 pub mod relations;
 
-// Module pour la synchronisation de schéma en cluster
+// Module for cluster schema synchronization
 pub mod sync;
 pub use relations::{
     CascadeStrategy, ModelRelationSpec, RelationRegistry, RelationSpec, RelationSpecExtractor,
@@ -16,10 +16,10 @@ pub use sync::{
     SchemaLockStatus, SchemaRejection, SchemaSyncMessage, SchemaSyncState, SchemaVotePolicy,
     VoteStrategy,
 };
-// Import avec alias pour éviter conflit avec l'ancien ForeignKeySpec
+// Import with alias to avoid conflict with the legacy ForeignKeySpec
 pub use relations::ForeignKeySpec as RelationForeignKeySpec;
 
-/// Types de changements de schéma détectables
+/// Detectable schema change types
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SchemaChangeType {
     AddField,
@@ -34,18 +34,18 @@ pub enum SchemaChangeType {
     RemoveForeignKey,
 }
 
-/// Stratégies de migration
+/// Migration strategies
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MigrationStrategy {
-    /// Changement additif - pas de consensus requis
+    /// Additive change - no consensus required
     Additive,
-    /// Changement breaking - consensus Raft requis
+    /// Breaking change - Raft consensus required
     Breaking,
-    /// Support multi-version - conversion automatique
+    /// Multi-version support - automatic conversion
     Versioned,
 }
 
-/// Changement de schéma détecté
+/// Detected schema change
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectedSchemaChange {
     pub model: String,
@@ -62,7 +62,7 @@ pub struct DetectedSchemaChange {
     pub rollback_sql: Option<String>,
 }
 
-/// Contraintes de champ extraites des attributs déclaratifs
+/// Field constraints extracted from declarative attributes
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldConstraints {
     pub primary_key: bool,
@@ -93,7 +93,7 @@ pub struct FieldPermissions {
     pub owner_field: bool,
 }
 
-/// Spécification de modèle extraite des macros déclaratives
+/// Model specification extracted from declarative macros
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelSpec {
     pub model_name: String,
@@ -117,15 +117,15 @@ pub struct ForeignKeySpec {
     pub references_field: String,
 }
 
-/// Trait pour extraire les spécifications depuis les macros déclaratives
+/// Trait to extract specifications from declarative macros
 pub trait DeclarativeSpecExtractor {
-    /// Extraire la spécification complète du modèle
+    /// Extract the full model specification
     fn extract_model_spec(&self) -> ModelSpec;
 
-    /// Obtenir la version du schéma
+    /// Get the schema version
     fn schema_version(&self) -> u32;
 
-    /// Obtenir les contraintes pour un champ spécifique
+    /// Get constraints for a specific field
     fn field_constraints(&self, field_name: &str) -> Option<FieldConstraints>;
 }
 
@@ -141,15 +141,15 @@ pub trait HasSchemaSpec {
     fn model_name() -> &'static str;
 }
 
-/// Détecteur de changements de schéma robuste
+/// Robust schema change detector
 pub struct SchemaChangeDetector;
 
 impl SchemaChangeDetector {
-    /// Détecter les changements entre deux spécifications de modèle
+    /// Detect changes between two model specifications
     pub fn detect_changes(old_spec: &ModelSpec, new_spec: &ModelSpec) -> Vec<DetectedSchemaChange> {
         let mut changes = Vec::new();
 
-        // Détecter les champs ajoutés
+        // Detect added fields
         for (field_name, new_constraints) in &new_spec.fields {
             if !old_spec.fields.contains_key(field_name) {
                 changes.push(DetectedSchemaChange {
@@ -169,7 +169,7 @@ impl SchemaChangeDetector {
             }
         }
 
-        // Détecter les champs supprimés
+        // Detect removed fields
         for (field_name, old_constraints) in &old_spec.fields {
             if !new_spec.fields.contains_key(field_name) {
                 changes.push(DetectedSchemaChange {
@@ -189,7 +189,7 @@ impl SchemaChangeDetector {
             }
         }
 
-        // Détecter les modifications de contraintes
+        // Detect constraint modifications
         for (field_name, new_constraints) in &new_spec.fields {
             if let Some(old_constraints) = old_spec.fields.get(field_name) {
                 if old_constraints != new_constraints {
@@ -203,16 +203,16 @@ impl SchemaChangeDetector {
             }
         }
 
-        // Détecter les changements d'index
+        // Detect index changes
         changes.extend(Self::detect_index_changes(old_spec, new_spec));
 
-        // Détecter les changements de clés étrangères
+        // Detect foreign key changes
         changes.extend(Self::detect_foreign_key_changes(old_spec, new_spec));
 
         changes
     }
 
-    /// Détecter les changements de contraintes sur un champ
+    /// Detect constraint changes on a field
     fn detect_constraint_changes(
         model_name: &str,
         field_name: &str,
@@ -239,7 +239,7 @@ impl SchemaChangeDetector {
             });
         }
 
-        // Changements de politique de rétention
+        // Retention policy changes
         if old_constraints.retention != new_constraints.retention {
             changes.push(DetectedSchemaChange {
                 model: model_name.to_string(),
@@ -257,7 +257,7 @@ impl SchemaChangeDetector {
             });
         }
 
-        // Changements de permissions
+        // Permission changes
         if old_constraints.permissions != new_constraints.permissions {
             changes.push(DetectedSchemaChange {
                 model: model_name.to_string(),
@@ -275,7 +275,7 @@ impl SchemaChangeDetector {
             });
         }
 
-        // Changements d'index
+        // Index changes
         if old_constraints.indexed != new_constraints.indexed {
             let change_type = if new_constraints.indexed {
                 SchemaChangeType::AddIndex
@@ -306,14 +306,14 @@ impl SchemaChangeDetector {
         changes
     }
 
-    /// Détecter les changements d'index
+    /// Detect index changes
     fn detect_index_changes(
         old_spec: &ModelSpec,
         new_spec: &ModelSpec,
     ) -> Vec<DetectedSchemaChange> {
         let mut changes = Vec::new();
 
-        // Index ajoutés
+        // Added indexes
         for new_index in &new_spec.indexes {
             if !old_spec.indexes.iter().any(|idx| idx.name == new_index.name) {
                 changes.push(DetectedSchemaChange {
@@ -339,7 +339,7 @@ impl SchemaChangeDetector {
             }
         }
 
-        // Index supprimés
+        // Removed indexes
         for old_index in &old_spec.indexes {
             if !new_spec.indexes.iter().any(|idx| idx.name == old_index.name) {
                 changes.push(DetectedSchemaChange {
@@ -368,14 +368,14 @@ impl SchemaChangeDetector {
         changes
     }
 
-    /// Détecter les changements de clés étrangères
+    /// Detect foreign key changes
     fn detect_foreign_key_changes(
         old_spec: &ModelSpec,
         new_spec: &ModelSpec,
     ) -> Vec<DetectedSchemaChange> {
         let mut changes = Vec::new();
 
-        // Clés étrangères ajoutées
+        // Added foreign keys
         for new_fk in &new_spec.foreign_keys {
             if !old_spec.foreign_keys.iter().any(|fk| fk.field == new_fk.field) {
                 changes.push(DetectedSchemaChange {
@@ -411,7 +411,7 @@ impl SchemaChangeDetector {
         changes
     }
 
-    // Fonctions utilitaires
+    // Utility functions
     fn determine_migration_strategy_for_add(constraints: &FieldConstraints) -> MigrationStrategy {
         // If a default value is specified, the migration is safe (Additive)
         // because serde will use the default for old events missing this field
@@ -443,7 +443,7 @@ impl SchemaChangeDetector {
         if constraints.nullable {
             Some("NULL".to_string())
         } else {
-            // Valeurs par défaut basées sur les contraintes
+            // Default values based on constraints
             Some("DEFAULT".to_string())
         }
     }
@@ -470,8 +470,8 @@ impl SchemaChangeDetector {
     }
 }
 
-// Note: DeclarativeSpecExtractor est maintenant implémenté automatiquement
-// par la macro DeclarativeModel pour éviter les conflits d'implémentation
+// Note: DeclarativeSpecExtractor is now automatically implemented
+// by the DeclarativeModel macro to avoid implementation conflicts
 
 // ============================================================================
 // Schema Persistence
