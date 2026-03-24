@@ -3,11 +3,11 @@ use cucumber_tests::features::world::LithairWorld;
 
 #[tokio::main]
 async fn main() {
-    // Exécuter le STRESS TEST 100K avec optimisations
+    // Run the STRESS TEST 100K with optimizations
     LithairWorld::cucumber()
-        .max_concurrent_scenarios(1) // Un seul scénario à la fois
+        .max_concurrent_scenarios(1) // One scenario at a time
         .filter_run("features/performance/database_performance.feature", |_, _, scenario| {
-            // Lancer le STRESS TEST
+            // Run the STRESS TEST
             scenario.name.contains("STRESS TEST")
         })
         .await;

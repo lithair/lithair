@@ -1,6 +1,6 @@
-//! Test runner pour le stress test 100K snapshots
+//! Test runner for the 100K snapshot stress test
 //!
-//! Lance le scénario @medium (100K événements)
+//! Runs the @medium scenario (100K events)
 
 use cucumber::World;
 use cucumber_tests::features::world::LithairWorld;

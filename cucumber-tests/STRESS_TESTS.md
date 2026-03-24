@@ -1,31 +1,31 @@
-# 🚀 Tests de Stress Lithair - 1 Million d'Articles
+# Lithair Stress Tests - 1 Million Articles
 
-## 📊 Vue d'ensemble
+## Overview
 
-Suite de tests Cucumber pour valider la **performance**, la **durabilité** et la **cohérence** de Lithair à grande échelle.
+Cucumber test suite to validate the **performance**, **durability** and **consistency** of Lithair at large scale.
 
-## 🎯 Scénarios de test
+## Test Scenarios
 
-### 1️⃣ **STRESS TEST ULTIME - 1 MILLION d'articles**
+### 1. **ULTIMATE STRESS TEST - 1 MILLION articles**
 
-**Fichier** : `features/performance/stress_1m_test.feature`
+**File**: `features/performance/stress_1m_test.feature`
 
-**Opérations :**
+**Operations:**
 
-- ✅ **1,000,000** créations (CREATE)
-- ✅ **200,000** modifications (UPDATE) - 20%
-- ✅ **100,000** suppressions (DELETE) - 10%
-- ✅ **État final** : 900,000 articles actifs
+- 1,000,000 creates (CREATE)
+- 200,000 updates (UPDATE) - 20%
+- 100,000 deletions (DELETE) - 10%
+- **Final state**: 900,000 active articles
 
-**Vérifications :**
+**Verifications:**
 
-- 📝 1,300,000 événements persistés (1M + 200K + 100K)
-- 🔍 Ordre chronologique des événements
-- 🛡️ Cohérence mémoire/disque (SCC2 vs FileStorage)
-- ✅ Checksums validés
-- 📊 Métriques de performance
+- 1,300,000 persisted events (1M + 200K + 100K)
+- Chronological event ordering
+- Memory/disk consistency (SCC2 vs FileStorage)
+- Validated checksums
+- Performance metrics
 
-**Lancement :**
+**Run:**
 
 ```bash
 cd cucumber-tests
@@ -34,187 +34,187 @@ cargo test --test database_perf_test --release
 
 ---
 
-### 2️⃣ **Performance Maximale - 500K articles**
+### 2. **Maximum Performance - 500K articles**
 
-**Mode** : `DurabilityMode::Performance`
+**Mode**: `DurabilityMode::Performance`
 
-**Objectif :**
+**Objective:**
 
-- 🎯 Throughput > 20,000 articles/sec
-- ⏱️ Temps total < 30 secondes
-- 🚀 Throughput suppression > 15,000 articles/sec
+- Throughput > 20,000 articles/sec
+- Total time < 30 seconds
+- Deletion throughput > 15,000 articles/sec
 
-**Caractéristiques :**
+**Characteristics:**
 
-- ⚡ Performance maximale
-- ⚠️ Risque perte max 10ms
-- 📊 Mesure des limites théoriques
+- Maximum performance
+- Risk of max 10ms data loss
+- Measures theoretical limits
 
 ---
 
-### 3️⃣ **Cohérence Garantie - 100K articles**
+### 3. **Guaranteed Consistency - 100K articles**
 
-**Mode** : `DurabilityMode::MaxDurability` (DEFAULT)
+**Mode**: `DurabilityMode::MaxDurability` (DEFAULT)
 
-**Opérations :**
+**Operations:**
 
 - 100,000 CREATE
 - 50,000 UPDATE
 - 25,000 DELETE
-- État final : 75,000 articles
+- Final state: 75,000 articles
 
-**Garanties :**
+**Guarantees:**
 
-- 🛡️ **ZÉRO perte de données**
-- ✅ fsync après chaque batch
-- 🔍 Cohérence mémoire/disque validée
-- 📝 Tous événements persistés
+- **ZERO data loss**
+- fsync after each batch
+- Memory/disk consistency validated
+- All events persisted
 
 ---
 
-### 4️⃣ **Résilience - 10K opérations aléatoires**
+### 4. **Resilience - 10K random operations**
 
-**Distribution** :
+**Distribution:**
 
 - 50% CREATE
-- 30% UPDATE (si articles existants)
-- 20% DELETE (si articles existants)
+- 30% UPDATE (if articles exist)
+- 20% DELETE (if articles exist)
 
-**Validation :**
+**Validation:**
 
-- ✅ Tous événements persistés
-- ✅ Cohérence mémoire/disque
-- ✅ Pas d'erreurs de concurrence
+- All events persisted
+- Memory/disk consistency
+- No concurrency errors
 
 ---
 
-## 📈 Performance attendue
+## Expected Performance
 
-### Architecture Full Async + SCC2 + MaxDurability
+### Full Async + SCC2 + MaxDurability Architecture
 
-| Opération       | Throughput   | Latence P50 | Latence P99 |
+| Operation       | Throughput   | Latency P50 | Latency P99 |
 | --------------- | ------------ | ----------- | ----------- |
 | **CREATE**      | 10-30K/sec   | 5-10ms      | 20-50ms     |
-| **READ** (SCC2) | 40M+ ops/sec | < 1µs       | < 10µs      |
+| **READ** (SCC2) | 40M+ ops/sec | < 1us       | < 10us      |
 | **UPDATE**      | 5-15K/sec    | 10-20ms     | 50-100ms    |
 | **DELETE**      | 5-15K/sec    | 10-20ms     | 50-100ms    |
 
-**Note** : Avec `DurabilityMode::Performance`, throughput 3-5x plus élevé mais risque perte données.
+**Note**: With `DurabilityMode::Performance`, throughput is 3-5x higher but with risk of data loss.
 
 ---
 
-## 🛡️ Modes de Durabilité
+## Durability Modes
 
 ### MaxDurability (DEFAULT - Production)
 
 ```rust
-// Par défaut dans les tests
+// Default in tests
 let writer = AsyncWriter::new(storage, 1000);
 ```
 
-**Garanties :**
+**Guarantees:**
 
-- ✅ ZÉRO perte de données
-- ✅ fsync après chaque batch
-- ✅ Conforme PostgreSQL/MySQL
+- ZERO data loss
+- fsync after each batch
+- PostgreSQL/MySQL compliant
 
-**Performance :**
+**Performance:**
 
-- 10,000-30,000 writes/sec (selon disque)
+- 10,000-30,000 writes/sec (depending on disk)
 
-### Performance (Benchmarks uniquement)
+### Performance (Benchmarks only)
 
 ```gherkin
-Given le mode de durabilité est "Performance"
+Given the durability mode is "Performance"
 ```
 
-**Caractéristiques :**
+**Characteristics:**
 
-- ⚡ 30,000-100,000 writes/sec
-- ⚠️ Perte max 10ms si crash
+- 30,000-100,000 writes/sec
+- Max 10ms loss if crash
 
-**⚠️ JAMAIS en production !**
+**NEVER use in production!**
 
 ---
 
-## 🧪 Vérifications d'intégrité
+## Integrity Verifications
 
-### 1. **Persistence complète**
-
-```gherkin
-Then le fichier events.raftlog doit exister
-And le fichier events.raftlog doit contenir exactement 1000000 événements "ArticleCreated"
-```
-
-### 2. **Cohérence mémoire/disque**
+### 1. **Complete persistence**
 
 ```gherkin
-Then le nombre d'articles en mémoire doit égaler le nombre sur disque
+Then the events.raftlog file must exist
+And the events.raftlog file must contain exactly 1000000 "ArticleCreated" events
 ```
 
-Vérifie que **SCC2 (RAM)** et **FileStorage (disque)** sont synchronisés.
-
-### 3. **Ordre chronologique**
+### 2. **Memory/disk consistency**
 
 ```gherkin
-And tous les événements doivent être dans l'ordre chronologique
+Then the number of articles in memory must equal the number on disk
 ```
 
-Garantit l'intégrité de l'event sourcing.
+Verifies that **SCC2 (RAM)** and **FileStorage (disk)** are synchronized.
+
+### 3. **Chronological order**
+
+```gherkin
+And all events must be in chronological order
+```
+
+Guarantees event sourcing integrity.
 
 ### 4. **Checksums**
 
 ```gherkin
-And tous les checksums doivent correspondre
+And all checksums must match
 ```
 
-Détection de corruption de données.
+Data corruption detection.
 
 ---
 
-## 📊 Métriques collectées
+## Collected Metrics
 
-### Statistiques finales
+### Final Statistics
 
 ```
-╔══════════════════════════════════════╗
-║   📊 STATISTIQUES FINALES           ║
-╠══════════════════════════════════════╣
-║ Total requêtes:          1,300,000   ║
-║ Durée totale:                 65.32s ║
-║ Throughput:              19,902/sec  ║
-║ Erreurs:                         0   ║
-╚══════════════════════════════════════╝
++======================================+
+|   FINAL STATISTICS                   |
++======================================+
+| Total requests:          1,300,000   |
+| Total duration:               65.32s |
+| Throughput:              19,902/sec  |
+| Errors:                         0   |
++======================================+
 ```
 
-### Par opération
+### Per Operation
 
-- **Throughput création** : ops/sec
-- **Throughput modification** : ops/sec
-- **Throughput suppression** : ops/sec
+- **Creation throughput**: ops/sec
+- **Update throughput**: ops/sec
+- **Deletion throughput**: ops/sec
 
 ---
 
-## 🚀 Lancer les tests
+## Running the Tests
 
-### Test complet 1M
+### Full 1M test
 
 ```bash
 cd cucumber-tests
 cargo test --test database_perf_test --release
 ```
 
-### Test spécifique
+### Specific test
 
 ```bash
-# Uniquement test durabilité
+# Durability test only
 cargo test --release -- "Mode MaxDurability"
 
-# Uniquement test performance
-cargo test --release -- "Performance maximale"
+# Performance test only
+cargo test --release -- "Maximum performance"
 ```
 
-### Avec logs détaillés
+### With detailed logs
 
 ```bash
 RUST_LOG=debug cargo test --test database_perf_test --release
@@ -222,76 +222,76 @@ RUST_LOG=debug cargo test --test database_perf_test --release
 
 ---
 
-## 🎯 Résultats attendus
+## Expected Results
 
-### ✅ Succès
+### Success
 
-- Tous les événements persistés (100%)
-- Cohérence mémoire/disque validée
-- Checksums corrects
-- Throughput conforme aux attentes
+- All events persisted (100%)
+- Memory/disk consistency validated
+- Correct checksums
+- Throughput meets expectations
 
-### ⚠️ Avertissements possibles
+### Possible Warnings
 
-- Timeouts réseau sous forte charge
-- Latence accrue avec MaxDurability (normal)
-- Ralentissements avec HDD classique
+- Network timeouts under heavy load
+- Increased latency with MaxDurability (normal)
+- Slowdowns with traditional HDD
 
-### ❌ Échecs
+### Failures
 
-- Perte d'événements → BUG CRITIQUE
-- Incohérence mémoire/disque → BUG CRITIQUE
-- Checksum invalide → CORRUPTION DONNÉES
+- Event loss -> CRITICAL BUG
+- Memory/disk inconsistency -> CRITICAL BUG
+- Invalid checksum -> DATA CORRUPTION
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
-### Batch size AsyncWriter
+### AsyncWriter Batch Size
 
 ```rust
 const BATCH_SIZE: usize = 1000;
 ```
 
-- Plus petit → Latence réduite, moins de throughput
-- Plus grand → Throughput élevé, latence accrue
+- Smaller -> Reduced latency, lower throughput
+- Larger -> Higher throughput, increased latency
 
-### Flush interval (mode Performance)
+### Flush Interval (Performance mode)
 
 ```rust
 const FLUSH_INTERVAL_MS: u64 = 10;
 ```
 
-- Plus court → Moins de perte potentielle
-- Plus long → Meilleur throughput
+- Shorter -> Less potential loss
+- Longer -> Better throughput
 
 ---
 
-## 📝 Notes
+## Notes
 
 ### SSD vs HDD
 
-- **SSD NVMe** : ~10,000 fsync/sec → Excellent avec MaxDurability
-- **SSD SATA** : ~5,000 fsync/sec → Bon avec MaxDurability
-- **HDD 7200rpm** : ~100-500 fsync/sec → Lent avec MaxDurability
+- **SSD NVMe**: ~10,000 fsync/sec -> Excellent with MaxDurability
+- **SSD SATA**: ~5,000 fsync/sec -> Good with MaxDurability
+- **HDD 7200rpm**: ~100-500 fsync/sec -> Slow with MaxDurability
 
-### Recommandations Production
+### Production Recommendations
 
-1. ✅ **Toujours** `DurabilityMode::MaxDurability`
-2. ✅ Utiliser un **SSD** pour les événements
-3. ✅ Batch size **1000** (équilibre optimal)
-4. ✅ Monitoring des **métriques de persistence**
+1. **Always** use `DurabilityMode::MaxDurability`
+2. Use an **SSD** for events
+3. Batch size **1000** (optimal balance)
+4. Monitor **persistence metrics**
 
 ---
 
-## 🎯 Prochaines étapes
+## Next Steps
 
 - [ ] WAL Mode (Write-Ahead Log)
-- [ ] Compression des événements
-- [ ] Tests cluster distribué (multi-nodes)
+- [ ] Event compression
+- [ ] Distributed cluster tests (multi-node)
 - [ ] Benchmarks vs PostgreSQL/MongoDB
-- [ ] Tests de récupération après crash
+- [ ] Crash recovery tests
 
 ---
 
-**Lithair - Event-Sourced Database with Guaranteed Durability** 🛡️🚀
+**Lithair - Event-Sourced Database with Guaranteed Durability**

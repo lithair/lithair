@@ -16,19 +16,19 @@ async fn persistence_enabled_by_default(_world: &mut LithairWorld) {
 async fn server_with_persistence(world: &mut LithairWorld, port: u16, path: String) {
     println!("🚀 Initializing server on port {} with persistence: {}", port, path);
 
-    // Nettoyer et créer le dossier
+    // Clean up and create directory
     std::fs::remove_dir_all(&path).ok();
     std::fs::create_dir_all(&path).expect("Failed to create persistence dir");
 
-    // Créer EventStore + AsyncWriter
+    // Create EventStore + AsyncWriter
     let event_store =
         Arc::new(RwLock::new(EventStore::new(&path).expect("EventStore init failed")));
     let async_writer = AsyncWriter::new(event_store, 1000);
 
-    // Stocker dans world
+    // Store in world
     *world.async_writer.lock().await = Some(async_writer);
 
-    // Sauvegarder les paramètres dans metrics
+    // Save parameters in metrics
     let mut metrics = world.metrics.lock().await;
     metrics.persist_path = path;
     metrics.server_port = port;
@@ -56,7 +56,7 @@ async fn create_articles_fast(world: &mut LithairWorld, count: usize) {
             content: format!("Content for article {}", i),
         };
 
-        // Persister via AsyncWriter
+        // Persist via AsyncWriter
         if let Some(ref writer) = *world.async_writer.lock().await {
             let event = serde_json::json!({
                 "type": "ArticleCreated",
@@ -66,7 +66,7 @@ async fn create_articles_fast(world: &mut LithairWorld, count: usize) {
             writer.write(serde_json::to_string(&event).unwrap()).ok();
         }
 
-        // Stocker en mémoire (SCC2)
+        // Store in memory (SCC2)
         let id = article.id.clone();
         world.scc2_articles.write(&id, |s| *s = article).ok();
 
@@ -79,13 +79,13 @@ async fn create_articles_fast(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} articles created en {:.2}s ({:.0} articles/sec)",
+        "✅ {} articles created in {:.2}s ({:.0} articles/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 
-    // Sauvegarder métriques
+    // Save metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
     metrics.total_duration = elapsed;
@@ -93,7 +93,7 @@ async fn create_articles_fast(world: &mut LithairWorld, count: usize) {
 
 #[when(expr = "I create {int} critical articles")]
 async fn create_critical_articles(world: &mut LithairWorld, count: usize) {
-    // Même chose que create_articles_fast, mais explicitement pour tests critiques
+    // Same as create_articles_fast, but explicitly for critical tests
     create_articles_fast(world, count).await;
 }
 
@@ -132,7 +132,7 @@ async fn measure_time_create_articles(world: &mut LithairWorld, count: usize) {
 
     let elapsed = start.elapsed();
 
-    println!("⏱️  {} articles created en {:.2}s", count, elapsed.as_secs_f64());
+    println!("⏱️  {} articles created in {:.2}s", count, elapsed.as_secs_f64());
 
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
@@ -197,7 +197,7 @@ async fn force_flush_with_fsync(world: &mut LithairWorld) {
         writer.flush().await.ok();
     }
 
-    // Petite pause pour s'assurer que le fsync est terminé
+    // Short pause to ensure fsync has completed
     sleep(Duration::from_millis(100)).await;
 
     println!("✅ Flush with fsync completed");
@@ -212,8 +212,8 @@ async fn read_file_direct(world: &mut LithairWorld) {
 
     let events_file = format!("{}/events.raftlog", persist_path);
 
-    // Lecture directe du fichier (bypass cache OS si possible)
-    // Note: O_DIRECT n'est pas disponible partout, on fait une lecture standard
+    // Direct file read (bypass OS cache if possible)
+    // Note: O_DIRECT is not available everywhere, falling back to standard read
     match std::fs::read_to_string(&events_file) {
         Ok(content) => {
             let line_count = content.lines().count();
@@ -229,12 +229,12 @@ async fn read_file_direct(world: &mut LithairWorld) {
 async fn simulate_brutal_crash(world: &mut LithairWorld) {
     println!("💥 Simulating brutal crash (no clean shutdown)...");
 
-    // On "oublie" l'async_writer sans appeler shutdown
-    // Cela simule un crash où les données en buffer ne sont pas flushées
+    // "Forget" the async_writer without calling shutdown
+    // This simulates a crash where buffered data is not flushed
     let _ = world.async_writer.lock().await.take();
 
-    // Clear la mémoire SCC2
-    // Note: On ne peut pas facilement clear SCC2, on le laisse tel quel
+    // Clear SCC2 memory
+    // Note: SCC2 cannot be easily cleared, leaving it as is
 
     println!("💀 Crash simulated - AsyncWriter lost without flush");
 }
@@ -243,14 +243,14 @@ async fn simulate_brutal_crash(world: &mut LithairWorld) {
 async fn restart_server_from_path(world: &mut LithairWorld, path: String) {
     println!("🔄 Restarting server from {}...", path);
 
-    // Recréer EventStore + AsyncWriter depuis les fichiers existants
+    // Recreate EventStore + AsyncWriter from existing files
     let event_store =
         Arc::new(RwLock::new(EventStore::new(&path).expect("EventStore recovery failed")));
     let async_writer = AsyncWriter::new(event_store.clone(), 1000);
 
     *world.async_writer.lock().await = Some(async_writer);
 
-    // Compter les events recovered
+    // Count recovered events
     let events_file = format!("{}/events.raftlog", path);
     if let Ok(content) = std::fs::read_to_string(&events_file) {
         let count = content.lines().filter(|l| !l.trim().is_empty()).count();
@@ -303,7 +303,7 @@ async fn event_log_contains_exact_count(
         count, event_type, actual_count
     );
 
-    println!("✅ {} {} events trouvés", actual_count, event_type);
+    println!("✅ {} {} events found", actual_count, event_type);
 }
 
 #[then("no event must be missing")]
@@ -365,10 +365,10 @@ async fn memory_equals_disk(world: &mut LithairWorld) {
         metrics.persist_path.clone()
     };
 
-    // Compter en mémoire (SCC2)
+    // Count in memory (SCC2)
     let memory_count = world.scc2_articles.internal_map().len();
 
-    // Compter sur disque
+    // Count on disk
     let log_file = format!("{}/events.raftlog", persist_path);
     let content = std::fs::read_to_string(&log_file).unwrap_or_default();
     let disk_count = content.lines().filter(|l| l.contains("ArticleCreated")).count();
@@ -396,7 +396,7 @@ async fn final_article_count(world: &mut LithairWorld, expected: usize) {
 
     assert_eq!(actual, expected, "❌ Expected {} active articles, found {}", expected, actual);
 
-    println!("✅ Final state: {} articles actifs", actual);
+    println!("✅ Final state: {} active articles", actual);
 }
 
 #[then(expr = "the {int} articles must be readable from the file immediately")]
@@ -445,7 +445,7 @@ async fn data_on_physical_disk(world: &mut LithairWorld) {
 
     let log_file = format!("{}/events.raftlog", persist_path);
 
-    // Vérifier que le fichier existe et n'est pas vide
+    // Verify that the file exists and is not empty
     let content = std::fs::read_to_string(&log_file).expect("Failed to read file");
 
     assert!(!content.is_empty(), "❌ No data on disk!");
@@ -484,7 +484,7 @@ async fn no_flushed_data_lost(world: &mut LithairWorld) {
 
     let log_file = format!("{}/events.raftlog", persist_path);
 
-    // Vérifier que le fichier a du contenu valide
+    // Verify that the file has valid content
     let content = std::fs::read_to_string(&log_file).expect("Failed to read file");
     let line_count = content.lines().filter(|l| !l.trim().is_empty()).count();
 

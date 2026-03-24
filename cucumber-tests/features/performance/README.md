@@ -1,82 +1,82 @@
-# 🎯 Tests de Performance HTTP Lithair
+# Lithair HTTP Performance Tests
 
-## 📋 **Objectif**
+## Objective
 
-Valider les performances du serveur HTTP Lithair avec des tests E2E Cucumber :
+Validate the Lithair HTTP server performance with E2E Cucumber tests:
 - Throughput (req/s)
-- Latence (p50, p95, p99)
-- Stabilité sous charge
+- Latency (p50, p95, p99)
+- Stability under load
 - Keep-Alive HTTP/1.1
-- Persistence avec fsync
+- Persistence with fsync
 
 ---
 
-## 🎯 **Scénarios de Test**
+## Test Scenarios
 
-### **1. Throughput Écriture** ⚡
+### **1. Write Throughput**
 ```gherkin
-When je crée 1000 articles en parallèle avec 10 workers
-Then le throughput doit être supérieur à 1000 requêtes par seconde
+When I create 1000 articles in parallel with 10 workers
+Then the throughput must be greater than 1000 requests per second
 ```
 
-**Objectif** : ≥ 1000 req/s  
-**Workers** : 10  
-**Validation** : Persistence + aucune erreur
+**Objective**: >= 1000 req/s
+**Workers**: 10
+**Validation**: Persistence + no errors
 
-### **2. Throughput Lecture** 📖
+### **2. Read Throughput**
 ```gherkin
-When je lis 5000 fois la liste des articles avec 20 workers
-Then le throughput doit être supérieur à 5000 requêtes par seconde
+When I read the article list 5000 times with 20 workers
+Then the throughput must be greater than 5000 requests per second
 ```
 
-**Objectif** : ≥ 5000 req/s  
-**Workers** : 20  
-**Validation** : Latence p95 < 50ms
+**Objective**: >= 5000 req/s
+**Workers**: 20
+**Validation**: Latency p95 < 50ms
 
-### **3. Charge Mixte 80/20** 🔀
+### **3. Mixed Load 80/20**
 ```gherkin
-When je lance une charge mixte pendant 10 secondes:
-  | type     | pourcentage | workers |
-  | lecture  | 80          | 16      |
-  | écriture | 20          | 4       |
-Then le throughput total doit être supérieur à 2000 requêtes par seconde
+When I run a mixed load for 10 seconds:
+  | type  | percentage | workers |
+  | read  | 80         | 16      |
+  | write | 20         | 4       |
+Then the total throughput must be greater than 2000 requests per second
 ```
 
-**Objectif** : ≥ 2000 req/s total  
-**Mix** : 80% lectures / 20% écritures  
-**Validation** : Taux d'erreur < 0.1%
+**Objective**: >= 2000 req/s total
+**Mix**: 80% reads / 20% writes
+**Validation**: Error rate < 0.1%
 
-### **4. Performance avec fsync** 💾
+### **4. Performance with fsync**
 ```gherkin
-Given le serveur a fsync activé sur chaque écriture
-When je crée 500 articles séquentiellement
-Then le temps total doit être inférieur à 2 secondes
+Given the server has fsync enabled on each write
+When I create 500 articles sequentially
+Then the total time must be less than 2 seconds
 ```
 
-**Objectif** : < 2s pour 500 articles  
-**Validation** : Zéro perte après kill brutal
+**Objective**: < 2s for 500 articles
+**Validation**: Zero loss after brutal kill
 
-### **5. Keep-Alive HTTP/1.1** 🔌
+### **5. Keep-Alive HTTP/1.1**
 ```gherkin
-When je fais 100 requêtes avec la même connexion TCP
-Then aucune erreur "Connection reset" ne doit survenir
+When I make 100 requests with the same TCP connection
+Then no "Connection reset" error must occur
 ```
 
-**Objectif** : 1 seule connexion TCP  
-**Validation** : Pas de "Connection reset by peer"
+**Objective**: 1 single TCP connection
+**Validation**: No "Connection reset by peer"
 
 ---
 
-## 🏗️ **Architecture**
+## Architecture
 
 ```
 cucumber-tests/
 ├── features/performance/
-│   ├── http_performance.feature    # Scénarios Gherkin
-│   └── README.md                   # Ce fichier
+│   ├── http_performance.feature    # Gherkin scenarios
+│   └── README.md                   # This file
 │
 └── src/features/steps/
-    └── http_performance_steps.rs   # Implémentation
+    └── http_performance_steps.rs   # Implementation
 ```
 
 ### **World State**
@@ -87,13 +87,13 @@ pub struct Metrics {
     pub throughput: f64,              // req/s
     pub total_duration: Duration,
     pub error_count: usize,
-    
-    // Latence
+
+    // Latency
     pub latency_p50: Duration,
     pub latency_p95: Duration,
     pub latency_p99: Duration,
-    
-    // Serveur
+
+    // Server
     pub base_url: String,
     pub server_port: u16,
     pub persist_path: String,
@@ -102,53 +102,53 @@ pub struct Metrics {
 
 ---
 
-## 🚀 **Lancer les Tests**
+## Running the Tests
 
-### **Tous les tests de performance**
+### **All performance tests**
 ```bash
 cargo test --features cucumber -- --tags @performance
 ```
 
-### **Tests critiques uniquement**
+### **Critical tests only**
 ```bash
 cargo test --features cucumber -- --tags "@performance and @critical"
 ```
 
-### **Test spécifique**
+### **Specific test**
 ```bash
-cargo test --features cucumber -- --name "Throughput écriture"
+cargo test --features cucumber -- --name "Write throughput"
 ```
 
 ---
 
-## 📊 **Métriques Mesurées**
+## Measured Metrics
 
 ### **Throughput**
-- **Définition** : Nombre de requêtes/seconde
-- **Calcul** : `total_requests / duration_seconds`
-- **Objectifs** :
-  - Écriture : ≥ 1000 req/s
-  - Lecture : ≥ 5000 req/s
-  - Mixte : ≥ 2000 req/s
+- **Definition**: Number of requests/second
+- **Calculation**: `total_requests / duration_seconds`
+- **Objectives**:
+  - Write: >= 1000 req/s
+  - Read: >= 5000 req/s
+  - Mixed: >= 2000 req/s
 
-### **Latence**
-- **p50 (médiane)** : 50% des requêtes
-- **p95** : 95% des requêtes
-- **p99** : 99% des requêtes
-- **Objectifs** :
+### **Latency**
+- **p50 (median)**: 50% of requests
+- **p95**: 95% of requests
+- **p99**: 99% of requests
+- **Objectives**:
   - p50 < 10ms
   - p95 < 50ms
   - p99 < 100ms
 
-### **Taux d'Erreur**
-- **Définition** : `failed_requests / total_requests * 100`
-- **Objectif** : < 0.1%
+### **Error Rate**
+- **Definition**: `failed_requests / total_requests * 100`
+- **Objective**: < 0.1%
 
 ---
 
-## 🔧 **Implémentation**
+## Implementation
 
-### **Workers Parallèles**
+### **Parallel Workers**
 
 ```rust
 let articles_per_worker = count / workers;
@@ -158,8 +158,8 @@ for worker_id in 0..workers {
     let handle = thread::spawn(move || {
         let client = Client::new();
         for i in 0..articles_per_worker {
-            // Créer article
-            // Mesurer latence
+            // Create article
+            // Measure latency
         }
     });
     handles.push(handle);
@@ -170,7 +170,7 @@ for handle in handles {
 }
 ```
 
-### **Mesure de Latence**
+### **Latency Measurement**
 
 ```rust
 let start = Instant::now();
@@ -180,13 +180,13 @@ let latency = start.elapsed();
 metrics.latencies.push(latency);
 ```
 
-### **Calcul Percentiles**
+### **Percentile Calculation**
 
 ```rust
 pub fn calculate_percentile(&self, percentile: f64) -> Duration {
     let mut sorted = self.latencies.clone();
     sorted.sort();
-    
+
     let index = ((percentile / 100.0) * sorted.len() as f64) as usize;
     sorted[index.min(sorted.len() - 1)]
 }
@@ -194,80 +194,80 @@ pub fn calculate_percentile(&self, percentile: f64) -> Duration {
 
 ---
 
-## 🐛 **Problèmes Identifiés**
+## Identified Issues
 
 ### **1. Connection Reset**
-**Symptôme** : `ConnectionResetError(104, 'Connection reset by peer')`
+**Symptom**: `ConnectionResetError(104, 'Connection reset by peer')`
 
-**Cause** : Serveur ferme la connexion après chaque requête
+**Cause**: Server closes the connection after each request
 
-**Solution** :
+**Solution**:
 ```rust
-// Dans test_server, lire plusieurs requêtes sur la même connexion
+// In test_server, read multiple requests on the same connection
 loop {
     let mut buffer = [0; 4096];
     match stream.read(&mut buffer) {
-        Ok(0) => break, // Client a fermé
+        Ok(0) => break, // Client closed
         Ok(_) => {
-            // Traiter requête
-            // Envoyer réponse
-            // Continuer
+            // Process request
+            // Send response
+            // Continue
         }
         Err(_) => break,
     }
 }
 ```
 
-### **2. Performance Faible (133 req/s)**
-**Cause** : Serveur HTTP basique avec `std::net`
+### **2. Low Performance (133 req/s)**
+**Cause**: Basic HTTP server with `std::net`
 
-**Solutions** :
-1. **Court terme** : Ajuster objectifs temporairement
-2. **Moyen terme** : Utiliser tokio pour async
-3. **Long terme** : Intégrer hyper dans Lithair
+**Solutions**:
+1. **Short term**: Temporarily adjust objectives
+2. **Medium term**: Use tokio for async
+3. **Long term**: Integrate hyper into Lithair
 
 ---
 
-## ✅ **TODO**
+## TODO
 
-### **Implémentation Steps**
-- [x] Throughput écriture
-- [x] Throughput lecture  
-- [ ] Charge mixte
+### **Step Implementation**
+- [x] Write throughput
+- [x] Read throughput
+- [ ] Mixed load
 - [ ] Keep-Alive HTTP/1.1
-- [ ] Charge concurrente
-- [ ] Latence sous charge
-- [ ] Test de stress
-- [ ] Benchmark de référence
+- [ ] Concurrent load
+- [ ] Latency under load
+- [ ] Stress test
+- [ ] Reference benchmark
 
-### **Optimisations Serveur**
-- [ ] Supporter HTTP/1.1 keep-alive
-- [ ] Pool de threads pour les connexions
-- [ ] Parser HTTP optimisé
-- [ ] Intégration tokio/hyper
+### **Server Optimizations**
+- [ ] Support HTTP/1.1 keep-alive
+- [ ] Thread pool for connections
+- [ ] Optimized HTTP parser
+- [ ] tokio/hyper integration
 
 ### **CI/CD**
-- [ ] Intégrer dans pipeline CI
-- [ ] Benchmarks automatiques
-- [ ] Alertes sur régression
-- [ ] Rapports de performance
+- [ ] Integrate into CI pipeline
+- [ ] Automated benchmarks
+- [ ] Regression alerts
+- [ ] Performance reports
 
 ---
 
-## 📚 **Références**
+## References
 
-- [Robot Framework Tests](../../robot-tests/) - Tests similaires
-- [test_server](../../examples/test_server/) - Serveur de test
-- [Lithair HTTP](../../lithair-core/src/http/) - Module HTTP du framework
+- [Robot Framework Tests](../../robot-tests/) - Similar tests
+- [test_server](../../examples/test_server/) - Test server
+- [Lithair HTTP](../../lithair-core/src/http/) - Framework HTTP module
 
 ---
 
-## 🎯 **Prochaines Étapes**
+## Next Steps
 
-1. **Fixer Connection Reset** (priorité 1)
-2. **Implémenter steps manquants** (charge mixte, keep-alive)
-3. **Optimiser test_server** ou intégrer Lithair HTTP
-4. **Valider tous les scénarios**
-5. **Intégrer dans CI**
+1. **Fix Connection Reset** (priority 1)
+2. **Implement missing steps** (mixed load, keep-alive)
+3. **Optimize test_server** or integrate Lithair HTTP
+4. **Validate all scenarios**
+5. **Integrate into CI**
 
-**Ces tests E2E Cucumber sont spécifiques à Lithair et complémentaires aux tests Robot Framework !** 🚀
+**These E2E Cucumber tests are specific to Lithair and complementary to the Robot Framework tests!**

@@ -8,37 +8,37 @@ use lithair_core::engine::MultiFileEventStore;
 
 // ==================== BACKGROUND ====================
 
-#[given("la persistence multi-fichiers est activée")]
+#[given("multi-file persistence is enabled")]
 async fn given_multifile_persistence_enabled(_world: &mut LithairWorld) {
-    println!("✅ Persistence multi-fichiers activée");
+    println!("✅ Multi-file persistence enabled");
 }
 
 // ==================== SETUP MULTI-FILE STORE ====================
 
-#[given(expr = "un store multi-fichiers dans {string}")]
+#[given(expr = "a multi-file store in {string}")]
 async fn given_multifile_store(world: &mut LithairWorld, base_path: String) {
-    println!("🚀 Initialisation store multi-fichiers: {}", base_path);
+    println!("🚀 Initializing multi-file store: {}", base_path);
 
-    // Nettoyer et créer le dossier
+    // Clean and create the folder
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path).expect("Failed to create base dir");
 
-    // Créer MultiFileEventStore
+    // Create MultiFileEventStore
     let store = MultiFileEventStore::new(&base_path).expect("Failed to create MultiFileEventStore");
 
-    // Stocker dans world
+    // Store in world
     *world.multi_file_store.lock().await = Some(store);
 
-    // Sauvegarder le chemin
+    // Save the path
     let mut metrics = world.metrics.lock().await;
     metrics.persist_path = base_path;
 
-    println!("✅ Store multi-fichiers initialisé");
+    println!("✅ Multi-file store initialized");
 }
 
-// ==================== CRÉATION D'ÉVÉNEMENTS ====================
+// ==================== EVENT CREATION ====================
 
-#[when(expr = "je crée {int} {string} avec aggregate_id {string}")]
+#[when(expr = "I create {int} {string} with aggregate_id {string}")]
 async fn when_create_events_with_aggregate(
     world: &mut LithairWorld,
     count: usize,
@@ -46,7 +46,7 @@ async fn when_create_events_with_aggregate(
     aggregate_id: String,
 ) {
     println!(
-        "📝 Création de {} événements '{}' pour aggregate '{}'...",
+        "📝 Creating {} '{}' events for aggregate '{}'...",
         count, event_type, aggregate_id
     );
 
@@ -78,21 +78,21 @@ async fn when_create_events_with_aggregate(
 
     let elapsed = start.elapsed();
     println!(
-        "✅ {} événements '{}' créés en {:.2}ms",
+        "✅ {} '{}' events created in {:.2}ms",
         count,
         event_type,
         elapsed.as_secs_f64() * 1000.0
     );
 
-    // Sauvegarder dans metrics
+    // Save in metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count += count as u64;
     metrics.total_duration += elapsed;
 }
 
-#[when(expr = "je crée {int} événements sans aggregate_id")]
+#[when(expr = "I create {int} events without aggregate_id")]
 async fn when_create_events_without_aggregate(world: &mut LithairWorld, count: usize) {
-    println!("📝 Création de {} événements globaux (sans aggregate_id)...", count);
+    println!("📝 Creating {} global events (without aggregate_id)...", count);
 
     {
         let mut store_guard = world.multi_file_store.lock().await;
@@ -117,14 +117,14 @@ async fn when_create_events_without_aggregate(world: &mut LithairWorld, count: u
         }
     }
 
-    println!("✅ {} événements globaux créés", count);
+    println!("✅ {} global events created", count);
 }
 
 // ==================== FLUSH ====================
 
-#[when("je flush tous les stores")]
+#[when("I flush all stores")]
 async fn when_flush_all_stores(world: &mut LithairWorld) {
-    println!("💾 Flush de tous les stores...");
+    println!("💾 Flushing all stores...");
 
     {
         let mut store_guard = world.multi_file_store.lock().await;
@@ -132,15 +132,15 @@ async fn when_flush_all_stores(world: &mut LithairWorld) {
         store.flush_all().expect("Failed to flush all stores");
     }
 
-    // Petit délai pour s'assurer que tout est écrit
+    // Short delay to ensure everything is written
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    println!("✅ Tous les stores flushés");
+    println!("✅ All stores flushed");
 }
 
-#[when("je flush tous les stores avec fsync")]
+#[when("I flush all stores with fsync")]
 async fn when_flush_all_stores_with_fsync(world: &mut LithairWorld) {
-    println!("💾 Flush de tous les stores avec fsync...");
+    println!("💾 Flushing all stores with fsync...");
 
     {
         let mut store_guard = world.multi_file_store.lock().await;
@@ -148,25 +148,25 @@ async fn when_flush_all_stores_with_fsync(world: &mut LithairWorld) {
         store.flush_all().expect("Failed to flush all stores");
     }
 
-    // Petit délai pour fsync
+    // Short delay for fsync
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
-    println!("✅ Tous les stores flushés avec fsync");
+    println!("✅ All stores flushed with fsync");
 }
 
-// ==================== VÉRIFICATION FICHIERS ====================
+// ==================== FILE VERIFICATION ====================
 
-#[then(expr = "le fichier {string} doit exister")]
+#[then(expr = "the file {string} must exist")]
 async fn then_file_must_exist(world: &mut LithairWorld, relative_path: String) {
     let metrics = world.metrics.lock().await;
     let full_path = format!("{}/{}", metrics.persist_path, relative_path);
 
-    assert!(Path::new(&full_path).exists(), "❌ Fichier manquant: {}", full_path);
+    assert!(Path::new(&full_path).exists(), "❌ Missing file: {}", full_path);
 
-    println!("✅ Fichier existe: {}", relative_path);
+    println!("✅ File exists: {}", relative_path);
 }
 
-#[then(expr = "le fichier {string} doit contenir exactement {int} lignes")]
+#[then(expr = "the file {string} must contain exactly {int} lines")]
 async fn then_file_must_contain_lines(
     world: &mut LithairWorld,
     relative_path: String,
@@ -180,16 +180,16 @@ async fn then_file_must_contain_lines(
 
     assert_eq!(
         actual_lines, expected_lines,
-        "❌ Nombre de lignes incorrect dans {}: {} (attendu: {})",
+        "❌ Incorrect number of lines in {}: {} (expected: {})",
         relative_path, actual_lines, expected_lines
     );
 
-    println!("✅ {} contient {} lignes", relative_path, actual_lines);
+    println!("✅ {} contains {} lines", relative_path, actual_lines);
 }
 
 // ==================== ISOLATION ====================
 
-#[then(expr = "le fichier {string} ne doit contenir que des événements {string}")]
+#[then(expr = "the file {string} must contain only {string} events")]
 async fn then_file_contains_only_type(
     world: &mut LithairWorld,
     relative_path: String,
@@ -205,11 +205,11 @@ async fn then_file_contains_only_type(
             continue;
         }
 
-        // Extraire le JSON (après le CRC32 si présent)
+        // Extract the JSON (after CRC32 if present)
         let json_part =
             if line.len() > 9 && line.chars().nth(8) == Some(':') { &line[9..] } else { line };
 
-        // Vérifier que l'aggregate_id correspond
+        // Verify that the aggregate_id matches
         let parsed: serde_json::Value = serde_json::from_str(json_part)
             .unwrap_or_else(|_| panic!("Invalid JSON at line {}", line_num + 1));
 
@@ -217,7 +217,7 @@ async fn then_file_contains_only_type(
             assert_eq!(
                 agg_id,
                 expected_type,
-                "❌ Ligne {} contient aggregate_id '{}' au lieu de '{}'",
+                "❌ Line {} contains aggregate_id '{}' instead of '{}'",
                 line_num + 1,
                 agg_id,
                 expected_type
@@ -225,10 +225,10 @@ async fn then_file_contains_only_type(
         }
     }
 
-    println!("✅ {} ne contient que des événements '{}'", relative_path, expected_type);
+    println!("✅ {} contains only '{}' events", relative_path, expected_type);
 }
 
-#[then(expr = "aucun événement {string} ne doit être dans {string}")]
+#[then(expr = "no {string} event must be in {string}")]
 async fn then_no_event_type_in_file(
     world: &mut LithairWorld,
     forbidden_type: String,
@@ -244,25 +244,25 @@ async fn then_no_event_type_in_file(
             continue;
         }
 
-        // Extraire le JSON
+        // Extract the JSON
         let json_part =
             if line.len() > 9 && line.chars().nth(8) == Some(':') { &line[9..] } else { line };
 
         assert!(
             !json_part.contains(&format!("\"aggregate_id\":\"{}\"", forbidden_type)),
-            "❌ Ligne {} dans {} contient un événement '{}' interdit",
+            "❌ Line {} in {} contains a forbidden '{}' event",
             line_num + 1,
             relative_path,
             forbidden_type
         );
     }
 
-    println!("✅ Aucun événement '{}' dans {}", forbidden_type, relative_path);
+    println!("✅ No '{}' event in {}", forbidden_type, relative_path);
 }
 
 // ==================== CRC32 VALIDATION ====================
 
-#[then(expr = "tous les événements dans {string} doivent avoir un CRC32 valide")]
+#[then(expr = "all events in {string} must have a valid CRC32")]
 async fn then_all_events_have_valid_crc32(world: &mut LithairWorld, relative_path: String) {
     use lithair_core::engine::persistence::parse_and_validate_event;
 
@@ -282,25 +282,25 @@ async fn then_all_events_have_valid_crc32(world: &mut LithairWorld, relative_pat
             Ok(_) => valid_count += 1,
             Err(e) => {
                 invalid_count += 1;
-                eprintln!("⚠️ CRC32 invalide ligne {}: {}", line_num + 1, e);
+                eprintln!("⚠️ Invalid CRC32 at line {}: {}", line_num + 1, e);
             }
         }
     }
 
     assert_eq!(
         invalid_count, 0,
-        "❌ {} événements avec CRC32 invalide dans {}",
+        "❌ {} events with invalid CRC32 in {}",
         invalid_count, relative_path
     );
 
-    println!("✅ {} événements avec CRC32 valide dans {}", valid_count, relative_path);
+    println!("✅ {} events with valid CRC32 in {}", valid_count, relative_path);
 }
 
-#[then(expr = "le format de chaque ligne doit être {string}")]
+#[then(expr = "the format of each line must be {string}")]
 async fn then_format_must_be(world: &mut LithairWorld, expected_format: String) {
     let metrics = world.metrics.lock().await;
 
-    // Vérifier un fichier pour le format
+    // Verify one file for the format
     let articles_path = format!("{}/articles/events.raftlog", metrics.persist_path);
     if Path::new(&articles_path).exists() {
         let content = std::fs::read_to_string(&articles_path).expect("Failed to read file");
@@ -310,37 +310,37 @@ async fn then_format_must_be(world: &mut LithairWorld, expected_format: String) 
                 continue;
             }
 
-            // Vérifier format <crc32>:<json>
+            // Verify format <crc32>:<json>
             assert!(
                 line.len() > 9 && line.chars().nth(8) == Some(':'),
-                "❌ Ligne {} n'a pas le format '{}': {}",
+                "❌ Line {} does not match format '{}': {}",
                 line_num + 1,
                 expected_format,
                 &line[..std::cmp::min(20, line.len())]
             );
 
-            // Vérifier que le CRC32 est hex valide
+            // Verify that the CRC32 is valid hex
             let crc_hex = &line[..8];
             assert!(
                 u32::from_str_radix(crc_hex, 16).is_ok(),
-                "❌ CRC32 invalide ligne {}: {}",
+                "❌ Invalid CRC32 at line {}: {}",
                 line_num + 1,
                 crc_hex
             );
         }
     }
 
-    println!("✅ Format '{}' validé", expected_format);
+    println!("✅ Format '{}' validated", expected_format);
 }
 
-#[then("tous les CRC32 doivent être valides")]
+#[then("all CRC32 must be valid")]
 async fn then_all_crc32_validated(world: &mut LithairWorld) {
     use lithair_core::engine::persistence::parse_and_validate_event;
 
     let metrics = world.metrics.lock().await;
     let base_path = &metrics.persist_path;
 
-    // Parcourir tous les sous-dossiers
+    // Iterate over all subdirectories
     let mut total_valid = 0;
     let mut total_invalid = 0;
 
@@ -368,17 +368,17 @@ async fn then_all_crc32_validated(world: &mut LithairWorld) {
     assert_eq!(
         total_invalid,
         0,
-        "❌ {} événements corrompus sur {}",
+        "❌ {} corrupted events out of {}",
         total_invalid,
         total_valid + total_invalid
     );
 
-    println!("✅ Tous les {} CRC32 validés", total_valid);
+    println!("✅ All {} CRC32 validated", total_valid);
 }
 
 // ==================== CORRUPTION ====================
 
-#[when(expr = "je corromps volontairement une ligne dans {string}")]
+#[when(expr = "I deliberately corrupt a line in {string}")]
 async fn when_corrupt_file(world: &mut LithairWorld, relative_path: String) {
     let metrics = world.metrics.lock().await;
     let full_path = format!("{}/{}", metrics.persist_path, relative_path);
@@ -387,25 +387,25 @@ async fn when_corrupt_file(world: &mut LithairWorld, relative_path: String) {
     let lines: Vec<&str> = content.lines().collect();
 
     if lines.is_empty() {
-        panic!("❌ Fichier vide, impossible de corrompre");
+        panic!("❌ Empty file, cannot corrupt");
     }
 
-    // Corrompre la première ligne (changer un caractère dans le JSON)
+    // Corrupt the first line (change a character in the JSON)
     let mut corrupted_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
     if corrupted_lines[0].contains("data") {
         corrupted_lines[0] = corrupted_lines[0].replace("data", "CORRUPTED_DATA");
     } else {
-        // Ajouter des caractères aléatoires
+        // Add random characters
         corrupted_lines[0].push_str("CORRUPTED");
     }
 
     let corrupted_content = corrupted_lines.join("\n");
     std::fs::write(&full_path, corrupted_content).expect("Failed to write corrupted file");
 
-    println!("💀 Fichier {} corrompu (1 ligne)", relative_path);
+    println!("💀 File {} corrupted (1 line)", relative_path);
 }
 
-#[then(expr = "la lecture de {string} doit détecter {int} événement corrompu")]
+#[then(expr = "reading {string} must detect {int} corrupted event")]
 async fn then_detect_corrupted_events(
     world: &mut LithairWorld,
     relative_path: String,
@@ -430,47 +430,47 @@ async fn then_detect_corrupted_events(
 
     assert_eq!(
         corrupted_count, expected_corrupted,
-        "❌ Nombre d'événements corrompus: {} (attendu: {})",
+        "❌ Number of corrupted events: {} (expected: {})",
         corrupted_count, expected_corrupted
     );
 
-    println!("✅ Détecté {} événement(s) corrompu(s)", corrupted_count);
+    println!("✅ Detected {} corrupted event(s)", corrupted_count);
 }
 
-#[then("les autres fichiers ne doivent pas être affectés")]
+#[then("other files must not be affected")]
 async fn then_other_files_not_affected(_world: &mut LithairWorld) {
-    // Les autres fichiers n'existent pas dans ce scénario, donc OK
-    println!("✅ Autres fichiers non affectés");
+    // Other files do not exist in this scenario, so OK
+    println!("✅ Other files not affected");
 }
 
 // ==================== CRASH & RECOVERY ====================
 
-#[when("je simule un crash brutal")]
+#[when("I simulate a brutal crash")]
 async fn when_simulate_crash(world: &mut LithairWorld) {
-    println!("💥 Simulation crash brutal...");
+    println!("💥 Simulating brutal crash...");
 
-    // Supprimer le store sans flush propre
+    // Remove the store without a clean flush
     {
         let mut store_guard = world.multi_file_store.lock().await;
         *store_guard = None;
     }
 
-    println!("💀 Crash simulé - store détruit");
+    println!("💀 Crash simulated - store destroyed");
 }
 
-#[when(expr = "je recharge le store multi-fichiers depuis {string}")]
+#[when(expr = "I reload the multi-file store from {string}")]
 async fn when_reload_multifile_store(world: &mut LithairWorld, base_path: String) {
-    println!("🔄 Rechargement store depuis {}...", base_path);
+    println!("🔄 Reloading store from {}...", base_path);
 
-    // Recharger le store
+    // Reload the store
     let store = MultiFileEventStore::new(&base_path).expect("Failed to reload MultiFileEventStore");
 
     *world.multi_file_store.lock().await = Some(store);
 
-    println!("✅ Store rechargé");
+    println!("✅ Store reloaded");
 }
 
-#[then(expr = "je dois récupérer exactement {int} {string}")]
+#[then(expr = "I must recover exactly {int} {string}")]
 async fn then_must_recover_events(
     world: &mut LithairWorld,
     expected_count: usize,
@@ -480,7 +480,7 @@ async fn then_must_recover_events(
     let full_path = format!("{}/{}/events.raftlog", metrics.persist_path, aggregate_id);
 
     if !Path::new(&full_path).exists() {
-        panic!("❌ Fichier {} manquant après recovery", full_path);
+        panic!("❌ File {} missing after recovery", full_path);
     }
 
     let content = std::fs::read_to_string(&full_path).expect("Failed to read file");
@@ -488,23 +488,23 @@ async fn then_must_recover_events(
 
     assert_eq!(
         actual_count, expected_count,
-        "❌ Recovery incomplet pour '{}': {} (attendu: {})",
+        "❌ Incomplete recovery for '{}': {} (expected: {})",
         aggregate_id, actual_count, expected_count
     );
 
-    println!("✅ Récupéré {} événements '{}'", actual_count, aggregate_id);
+    println!("✅ Recovered {} '{}' events", actual_count, aggregate_id);
 }
 
 // ==================== PERFORMANCE ====================
 
-#[when(expr = "je mesure le temps pour créer {int} événements répartis sur {int} structures")]
+#[when(expr = "I measure the time to create {int} events distributed across {int} structures")]
 async fn when_measure_distributed_creation(
     world: &mut LithairWorld,
     total_events: usize,
     num_structures: usize,
 ) {
     println!(
-        "⏱️ Mesure création de {} événements sur {} structures...",
+        "⏱️ Measuring creation of {} events across {} structures...",
         total_events, num_structures
     );
 
@@ -540,35 +540,35 @@ async fn when_measure_distributed_creation(
 
     let elapsed = start.elapsed();
 
-    // Sauvegarder dans metrics
+    // Save in metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = total_events as u64;
     metrics.total_duration = elapsed;
 
     println!(
-        "✅ {} événements créés sur {} structures en {:.2}ms",
+        "✅ {} events created across {} structures in {:.2}ms",
         total_events,
         num_structures,
         elapsed.as_secs_f64() * 1000.0
     );
 }
 
-#[then(expr = "le temps total multifile doit être inférieur à {int} secondes")]
+#[then(expr = "the total multifile time must be less than {int} seconds")]
 async fn then_time_less_than(world: &mut LithairWorld, max_seconds: u64) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration.as_secs_f64();
 
     assert!(
         elapsed < max_seconds as f64,
-        "❌ Temps trop long: {:.2}s (max: {}s)",
+        "❌ Time too long: {:.2}s (max: {}s)",
         elapsed,
         max_seconds
     );
 
-    println!("✅ Temps validé: {:.2}s < {}s", elapsed, max_seconds);
+    println!("✅ Time validated: {:.2}s < {}s", elapsed, max_seconds);
 }
 
-#[then(expr = "chaque structure doit avoir environ {int} événements")]
+#[then(expr = "each structure must have approximately {int} events")]
 async fn then_each_structure_has_approx(world: &mut LithairWorld, expected_per_structure: usize) {
     let metrics = world.metrics.lock().await;
     let base_path = &metrics.persist_path;
@@ -588,7 +588,7 @@ async fn then_each_structure_has_approx(world: &mut LithairWorld, expected_per_s
 
                     assert!(
                         (count as i64 - expected_per_structure as i64).abs() <= tolerance as i64,
-                        "❌ Structure {:?} a {} événements (attendu: ~{})",
+                        "❌ Structure {:?} has {} events (expected: ~{})",
                         path.file_name(),
                         count,
                         expected_per_structure
@@ -598,10 +598,10 @@ async fn then_each_structure_has_approx(world: &mut LithairWorld, expected_per_s
         }
     }
 
-    println!("✅ Chaque structure a ~{} événements", expected_per_structure);
+    println!("✅ Each structure has ~{} events", expected_per_structure);
 }
 
-#[then("tous les fichiers doivent exister avec CRC32 valide")]
+#[then("all files must exist with valid CRC32")]
 async fn then_all_files_exist_with_valid_crc32(world: &mut LithairWorld) {
     use lithair_core::engine::persistence::parse_and_validate_event;
 
@@ -632,7 +632,7 @@ async fn then_all_files_exist_with_valid_crc32(world: &mut LithairWorld) {
     }
 
     println!(
-        "✅ {} fichiers existent avec {} événements CRC32 valides",
+        "✅ {} files exist with {} valid CRC32 events",
         file_count, total_events
     );
 }
@@ -640,7 +640,7 @@ async fn then_all_files_exist_with_valid_crc32(world: &mut LithairWorld) {
 // ==================== CONCURRENT ====================
 
 #[when(
-    expr = "je lance {int} tâches concurrentes écrivant chacune {int} événements sur une structure différente"
+    expr = "I launch {int} concurrent tasks each writing {int} events on a different structure"
 )]
 async fn when_launch_concurrent_tasks(
     world: &mut LithairWorld,
@@ -648,13 +648,13 @@ async fn when_launch_concurrent_tasks(
     events_per_task: usize,
 ) {
     println!(
-        "🚀 Lancement de {} tâches concurrentes ({} événements chacune)...",
+        "🚀 Launching {} concurrent tasks ({} events each)...",
         num_tasks, events_per_task
     );
 
-    // Pour ce test, on va simuler la concurrence de manière séquentielle
-    // car MultiFileEventStore n'est pas thread-safe par défaut
-    // Dans un vrai scénario, on utiliserait Arc<Mutex<MultiFileEventStore>>
+    // For this test, we simulate concurrency sequentially
+    // because MultiFileEventStore is not thread-safe by default.
+    // In a real scenario, we would use Arc<Mutex<MultiFileEventStore>>.
 
     {
         let mut store_guard = world.multi_file_store.lock().await;
@@ -683,20 +683,20 @@ async fn when_launch_concurrent_tasks(
         }
     }
 
-    // Sauvegarder dans metrics
+    // Save in metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = (num_tasks * events_per_task) as u64;
 
-    println!("✅ {} tâches terminées", num_tasks);
+    println!("✅ {} tasks completed", num_tasks);
 }
 
-#[when("j'attends la fin de toutes les tâches")]
+#[when("I wait for all tasks to complete")]
 async fn when_wait_all_tasks(_world: &mut LithairWorld) {
-    // Dans notre implémentation simplifiée, tout est déjà terminé
-    println!("✅ Toutes les tâches terminées");
+    // In our simplified implementation, everything is already done
+    println!("✅ All tasks completed");
 }
 
-#[then(expr = "chaque structure doit avoir exactement {int} événements")]
+#[then(expr = "each structure must have exactly {int} events")]
 async fn then_each_structure_has_exactly(world: &mut LithairWorld, expected_count: usize) {
     let metrics = world.metrics.lock().await;
     let base_path = &metrics.persist_path;
@@ -714,7 +714,7 @@ async fn then_each_structure_has_exactly(world: &mut LithairWorld, expected_coun
 
                         assert_eq!(
                             count, expected_count,
-                            "❌ Structure {} a {} événements (attendu: {})",
+                            "❌ Structure {} has {} events (expected: {})",
                             dir_name, count, expected_count
                         );
                     }
@@ -723,10 +723,10 @@ async fn then_each_structure_has_exactly(world: &mut LithairWorld, expected_coun
         }
     }
 
-    println!("✅ Chaque structure a exactement {} événements", expected_count);
+    println!("✅ Each structure has exactly {} events", expected_count);
 }
 
-#[then("aucune donnée ne doit être mélangée entre structures")]
+#[then("no data must be mixed between structures")]
 async fn then_no_data_mixed(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
     let base_path = &metrics.persist_path;
@@ -743,11 +743,11 @@ async fn then_no_data_mixed(world: &mut LithairWorld) {
                         if line.trim().is_empty() {
                             continue;
                         }
-                        // Vérifier que l'aggregate_id correspond au nom du dossier
+                        // Verify that the aggregate_id matches the folder name
                         if dir_name != "global" {
                             assert!(
                                 line.contains(&format!("\"aggregate_id\":\"{}\"", dir_name)),
-                                "❌ Événement mal routé dans {}",
+                                "❌ Misrouted event in {}",
                                 dir_name
                             );
                         }
@@ -757,14 +757,14 @@ async fn then_no_data_mixed(world: &mut LithairWorld) {
         }
     }
 
-    println!("✅ Aucune donnée mélangée entre structures");
+    println!("✅ No data mixed between structures");
 }
 
-// ==================== LECTURE SÉLECTIVE ====================
+// ==================== SELECTIVE READ ====================
 
-#[when(expr = "je lis uniquement la structure {string}")]
+#[when(expr = "I read only the {string} structure")]
 async fn when_read_only_structure(world: &mut LithairWorld, aggregate_id: String) {
-    println!("📖 Lecture sélective de '{}'...", aggregate_id);
+    println!("📖 Selective read of '{}'...", aggregate_id);
 
     let count = {
         let store_guard = world.multi_file_store.lock().await;
@@ -773,36 +773,36 @@ async fn when_read_only_structure(world: &mut LithairWorld, aggregate_id: String
         events.len()
     };
 
-    // Sauvegarder le count pour vérification
+    // Save the count for verification
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
 
-    println!("✅ Lu {} événements de '{}'", count, aggregate_id);
+    println!("✅ Read {} events from '{}'", count, aggregate_id);
 }
 
-#[then(expr = "je dois obtenir exactement {int} événements")]
+#[then(expr = "I must get exactly {int} events")]
 async fn then_must_get_exactly_events(world: &mut LithairWorld, expected_count: usize) {
     let metrics = world.metrics.lock().await;
     let actual = metrics.request_count as usize;
 
     assert_eq!(
         actual, expected_count,
-        "❌ Nombre d'événements: {} (attendu: {})",
+        "❌ Number of events: {} (expected: {})",
         actual, expected_count
     );
 
-    println!("✅ {} événements obtenus", actual);
+    println!("✅ {} events obtained", actual);
 }
 
-#[then(expr = "tous doivent être de type {string}")]
+#[then(expr = "all must be of type {string}")]
 async fn then_all_must_be_type(_world: &mut LithairWorld, expected_type: String) {
-    // Déjà vérifié par la lecture sélective
-    println!("✅ Tous les événements sont de type '{}'", expected_type);
+    // Already verified by selective read
+    println!("✅ All events are of type '{}'", expected_type);
 }
 
-#[when("je lis toutes les structures")]
+#[when("I read all structures")]
 async fn when_read_all_structures(world: &mut LithairWorld) {
-    println!("📖 Lecture de toutes les structures...");
+    println!("📖 Reading all structures...");
 
     let count = {
         let store_guard = world.multi_file_store.lock().await;
@@ -814,19 +814,19 @@ async fn when_read_all_structures(world: &mut LithairWorld) {
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
 
-    println!("✅ Lu {} événements au total", count);
+    println!("✅ Read {} events in total", count);
 }
 
-#[then(expr = "je dois obtenir exactement {int} événements au total")]
+#[then(expr = "I must get exactly {int} events in total")]
 async fn then_must_get_total_events(world: &mut LithairWorld, expected_total: usize) {
     let metrics = world.metrics.lock().await;
     let actual = metrics.request_count as usize;
 
     assert_eq!(
         actual, expected_total,
-        "❌ Total événements: {} (attendu: {})",
+        "❌ Total events: {} (expected: {})",
         actual, expected_total
     );
 
-    println!("✅ {} événements au total", actual);
+    println!("✅ {} events in total", actual);
 }

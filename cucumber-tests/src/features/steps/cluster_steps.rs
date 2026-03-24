@@ -435,23 +435,23 @@ async fn then_local_hash_computation(_world: &mut LithairWorld) {
     println!("✅ Event hashes computed locally on each node");
 }
 
-/// # Steps pour Tests de Cluster Distribué
+/// # Steps for Distributed Cluster Tests
 ///
-/// Ces steps testent VRAIMENT un cluster multi-nœuds Lithair avec:
-/// - Plusieurs serveurs HTTP indépendants
-/// - Persistance isolée par nœud
-/// - Communication inter-nœuds (via HTTP)
+/// These steps test a REAL multi-node Lithair cluster with:
+/// - Multiple independent HTTP servers
+/// - Isolated persistence per node
+/// - Inter-node communication (via HTTP)
 
 // ==================== SETUP CLUSTER ====================
 
-#[given(expr = "{int} nœuds Lithair en cluster")]
+#[given(expr = "{int} Lithair nodes in cluster")]
 async fn given_cluster_nodes(world: &mut LithairWorld, node_count: u32) {
-    println!("🚀 Démarrage cluster avec {} nœuds...", node_count);
+    println!("🚀 Starting cluster with {} nodes...", node_count);
 
-    // ✅ Démarrer un vrai cluster
+    // Start a real cluster
     let ports = world.start_cluster(node_count as usize).await.expect("Failed to start cluster");
 
-    // ✅ Vérifier que tous les nœuds répondent
+    // Verify that all nodes respond
     for (i, _port) in ports.iter().enumerate() {
         world
             .make_cluster_request(i, "GET", "/health", None)
@@ -467,18 +467,18 @@ async fn given_cluster_nodes(world: &mut LithairWorld, node_count: u32) {
         );
     }
 
-    println!("✅ Cluster de {} nœuds démarré (ports: {:?})", node_count, ports);
+    println!("✅ Cluster of {} nodes started (ports: {:?})", node_count, ports);
 }
 
-#[given(expr = "un cluster Lithair avec {int} nœuds")]
+#[given(expr = "a Lithair cluster with {int} nodes")]
 async fn given_lithair_cluster(world: &mut LithairWorld, node_count: u32) {
-    // Alias pour given_cluster_nodes
+    // Alias for given_cluster_nodes
     given_cluster_nodes(world, node_count).await;
 }
 
 // ==================== WRITE OPERATIONS ====================
 
-#[when(expr = "j'écris un article sur le nœud {int}")]
+#[when(expr = "I write an article on node {int}")]
 async fn when_write_article_to_node(world: &mut LithairWorld, node_id: u32) {
     let data = serde_json::json!({
         "title": format!("Article from node {}", node_id),
@@ -486,9 +486,9 @@ async fn when_write_article_to_node(world: &mut LithairWorld, node_id: u32) {
         "node": node_id
     });
 
-    println!("📝 Écriture article sur nœud {}...", node_id);
+    println!("📝 Writing article on node {}...", node_id);
 
-    // ✅ Écrire VRAIMENT sur un nœud spécifique
+    // Write to a specific node
     world
         .make_cluster_request(node_id as usize, "POST", "/api/articles", Some(data))
         .await
@@ -502,12 +502,12 @@ async fn when_write_article_to_node(world: &mut LithairWorld, node_id: u32) {
         node_id
     );
 
-    println!("✅ Article écrit sur nœud {}", node_id);
+    println!("✅ Article written on node {}", node_id);
 }
 
-#[when(expr = "je crée {int} articles sur le nœud leader")]
+#[when(expr = "I create {int} articles on the leader node")]
 async fn when_create_articles_on_leader(world: &mut LithairWorld, count: u32) {
-    println!("📝 Création de {} articles sur le leader (nœud 0)...", count);
+    println!("📝 Creating {} articles on the leader (node 0)...", count);
 
     for i in 0..count {
         let data = serde_json::json!({
@@ -521,16 +521,16 @@ async fn when_create_articles_on_leader(world: &mut LithairWorld, count: u32) {
             .unwrap_or_else(|_| panic!("Failed to create article {}", i));
     }
 
-    println!("✅ {} articles créés sur le leader", count);
+    println!("✅ {} articles created on the leader", count);
 }
 
 // ==================== READ OPERATIONS ====================
 
-#[when(expr = "je lis les données depuis le nœud {int}")]
+#[when(expr = "I read data from node {int}")]
 async fn when_read_from_node(world: &mut LithairWorld, node_id: u32) {
-    println!("📖 Lecture depuis nœud {}...", node_id);
+    println!("📖 Reading from node {}...", node_id);
 
-    // ✅ Lire VRAIMENT depuis un nœud spécifique
+    // Read from a specific node
     world
         .make_cluster_request(node_id as usize, "GET", "/api/articles", None)
         .await
@@ -538,17 +538,17 @@ async fn when_read_from_node(world: &mut LithairWorld, node_id: u32) {
 
     assert!(world.last_response.is_some(), "No response from node {}", node_id);
 
-    println!("✅ Données lues depuis nœud {}", node_id);
+    println!("✅ Data read from node {}", node_id);
 }
 
-#[then(expr = "tous les nœuds doivent avoir les mêmes données")]
+#[then(expr = "all nodes must have the same data")]
 async fn then_all_nodes_have_same_data(world: &mut LithairWorld) {
     let cluster_size = world.cluster_size().await;
-    println!("🔍 Vérification cohérence sur {} nœuds...", cluster_size);
+    println!("🔍 Verifying consistency across {} nodes...", cluster_size);
 
     let mut responses = Vec::new();
 
-    // Lire depuis chaque nœud
+    // Read from each node
     for i in 0..cluster_size {
         world
             .make_cluster_request(i, "GET", "/api/articles", None)
@@ -558,28 +558,28 @@ async fn then_all_nodes_have_same_data(world: &mut LithairWorld) {
         responses.push(world.last_response.clone());
     }
 
-    // ⚠️ Note: Dans l'implémentation actuelle, les nœuds sont indépendants
-    // Pour un vrai consensus Raft, ils devraient avoir les mêmes données
-    // Pour l'instant, on vérifie juste que chaque nœud répond
+    // Note: In the current implementation, nodes are independent
+    // For real Raft consensus, they should have the same data
+    // For now, we just verify that each node responds
 
     for (i, response) in responses.iter().enumerate() {
         assert!(response.is_some(), "Node {} has no data", i);
         println!("✅ Node {} responded", i);
     }
 
-    println!("⚠️ Note: Réplication Raft non implémentée - chaque nœud est indépendant");
-    println!("✅ Tous les nœuds répondent (cohérence à implémenter)");
+    println!("⚠️ Note: Raft replication not implemented - each node is independent");
+    println!("✅ All nodes respond (consistency to be implemented)");
 }
 
 // ==================== REPLICATION ====================
 
-#[then(expr = "les données doivent être répliquées sur tous les nœuds")]
+#[then(expr = "data must be replicated on all nodes")]
 async fn then_data_replicated_on_all_nodes(world: &mut LithairWorld) {
-    // ⚠️ Cette fonctionnalité nécessite un vrai protocole Raft
-    // Pour l'instant, c'est un test partiel
+    // This feature requires a real Raft protocol
+    // For now, this is a partial test
 
     let cluster_size = world.cluster_size().await;
-    println!("🔄 Vérification réplication sur {} nœuds...", cluster_size);
+    println!("🔄 Verifying replication across {} nodes...", cluster_size);
 
     for i in 0..cluster_size {
         world
@@ -590,39 +590,39 @@ async fn then_data_replicated_on_all_nodes(world: &mut LithairWorld) {
         assert!(world.last_response.is_some(), "Node {} no response", i);
     }
 
-    println!("⚠️ Réplication Raft à implémenter - actuellement nœuds indépendants");
-    println!("✅ Infrastructure cluster prête pour réplication");
+    println!("⚠️ Raft replication to be implemented - currently nodes are independent");
+    println!("✅ Cluster infrastructure ready for replication");
 }
 
-#[then(expr = "le consensus doit être atteint")]
+#[then(expr = "consensus must be reached")]
 async fn then_consensus_reached(_world: &mut LithairWorld) {
-    println!("⚠️ Consensus Raft non implémenté");
-    println!("✅ Infrastructure prête pour implémentation Raft");
+    println!("⚠️ Raft consensus not implemented");
+    println!("✅ Infrastructure ready for Raft implementation");
 }
 
 // ==================== FAILOVER ====================
 
-#[when(expr = "le nœud {int} tombe en panne")]
+#[when(expr = "node {int} fails")]
 async fn when_node_fails(world: &mut LithairWorld, node_id: u32) {
-    println!("💥 Simulation panne nœud {}...", node_id);
+    println!("💥 Simulating node {} failure...", node_id);
 
-    // ✅ Arrêter le nœud (TODO: implémenter stop_node individuel)
-    // Pour l'instant, on log l'action
+    // Stop the node (individual stop_node not yet implemented)
+    // For now, we log the action
 
     let mut test_data = world.test_data.lock().await;
     test_data
         .users
         .insert(format!("node_{}_failed", node_id), serde_json::json!(true));
 
-    println!("✅ Nœud {} marqué comme en panne", node_id);
+    println!("✅ Node {} marked as failed", node_id);
 }
 
-#[then(expr = "le cluster doit continuer à fonctionner")]
+#[then(expr = "the cluster must continue operating")]
 async fn then_cluster_continues(world: &mut LithairWorld) {
     let cluster_size = world.cluster_size().await;
-    println!("🔍 Vérification continuité cluster ({} nœuds)...", cluster_size);
+    println!("🔍 Verifying cluster continuity ({} nodes)...", cluster_size);
 
-    // ✅ Vérifier que les autres nœuds répondent toujours
+    // Verify that the other nodes still respond
     let test_data = world.test_data.lock().await;
     let mut working_nodes = 0;
     drop(test_data);
@@ -634,28 +634,28 @@ async fn then_cluster_continues(world: &mut LithairWorld) {
     }
 
     assert!(working_nodes > 0, "No nodes responding");
-    println!("✅ {} nœuds fonctionnels sur {}", working_nodes, cluster_size);
+    println!("✅ {} functional nodes out of {}", working_nodes, cluster_size);
 }
 
-#[then(expr = "un nouveau leader doit être élu")]
+#[then(expr = "a new leader must be elected")]
 async fn then_new_leader_elected_fr(_world: &mut LithairWorld) {
-    println!("⚠️ Élection leader Raft non implémentée");
-    println!("✅ Infrastructure prête pour élection leader");
+    println!("⚠️ Raft leader election not implemented");
+    println!("✅ Infrastructure ready for leader election");
 }
 
 // ==================== PERFORMANCE ====================
 
-#[when(expr = "je fais {int} requêtes concurrentes sur le cluster")]
+#[when(expr = "I make {int} concurrent requests on the cluster")]
 async fn when_concurrent_requests(world: &mut LithairWorld, request_count: u32) {
     let cluster_size = world.cluster_size().await;
     println!(
-        "⚡ Envoi de {} requêtes concurrentes sur {} nœuds...",
+        "⚡ Sending {} concurrent requests across {} nodes...",
         request_count, cluster_size
     );
 
-    // ✅ Faire de vraies requêtes concurrentes
-    // Note: Pour de vraies requêtes concurrentes, il faudrait cloner world
-    // Pour l'instant, on les fait séquentiellement
+    // Make real concurrent requests
+    // Note: For true concurrent requests, world would need to be cloned
+    // For now, they are done sequentially
     for i in 0..request_count {
         let node_id = (i as usize) % cluster_size;
         let data = serde_json::json!({
@@ -669,15 +669,15 @@ async fn when_concurrent_requests(world: &mut LithairWorld, request_count: u32) 
             .ok();
     }
 
-    println!("✅ {} requêtes envoyées", request_count);
+    println!("✅ {} requests sent", request_count);
 }
 
-#[then(expr = "toutes les requêtes doivent réussir")]
+#[then(expr = "all requests must succeed")]
 async fn then_all_requests_succeed(_world: &mut LithairWorld) {
-    println!("✅ Toutes les requêtes traitées");
+    println!("✅ All requests processed");
 }
 
-#[then(expr = "la latence moyenne doit être < {int}ms")]
+#[then(expr = "the average latency must be < {int}ms")]
 async fn then_latency_below(world: &mut LithairWorld, max_latency: u32) {
     let metrics = world.metrics.lock().await;
     let avg_latency = metrics.response_time_ms;
@@ -685,22 +685,22 @@ async fn then_latency_below(world: &mut LithairWorld, max_latency: u32) {
 
     println!("📊 Latence moyenne: {:.2}ms (max: {}ms)", avg_latency, max_latency);
 
-    // ⚠️ Pour l'instant, on log juste la métrique
-    println!("✅ Métriques de performance collectées");
+    // For now, we just log the metric
+    println!("✅ Performance metrics collected");
 }
 
 // ==================== CLEANUP ====================
 
-#[then(expr = "je peux arrêter le cluster proprement")]
+#[then(expr = "I can stop the cluster cleanly")]
 async fn then_stop_cluster_cleanly(world: &mut LithairWorld) {
-    println!("🛑 Arrêt du cluster...");
+    println!("🛑 Stopping cluster...");
 
     world.stop_cluster().await.expect("Failed to stop cluster");
 
     let cluster_size = world.cluster_size().await;
     assert_eq!(cluster_size, 0, "Cluster not properly stopped");
 
-    println!("✅ Cluster arrêté proprement");
+    println!("✅ Cluster stopped cleanly");
 }
 
 // ==================== REAL LITHAIR SERVER CLUSTER STEPS ====================
@@ -717,7 +717,7 @@ async fn given_real_cluster_en(world: &mut LithairWorld, node_count: u32) {
     println!("✅ Real cluster of {} nodes started (ports: {:?})", node_count, ports);
 }
 
-#[given(regex = r"un vrai cluster LithairServer de (\d+) nœuds")]
+#[given(regex = r"a real LithairServer cluster with (\d+) nodes")]
 async fn given_real_cluster_fr(world: &mut LithairWorld, node_count: u32) {
     given_real_cluster_en(world, node_count).await;
 }
@@ -745,7 +745,7 @@ async fn when_create_product_on_leader(world: &mut LithairWorld) {
     }
 }
 
-#[when(regex = r"je crée un produit sur le leader")]
+#[when(regex = r"I create a product on the leader node")]
 async fn when_create_product_on_leader_fr(world: &mut LithairWorld) {
     when_create_product_on_leader(world).await;
 }
@@ -1012,7 +1012,7 @@ async fn then_product_visible_on_all_nodes(world: &mut LithairWorld) {
     println!("✅ Product visibility verified");
 }
 
-#[then(regex = r"tous les nœuds doivent avoir les mêmes produits")]
+#[then(regex = r"all nodes must have the same products")]
 async fn then_all_nodes_same_products(world: &mut LithairWorld) {
     then_product_visible_on_all_nodes(world).await;
 }
@@ -1040,7 +1040,7 @@ async fn then_see_raft_leader_info(world: &mut LithairWorld) {
     }
 }
 
-#[then(regex = r"le nœud (\d+) doit être le leader")]
+#[then(regex = r"node (\d+) must be the leader")]
 async fn then_node_is_leader(world: &mut LithairWorld, expected_leader: u32) {
     let result = world
         .make_real_cluster_request(expected_leader as usize, "GET", "/status", None)
@@ -1116,7 +1116,7 @@ async fn then_stop_real_cluster(world: &mut LithairWorld) {
     println!("✅ Real cluster stopped cleanly");
 }
 
-#[then(regex = r"je peux arrêter le vrai cluster proprement")]
+#[then(regex = r"I can stop the real cluster cleanly")]
 async fn then_stop_real_cluster_fr(world: &mut LithairWorld) {
     then_stop_real_cluster(world).await;
 }

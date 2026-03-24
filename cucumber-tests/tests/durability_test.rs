@@ -3,11 +3,11 @@ use cucumber_tests::features::world::LithairWorld;
 
 #[tokio::main]
 async fn main() {
-    // Exécuter les tests de durabilité
+    // Run durability tests
     LithairWorld::cucumber()
-        .max_concurrent_scenarios(1) // Un seul scénario à la fois
+        .max_concurrent_scenarios(1) // One scenario at a time
         .filter_run("features/performance/durability_test.feature", |_, _, _| {
-            // Lancer tous les scénarios de durabilité
+            // Run all durability scenarios
             true
         })
         .await;

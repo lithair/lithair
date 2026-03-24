@@ -1,7 +1,7 @@
-//! Test runner pour les tests de durabilité des snapshots
+//! Test runner for snapshot durability tests
 //!
-//! Ce test vérifie que les snapshots fonctionnent correctement
-//! pour accélérer la récupération après redémarrage.
+//! This test verifies that snapshots work correctly
+//! to accelerate recovery after restart.
 
 use cucumber::World;
 use cucumber_tests::features::world::LithairWorld;
@@ -9,7 +9,7 @@ use cucumber_tests::features::world::LithairWorld;
 #[tokio::main]
 async fn main() {
     LithairWorld::cucumber()
-        .max_concurrent_scenarios(1) // Séquentiel pour éviter conflits de fichiers
+        .max_concurrent_scenarios(1) // Sequential to avoid file conflicts
         .filter_run("features/performance/snapshot_durability.feature", |_, _, _| true)
         .await;
 }

@@ -51,7 +51,7 @@ pub struct Metrics {
     pub latency_p50: std::time::Duration,
     pub latency_p95: std::time::Duration,
     pub latency_p99: std::time::Duration,
-    // Serveur
+    // Server
     pub base_url: String,
     pub server_port: u16,
     pub persist_path: String,

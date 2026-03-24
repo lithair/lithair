@@ -20,11 +20,11 @@ async fn measure_append_write_time(world: &mut LithairWorld, count: usize) {
             content: format!("Content for benchmark article {}", i),
         };
 
-        // Écriture via Scc2Engine (append-only)
+        // Write via Scc2Engine (append-only)
         let id = article.id.clone();
         world.scc2_articles.write(&id, |s| *s = article).ok();
 
-        // Persister via AsyncWriter si disponible
+        // Persist via AsyncWriter if available
         if let Some(ref writer) = *world.async_writer.lock().await {
             let event = serde_json::json!({
                 "type": "ArticleCreated",
@@ -53,7 +53,7 @@ async fn measure_append_write_time(world: &mut LithairWorld, count: usize) {
         throughput
     );
 
-    // Sauvegarder métriques
+    // Save metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
     metrics.total_duration = elapsed;
@@ -67,7 +67,7 @@ async fn verify_append_time(world: &mut LithairWorld, max_seconds: u64) {
 
     assert!(
         actual_seconds <= max_seconds,
-        "Append time {} secondes > {} secondes maximum",
+        "Append time {} seconds > {} seconds maximum",
         actual_seconds,
         max_seconds
     );
@@ -121,7 +121,7 @@ async fn correct_prices_with_events(world: &mut LithairWorld, count: usize) {
     for i in 0..count {
         let id = format!("product-{}", i);
 
-        // Créer un événement de correction (append, pas update!)
+        // Create a correction event (append, not update!)
         if let Some(ref writer) = *world.async_writer.lock().await {
             let event = serde_json::json!({
                 "type": "PriceUpdated",
@@ -136,7 +136,7 @@ async fn correct_prices_with_events(world: &mut LithairWorld, count: usize) {
             writer.write(serde_json::to_string(&event).unwrap()).ok();
         }
 
-        // Mettre à jour en mémoire aussi
+        // Update in memory as well
         world
             .scc2_articles
             .write(&id, |product| {
@@ -164,7 +164,7 @@ async fn verify_correction_events_time(world: &mut LithairWorld, _count: usize, 
         actual_seconds,
         max_seconds
     );
-    println!("✅ Corrections en {}s <= {}s", actual_seconds, max_seconds);
+    println!("✅ Corrections in {}s <= {}s", actual_seconds, max_seconds);
 }
 
 #[then(regex = r"^the history must show (\d+) events \((\d+) Created \+ (\d+) Updated\)$")]
@@ -177,7 +177,7 @@ async fn verify_event_history_count(
     let total: usize = total.parse().unwrap();
     let created: usize = created.parse().unwrap();
     let updated: usize = updated.parse().unwrap();
-    // En event sourcing, on ne remplace jamais - on ajoute
+    // In event sourcing, we never replace - we append
     assert_eq!(total, created + updated);
     println!("✅ History: {} events ({} Created + {} Updated)", total, created, updated);
 }
@@ -214,8 +214,8 @@ async fn measure_random_reads(world: &mut LithairWorld, count: usize) {
     let mut successful_reads = 0;
 
     for i in 0..count {
-        // Lecture depuis Scc2Engine (lock-free, O(1))
-        let id = format!("mem-article-{}", i % 10000); // Cycle sur les articles existants
+        // Read from Scc2Engine (lock-free, O(1))
+        let id = format!("mem-article-{}", i % 10000); // Cycle over existing articles
         if world.scc2_articles.read(&id, |_article| {}).is_some() {
             successful_reads += 1;
         }
@@ -282,7 +282,7 @@ async fn create_article_with_history(world: &mut LithairWorld, event_count: usiz
 
     let article_id = "history-test-article";
 
-    // Créer l'article initial
+    // Create the initial article
     let article = TestArticle {
         id: article_id.to_string(),
         title: "History Test Article".to_string(),
@@ -290,7 +290,7 @@ async fn create_article_with_history(world: &mut LithairWorld, event_count: usiz
     };
     world.scc2_articles.write(article_id, |s| *s = article).ok();
 
-    // Créer les événements d'historique
+    // Create history events
     if let Some(ref writer) = *world.async_writer.lock().await {
         // Event 1: Created
         let created_event = serde_json::json!({
@@ -313,7 +313,7 @@ async fn create_article_with_history(world: &mut LithairWorld, event_count: usiz
         }
     }
 
-    println!("✅ Article created with {} événements", event_count);
+    println!("✅ Article created with {} events", event_count);
 }
 
 #[when(expr = "I retrieve the complete history of the article")]
@@ -321,11 +321,11 @@ async fn fetch_article_history(world: &mut LithairWorld) {
     println!("🔍 Retrieving history...");
     let start = Instant::now();
 
-    // Simuler un appel API history (dans un vrai test, on ferait une requête HTTP)
+    // Simulate an API history call (in a real test, we would make an HTTP request)
     let _article_id = "history-test-article";
 
-    // La lecture d'historique depuis EventStore
-    // Pour l'instant on simule le temps de réponse
+    // Reading history from EventStore
+    // For now we simulate the response time
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
 
     let elapsed = start.elapsed();
@@ -379,10 +379,10 @@ async fn call_history_api_for_all(world: &mut LithairWorld) {
     println!("🔍 Calling history API for all articles...");
     let start = Instant::now();
 
-    // Simuler les appels API
+    // Simulate API calls
     for i in 0..100 {
         let _id = format!("admin-article-{}", i);
-        // Simulation de l'appel API
+        // Simulate the API call
         tokio::time::sleep(tokio::time::Duration::from_micros(500)).await;
     }
 
@@ -416,6 +416,7 @@ async fn verify_event_types(_world: &mut LithairWorld) {
 
 // ==================== ADMIN EDIT API ====================
 
+
 #[given(expr = "an existing article with id {string}")]
 async fn create_article_with_id(world: &mut LithairWorld, id: String) {
     println!("📝 Creating article with id: {}", id);
@@ -439,7 +440,7 @@ async fn call_edit_api(world: &mut LithairWorld) {
 
     let article_id = "test-article-001";
 
-    // Créer l'événement AdminEdit (append, pas replace!)
+    // Create the AdminEdit event (append, not replace!)
     if let Some(ref writer) = *world.async_writer.lock().await {
         let event = serde_json::json!({
             "type": "ArticleAdminEdit",
@@ -450,7 +451,7 @@ async fn call_edit_api(world: &mut LithairWorld) {
         writer.write(serde_json::to_string(&event).unwrap()).ok();
     }
 
-    // Mettre à jour en mémoire
+    // Update in memory
     world
         .scc2_articles
         .write(article_id, |article| {
@@ -512,7 +513,7 @@ async fn bulk_edit_category(world: &mut LithairWorld, count: usize) {
     for i in 0..count {
         let id = format!("bulk-article-{}", i);
 
-        // Créer événement AdminEdit pour chaque article
+        // Create AdminEdit event for each article
         if let Some(ref writer) = *world.async_writer.lock().await {
             let event = serde_json::json!({
                 "type": "ArticleAdminEdit",
@@ -544,7 +545,7 @@ async fn verify_bulk_edit_time(world: &mut LithairWorld, count: u64, max_seconds
         actual,
         max_seconds
     );
-    println!("✅ {} AdminEdits en {}s <= {}s", count, actual, max_seconds);
+    println!("✅ {} AdminEdits in {}s <= {}s", count, actual, max_seconds);
 }
 
 #[then(expr = "no original event must be modified")]

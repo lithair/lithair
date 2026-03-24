@@ -4,7 +4,7 @@ Feature: Isolated Benchmarks - Memory vs Disk vs E2E
     Given a Lithair server on port 20010 with persistence "/tmp/lithair-bench-read"
     And 10000 articles pre-loaded in memory
     When I read 100000 random articles via GET
-    Then the average read time must be less than 1ms
+    Then the average read time must be less than 1 ms
     And the read throughput must exceed 50000 req/sec
 
   Scenario: BENCH 2 - Pure disk write (FileStorage)
