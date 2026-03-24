@@ -81,6 +81,16 @@ wait_for_server() {
     exit 1
 }
 
+# ── Auth support ──────────────────────────────────────────────────────────────
+AUTH_HEADER=""
+
+# Set authentication token for subsequent requests.
+# Usage: set_auth "Bearer <token>"
+set_auth() { AUTH_HEADER="$1"; }
+
+# Clear authentication.
+clear_auth() { AUTH_HEADER=""; }
+
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 HTTP_STATUS=""
 _HTTP_STATUS_FILE=$(mktemp)
@@ -92,6 +102,9 @@ _curl_req() {
     local url="$2"
     local data="${3:-}"
     local curl_args=(-s -X "$method" -w '%{http_code}' -o "$_HTTP_BODY_FILE")
+    if [ -n "$AUTH_HEADER" ]; then
+        curl_args+=(-H "Authorization: $AUTH_HEADER")
+    fi
     if [ -n "$data" ]; then
         curl_args+=(-H "Content-Type: application/json" -d "$data")
     fi

@@ -1,5 +1,5 @@
 pub mod features;
 pub mod test_app;
 
-// Réexporter LithairWorld pour faciliter l'accès
+// Re-export LithairWorld for convenient access
 pub use features::world::LithairWorld;

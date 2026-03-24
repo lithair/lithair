@@ -20,7 +20,7 @@ pub struct ServerState {
     pub base_url: Option<String>,
 }
 
-/// Représente un nœud dans un cluster Lithair (mock simple)
+/// Represents a node in a Lithair cluster (simple mock)
 pub struct ClusterNode {
     pub node_id: usize,
     pub server_state: ServerState,
@@ -29,7 +29,7 @@ pub struct ClusterNode {
     pub server_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
-/// Représente un vrai nœud LithairServer en tant que processus externe
+/// Represents a real LithairServer node as an external process
 pub struct RealClusterNode {
     pub node_id: u64,
     pub port: u16,
@@ -55,7 +55,7 @@ pub struct Metrics {
     pub base_url: String,
     pub server_port: u16,
     pub persist_path: String,
-    // Benchmarks isolés
+    // Isolated benchmarks
     pub last_throughput: f64,
     pub last_avg_latency_ms: f64,
     pub last_p50_latency_ms: f64,
@@ -130,7 +130,7 @@ pub struct TestData {
     pub tokens: HashMap<String, String>,
 }
 
-// État de test pour le moteur Lithair
+// Test state for the Lithair engine
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TestAppState {
     pub data: TestData,
@@ -152,7 +152,7 @@ impl lithair_core::model::ModelSpec for TestAppState {
     }
 }
 
-// Événements de test
+// Test events
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TestEvent {
     ArticleCreated {
@@ -172,7 +172,7 @@ pub enum TestEvent {
         id: String,
         data: serde_json::Value,
     },
-    /// Relation dynamique entre un article et un utilisateur
+    /// Dynamic relation between an article and a user
     ArticleLinkedToUser {
         article_id: String,
         user_id: String,
@@ -211,7 +211,7 @@ impl Event for TestEvent {
                 state.version += 1;
             }
             TestEvent::ArticleLinkedToUser { article_id, user_id } => {
-                // Mettre à jour l'article avec l'id de l'utilisateur (auteur)
+                // Update the article with the user's id (author)
                 if let Some(article) = state.data.articles.get_mut(article_id) {
                     if let Some(obj) = article.as_object_mut() {
                         obj.insert(
@@ -221,7 +221,7 @@ impl Event for TestEvent {
                     }
                 }
 
-                // Mettre à jour l'utilisateur avec la liste de ses articles liés
+                // Update the user with the list of their linked articles
                 if let Some(user) = state.data.users.get_mut(user_id) {
                     if let Some(obj) = user.as_object_mut() {
                         use serde_json::Value;
@@ -326,7 +326,7 @@ impl lithair_core::engine::EventDeserializer for VersionedArticleCreatedDeserial
     }
 }
 
-/// Application minimale pour utiliser Engine<TestEngineApp> dans les tests
+/// Minimal application for using Engine<TestEngineApp> in tests
 pub struct TestEngineApp;
 
 impl lithair_core::RaftstoneApplication for TestEngineApp {
@@ -359,26 +359,26 @@ pub struct LithairWorld {
     pub test_data: Arc<Mutex<TestData>>,
     pub last_response: Option<String>,
     pub last_error: Option<String>,
-    // Vrai moteur Lithair
+    // Real Lithair engine
     pub engine: Arc<StateEngine<TestAppState>>,
     pub storage: Arc<Mutex<Option<FileStorage>>>,
-    // 🚀 AsyncWriter pour écritures ultra-rapides sans contention
+    // AsyncWriter for contention-free ultra-fast writes
     pub async_writer: Arc<Mutex<Option<lithair_core::engine::AsyncWriter>>>,
-    // 🚀 Scc2Engine pour lectures ultra-rapides (40M+ ops/sec)
+    // Scc2Engine for ultra-fast reads (40M+ ops/sec)
     pub scc2_articles: Arc<lithair_core::engine::Scc2Engine<TestArticle>>,
     pub temp_dir: Arc<Mutex<Option<tempfile::TempDir>>>,
-    // Vrai serveur HTTP en background
+    // Real HTTP server in background
     pub server_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
-    // Support cluster distribué (mock simple)
+    // Distributed cluster support (simple mock)
     pub cluster_nodes: Arc<Mutex<Vec<ClusterNode>>>,
-    // Support cluster réel avec vrais processus LithairServer
+    // Real cluster support with actual LithairServer processes
     pub real_cluster_nodes: Arc<Mutex<Vec<RealClusterNode>>>,
     pub real_cluster_temp_dirs: Arc<Mutex<Vec<tempfile::TempDir>>>,
-    // Support tests de fiabilité
+    // Reliability test support
     pub pre_crash_state: Option<Vec<TestArticle>>,
     pub corruption_detected: bool,
     pub parallel_handles: Option<Vec<tokio::task::JoinHandle<()>>>,
-    // 🗂️ MultiFileEventStore pour tests multi-fichiers
+    // MultiFileEventStore for multi-file tests
     pub multi_file_store: Arc<Mutex<Option<lithair_core::engine::MultiFileEventStore>>>,
 }
 
@@ -455,7 +455,7 @@ impl LithairWorld {
             "POST" => client.post(&url),
             "PUT" => client.put(&url),
             "DELETE" => client.delete(&url),
-            _ => return Err(format!("Méthode non supportée: {}", method)),
+            _ => return Err(format!("Unsupported HTTP method: {}", method)),
         };
 
         let request = if let Some(body_data) = body { request.json(&body_data) } else { request };
@@ -468,13 +468,13 @@ impl LithairWorld {
                 Ok(())
             }
             Err(e) => {
-                self.last_error = Some(format!("Erreur de requête: {}", e));
-                Err(format!("Erreur de requête: {}", e))
+                self.last_error = Some(format!("Request error: {}", e));
+                Err(format!("Request error: {}", e))
             }
         }
     }
 
-    /// Crée le router HTTP pour les tests E2E
+    /// Creates the HTTP router for E2E tests
     fn create_test_router(&self) -> Router<()> {
         let engine_health = self.engine.clone();
         let engine_list = self.engine.clone();
@@ -533,12 +533,12 @@ impl LithairWorld {
                     content: article.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 };
 
-                // Appliquer au moteur d'état
+                // Apply to the state engine
                 engine.with_state_mut(|state| {
                     event.apply(state);
                 }).ok();
 
-                // ✅ VRAIE PERSISTENCE - Écrire dans FileStorage
+                // Real persistence - write to FileStorage
                 let event_json = serde_json::to_string(&serde_json::json!({
                     "type": "ArticleCreated",
                     "id": id,
@@ -546,10 +546,10 @@ impl LithairWorld {
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 })).unwrap();
 
-                // On doit utiliser un try_lock car on est dans un contexte sync
+                // Must use try_lock because we are in a sync context
                 if let Ok(mut storage_guard) = storage.try_lock() {
                     if let Some(ref mut file_storage) = *storage_guard {
-                        // ✅ Appeler append_event (méthode sync)
+                        // Call append_event (sync method)
                         if file_storage.append_event(&event_json).is_ok() {
                             file_storage.flush_batch().ok();
                             println!("💾 Event persisted: {}", event_json);
@@ -656,15 +656,15 @@ impl LithairWorld {
         Ok(())
     }
 
-    /// Initialise un répertoire temporaire pour les tests de persistance
+    /// Initializes a temporary directory for persistence tests
     pub async fn init_temp_storage(&mut self) -> Result<PathBuf, String> {
         let temp_dir =
-            tempfile::tempdir().map_err(|e| format!("Erreur création temp dir: {}", e))?;
+            tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
         let path = temp_dir.path().to_path_buf();
 
-        // Initialiser le FileStorage
+        // Initialize FileStorage
         let storage = FileStorage::new(path.to_str().unwrap())
-            .map_err(|e| format!("Erreur init storage: {}", e))?;
+            .map_err(|e| format!("Failed to init storage: {}", e))?;
 
         *self.storage.lock().await = Some(storage);
         *self.temp_dir.lock().await = Some(temp_dir);
@@ -672,7 +672,7 @@ impl LithairWorld {
         Ok(path)
     }
 
-    /// Crée un article en mémoire ET le persiste
+    /// Creates an article in memory and persists it
     pub async fn create_article(
         &mut self,
         id: String,
@@ -684,31 +684,31 @@ impl LithairWorld {
             content: data.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         };
 
-        // Appliquer l'événement au moteur
+        // Apply the event to the engine
         self.engine
             .with_state_mut(|state| {
                 event.apply(state);
             })
-            .map_err(|e| format!("Erreur application event: {}", e))?;
+            .map_err(|e| format!("Failed to apply event: {}", e))?;
 
-        // Persister si storage activé
+        // Persist if storage is enabled
         if let Some(_storage) = self.storage.lock().await.as_mut() {
             let event_json = serde_json::to_string(&event)
-                .map_err(|e| format!("Erreur sérialisation: {}", e))?;
-            // Note: FileStorage n'a pas de méthode append publique simple
-            // Pour l'instant on log juste
+                .map_err(|e| format!("Serialization error: {}", e))?;
+            // FileStorage does not have a simple public append method;
+            // for now just log the event
             println!("💾 Event serialized: {}", event_json);
         }
 
         Ok(())
     }
 
-    /// Récupère tous les articles en mémoire
+    /// Retrieves all articles from memory
     pub async fn get_articles(&self) -> HashMap<String, serde_json::Value> {
         self.engine.with_state(|state| state.data.articles.clone()).unwrap_or_default()
     }
 
-    /// Calcule le checksum CRC32 des articles en mémoire
+    /// Computes the CRC32 checksum of articles in memory
     pub async fn compute_memory_checksum(&self) -> u32 {
         self.engine
             .with_state(|state| {
@@ -731,18 +731,18 @@ impl LithairWorld {
             .unwrap_or(0)
     }
 
-    /// Calcule le checksum CRC32 du fichier de persistance
+    /// Computes the CRC32 checksum of the persistence file
     pub async fn compute_file_checksum(&self) -> Result<u32, String> {
         let storage_guard = self.storage.lock().await;
         let _storage =
-            storage_guard.as_ref().ok_or_else(|| "Storage non initialisé".to_string())?;
+            storage_guard.as_ref().ok_or_else(|| "Storage not initialized".to_string())?;
 
         let temp_dir = self.temp_dir.lock().await;
         if let Some(dir) = temp_dir.as_ref() {
             let file_path = dir.path().join("events.raftlog");
             if file_path.exists() {
                 let content = std::fs::read(&file_path)
-                    .map_err(|e| format!("Erreur lecture fichier: {}", e))?;
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
 
                 let mut hasher = Crc32Hasher::new();
                 hasher.update(&content);
@@ -753,23 +753,23 @@ impl LithairWorld {
         Ok(0)
     }
 
-    /// Compte le nombre d'articles en mémoire
+    /// Counts the number of articles in memory
     pub async fn count_articles(&self) -> usize {
         self.engine.with_state(|state| state.data.articles.len()).unwrap_or(0)
     }
 
-    /// Vérifie la cohérence mémoire/fichier
+    /// Verifies memory/file consistency
     pub async fn verify_memory_file_consistency(&self) -> Result<bool, String> {
         let articles_count = self.count_articles().await;
 
-        // Vérifier le fichier
+        // Check the file
         let temp_dir = self.temp_dir.lock().await;
         if let Some(dir) = temp_dir.as_ref() {
             let file_path = dir.path().join("events.raftlog");
             if file_path.exists() {
-                // Le fichier existe, vérifier qu'il n'est pas vide si on a des articles
+                // File exists; verify it is not empty if we have articles
                 let metadata = std::fs::metadata(&file_path)
-                    .map_err(|e| format!("Erreur lecture metadata: {}", e))?;
+                    .map_err(|e| format!("Failed to read metadata: {}", e))?;
 
                 if articles_count > 0 {
                     return Ok(metadata.len() > 0);
@@ -778,45 +778,45 @@ impl LithairWorld {
             }
         }
 
-        // Si pas de fichier mais pas d'articles non plus, c'est OK
+        // No file but no articles either -- that is OK
         Ok(articles_count == 0)
     }
 
-    /// Nettoie les fichiers temporaires
+    /// Cleans up temporary files
     pub async fn cleanup(&mut self) {
-        // Le TempDir se nettoie automatiquement au drop
+        // TempDir cleans itself up automatically on drop
         *self.temp_dir.lock().await = None;
         *self.storage.lock().await = None;
     }
 
     // ==================== CLUSTER SUPPORT ====================
 
-    /// Démarre un cluster Lithair avec N nœuds
+    /// Starts a Lithair cluster with N nodes
     ///
     /// # Arguments
-    /// * `node_count` - Nombre de nœuds dans le cluster
+    /// * `node_count` - Number of nodes in the cluster
     ///
     /// # Returns
-    /// Liste des ports utilisés par les nœuds
+    /// List of ports used by the nodes
     pub async fn start_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         let mut ports = Vec::new();
         let mut nodes = Vec::new();
 
         for i in 0..node_count {
-            // Créer un TempDir pour chaque nœud
+            // Create a TempDir for each node
             let temp_dir = tempfile::tempdir()
                 .map_err(|e| format!("Failed to create temp dir for node {}: {}", i, e))?;
             let temp_path = temp_dir.path().to_string_lossy().to_string();
 
-            // Créer le storage pour ce nœud
+            // Create storage for this node
             let file_storage = FileStorage::new(&temp_path)
                 .map_err(|e| format!("Failed to create storage for node {}: {}", i, e))?;
 
-            // Créer le moteur d'état pour ce nœud
+            // Create the state engine for this node
             let engine = Arc::new(StateEngine::new(TestAppState::default()));
             let storage = Arc::new(Mutex::new(Some(file_storage)));
 
-            // Créer le router pour ce nœud
+            // Create the router for this node
             let engine_health = engine.clone();
             let engine_articles = engine.clone();
             let engine_create = engine.clone();
@@ -868,14 +868,14 @@ impl LithairWorld {
                             .to_string(),
                     };
 
-                    // Appliquer au moteur
+                    // Apply to the engine
                     engine_local
                         .with_state_mut(|state| {
                             event.apply(state);
                         })
                         .ok();
 
-                    // Persister
+                    // Persist
                     if let Ok(mut storage_guard) = storage_local.try_lock() {
                         if let Some(ref mut fs) = *storage_guard {
                             let event_json = serde_json::json!({
@@ -900,12 +900,12 @@ impl LithairWorld {
                     HttpResponse::new(StatusCode::Created).json(&json_body)
                 });
 
-            // Trouver un port disponible
+            // Find an available port
             let port = portpicker::pick_unused_port()
                 .ok_or_else(|| format!("No port available for node {}", i))?;
             ports.push(port);
 
-            // Créer et démarrer le serveur
+            // Create and start the server
             let addr = format!("127.0.0.1:{}", port);
             let server = HttpServer::new().with_router(router);
 
@@ -917,7 +917,7 @@ impl LithairWorld {
 
             let server_handle = Arc::new(Mutex::new(Some(handle)));
 
-            // Créer le nœud
+            // Create the node
             let node = ClusterNode {
                 node_id: i,
                 server_state: ServerState {
@@ -935,16 +935,16 @@ impl LithairWorld {
             println!("✅ Node {} started on port {}", i, port);
         }
 
-        // Attendre que tous les serveurs soient prêts
+        // Wait for all servers to be ready
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        // Sauvegarder les nœuds
+        // Save the nodes
         *self.cluster_nodes.lock().await = nodes;
 
         Ok(ports)
     }
 
-    /// Arrête tous les nœuds du cluster
+    /// Stops all cluster nodes
     pub async fn stop_cluster(&mut self) -> Result<(), String> {
         let mut nodes = self.cluster_nodes.lock().await;
 
@@ -959,7 +959,7 @@ impl LithairWorld {
         Ok(())
     }
 
-    /// Fait une requête à un nœud spécifique du cluster
+    /// Makes a request to a specific cluster node
     pub async fn make_cluster_request(
         &mut self,
         node_id: usize,
@@ -1003,20 +1003,20 @@ impl LithairWorld {
         }
     }
 
-    /// Compte le nombre de nœuds dans le cluster
+    /// Counts the number of nodes in the cluster
     pub async fn cluster_size(&self) -> usize {
         self.cluster_nodes.lock().await.len()
     }
 
     // ==================== REAL LITHAIR SERVER CLUSTER SUPPORT ====================
 
-    /// Démarre un vrai cluster LithairServer avec N nœuds en tant que processus externes
+    /// Starts a real LithairServer cluster with N nodes as external processes
     ///
-    /// Utilise le binaire `pure_declarative_node` compilé depuis `raft_replication_demo`
+    /// Uses the `pure_declarative_node` binary compiled from `raft_replication_demo`
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
-        // Trouver le chemin du binaire
+        // Find the binary path
         let binary_path = std::env::current_dir()
             .map_err(|e| format!("Failed to get current dir: {}", e))?
             .parent()  // cucumber-tests -> lithair
@@ -1034,20 +1034,20 @@ impl LithairWorld {
         let mut nodes = Vec::new();
         let mut temp_dirs = Vec::new();
 
-        // Allouer les ports d'abord
+        // Allocate ports first
         for _ in 0..node_count {
             let port =
                 portpicker::pick_unused_port().ok_or_else(|| "No port available".to_string())?;
             ports.push(port);
         }
 
-        // Construire les listes de peers pour chaque nœud
+        // Build the peer lists for each node
         for i in 0..node_count {
             let temp_dir =
                 tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
             let data_dir = temp_dir.path().to_path_buf();
 
-            // Les peers sont tous les autres nœuds
+            // Peers are all the other nodes
             let peers: Vec<u16> = ports
                 .iter()
                 .enumerate()
@@ -1058,7 +1058,7 @@ impl LithairWorld {
             let port = ports[i];
             let node_id = i as u64;
 
-            // Construire les arguments --peers
+            // Build the --peers arguments
             let peers_args: Vec<String> =
                 peers.iter().flat_map(|p| vec!["--peers".to_string(), p.to_string()]).collect();
 
@@ -1067,7 +1067,7 @@ impl LithairWorld {
                 node_id, port, peers
             );
 
-            // Démarrer le processus
+            // Start the process
             let mut cmd = Command::new(&binary_path);
             cmd.arg("--node-id")
                 .arg(node_id.to_string())
@@ -1087,11 +1087,11 @@ impl LithairWorld {
             temp_dirs.push(temp_dir);
         }
 
-        // Attendre que tous les serveurs soient prêts (LithairServer takes ~4s to start)
+        // Wait for all servers to be ready (LithairServer takes ~4s to start)
         println!("⏳ Waiting for nodes to start (this may take up to 30s)...");
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-        // Vérifier que chaque nœud répond (using /status endpoint for LithairServer)
+        // Verify that each node responds (using /status endpoint for LithairServer)
         for (i, port) in ports.iter().enumerate() {
             let client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
@@ -1139,7 +1139,7 @@ impl LithairWorld {
             }
         }
 
-        // Sauvegarder les nœuds
+        // Save the nodes
         *self.real_cluster_nodes.lock().await = nodes;
         *self.real_cluster_temp_dirs.lock().await = temp_dirs;
 
@@ -1147,13 +1147,13 @@ impl LithairWorld {
         Ok(ports)
     }
 
-    /// Arrête tous les vrais nœuds du cluster
+    /// Stops all real cluster nodes
     pub async fn stop_real_cluster(&mut self) -> Result<(), String> {
         let mut nodes = self.real_cluster_nodes.lock().await;
 
         for node in nodes.iter_mut() {
             if let Some(mut process) = node.process.take() {
-                // Envoyer SIGTERM d'abord
+                // Send SIGTERM first
                 let _ = process.kill();
                 let _ = process.wait();
                 println!("🛑 Real node {} stopped", node.node_id);
@@ -1162,25 +1162,25 @@ impl LithairWorld {
 
         nodes.clear();
 
-        // Nettoyer les temp dirs
+        // Clean up temp dirs
         self.real_cluster_temp_dirs.lock().await.clear();
 
         Ok(())
     }
 
-    /// Démarre un vrai cluster LithairServer avec répertoire de données persistant
+    /// Starts a real LithairServer cluster with a persistent data directory
     ///
-    /// Les données sont stockées dans /tmp/lithair-stress-test/ et nettoyées au démarrage
+    /// Data is stored in /tmp/lithair-stress-test/ and cleaned at startup
     pub async fn start_real_cluster_persistent(
         &mut self,
         node_count: usize,
     ) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
-        // Répertoire persistant pour les données de test
+        // Persistent directory for test data
         let base_data_dir = std::path::PathBuf::from("/tmp/lithair-stress-test");
 
-        // Nettoyer le répertoire au début
+        // Clean up the directory at start
         if base_data_dir.exists() {
             println!("🧹 Cleaning up previous test data at {:?}...", base_data_dir);
             std::fs::remove_dir_all(&base_data_dir)
@@ -1189,7 +1189,7 @@ impl LithairWorld {
         std::fs::create_dir_all(&base_data_dir)
             .map_err(|e| format!("Failed to create data dir: {}", e))?;
 
-        // Trouver le chemin du binaire
+        // Find the binary path
         let binary_path = std::env::current_dir()
             .map_err(|e| format!("Failed to get current dir: {}", e))?
             .parent()
@@ -1206,20 +1206,20 @@ impl LithairWorld {
         let mut ports = Vec::new();
         let mut nodes = Vec::new();
 
-        // Allouer les ports d'abord
+        // Allocate ports first
         for _ in 0..node_count {
             let port =
                 portpicker::pick_unused_port().ok_or_else(|| "No port available".to_string())?;
             ports.push(port);
         }
 
-        // Construire les listes de peers pour chaque nœud
+        // Build the peer lists for each node
         for i in 0..node_count {
             let data_dir = base_data_dir.join(format!("node_{}", i));
             std::fs::create_dir_all(&data_dir)
                 .map_err(|e| format!("Failed to create node data dir: {}", e))?;
 
-            // Les peers sont tous les autres nœuds
+            // Peers are all the other nodes
             let peers: Vec<u16> = ports
                 .iter()
                 .enumerate()
@@ -1230,7 +1230,7 @@ impl LithairWorld {
             let port = ports[i];
             let node_id = i as u64;
 
-            // Construire les arguments --peers
+            // Build the --peers arguments
             let peers_args: Vec<String> =
                 peers.iter().flat_map(|p| vec!["--peers".to_string(), p.to_string()]).collect();
 
@@ -1239,7 +1239,7 @@ impl LithairWorld {
                 node_id, port, peers, data_dir
             );
 
-            // Démarrer le processus
+            // Start the process
             let mut cmd = Command::new(&binary_path);
             cmd.arg("--node-id")
                 .arg(node_id.to_string())
@@ -1258,11 +1258,11 @@ impl LithairWorld {
             nodes.push(node);
         }
 
-        // Attendre que tous les serveurs soient prêts
+        // Wait for all servers to be ready
         println!("⏳ Waiting for nodes to start...");
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-        // Vérifier que chaque nœud répond
+        // Verify that each node responds
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .pool_max_idle_per_host(10)
@@ -1311,7 +1311,7 @@ impl LithairWorld {
             }
         }
 
-        // Sauvegarder les nœuds (pas de temp_dirs car persistant)
+        // Save the nodes (no temp_dirs since data is persistent)
         *self.real_cluster_nodes.lock().await = nodes;
 
         println!("✅ Real cluster of {} nodes started (ports: {:?})", node_count, ports);
@@ -1319,7 +1319,7 @@ impl LithairWorld {
         Ok(ports)
     }
 
-    /// Fait une requête à un vrai nœud du cluster
+    /// Makes a request to a real cluster node
     pub async fn make_real_cluster_request(
         &mut self,
         node_id: usize,
@@ -1378,17 +1378,17 @@ impl LithairWorld {
         }
     }
 
-    /// Compte le nombre de vrais nœuds dans le cluster
+    /// Counts the number of real nodes in the cluster
     pub async fn real_cluster_size(&self) -> usize {
         self.real_cluster_nodes.lock().await.len()
     }
 
-    /// Retourne les ports des vrais nœuds du cluster
+    /// Returns the ports of the real cluster nodes
     pub async fn get_real_cluster_ports(&self) -> Vec<u16> {
         self.real_cluster_nodes.lock().await.iter().map(|n| n.port).collect()
     }
 
-    /// Retourne le port du leader (node_id = 0)
+    /// Returns the leader port (node_id = 0)
     pub async fn get_real_leader_port(&self) -> u16 {
         let nodes = self.real_cluster_nodes.lock().await;
         nodes.iter().find(|n| n.node_id == 0).map(|n| n.port).unwrap_or(0)

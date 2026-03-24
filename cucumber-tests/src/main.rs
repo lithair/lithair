@@ -3,7 +3,7 @@ mod features;
 
 #[tokio::main]
 async fn main() {
-    // Exécuter les tests Cucumber
+    // Run Cucumber tests
     features::LithairWorld::cucumber()
         .with_cli::<()>(cli::Opts::parsed())
         .run_and_exit("features/")
