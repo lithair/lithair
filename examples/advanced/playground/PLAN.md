@@ -1,16 +1,16 @@
-# Lithair Playground - Plan de Conception
+# Lithair Playground - Design Plan
 
-> **Objectif**: Demonstrer TOUTES les capacites de Lithair dans une demo interactive de reference.
-> Cette demo servira de vitrine technique et de base pour les developpements futurs.
+> **Objective**: Demonstrate ALL Lithair capabilities in an interactive reference demo.
+> This demo will serve as a technical showcase and a foundation for future development.
 
-## Vue d'ensemble
+## Overview
 
-Le Lithair Playground est une application web interactive permettant de:
-- Visualiser en temps reel la replication Raft
-- Executer des benchmarks integres
-- Controler le cluster (kill/restart nodes, forcer election)
-- Tester les fonctionnalites de securite (rate limiting, firewall)
-- Explorer les donnees avec CRUD en direct
+The Lithair Playground is an interactive web application that allows you to:
+- Visualize Raft replication in real time
+- Run integrated benchmarks
+- Control the cluster (kill/restart nodes, force election)
+- Test security features (rate limiting, firewall)
+- Explore data with live CRUD operations
 
 ---
 
@@ -20,74 +20,74 @@ Le Lithair Playground est une application web interactive permettant de:
 advanced/playground/
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs                 # Point d'entree, setup cluster
-│   ├── models.rs               # Modeles DeclarativeModel
-│   ├── playground_api.rs       # Endpoints /_playground/*
-│   ├── benchmark.rs            # Moteur de benchmark
-│   ├── node_controller.rs      # Controle des noeuds (kill/restart)
-│   └── sse_events.rs           # Server-Sent Events pour live updates
+│   ├── main.rs                 # Entry point, cluster setup
+│   ├── models.rs               # DeclarativeModel models
+│   ├── playground_api.rs       # /_playground/* endpoints
+│   ├── benchmark.rs            # Benchmark engine
+│   ├── node_controller.rs      # Node control (kill/restart)
+│   └── sse_events.rs           # Server-Sent Events for live updates
 ├── frontend/
-│   ├── index.html              # SPA principale
+│   ├── index.html              # Main SPA
 │   ├── style.css               # Styles (dark theme)
-│   └── app.js                  # Logique frontend
-└── run_playground.sh           # Script de lancement cluster
+│   └── app.js                  # Frontend logic
+└── run_playground.sh           # Cluster launch script
 ```
 
 ---
 
-## Fonctionnalites Lithair a Demontrer
+## Lithair Features to Demonstrate
 
 ### 1. Raft Consensus
 | Feature | Demo |
 |---------|------|
-| Leader Election | Bouton "Force Election", visualisation du leader actuel |
-| Log Replication | Compteur en temps reel (commit index, term) |
-| Automatic Failover | Kill leader → observer election automatique |
-| WAL (Write-Ahead Log) | Stats de persistance, taille WAL |
-| Snapshots | Declenchement manuel, stats snapshot |
+| Leader Election | "Force Election" button, current leader visualization |
+| Log Replication | Real-time counter (commit index, term) |
+| Automatic Failover | Kill leader, observe automatic election |
+| WAL (Write-Ahead Log) | Persistence stats, WAL size |
+| Snapshots | Manual trigger, snapshot stats |
 
 ### 2. SCC2 Engine
 | Feature | Demo |
 |---------|------|
-| Lock-free Operations | Benchmark concurrent (1000+ ops/sec) |
-| Versioned Entries (OCC) | Affichage versions dans data explorer |
-| Secondary Indexes | Recherche par index dans explorer |
+| Lock-free Operations | Concurrent benchmark (1000+ ops/sec) |
+| Versioned Entries (OCC) | Version display in data explorer |
+| Secondary Indexes | Index-based search in explorer |
 
 ### 3. Cluster Health
 | Feature | Demo |
 |---------|------|
-| Node Status | Health check par noeud (healthy/unhealthy/desynced) |
-| Replication Lag | Graphe en temps reel du lag par follower |
-| Follower Sync | Progress bars de synchronisation |
+| Node Status | Per-node health check (healthy/unhealthy/desynced) |
+| Replication Lag | Real-time per-follower lag graph |
+| Follower Sync | Synchronization progress bars |
 
 ### 4. Security
 | Feature | Demo |
 |---------|------|
-| Rate Limiting | Bouton "Test Rate Limit" → voir rejection |
-| Firewall (IP filter) | Configuration live des regles |
-| Anti-DDoS | Stats requests blocked/allowed |
-| Circuit Breaker | Visualisation etat circuit |
+| Rate Limiting | "Test Rate Limit" button, see rejection |
+| Firewall (IP filter) | Live rule configuration |
+| Anti-DDoS | Blocked/allowed request stats |
+| Circuit Breaker | Circuit state visualization |
 
 ### 5. RBAC & Sessions
 | Feature | Demo |
 |---------|------|
-| Role-based Access | Login avec differents roles |
-| Permission Checker | Actions interdites selon role |
-| Persistent Sessions | Sessions survivent aux restarts |
+| Role-based Access | Login with different roles |
+| Permission Checker | Forbidden actions depending on role |
+| Persistent Sessions | Sessions survive restarts |
 
 ### 6. DeclarativeModel
 | Feature | Demo |
 |---------|------|
-| Auto CRUD | Formulaires Create/Update/Delete |
-| Validation | Erreurs de validation en temps reel |
-| Replication Tracking | Badge "replicated" sur chaque entite |
+| Auto CRUD | Create/Update/Delete forms |
+| Validation | Real-time validation errors |
+| Replication Tracking | "replicated" badge on each entity |
 
 ### 7. Performance Metrics
 | Feature | Demo |
 |---------|------|
-| Ops/sec | Graphe temps reel |
-| Latency | Histogramme P50/P95/P99 |
-| Throughput | MB/s en lecture/ecriture |
+| Ops/sec | Real-time graph |
+| Latency | P50/P95/P99 histogram |
+| Throughput | Read/write MB/s |
 
 ---
 
@@ -95,19 +95,19 @@ advanced/playground/
 
 ### Cluster Control
 ```
-GET  /_playground/cluster/status          # Etat complet du cluster
-POST /_playground/cluster/kill/:node_id   # Tuer un noeud
-POST /_playground/cluster/restart/:node_id # Redemrrer un noeud
-POST /_playground/cluster/force-election  # Forcer election leader
-GET  /_playground/cluster/wal-stats       # Stats WAL
-POST /_playground/cluster/snapshot        # Declencher snapshot
+GET  /_playground/cluster/status          # Full cluster state
+POST /_playground/cluster/kill/:node_id   # Kill a node
+POST /_playground/cluster/restart/:node_id # Restart a node
+POST /_playground/cluster/force-election  # Force leader election
+GET  /_playground/cluster/wal-stats       # WAL stats
+POST /_playground/cluster/snapshot        # Trigger snapshot
 ```
 
 ### Benchmark
 ```
-POST /_playground/benchmark/start         # Demarrer benchmark
-GET  /_playground/benchmark/status        # Progression/resultats
-POST /_playground/benchmark/stop          # Arreter benchmark
+POST /_playground/benchmark/start         # Start benchmark
+GET  /_playground/benchmark/status        # Progress/results
+POST /_playground/benchmark/stop          # Stop benchmark
 
 Body start:
 {
@@ -145,7 +145,7 @@ DELETE /api/items/:id                     # Delete
 
 ## Frontend UI
 
-### Layout Principal
+### Main Layout
 ```
 +------------------------------------------------------------------+
 |  LITHAIR PLAYGROUND                          [Node: 0] [Role: Leader]
@@ -190,20 +190,20 @@ DELETE /api/items/:id                     # Delete
 +------------------------------------------------------------------+
 ```
 
-### Interactions Cles
+### Key Interactions
 
-1. **Kill Node** → API call → SSE event → UI update → Observer failover
-2. **Force Election** → API call → New leader elected → All UIs update
-3. **Start Benchmark** → Progress stream → Live graph update → Final results
-4. **Create Item** → Replication event stream → Badge "synced" appears
-5. **Test Rate Limit** → Rapid calls → See rejection counter increase
+1. **Kill Node** -- API call -- SSE event -- UI update -- Observe failover
+2. **Force Election** -- API call -- New leader elected -- All UIs update
+3. **Start Benchmark** -- Progress stream -- Live graph update -- Final results
+4. **Create Item** -- Replication event stream -- "synced" badge appears
+5. **Test Rate Limit** -- Rapid calls -- See rejection counter increase
 
 ---
 
-## Modeles de Donnees
+## Data Models
 
 ```rust
-/// Item simple pour demo CRUD + replication
+/// Simple item for CRUD + replication demo
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
 pub struct PlaygroundItem {
     #[db(primary_key, indexed)]
@@ -252,53 +252,53 @@ pub enum ItemStatus {
 
 ---
 
-## Implementation par Phases
+## Implementation Phases
 
-### Phase 1: Structure de Base
-- [ ] Creer structure projet (Cargo.toml, src/, frontend/)
-- [ ] Modele PlaygroundItem avec DeclarativeModel
-- [ ] Setup cluster 3 noeuds avec ClusterArgs
-- [ ] Endpoints basiques /_raft/health existants
+### Phase 1: Base Structure
+- [ ] Create project structure (Cargo.toml, src/, frontend/)
+- [ ] PlaygroundItem model with DeclarativeModel
+- [ ] Set up 3-node cluster with ClusterArgs
+- [ ] Basic existing /_raft/health endpoints
 
 ### Phase 2: Playground API
-- [ ] /_playground/cluster/status (aggrege health de tous les noeuds)
-- [ ] /_playground/cluster/kill/:node_id (signal SIGTERM au process)
-- [ ] /_playground/cluster/restart/:node_id (relance le process)
+- [ ] /_playground/cluster/status (aggregate health from all nodes)
+- [ ] /_playground/cluster/kill/:node_id (send SIGTERM to process)
+- [ ] /_playground/cluster/restart/:node_id (relaunch the process)
 - [ ] /_playground/cluster/force-election
 
 ### Phase 3: Live Events (SSE)
-- [ ] /_playground/events/replication (broadcast chaque op repliquee)
-- [ ] /_playground/events/cluster (changements d'etat cluster)
-- [ ] Hook dans ReplicationBatcher pour emettre events
+- [ ] /_playground/events/replication (broadcast each replicated op)
+- [ ] /_playground/events/cluster (cluster state changes)
+- [ ] Hook into ReplicationBatcher to emit events
 
 ### Phase 4: Benchmark Engine
-- [ ] POST /_playground/benchmark/start avec config
-- [ ] Worker async qui execute le benchmark
-- [ ] Metriques: ops/sec, latency histogram, throughput
-- [ ] Stream progression via SSE
+- [ ] POST /_playground/benchmark/start with config
+- [ ] Async worker that runs the benchmark
+- [ ] Metrics: ops/sec, latency histogram, throughput
+- [ ] Stream progress via SSE
 
 ### Phase 5: Frontend UI
-- [ ] Layout HTML avec sections (cluster, replication, benchmark, data, security)
-- [ ] JavaScript pour SSE listeners
-- [ ] Graphes temps reel (simple canvas ou SVG)
-- [ ] Formulaires CRUD
-- [ ] Boutons de controle cluster
+- [ ] HTML layout with sections (cluster, replication, benchmark, data, security)
+- [ ] JavaScript for SSE listeners
+- [ ] Real-time graphs (simple canvas or SVG)
+- [ ] CRUD forms
+- [ ] Cluster control buttons
 
 ### Phase 6: Security Demo
-- [ ] Configuration firewall dans le playground
-- [ ] Endpoint test rate limiting
-- [ ] Affichage stats anti-DDoS
+- [ ] Firewall configuration in the playground
+- [ ] Rate limiting test endpoint
+- [ ] Anti-DDoS stats display
 - [ ] Circuit breaker visualization
 
 ### Phase 7: Polish & Documentation
-- [ ] Script run_playground.sh pour lancer 3 noeuds
-- [ ] README avec instructions
+- [ ] run_playground.sh script to launch 3 nodes
+- [ ] README with instructions
 - [ ] Screenshots/GIFs demo
-- [ ] Integration dans examples/README.md
+- [ ] Integration into examples/README.md
 
 ---
 
-## Scripts de Lancement
+## Launch Scripts
 
 ### run_playground.sh
 ```bash
@@ -351,50 +351,50 @@ esac
 
 ---
 
-## Metriques de Succes
+## Success Metrics
 
-La demo sera consideree complete quand:
+The demo will be considered complete when:
 
-1. **Fonctionnel**
-   - [ ] Cluster 3 noeuds demarre en <5 secondes
-   - [ ] Kill leader → nouveau leader en <3 secondes
-   - [ ] CRUD operations repliquees visibles sur tous les noeuds
+1. **Functional**
+   - [ ] 3-node cluster starts in <5 seconds
+   - [ ] Kill leader -- new leader in <3 seconds
+   - [ ] CRUD operations replicated and visible on all nodes
 
 2. **Performance**
-   - [ ] Benchmark atteint >10,000 ops/sec en write
-   - [ ] Latency P99 <10ms en conditions normales
-   - [ ] UI reste reactive pendant benchmarks
+   - [ ] Benchmark reaches >10,000 ops/sec in write
+   - [ ] Latency P99 <10ms under normal conditions
+   - [ ] UI remains responsive during benchmarks
 
 3. **UX**
-   - [ ] Interface intuitive, pas besoin de doc pour comprendre
-   - [ ] Feedback visuel immediat pour toutes les actions
-   - [ ] Dark mode professionnel
+   - [ ] Intuitive interface, no documentation needed to understand it
+   - [ ] Immediate visual feedback for all actions
+   - [ ] Professional dark mode
 
 4. **Reference**
-   - [ ] Code bien documente, reutilisable
-   - [ ] Patterns extraits pour autres projets
-   - [ ] Tests de non-regression
+   - [ ] Well-documented, reusable code
+   - [ ] Patterns extracted for other projects
+   - [ ] Regression tests
 
 ---
 
-## Questions Ouvertes
+## Open Questions
 
-1. **Node Controller**: Comment kill/restart des processes depuis l'API?
-   - Option A: Spawner les noeuds comme child processes du main
-   - Option B: Utiliser signaux (SIGTERM/SIGKILL) + script externe
-   - **Recommandation**: Option A pour demo self-contained
+1. **Node Controller**: How to kill/restart processes from the API?
+   - Option A: Spawn nodes as child processes of the main process
+   - Option B: Use signals (SIGTERM/SIGKILL) + external script
+   - **Recommendation**: Option A for a self-contained demo
 
-2. **Frontend**: Framework JS ou vanilla?
-   - **Recommandation**: Vanilla JS pour zero-dependency, comme admin UI existant
+2. **Frontend**: JS framework or vanilla?
+   - **Recommendation**: Vanilla JS for zero dependencies, like the existing admin UI
 
-3. **Graphes**: Quelle lib?
-   - **Recommandation**: Canvas natif ou uPlot (leger, performant)
+3. **Charts**: Which library?
+   - **Recommendation**: Native canvas or uPlot (lightweight, performant)
 
 ---
 
-## Estimation Effort
+## Effort Estimate
 
-| Phase | Effort | Priorite |
+| Phase | Effort | Priority |
 |-------|--------|----------|
 | Phase 1: Structure | 2h | P0 |
 | Phase 2: Playground API | 4h | P0 |
@@ -407,4 +407,4 @@ La demo sera consideree complete quand:
 
 ---
 
-*Ce plan servira de reference pour l'implementation du Lithair Playground.*
+*This plan serves as the reference for the Lithair Playground implementation.*

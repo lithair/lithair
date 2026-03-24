@@ -1,29 +1,29 @@
 # Schema Migration Demo
 
-**Test principal pour valider le système de migration de schéma de Lithair.**
+**Main test to validate Lithair's schema migration system.**
 
-Ce test valide le cycle complet de migration de schéma :
-- **Automatic schema change detection** - Détecte AddField, RemoveField, ModifyField
+This test validates the full schema migration lifecycle:
+- **Automatic schema change detection** - Detects AddField, RemoveField, ModifyField
 - **Migration classification** - Additive vs Breaking vs Versioned
-- **Pending changes en mode Manual** - Workflow d'approbation humaine
-- **Persistance sur disque** - Sauvegarde après approbation
+- **Pending changes in Manual mode** - Human approval workflow
+- **Disk persistence** - Saved after approval
 - **Lock/Unlock mechanism** - Maintenance window pattern for deployments
 - **History tracking** - Persistent audit trail of all schema changes
 - **Multiple modes** - warn, strict, auto, manual migration strategies
 
-## Scripts Helper
+## Helper Scripts
 
 ```bash
-# Lancer tous les tests (mode warn par défaut)
+# Run all tests (warn mode by default)
 ./examples/08-schema-migration/run-tests.sh
 
-# Lancer tests en mode Manual (test 16 inclus)
+# Run tests in Manual mode (includes test 16)
 ./examples/08-schema-migration/run-tests.sh manual
 
-# Tester le workflow approve + persistence
+# Test the approve + persistence workflow
 ./examples/08-schema-migration/test-approve.sh
 
-# Voir le status actuel
+# View current status
 ./examples/08-schema-migration/show-status.sh
 ```
 
@@ -84,14 +84,14 @@ Options:
   -h, --help                     Print help
 ```
 
-### Modes de migration
+### Migration Modes
 
 | Mode | Flag | Description |
 |------|------|-------------|
-| Warn | `-m warn` | Log les changements, auto-accepte (défaut) |
-| Strict | `-m strict` | Refuse les breaking changes au démarrage |
-| Auto | `-m auto` | Sauvegarde auto tous les changements |
-| Manual | `-m manual` | Crée des pending, requiert approbation |
+| Warn | `-m warn` | Logs changes, auto-accepts (default) |
+| Strict | `-m strict` | Rejects breaking changes at startup |
+| Auto | `-m auto` | Automatically saves all changes |
+| Manual | `-m manual` | Creates pending changes, requires approval |
 
 ## How It Works
 
@@ -147,32 +147,32 @@ Schema validation complete
 | `warn` | Log changes, continue | Development (default) |
 | `strict` | Fail on breaking changes | Production |
 | `auto` | Save new schema automatically | CI/CD |
-| `manual` | Create pending, require approval | Production avec approbation humaine |
+| `manual` | Create pending, require approval | Production with human approval |
 
 ### Set via CLI
 
 ```bash
 cargo run -p schema-migration -- -m strict
-cargo run -p schema-migration -- -m manual  # Mode avec approbation
+cargo run -p schema-migration -- -m manual  # Mode with approval
 ```
 
-## Mode Manual (Workflow d'approbation)
+## Manual Mode (Approval Workflow)
 
-Le mode `manual` est le mode recommandé pour la production. Il crée des "pending changes" qui doivent être approuvés avant d'être appliqués.
+The `manual` mode is the recommended mode for production. It creates "pending changes" that must be approved before being applied.
 
-### Démarrage en mode Manual
+### Starting in Manual Mode
 
 ```bash
-# Préparer avec baseline v1 (7 champs)
+# Set up with baseline v1 (7 fields)
 rm -rf ./data/schema_demo
 mkdir -p ./data/schema_demo/.schema
 cp examples/08-schema-migration/baseline/Product_v1.json ./data/schema_demo/.schema/Product.json
 
-# Lancer en mode manual
+# Start in manual mode
 cargo run -p schema-migration -- -p 8090 -m manual
 ```
 
-### Output au démarrage
+### Startup Output
 
 ```
 🔍 Validating model schemas...
@@ -185,13 +185,13 @@ cargo run -p schema-migration -- -p 8090 -m manual
 ✅ Schema validation complete
 ```
 
-### Workflow d'approbation
+### Approval Workflow
 
 ```bash
-# 1. Voir les pending changes
+# 1. View pending changes
 curl http://localhost:8090/_admin/schema/pending | jq .
 
-# 2. Approuver le changement
+# 2. Approve the change
 curl -X POST http://localhost:8090/_admin/schema/approve/{pending_id}
 
 # Response:
@@ -201,52 +201,52 @@ curl -X POST http://localhost:8090/_admin/schema/approve/{pending_id}
 #   "model": "Product"
 # }
 
-# 3. Vérifier que le schéma est persisté sur disque
+# 3. Verify the schema has been persisted to disk
 cat ./data/schema_demo/.schema/Product.json | jq '.fields | keys | length'
-# Output: 10 (avant: 7)
+# Output: 10 (before: 7)
 ```
 
-### Flow de migration Manual
+### Manual Migration Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 1. Démarrage serveur avec -m manual                         │
-│    - Charge schéma depuis .schema/Product.json (7 champs)   │
-│    - Compare avec schéma du code Rust (10 champs)           │
-│    - Détecte 3 changements (priority, category, featured)   │
+│ 1. Server starts with -m manual                              │
+│    - Loads schema from .schema/Product.json (7 fields)       │
+│    - Compares with Rust code schema (10 fields)              │
+│    - Detects 3 changes (priority, category, featured)        │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. Création du pending change                               │
-│    - ID unique généré (UUID)                                │
-│    - Stocké en mémoire dans schema_sync_state               │
-│    - Visible via GET /_admin/schema/pending                 │
+│ 2. Pending change created                                    │
+│    - Unique ID generated (UUID)                              │
+│    - Stored in memory in schema_sync_state                   │
+│    - Visible via GET /_admin/schema/pending                  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. Attente d'approbation                                    │
-│    - Serveur tourne normalement                             │
-│    - Schéma sur disque inchangé (7 champs)                  │
-│    - Admin peut approuver ou rejeter                        │
+│ 3. Awaiting approval                                         │
+│    - Server runs normally                                    │
+│    - On-disk schema unchanged (7 fields)                     │
+│    - Admin can approve or reject                             │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. POST /_admin/schema/approve/{id}                         │
-│    - Applique le changement en mémoire                      │
-│    - Persiste sur disque (.schema/Product.json)             │
-│    - Log: "💾 Schema for 'Product' persisted to disk"       │
-│    - Schéma sur disque: 10 champs                           │
+│ 4. POST /_admin/schema/approve/{id}                          │
+│    - Applies the change in memory                            │
+│    - Persists to disk (.schema/Product.json)                 │
+│    - Log: "💾 Schema for 'Product' persisted to disk"        │
+│    - On-disk schema: 10 fields                               │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. Prochain redémarrage                                     │
-│    - Charge le nouveau schéma (10 champs)                   │
-│    - Compare avec code (10 champs)                          │
-│    - Aucun changement détecté ✅                            │
+│ 5. Next restart                                              │
+│    - Loads the new schema (10 fields)                        │
+│    - Compares with code (10 fields)                          │
+│    - No changes detected ✅                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -352,52 +352,52 @@ cargo run -p schema-migration -- -p 8090
 cargo run -p schema-migration -- --test
 ```
 
-### Liste complète des tests
+### Full Test List
 
-| # | Test | Description | Critique |
+| # | Test | Description | Critical |
 |---|------|-------------|----------|
-| 1 | API Health Check | Vérifie `/api/products` répond | |
-| 2 | Lock Status Endpoint | `GET /_admin/schema/lock` retourne le statut | |
-| 3 | Lock Endpoint | `POST /_admin/schema/lock` verrouille | |
-| 4 | Verify Lock Active | Confirme le verrouillage actif | |
-| 5 | Unlock with Timeout | `POST /_admin/schema/unlock` avec timeout | |
-| 6 | History Endpoint | `GET /_admin/schema/history` retourne l'historique | |
-| 7 | Schema Diff Endpoint | `GET /_admin/schema/diff` compare code vs disque | |
-| 8 | Create Product | `POST /api/products` crée un produit | |
-| 9 | Migration Test (AddField) | Détecte 3 AddField (priority, category, featured) | ⭐ |
-| 10 | List Schemas Endpoint | `GET /_admin/schema` liste les schémas | |
-| 11 | Pending Changes Endpoint | `GET /_admin/schema/pending` liste les pending | |
-| 12 | Breaking Change (RemoveField) | Détecte RemoveField comme Breaking | ⭐ |
-| 13 | Lock Blocks Revalidate | Revalidate bloqué (HTTP 423) si locked | |
-| 14 | History After Changes | Historique contient les changements | |
+| 1 | API Health Check | Verifies `/api/products` responds | |
+| 2 | Lock Status Endpoint | `GET /_admin/schema/lock` returns status | |
+| 3 | Lock Endpoint | `POST /_admin/schema/lock` locks migrations | |
+| 4 | Verify Lock Active | Confirms lock is active | |
+| 5 | Unlock with Timeout | `POST /_admin/schema/unlock` with timeout | |
+| 6 | History Endpoint | `GET /_admin/schema/history` returns history | |
+| 7 | Schema Diff Endpoint | `GET /_admin/schema/diff` compares code vs disk | |
+| 8 | Create Product | `POST /api/products` creates a product | |
+| 9 | Migration Test (AddField) | Detects 3 AddField (priority, category, featured) | ⭐ |
+| 10 | List Schemas Endpoint | `GET /_admin/schema` lists schemas | |
+| 11 | Pending Changes Endpoint | `GET /_admin/schema/pending` lists pending changes | |
+| 12 | Breaking Change (RemoveField) | Detects RemoveField as Breaking | ⭐ |
+| 13 | Lock Blocks Revalidate | Revalidate blocked (HTTP 423) when locked | |
+| 14 | History After Changes | History contains the changes | |
 | 15 | Schema Sync Endpoint | `POST /_admin/schema/sync` (400 standalone) | |
-| 16 | Approve + Disk Persistence | Approve persiste sur disque (7→10 champs) | ⭐ Manual |
+| 16 | Approve + Disk Persistence | Approve persists to disk (7 to 10 fields) | ⭐ Manual |
 
-### Tests critiques (⭐)
+### Critical Tests (⭐)
 
 #### Test 9: Migration Test (AddField)
-Simule une migration réelle :
-1. Sauvegarde le schéma actuel
-2. Remplace par baseline v1 (7 champs)
-3. Appelle `POST /_admin/schema/revalidate`
-4. Vérifie détection de 3 AddField
-5. Restaure le schéma original
+Simulates a real migration:
+1. Saves the current schema
+2. Replaces it with baseline v1 (7 fields)
+3. Calls `POST /_admin/schema/revalidate`
+4. Verifies detection of 3 AddField changes
+5. Restores the original schema
 
 #### Test 12: Breaking Change (RemoveField)
-Détecte les breaking changes :
-1. Utilise baseline v2 avec `legacy_sku` (11 champs)
-2. Le code n'a pas `legacy_sku` → RemoveField détecté
-3. Vérifie que RemoveField est classé comme "Breaking"
+Detects breaking changes:
+1. Uses baseline v2 with `legacy_sku` (11 fields)
+2. The code does not have `legacy_sku` -- RemoveField detected
+3. Verifies that RemoveField is classified as "Breaking"
 
-#### Test 16: Approve + Disk Persistence (Mode Manual requis)
-Vérifie l'approbation et persistance :
-1. Remplace schéma par baseline v1 (7 champs)
-2. Appelle revalidate → crée pending en mode Manual
-3. Récupère l'ID du pending via `GET /_admin/schema/pending`
-4. Appelle `POST /_admin/schema/approve/{id}`
-5. Vérifie schéma persisté sur disque (10 champs)
+#### Test 16: Approve + Disk Persistence (Manual mode required)
+Verifies approval and persistence:
+1. Replaces schema with baseline v1 (7 fields)
+2. Calls revalidate -- creates pending change in Manual mode
+3. Retrieves the pending ID via `GET /_admin/schema/pending`
+4. Calls `POST /_admin/schema/approve/{id}`
+5. Verifies schema is persisted to disk (10 fields)
 
-### Lancer les tests en mode Manual
+### Running Tests in Manual Mode
 
 ```bash
 # Terminal 1: Start server with Manual mode
@@ -409,7 +409,7 @@ cargo run -p schema-migration -- -p 8090 -m manual
 cargo run -p schema-migration -- --test
 ```
 
-### Output attendu
+### Expected Output
 
 ```
 🧪 Running Schema Migration Tests
@@ -438,7 +438,7 @@ cargo run -p schema-migration -- --test
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-> **Note**: Si le serveur n'est pas en mode Manual, le test 16 est skippé avec `⏭️  SKIPPED (requires -m manual)`
+> **Note**: If the server is not running in Manual mode, test 16 is skipped with `⏭️  SKIPPED (requires -m manual)`
 
 ## Change Types
 
@@ -504,13 +504,13 @@ pub category: String,
 
 Old events will automatically get the default value during deserialization.
 
-## Fichiers Baseline
+## Baseline Files
 
-Les fichiers baseline sont dans `examples/08-schema-migration/baseline/`.
+The baseline files are in `examples/08-schema-migration/baseline/`.
 
-### Product_v1.json (7 champs)
+### Product_v1.json (7 fields)
 
-Version minimale du schéma, sans les nouveaux champs.
+Minimal schema version, without the new fields.
 
 ```json
 {
@@ -528,18 +528,18 @@ Version minimale du schéma, sans les nouveaux champs.
 }
 ```
 
-### Product_v2_with_legacy.json (11 champs)
+### Product_v2_with_legacy.json (11 fields)
 
-Version avec un champ supplémentaire `legacy_sku` qui n'existe pas dans le code actuel.
-Utilisé pour tester la détection de RemoveField (breaking change).
+Version with an additional `legacy_sku` field that does not exist in the current code.
+Used to test RemoveField detection (breaking change).
 
 ```json
 {
   "model_name": "Product",
   "version": 2,
   "fields": {
-    // ... 10 champs du modèle actuel ...
-    "legacy_sku": { "unique": true, "indexed": true }  // Champ qui sera "supprimé"
+    // ... 10 fields from the current model ...
+    "legacy_sku": { "unique": true, "indexed": true }  // Field that will be "removed"
   }
 }
 ```
@@ -554,36 +554,36 @@ lsof -ti:8090 | xargs kill -9
 
 ### Test 16 skipped
 
-Le test 16 nécessite le mode Manual. Lancez le serveur avec `-m manual`.
+Test 16 requires Manual mode. Start the server with `-m manual`.
 
-### Schéma pas trouvé
+### Schema not found
 
 ```bash
 mkdir -p ./data/schema_demo/.schema
 cp examples/08-schema-migration/baseline/Product_v1.json ./data/schema_demo/.schema/Product.json
 ```
 
-### Vérifier le contenu du schéma
+### Verify schema contents
 
 ```bash
 cat ./data/schema_demo/.schema/Product.json | jq '.fields | keys'
 cat ./data/schema_demo/.schema/Product.json | jq '.fields | keys | length'
 ```
 
-### Reset complet
+### Full reset
 
 ```bash
 rm -rf ./data/schema_demo
 ```
 
-## Évolutions futures
+## Planned Improvements
 
-- [ ] Test de rollback après échec
-- [ ] Test de migration multi-modèles
-- [ ] Test de consensus en mode cluster
-- [ ] Test de timeout sur pending changes
-- [ ] Métriques de performance des migrations
-- [ ] Test de reject (POST /_admin/schema/reject/{id})
+- [ ] Rollback test after failure
+- [ ] Multi-model migration test
+- [ ] Consensus test in cluster mode
+- [ ] Timeout test on pending changes
+- [ ] Migration performance metrics
+- [ ] Reject test (POST /_admin/schema/reject/{id})
 
 ## See Also
 

@@ -1,14 +1,14 @@
 # 🚀 Lithair Distributed Replication Demo
 
-Demo d'un cluster Lithair multi-nœuds avec réplication automatique des données.
+Demo of a multi-node Lithair cluster with automatic data replication.
 
-## 🎯 Objectif
+## 🎯 Objective
 
-Cet exemple montre comment :
-- Configurer un cluster Lithair distribué
-- Répliquer automatiquement les données entre nœuds
-- Utiliser le modèle déclaratif avec attributs de persistance
-- Gérer la redirection vers le leader et la réplication HTTP (OpenRaft complet: WIP)
+This example shows how to:
+- Configure a distributed Lithair cluster
+- Automatically replicate data between nodes
+- Use the declarative model with persistence attributes
+- Handle leader redirection and HTTP replication (full OpenRaft: WIP)
 
 ## 🏗️ Architecture
 
@@ -23,55 +23,55 @@ Node 1 (Leader)     Node 2 (Follower)    Node 3 (Follower)
                          Raft Consensus
 ```
 
-## 📋 Fonctionnalités
+## 📋 Features
 
-### Modèle Déclaratif avec Réplication
-- **Product**: Modèle produit avec clé primaire, champs audités et réplication
-- **Attributs de persistance**: `#[persistence(replicate, track_history)]`
+### Declarative Model with Replication
+- **Product**: Product model with primary key, audited fields, and replication
+- **Persistence attributes**: `#[persistence(replicate, track_history)]`
 
-### Événements Distribués
-- Création/modification d'utilisateurs
-- Création/modification de messages
-- Statistiques de réplication par nœud
+### Distributed Events
+- User creation/modification
+- Message creation/modification
+- Per-node replication statistics
 
 ## 🚀 Usage
 
-### Démarrage du Cluster
+### Starting the Cluster
 
 ```bash
-# Terminal 1: Lancer le leader (Node 1)
+# Terminal 1: Start the leader (Node 1)
 cargo run --release --bin replication-declarative-node -- \
   --node-id 1 \
   --port 8080 \
   --peers "8081,8082"
 
-# Terminal 2: Lancer le follower (Node 2)
+# Terminal 2: Start follower (Node 2)
 cargo run --release --bin replication-declarative-node -- \
   --node-id 2 \
   --port 8081 \
   --peers "8080,8082"
 
-# Terminal 3: Lancer le follower (Node 3)
+# Terminal 3: Start follower (Node 3)
 cargo run --release --bin replication-declarative-node -- \
   --node-id 3 \
   --port 8082 \
   --peers "8080,8081"
 ```
 
-### Monitorer la Réplication
+### Monitoring Replication
 
-Chaque nœud affiche ses statistiques toutes les 10 secondes :
+Each node displays its statistics every 10 seconds:
 ```
 === Node 1 Statistics ===
 Users: 2 local, 6 total
-Messages: 3 local, 9 total  
+Messages: 3 local, 9 total
 Replications: 6 received, 12 sent
 ==============================
 ```
 
 ## 🔧 Configuration
 
-### Attributs Déclaratifs de Persistance (extrait simplifié)
+### Declarative Persistence Attributes (simplified excerpt)
 
 ```rust
 #[derive(DeclarativeModel)]
@@ -90,137 +90,137 @@ pub struct Product {
 }
 ```
 
-### Options Disponibles
-- `replicate`: Réplique sur tous les nœuds du cluster
-- `track_history`: Conserve l'historique complet des modifications
-- `memory_only`: Données locales uniquement (pas de persistance/réplication)
-- `auto_persist`: Persistance automatique des écritures
-- `no_replication`: Exclut de la réplication même si persisté
+### Available Options
+- `replicate`: Replicate across all cluster nodes
+- `track_history`: Retain complete modification history
+- `memory_only`: Local data only (no persistence/replication)
+- `auto_persist`: Automatic write persistence
+- `no_replication`: Exclude from replication even if persisted
 
 ## 📊 Monitoring
 
-### Métriques par Nœud
-- **users_created**: Utilisateurs créés localement
-- **messages_created**: Messages créés localement  
-- **replications_received**: Événements reçus d'autres nœuds
-- **replications_sent**: Événements envoyés aux autres nœuds
+### Per-Node Metrics
+- **users_created**: Users created locally
+- **messages_created**: Messages created locally
+- **replications_received**: Events received from other nodes
+- **replications_sent**: Events sent to other nodes
 
 ### Persistence
-- Événements persistés dans un EventStore local par nœud (fichiers `.raftlog`)
-- Snapshots périodiques pour accélérer la reprise (si activés)
+- Events persisted in a local EventStore per node (`.raftlog` files)
+- Periodic snapshots to speed up recovery (if enabled)
 
-## 🧪 Tests de Réplication
+## 🧪 Replication Tests
 
-### Scénarios Testés
-1. **Création distribuée**: Chaque nœud crée des utilisateurs/messages
-2. **Contraintes uniques**: Vérification des doublons cross-nœuds
-3. **Clés étrangères**: Cohérence des relations entre entités
-4. **Récupération**: Redémarrage de nœuds et rattrapage
+### Tested Scenarios
+1. **Distributed creation**: Each node creates users/messages
+2. **Unique constraints**: Cross-node duplicate verification
+3. **Foreign keys**: Cross-entity relationship consistency
+4. **Recovery**: Node restart and catch-up
 
-### Ordre d'Exécution des Tests
-1. Démarrer tous les nœuds
-2. Attendre la formation du cluster
-3. Exécuter les opérations en parallèle sur chaque nœud
-4. Vérifier la cohérence des données répliquées
+### Test Execution Order
+1. Start all nodes
+2. Wait for cluster formation
+3. Execute operations in parallel on each node
+4. Verify replicated data consistency
 
-## 🔮 Prochaines Étapes (TODO)
+## 🔮 Roadmap
 
-- [ ] Intégration OpenRaft complète (consensus fort)
-- [ ] Gestion des partitions réseau
-- [ ] Tests de performance sous charge élevée
-- [ ] Interface web de monitoring du cluster
+- [ ] Full OpenRaft integration (strong consensus)
+- [ ] Network partition handling
+- [ ] Performance tests under heavy load
+- [ ] Web-based cluster monitoring interface
 
-## 🎛️ Arguments de Ligne de Commande
+## 🎛️ Command-Line Arguments
 
 ```bash
---node-id <ID>              # ID unique du nœud (obligatoire)
---port <PORT>               # Port d'écoute (défaut: 8080)
---peers "<PORT1>,<PORT2>"   # Autres nœuds: ports des pairs sur localhost
+--node-id <ID>              # Unique node ID (required)
+--port <PORT>               # Listening port (default: 8080)
+--peers "<PORT1>,<PORT2>"   # Other nodes: peer ports on localhost
 ```
 
-## 💡 Notes d'Implémentation
+## 💡 Implementation Notes
 
-- Serveur HTTP basé sur Hyper (HTTP/1.1)
-- Redirection automatique des écritures vers le leader
-- Réplication des données via HTTP entre nœuds
-- Événements sérialisés en JSON pour le transport réseau
+- HTTP server based on Hyper (HTTP/1.1)
+- Automatic write redirection to the leader
+- Data replication via HTTP between nodes
+- Events serialized as JSON for network transport
 
 ## 🧪 Benchmarks
 
-Un script est fourni pour lancer un benchmark CRUD distribué:
+A script is provided to run a distributed CRUD benchmark:
 
 ```bash
 ./bench_1000_crud_parallel.sh 1000
 ```
 
-Consultez `baseline_results/` à la racine du repo pour des mesures représentatives.
+See `baseline_results/` at the repo root for representative measurements.
 
 ## 🔐 HTTP Hardening Demo (stateless perf + firewall)
 
-Le binaire `replication-hardening-node` lance un serveur HTTP déclaratif minimal pour démontrer :
+The `replication-hardening-node` binary starts a minimal declarative HTTP server to demonstrate:
 
-- Endpoints de performance sans état (`/perf/echo`, `/perf/json`, `/perf/bytes`)
-- Gzip (négociation `Accept-Encoding`, seuil configurable)
-- Politiques par préfixe (ex : forcer gzip / `no-store` sur `/perf`)
+- Stateless performance endpoints (`/perf/echo`, `/perf/json`, `/perf/bytes`)
+- Gzip (content negotiation via `Accept-Encoding`, configurable threshold)
+- Per-prefix policies (e.g., force gzip / `no-store` on `/perf`)
 - Firewall (allow/deny IP, CIDR, macros `internal`, `loopback`, etc.)
 
-Par défaut, ce serveur démarre avec une posture « production-like » :
+By default, this server starts with a production-like posture:
 
-- `/perf/*` et `/metrics` protégés par firewall
-- `/status` et `/health` exemptés
-- `allow` inclut la macro `internal` (réseaux privés IPv4 + ULA IPv6)
+- `/perf/*` and `/metrics` protected by firewall
+- `/status` and `/health` exempted
+- `allow` includes the `internal` macro (private IPv4 + ULA IPv6 networks)
 
-Pour l’ouvrir en local (désactiver la posture firewall par défaut) :
+To open it locally (disable the default firewall posture):
 
 ```bash
 cargo run -p replication --bin replication-hardening-node -- --port 18320 --open
 ```
 
-Vous pouvez aussi compiler l’exemple en mode « ouvert par défaut » via la feature :
+You can also compile the example in "open by default" mode using a feature flag:
 
 ```bash
 cargo run -p replication --features open_by_default --bin replication-hardening-node -- --port 18320
 ```
 
-Le script de bench stateless lance automatiquement le serveur avec `--open` :
+The stateless bench script automatically starts the server with `--open`:
 
 ```bash
 bash examples/09-replication/bench_http_server_stateless.sh
 ```
 
-### Mode Single-Node (Isolation du moteur/persistance)
+### Single-Node Mode (Engine/Persistence Isolation)
 
-Pour isoler l’overhead réseau/consensus et mesurer uniquement le coût HTTP + moteur + persistance, vous pouvez lancer le benchmark en **mono‑nœud** :
+To isolate network/consensus overhead and measure only the HTTP + engine + persistence cost, you can run the benchmark in **single-node** mode:
 
 ```bash
 SINGLE_NODE=1 ./bench_1000_crud_parallel.sh 10000
 ```
 
-Astuce : combinez avec les variables `LT_` pour comparer JSON vs Binaire, async on/off :
+Tip: combine with `LT_` variables to compare JSON vs Binary, async on/off:
 
 ```bash
 # Async JSON (Stage A)
 SINGLE_NODE=1 LT_OPT_PERSIST=1 LT_ENABLE_BINARY=0 ./bench_1000_crud_parallel.sh 10000
 
-# Binaire (Stage B)
+# Binary (Stage B)
 SINGLE_NODE=1 LT_OPT_PERSIST=1 LT_ENABLE_BINARY=1 ./bench_1000_crud_parallel.sh 10000
 ```
 
 ## ⚙️ Runtime (Persistence & Performance)
 
-Pour des benchmarks réalistes à haut débit, le demo supporte des variables d’environnement `LT_` qui pilotent la persistance de l’EventStore :
+For realistic high-throughput benchmarks, the demo supports `LT_` environment variables that control EventStore persistence:
 
-- `LT_OPT_PERSIST` (1/0) – active l’écriture asynchrone optimisée (writer thread) pour les événements (par défaut activée dans le script de bench).
-- `LT_BUFFER_SIZE` (octets) – taille du buffer d’écriture (par défaut 1 048 576 = 1 Mo).
-- `LT_MAX_EVENTS_BUFFER` – nombre d’événements à mettre en tampon avant flush (par défaut 2000).
-- `LT_FLUSH_INTERVAL_MS` – intervalle de flush périodique (par défaut 5 ms pour les benchs).
-- `LT_FSYNC_ON_APPEND` (1/0) – fsync à chaque append (0 recommandé pour les benchs de débit).
-- `LT_EVENT_MAX_BATCH` – taille de lot (batch) interne côté EventStore (par défaut 65536 dans le script de bench).
-- `LT_ENABLE_BINARY` (1/0) – active le mode binaire (Stage B) : les enveloppes d’événements sont sérialisées en bincode et écrites lignes par lignes (séparées par `\n`). Rejouer/restaurer reste compatible : le moteur reconvertit en JSON lors de la lecture.
-- `LT_DISABLE_INDEX` (1/0) – désactive l’index `aggregate_id -> offset` pour éviter des écritures supplémentaires pendant les benchs.
-- `LT_DEDUP_PERSIST` (1/0) – contrôle la persistance des IDs d’idempotence. Mettre à `0` pour les benchs éphémères (pas d’exactly‑once cross‑restart nécessaire).
+- `LT_OPT_PERSIST` (1/0) -- Enables optimized asynchronous writes (writer thread) for events (enabled by default in the bench script).
+- `LT_BUFFER_SIZE` (bytes) -- Write buffer size (default 1,048,576 = 1 MB).
+- `LT_MAX_EVENTS_BUFFER` -- Number of events to buffer before flushing (default 2000).
+- `LT_FLUSH_INTERVAL_MS` -- Periodic flush interval (default 5 ms for benchmarks).
+- `LT_FSYNC_ON_APPEND` (1/0) -- fsync on every append (0 recommended for throughput benchmarks).
+- `LT_EVENT_MAX_BATCH` -- Internal batch size on the EventStore side (default 65536 in the bench script).
+- `LT_ENABLE_BINARY` (1/0) -- Enables binary mode (Stage B): event envelopes are serialized via bincode and written line by line (separated by `\n`). Replay/restore remains compatible: the engine converts back to JSON on read.
+- `LT_DISABLE_INDEX` (1/0) -- Disables the `aggregate_id -> offset` index to avoid extra writes during benchmarks.
+- `LT_DEDUP_PERSIST` (1/0) -- Controls idempotency ID persistence. Set to `0` for ephemeral benchmarks (no exactly-once cross-restart guarantee needed).
 
-Exemple d’exécution manuelle avec persistance optimisée et binaire :
+Example manual run with optimized persistence and binary mode:
 
 ```bash
 export LT_OPT_PERSIST=1
@@ -233,53 +233,53 @@ export LT_ENABLE_BINARY=1
 ./bench_1000_crud_parallel.sh 10000
 ```
 
-Notes :
+Notes:
 
-- Le script `bench_1000_crud_parallel.sh` exporte déjà des valeurs par défaut adaptées pour le débit, dont `LT_OPT_PERSIST=1`.
-- Le mode binaire (`LT_ENABLE_BINARY=1`) maximise la vitesse d’append (3–5× vs JSON selon les charges) tout en conservant des snapshots JSON.
+- The `bench_1000_crud_parallel.sh` script already exports default values tuned for throughput, including `LT_OPT_PERSIST=1`.
+- Binary mode (`LT_ENABLE_BINARY=1`) maximizes append speed (3-5x vs JSON depending on workload) while retaining JSON snapshots.
 
-### Profils de stockage prédéfinis (STORAGE_PROFILE)
+### Pre-built Storage Profiles (STORAGE_PROFILE)
 
-Le script de bench supporte des profils prêts à l’emploi (sélection via `STORAGE_PROFILE=<nom>`):
+The bench script supports ready-to-use profiles (selected via `STORAGE_PROFILE=<name>`):
 
-- `high_throughput` (par défaut)
-  - Objectif : Débit maximum (benchmarks). Async writer ON, binaire ON, index/dedup OFF, gros buffers, fsync OFF, snapshots très espacés.
-  - Exemple :
+- `high_throughput` (default)
+  - Goal: Maximum throughput (benchmarks). Async writer ON, binary ON, index/dedup OFF, large buffers, fsync OFF, widely spaced snapshots.
+  - Example:
     ```bash
     STORAGE_PROFILE=high_throughput LOADGEN_MODE=bulk LOADGEN_BULK_SIZE=500 \
     ./bench_1000_crud_parallel.sh 10000
     ```
 
 - `balanced`
-  - Objectif : Compromis débit/fiabilité. Async ON, binaire ON, index/dedup ON, buffers moyens, fsync OFF.
-  - Exemple :
+  - Goal: Throughput/reliability trade-off. Async ON, binary ON, index/dedup ON, medium buffers, fsync OFF.
+  - Example:
     ```bash
     STORAGE_PROFILE=balanced LOADGEN_MODE=bulk LOADGEN_BULK_SIZE=500 \
     ./bench_1000_crud_parallel.sh 10000
     ```
 
 - `durable_security`
-  - Objectif : Durabilité et audit trail. Async ON, binaire OFF (lisibilité), index/dedup ON, fsync ON, snapshots fréquents.
-  - Exemple :
+  - Goal: Durability and audit trail. Async ON, binary OFF (human-readable), index/dedup ON, fsync ON, frequent snapshots.
+  - Example:
     ```bash
     STORAGE_PROFILE=durable_security LOADGEN_MODE=bulk LOADGEN_BULK_SIZE=200 \
     ./bench_1000_crud_parallel.sh 10000
     ```
 
-Chaque profil configure automatiquement les variables `LT_` adéquates (buffers, flush, fsync, index, dedup, snapshots) afin d’adapter le moteur aux besoins de l’application.
+Each profile automatically configures the appropriate `LT_` variables (buffers, flush, fsync, index, dedup, snapshots) to adapt the engine to the application's needs.
 
-### Chemin de données (EXPERIMENT_DATA_BASE)
+### Data Path (EXPERIMENT_DATA_BASE)
 
-Par défaut, le script de bench configure la base de données de l’exemple dans:
+By default, the bench script configures the example database in:
 
 ```
 EXPERIMENT_DATA_BASE=examples/09-replication/data
 ```
 
-Ce chemin est transmis au moteur via la variable d’environnement `EXPERIMENT_DATA_BASE` et remplace `EngineConfig.event_log_path` au démarrage. Vous pouvez donc:
+This path is passed to the engine via the `EXPERIMENT_DATA_BASE` environment variable and overrides `EngineConfig.event_log_path` at startup. You can:
 
-- Laisser le comportement par défaut (les fichiers `.raftlog`/snapshots sont écrits dans le dossier de l’exemple)
-- Ou bien surcharger le chemin:
+- Leave the default behavior (`.raftlog`/snapshot files are written to the example directory)
+- Or override the path:
 
 ```bash
 EXPERIMENT_DATA_BASE=/tmp/lithair_bench \
@@ -287,47 +287,45 @@ STORAGE_PROFILE=high_throughput LOADGEN_MODE=bulk LOADGEN_BULK_SIZE=1000 \
 ./bench_1000_crud_parallel.sh 100000
 ```
 
-Le script affiche explicitement le chemin utilisé et liste les fichiers persistés en fin de run.
+The script explicitly prints the path used and lists the persisted files at the end of each run.
 
-## 🔦 Lectures légères (LIGHT_READS)
+## 🔦 Lightweight Reads (LIGHT_READS)
 
-Pour éviter le coût de sérialisation JSON de la liste complète (`GET /api/products`), le bench supporte des lectures « légères » configurables via `LIGHT_READS` :
+To avoid the JSON serialization cost of the full list (`GET /api/products`), the bench supports configurable "lightweight" reads via `LIGHT_READS`:
 
-- `LIGHT_READS=0` (défaut) → `GET /api/products` (liste complète, lecture lourde)
-- `LIGHT_READS=1`, `true` ou `status` → `GET /status` (très léger)
-- `LIGHT_READS=count` → `GET /api/products/count` (léger, retourne `{ "count": N }`)
+- `LIGHT_READS=0` (default) -- `GET /api/products` (full list, heavy read)
+- `LIGHT_READS=1`, `true`, or `status` -- `GET /status` (very lightweight)
+- `LIGHT_READS=count` -- `GET /api/products/count` (lightweight, returns `{ "count": N }`)
 
-Endpoints ajoutés par le serveur déclaratif (`lithair-core/src/http/declarative.rs`) :
+Endpoints added by the declarative server (`lithair-core/src/http/declarative.rs`):
 
-- `GET /api/{model}/count` → renvoie uniquement le nombre d’éléments
-- `GET /api/{model}/random-id` → renvoie un `id` existant (utile pour préremplir les UPDATE sans lister tout)
+- `GET /api/{model}/count` -- Returns only the element count
+- `GET /api/{model}/random-id` -- Returns an existing `id` (useful for pre-filling UPDATE targets without listing everything)
 
-### A/B test « heavy vs light »
+### A/B Test: Heavy vs Light
 
-Exemple après pré-seed (5 000 objets par nœud) :
+Example after pre-seeding (5,000 objects per node):
 
 ```bash
-# Heavy read: liste complète
+# Heavy read: full list
 LIGHT_READS=0 PRESEED_PER_NODE=5000 CREATE_PERCENTAGE=0 READ_PERCENTAGE=100 UPDATE_PERCENTAGE=0 \
   ./bench_1000_crud_parallel.sh 3000
 
-# Light read: compteur
+# Light read: counter
 LIGHT_READS=count PRESEED_PER_NODE=5000 CREATE_PERCENTAGE=0 READ_PERCENTAGE=100 UPDATE_PERCENTAGE=0 \
   ./bench_1000_crud_parallel.sh 3000
 ```
 
-Dans nos mesures récentes :
+Recent observations (3 nodes, PRESEED_PER_NODE=50000, concurrency=256, read-only 3000 ops):
 
-Observations récentes (3 nœuds, PRESEED_PER_NODE=50000, concurrency=256, lecture seule 3000 ops) :
+- Heavy read (full list): ~38.6 ops/s, p50 ~6.1 s, p95 ~10 s
+- Light read (count): ~10.3k-15.3k ops/s, p50 ~2-3 ms, p95 ~115-128 ms
+- Status: ~15.1k-24.6k ops/s, p50 ~1-2 ms, p95 ~80-170 ms
 
-- Heavy read (liste complète) ≈ 38.6 ops/s, p50 ≈ 6.1 s, p95 ≈ 10 s
-- Light read (count) ≈ 10.3k–15.3k ops/s, p50 ≈ 2–3 ms, p95 ≈ 115–128 ms
-- Status ≈ 15.1k–24.6k ops/s, p50 ≈ 1–2 ms, p95 ≈ 80–170 ms
+Recommendations:
+- Avoid `GET /api/products` for performance benchmarks; use `/count` or `/status` instead.
+- Profile `high_throughput`: default `LOADGEN_CONCURRENCY=256` provides the best throughput/tail-latency trade-off.
+- Profiles `balanced` and `durable_security`: stay at 512 or below to keep write tail latencies in check.
+- The `BENCH_SUITE=durability_profiles` suite restarts the cluster for each profile to correctly apply storage parameters.
 
-Recommandations :
-- Évitez `GET /api/products` pour les benchmarks de perf; utilisez `/count` ou `/status`.
-- Profil `high_throughput` : par défaut `LOADGEN_CONCURRENCY=256` offre le meilleur compromis débit/tails.
-- Profils `balanced` et `durable_security` : rester ≤512 pour contenir les tails d’écriture.
-- La suite `BENCH_SUITE=durability_profiles` redémarre le cluster à chaque profil afin d’appliquer correctement les paramètres de stockage.
-
-Astuce : pour des workloads à forte proportion d’UPDATE, le loadgen utilise désormais `GET /api/products/random-id` pour récupérer un `id` léger si la pool d’ID est vide (pas de `GET /api/products`).
+Tip: for workloads with a high UPDATE proportion, the loadgen now uses `GET /api/products/random-id` to fetch a lightweight `id` when the ID pool is empty (instead of `GET /api/products`).
