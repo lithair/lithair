@@ -680,6 +680,11 @@ where
             T::http_base_path(),
             ""
         );
+        log::info!(
+            "   GET    /api/{}/_schema{:<7} - Declarative model introspection",
+            T::http_base_path(),
+            ""
+        );
         log::info!("Health & Observability endpoints:");
         log::info!("   GET    /health{:<20} - Liveness probe (always enabled)", "");
 

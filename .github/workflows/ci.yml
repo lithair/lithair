@@ -108,7 +108,6 @@ jobs:
           chmod +x examples/advanced/http-firewall/run_demo.sh
           chmod +x examples/advanced/http-firewall/run_declarative_demo.sh
           chmod +x examples/advanced/http-hardening/run_demo.sh
-          chmod +x examples/09-replication/bench_http_server_stateless.sh
 
       - name: Smoke - Firewall demo (configurable)
         run: |
@@ -121,16 +120,3 @@ jobs:
       - name: Smoke - HTTP hardening demo
         run: |
           PORT=19102 bash examples/advanced/http-hardening/run_demo.sh
-
-      - name: Smoke - Stateless perf endpoints (fast)
-        env:
-          CONCURRENCY: 64
-          TIMEOUT_S: 10
-          PORT: 19104
-          TOTAL_STATUS: 2000
-          TOTAL_JSON_1KB: 2000
-          TOTAL_BYTES_1KB: 2000
-          TOTAL_ECHO_1KB: 1000
-          LT_PERF_MAX_BYTES: 262144
-        run: |
-          bash examples/09-replication/bench_http_server_stateless.sh

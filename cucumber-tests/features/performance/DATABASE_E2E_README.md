@@ -1,49 +1,49 @@
-# 🎯 Tests E2E Database/Performance Lithair
+# Lithair E2E Database/Performance Tests
 
-## **Philosophie**
+## **Philosophy**
 
-Ces tests sont **spécifiques** à la couche database/persistence de Lithair :
-- ✅ Test du **vrai HttpServer** Lithair
-- ✅ Test du **vrai StateEngine** (event sourcing)
-- ✅ Test du **vrai FileStorage** (persistence)
-- ❌ PAS de test de l'application métier complète
+These tests are **specific** to the Lithair database/persistence layer:
+- Test the **real HttpServer** of Lithair
+- Test the **real StateEngine** (event sourcing)
+- Test the **real FileStorage** (persistence)
+- NOT a test of the complete business application
 
-**Focus** : Intégrité + Performance de la persistence
+**Focus**: Persistence integrity + performance
 
 ---
 
-## 🏗️ **Architecture**
+## Architecture
 
 ```
-Test Cucumber E2E
-    ↓
-HttpServer (Lithair réel)
-    ↓
+Cucumber E2E Test
+    |
+HttpServer (real Lithair)
+    |
 StateEngine<TestAppState>
-    ↓
+    |
 FileStorage
-    ↓
+    |
 events.raftlog + snapshots
 ```
 
-### **Composants Testés**
+### **Components Tested**
 
-1. **HttpServer** - Serveur HTTP Lithair natif
+1. **HttpServer** - Native Lithair HTTP server
    - Keep-alive HTTP/1.1
-   - Routage avec `Router`
-   - Handlers custom
+   - Routing with `Router`
+   - Custom handlers
 
 2. **StateEngine** - Event sourcing
-   - `apply_event()` - Application d'événements
-   - `get_state()` - Récupération de l'état
-   - Mutations atomiques
+   - `apply_event()` - Event application
+   - `get_state()` - State retrieval
+   - Atomic mutations
 
 3. **FileStorage** - Persistence
-   - Écriture dans `events.raftlog`
+   - Writing to `events.raftlog`
    - Snapshots
    - fsync / flush
 
-4. **TestAppState** - État de test minimal
+4. **TestAppState** - Minimal test state
    ```rust
    pub struct TestAppState {
        pub data: TestData,
@@ -53,108 +53,108 @@ events.raftlog + snapshots
 
 ---
 
-## 📁 **Structure**
+## File Structure
 
 ```
 cucumber-tests/
 ├── features/performance/
-│   ├── database_performance.feature       # 19 scénarios
-│   ├── DATABASE_E2E_README.md            # Ce fichier
-│   └── http_performance.feature          # Tests HTTP purs
+│   ├── database_performance.feature       # 19 scenarios
+│   ├── DATABASE_E2E_README.md            # This file
+│   └── http_performance.feature          # Pure HTTP tests
 │
 └── src/features/steps/
-    ├── real_database_performance_steps.rs # Steps avec vrai Lithair ✅
-    ├── http_performance_steps.rs         # Steps HTTP (test_server)
-    └── database_performance_steps.rs     # Anciens steps (stubs)
+    ├── real_database_performance_steps.rs # Steps with real Lithair
+    ├── http_performance_steps.rs         # HTTP steps (test_server)
+    └── database_performance_steps.rs     # Legacy steps (stubs)
 ```
 
 ---
 
-## 🎯 **Scénarios de Test**
+## Test Scenarios
 
-### **1. Tests d'Intégrité** (4 scénarios)
+### **1. Integrity Tests** (4 scenarios)
 
-✅ **Créer 1000 articles et vérifier qu'ils sont TOUS persistés**
+**Create 1000 articles and verify they are ALL persisted**
 ```gherkin
-When je crée 1000 articles rapidement
-Then le fichier events.raftlog doit contenir exactement 1000 événements "ArticleCreated"
-And aucun événement ne doit être manquant
+When I create 1000 articles quickly
+Then the events.raftlog file must contain exactly 1000 "ArticleCreated" events
+And no event must be missing
 ```
 
-✅ **Créer 10000 articles avec 50 threads**
+**Create 10000 articles with 50 threads**
 ```gherkin
-When je crée 10000 articles en parallèle avec 50 threads
-Then la séquence des IDs doit être continue de 0 à 9999
-And aucun doublon ne doit exister
+When I create 10000 articles in parallel with 50 threads
+Then the ID sequence must be continuous from 0 to 9999
+And no duplicate must exist
 ```
 
-### **2. Tests de Performance** (3 scénarios)
+### **2. Performance Tests** (3 scenarios)
 
-✅ **Performance d'écriture - 1000 req/s**
+**Write performance - 1000 req/s**
 ```gherkin
-When je mesure la performance d'écriture sur 10 secondes
-Then le serveur doit traiter au moins 1000 requêtes par seconde
-And la latence p95 doit être inférieure à 100ms
+When I measure write performance for 10 seconds
+Then the server must process at least 1000 requests per second
+And the p95 latency must be less than 100ms
 ```
 
-✅ **Performance mixte 80/20**
+**Mixed performance 80/20**
 ```gherkin
-When je lance un test mixte pendant 30 secondes avec:
-  | Type     | Pourcentage | Concurrence |
-  | Lecture  | 80%         | 100         |
-  | Écriture | 20%         | 20          |
-Then le throughput total doit être supérieur à 2000 req/s
+When I run a mixed test for 30 seconds with:
+  | Type  | Percentage | Concurrency |
+  | Read  | 80%        | 100         |
+  | Write | 20%        | 20          |
+Then the total throughput must be greater than 2000 req/s
 ```
 
-### **3. Tests de Persistence sous Charge** (3 scénarios)
+### **3. Persistence Under Load Tests** (3 scenarios)
 
-✅ **Persistence continue sous charge élevée**
+**Continuous persistence under high load**
 ```gherkin
-When je lance une charge constante de 500 req/s pendant 60 secondes
-Then exactement 30000 événements doivent être persistés
-And la séquence temporelle doit être strictement croissante
+When I run a constant load of 500 req/s for 60 seconds
+Then exactly 30000 events must be persisted
+And the time sequence must be strictly increasing
 ```
 
-✅ **Redémarrage avec données persistées**
+**Restart with persisted data**
 ```gherkin
-When j'arrête le serveur
-And je redémarre le serveur sur le même port
-Then les 1000 articles doivent être présents en mémoire
+When I stop the server
+And I restart the server on the same port
+Then the 1000 articles must be present in memory
 ```
 
-### **4. Tests d'Intégrité Avancés** (2 scénarios)
+### **4. Advanced Integrity Tests** (2 scenarios)
 
-✅ **Vérification de l'ordre des événements**
-✅ **Détection de corruption de données** (CRC32)
+- **Event order verification**
+- **Data corruption detection** (CRC32)
 
-### **5. Tests de Charge Extrême** (2 scénarios)
+### **5. Extreme Load Tests** (2 scenarios)
 
-✅ **50000 articles**
-✅ **1000 threads × 10 articles**
+- **50000 articles**
+- **1000 threads x 10 articles**
 
-### **6. Tests de Snapshot** (1 scénario)
+### **6. Snapshot Tests** (1 scenario)
 
-✅ **Création de snapshot tous les 1000 événements**
+- **Snapshot creation every 1000 events**
 
-### **7. Tests de Durabilité** (2 scénarios)
+### **7. Durability Tests** (2 scenarios)
 
-✅ **Durabilité fsync** (SIGKILL + redémarrage)
-✅ **Durabilité sans fsync** (mode performance)
+- **fsync durability** (SIGKILL + restart)
+- **Durability without fsync** (performance mode)
 
 ---
 
-## 🔧 **Implémentation**
+## Implementation
 
-### **Démarrage du Serveur**
+### **Server Startup**
 
 ```rust
-#[given(expr = "un serveur Lithair sur le port {int} avec persistence {string}")]
+#[given(expr = "a Lithair server on port {int} with persistence {string}")]
 async fn start_lithair_server(world: &mut LithairWorld, port: u16, persist_path: String) {
-    // 1. Créer FileStorage
+    // 1. Create FileStorage
     let storage = FileStorage::new(&persist_path).unwrap();
     *world.storage.lock().await = Some(storage);
-    
-    // 2. Créer le Router
+
+    // 2. Create the Router
     let engine = world.engine.clone();
     let router = Router::new()
         .post("/api/articles", move |req, _, _| {
@@ -163,159 +163,159 @@ async fn start_lithair_server(world: &mut LithairWorld, port: u16, persist_path:
         .get("/api/articles", move |req, _, _| {
             handle_list_articles(req, &engine)
         });
-    
-    // 3. Démarrer HttpServer
+
+    // 3. Start HttpServer
     let server = HttpServer::new().with_router(router);
     let handle = tokio::spawn(async move {
         server.serve_on_port(port).await
     });
-    
+
     *world.server_handle.lock().await = Some(handle);
 }
 ```
 
-### **Handler Création**
+### **Create Handler**
 
 ```rust
 fn handle_create_article(req: &HttpRequest, engine: &Arc<StateEngine<TestAppState>>) -> HttpResponse {
-    // 1. Parser la requête
+    // 1. Parse the request
     let article: CreateArticle = serde_json::from_str(req.body()).unwrap();
-    
-    // 2. Créer l'événement
+
+    // 2. Create the event
     let event = TestEvent::ArticleCreated {
         id: uuid::Uuid::new_v4().to_string(),
         data: json!({ "title": article.title, "content": article.content }),
     };
-    
-    // 3. Appliquer via StateEngine (persiste automatiquement)
+
+    // 3. Apply via StateEngine (automatically persists)
     engine.apply_event(event).unwrap();
-    
-    // 4. Réponse
+
+    // 4. Response
     HttpResponse::created().json(&response_json)
 }
 ```
 
-### **Vérification Persistence**
+### **Persistence Verification**
 
 ```rust
-#[then(expr = "le fichier events.raftlog doit contenir exactement {int} événements")]
+#[then(expr = "the events.raftlog file must contain exactly {int} events")]
 async fn check_event_count(world: &mut LithairWorld, count: usize) {
     let log_file = format!("{}/events.raftlog", world.metrics.persist_path);
     let content = std::fs::read_to_string(&log_file).unwrap();
-    
+
     let event_count = content.lines()
         .filter(|line| line.contains("ArticleCreated"))
         .count();
-    
+
     assert_eq!(event_count, count);
 }
 ```
 
 ---
 
-## 🚀 **Lancer les Tests**
+## Running the Tests
 
-### **Tous les tests database/performance**
+### **All database/performance tests**
 ```bash
 cd cucumber-tests
 cargo test --features cucumber -- features/performance/database_performance.feature
 ```
 
-### **Tests d'intégrité uniquement**
+### **Integrity tests only**
 ```bash
-cargo test --features cucumber -- "Créer 1000 articles"
+cargo test --features cucumber -- "Create 1000 articles"
 ```
 
-### **Tests de performance uniquement**
+### **Performance tests only**
 ```bash
-cargo test --features cucumber -- "Performance d'écriture"
+cargo test --features cucumber -- "Write performance"
 ```
 
 ---
 
-## 📊 **Métriques Mesurées**
+## Measured Metrics
 
-### **Intégrité**
-- ✅ Nombre exact d'événements persistés
-- ✅ Séquence d'IDs continue
-- ✅ Pas de doublons
-- ✅ Pas d'événements manquants
-- ✅ Checksums valides (CRC32)
+### **Integrity**
+- Exact number of persisted events
+- Continuous ID sequence
+- No duplicates
+- No missing events
+- Valid checksums (CRC32)
 
 ### **Performance**
-- ✅ Throughput (req/s)
-- ✅ Latence (p50, p95, p99)
-- ✅ Taux d'erreur
-- ✅ Temps de réponse moyen
-- ✅ Taille du fichier events.raftlog
+- Throughput (req/s)
+- Latency (p50, p95, p99)
+- Error rate
+- Average response time
+- events.raftlog file size
 
-### **Durabilité**
-- ✅ Récupération après crash (SIGKILL)
-- ✅ Intégrité des données persistées
-- ✅ Snapshots valides
-- ✅ Redémarrage rapide (< 5s pour 50k articles)
+### **Durability**
+- Recovery after crash (SIGKILL)
+- Integrity of persisted data
+- Valid snapshots
+- Fast restart (< 5s for 50k articles)
 
 ---
 
-## 🎯 **Différences avec Robot Framework**
+## Differences with Robot Framework
 
 ### **Robot Framework**
-- Tests de l'**application complète**
-- Approche keyword-driven
-- Facile pour non-devs
-- Focus : fonctionnalité métier
+- Tests the **complete application**
+- Keyword-driven approach
+- Easy for non-devs
+- Focus: business functionality
 
 ### **Cucumber E2E Database/Performance**
-- Tests de la **couche database** uniquement
-- Vrai HttpServer + StateEngine + FileStorage
-- Rust natif, intégré au code
-- Focus : intégrité + performance de la persistence
+- Tests the **database layer** only
+- Real HttpServer + StateEngine + FileStorage
+- Native Rust, integrated into code
+- Focus: persistence integrity + performance
 
-**Complémentaires !**
+**Complementary!**
 
 ---
 
-## ✅ **État Actuel**
+## Current State
 
-### **Implémenté** ✅
-- ✅ Démarrage vrai HttpServer Lithair
-- ✅ Handlers avec StateEngine
-- ✅ Création articles (séquentiel)
-- ✅ Création articles (parallèle avec threads)
-- ✅ Vérification fichier events.raftlog
-- ✅ Comptage événements
-- ✅ Vérification intégrité basique
+### **Implemented**
+- Real Lithair HttpServer startup
+- Handlers with StateEngine
+- Article creation (sequential)
+- Article creation (parallel with threads)
+- events.raftlog file verification
+- Event counting
+- Basic integrity verification
 
-### **À Implémenter** 📝
-- [ ] Mesure performance (throughput, latence)
-- [ ] Tests de lecture (GET)
-- [ ] Charge mixte 80/20
-- [ ] Redémarrage serveur
+### **To Implement**
+- [ ] Performance measurement (throughput, latency)
+- [ ] Read tests (GET)
+- [ ] Mixed load 80/20
+- [ ] Server restart
 - [ ] Snapshots
 - [ ] CRC32 / checksums
-- [ ] Tests durabilité (SIGKILL)
-- [ ] Vérification ordre événements
+- [ ] Durability tests (SIGKILL)
+- [ ] Event order verification
 
 ---
 
-## 🎉 **Avantages**
+## Benefits
 
-1. **Tests Réels** - Vrai Lithair, pas de mock
-2. **Performance** - Mesure précise avec vrai serveur
-3. **Intégration** - Event sourcing + persistence natifs
-4. **Simplicité** - Tout dans Cucumber
-5. **Contrôle Total** - Démarrage/arrêt programmatique
-6. **Debug Facile** - Logs directs, pas de serveur externe
+1. **Real Tests** - Real Lithair, no mocks
+2. **Performance** - Precise measurement with real server
+3. **Integration** - Native event sourcing + persistence
+4. **Simplicity** - Everything in Cucumber
+5. **Total Control** - Programmatic start/stop
+6. **Easy Debug** - Direct logs, no external server
 
 ---
 
-## 🚀 **Prochaines Étapes**
+## Next Steps
 
-1. **Compiler les steps** (résoudre erreurs)
-2. **Implémenter steps manquants** (mesure perf, lecture)
-3. **Lancer 1er scénario** (1000 articles)
-4. **Valider intégrité** (events.raftlog)
-5. **Mesurer performance** (throughput, latence)
-6. **Implémenter scenarios avancés** (redémarrage, snapshots)
+1. **Compile the steps** (resolve errors)
+2. **Implement missing steps** (perf measurement, reads)
+3. **Run 1st scenario** (1000 articles)
+4. **Validate integrity** (events.raftlog)
+5. **Measure performance** (throughput, latency)
+6. **Implement advanced scenarios** (restart, snapshots)
 
-**L'architecture est prête, les scénarios sont écrits, on peut maintenant implémenter ! 🎯**
+**The architecture is ready, the scenarios are written, we can now implement!**

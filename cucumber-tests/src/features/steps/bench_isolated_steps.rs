@@ -8,12 +8,12 @@ use std::time::{Duration, Instant};
 
 // ==================== GIVEN STEPS ====================
 
-#[given(expr = "{int} articles pré-chargés en mémoire")]
+#[given(expr = "{int} articles pre-loaded in memory")]
 async fn preload_articles_in_memory(world: &mut LithairWorld, count: usize) {
-    println!("📦 Pré-chargement de {} articles en mémoire...", count);
+    println!("📦 Pre-loading {} articles in memory...", count);
     let start = Instant::now();
 
-    // Charger directement dans StateEngine sans HTTP
+    // Load directly into StateEngine without HTTP
     for i in 0..count {
         let event = crate::features::world::TestEvent::ArticleCreated {
             id: format!("article-{}", i),
@@ -24,7 +24,7 @@ async fn preload_articles_in_memory(world: &mut LithairWorld, count: usize) {
         if let Err(e) = world.engine.with_state_mut(|state| {
             event.apply(state);
         }) {
-            eprintln!("❌ Erreur application event: {}", e);
+            eprintln!("❌ Error applying event: {}", e);
         }
     }
 
@@ -32,7 +32,7 @@ async fn preload_articles_in_memory(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} articles chargés en mémoire en {:.2}s ({:.0} articles/sec)",
+        "✅ {} articles loaded in memory in {:.2}s ({:.0} articles/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
@@ -41,7 +41,7 @@ async fn preload_articles_in_memory(world: &mut LithairWorld, count: usize) {
 
 // ==================== WHEN STEPS ====================
 
-#[when(expr = "je lis {int} articles aléatoires via GET")]
+#[when(expr = "I read {int} random articles via GET")]
 async fn read_random_articles(world: &mut LithairWorld, count: usize) {
     let client = reqwest::Client::new();
     let base_url = {
@@ -49,10 +49,10 @@ async fn read_random_articles(world: &mut LithairWorld, count: usize) {
         metrics.base_url.clone()
     };
 
-    println!("🔍 Lecture de {} articles aléatoires...", count);
+    println!("🔍 Reading {} random articles...", count);
     let start = Instant::now();
 
-    // Lectures parallèles
+    // Parallel reads
     let concurrent_reads = 200;
     let mut tasks = Vec::new();
 
@@ -79,24 +79,24 @@ async fn read_random_articles(world: &mut LithairWorld, count: usize) {
     let throughput = count as f64 / elapsed.as_secs_f64();
     let avg_latency_ms = elapsed.as_millis() as f64 / count as f64;
 
-    // Stocker les métriques
+    // Store metrics
     {
         let mut metrics = world.metrics.lock().await;
         metrics.last_throughput = throughput;
         metrics.last_avg_latency_ms = avg_latency_ms;
     }
 
-    println!("✅ {} lectures en {:.2}s", count, elapsed.as_secs_f64());
+    println!("✅ {} reads in {:.2}s", count, elapsed.as_secs_f64());
     println!("   📊 Throughput: {:.0} req/sec", throughput);
-    println!("   ⏱️  Latence moyenne: {:.3}ms", avg_latency_ms);
+    println!("   ⏱️  Average latency: {:.3}ms", avg_latency_ms);
 }
 
-#[when(expr = "je crée {int} articles en mode écriture directe")]
+#[when(expr = "I create {int} articles in direct write mode")]
 async fn write_articles_directly(world: &mut LithairWorld, count: usize) {
-    println!("💾 Écriture directe de {} articles sur disque...", count);
+    println!("💾 Direct write of {} articles to disk...", count);
     let start = Instant::now();
 
-    // Écriture directe sur FileStorage sans HTTP
+    // Direct write to FileStorage without HTTP
     let mut storage_guard = world.storage.blocking_lock();
     if let Some(ref mut fs) = *storage_guard {
         for i in 0..count {
@@ -111,7 +111,7 @@ async fn write_articles_directly(world: &mut LithairWorld, count: usize) {
 
             let _ = fs.append_event(&event_json);
 
-            // Flush tous les 1000 events pour optimiser
+            // Flush every 1000 events for optimization
             if i % 1000 == 0 {
                 let _ = fs.flush_batch();
             }
@@ -128,16 +128,16 @@ async fn write_articles_directly(world: &mut LithairWorld, count: usize) {
     }
 
     println!(
-        "✅ {} événements écrits en {:.2}s ({:.0} events/sec)",
+        "✅ {} events written in {:.2}s ({:.0} events/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 }
 
-#[when(expr = "je crée {int} articles via HTTP POST")]
+#[when(expr = "I create {int} articles via HTTP POST")]
 async fn create_articles_via_http(world: &mut LithairWorld, count: usize) {
-    println!("🌐 Création de {} articles via HTTP (E2E)...", count);
+    println!("🌐 Creating {} articles via HTTP (E2E)...", count);
     let client = reqwest::Client::new();
     let base_url = {
         let metrics = world.metrics.lock().await;
@@ -147,7 +147,7 @@ async fn create_articles_via_http(world: &mut LithairWorld, count: usize) {
     let url = format!("{}/api/articles", base_url);
     let start = Instant::now();
 
-    // Parallélisation avec batching
+    // Parallelization with batching
     let concurrent_requests = 100;
     let mut tasks = Vec::new();
 
@@ -187,14 +187,14 @@ async fn create_articles_via_http(world: &mut LithairWorld, count: usize) {
     }
 
     println!(
-        "✅ {} articles créés (E2E) en {:.2}s ({:.0} articles/sec)",
+        "✅ {} articles created (E2E) in {:.2}s ({:.0} articles/sec)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 }
 
-#[when(expr = "je lance {int}% lectures et {int}% écritures pendant {int} secondes")]
+#[when(expr = "I run {int}% reads and {int}% writes for {int} seconds")]
 async fn mixed_workload(
     world: &mut LithairWorld,
     read_pct: usize,
@@ -202,7 +202,7 @@ async fn mixed_workload(
     duration_secs: usize,
 ) {
     println!(
-        "🔀 Workload mixte: {}% lectures, {}% écritures pendant {}s",
+        "🔀 Mixed workload: {}% reads, {}% writes for {}s",
         read_pct, write_pct, duration_secs
     );
 
@@ -227,12 +227,12 @@ async fn mixed_workload(
         let op_start = Instant::now();
 
         if rand_val < read_pct {
-            // Lecture
+            // Read
             let url = format!("{}/api/articles", base_url);
             let _ = client.get(&url).send().await;
             read_count += 1;
         } else {
-            // Écriture
+            // Write
             let url = format!("{}/api/articles", base_url);
             let article = json!({
                 "id": format!("article-{}", write_count),
@@ -250,7 +250,7 @@ async fn mixed_workload(
     let elapsed = start.elapsed();
     let throughput = total_ops as f64 / elapsed.as_secs_f64();
 
-    // Calculer percentiles
+    // Calculate percentiles
     latencies.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let p50 = latencies[latencies.len() * 50 / 100];
     let p95 = latencies[latencies.len() * 95 / 100];
@@ -264,76 +264,76 @@ async fn mixed_workload(
         metrics.last_p99_latency_ms = p99;
     }
 
-    println!("✅ Workload mixte terminé:");
+    println!("✅ Mixed workload completed:");
     println!("   📊 Total ops: {} ({} reads, {} writes)", total_ops, read_count, write_count);
     println!("   📈 Throughput: {:.0} ops/sec", throughput);
-    println!("   ⏱️  Latence P50: {:.2}ms, P95: {:.2}ms, P99: {:.2}ms", p50, p95, p99);
+    println!("   ⏱️  Latency P50: {:.2}ms, P95: {:.2}ms, P99: {:.2}ms", p50, p95, p99);
 }
 
 // ==================== THEN STEPS ====================
 
-#[then(expr = "le temps de lecture moyen doit être inférieur à {int}ms")]
+#[then(expr = "the average read time must be less than {int} ms")]
 async fn check_avg_read_latency(world: &mut LithairWorld, max_ms: usize) {
     let metrics = world.metrics.lock().await;
     let avg_latency = metrics.last_avg_latency_ms;
 
     assert!(
         avg_latency < max_ms as f64,
-        "❌ Latence moyenne {:.2}ms > {}ms requis",
+        "❌ Average latency {:.2}ms > {}ms required",
         avg_latency,
         max_ms
     );
 
-    println!("✅ Latence moyenne {:.2}ms < {}ms ✓", avg_latency, max_ms);
+    println!("✅ Average latency {:.2}ms < {}ms", avg_latency, max_ms);
 }
 
-#[then(expr = "le throughput de lecture doit dépasser {int} req/sec")]
+#[then(expr = "the read throughput must exceed {int} req/sec")]
 async fn check_read_throughput(world: &mut LithairWorld, min_rps: usize) {
     let metrics = world.metrics.lock().await;
     let throughput = metrics.last_throughput;
 
     assert!(
         throughput > min_rps as f64,
-        "❌ Throughput {:.0} req/sec < {} requis",
+        "❌ Throughput {:.0} req/sec < {} required",
         throughput,
         min_rps
     );
 
-    println!("✅ Throughput {:.0} req/sec > {} req/sec ✓", throughput, min_rps);
+    println!("✅ Throughput {:.0} req/sec > {} req/sec", throughput, min_rps);
 }
 
-#[then("le throughput d'écriture doit être mesuré")]
+#[then("the write throughput must be measured")]
 async fn measure_write_throughput(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
-    println!("📊 Throughput d'écriture: {:.0} events/sec", metrics.last_throughput);
+    println!("📊 Write throughput: {:.0} events/sec", metrics.last_throughput);
 }
 
-#[then("tous les articles doivent être en mémoire")]
+#[then("all articles must be in memory")]
 async fn check_articles_in_memory(world: &mut LithairWorld) {
     let count = world
         .engine
         .with_state(|state| state.data.articles.len())
-        .expect("Impossible de lire l'état");
+        .expect("Failed to read state");
 
-    println!("✅ {} articles présents en mémoire", count);
+    println!("✅ {} articles present in memory", count);
 }
 
-#[then("le throughput E2E doit être mesuré")]
+#[then("the E2E throughput must be measured")]
 async fn measure_e2e_throughput(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
-    println!("📊 Throughput E2E: {:.0} articles/sec", metrics.last_throughput);
+    println!("📊 E2E throughput: {:.0} articles/sec", metrics.last_throughput);
 }
 
-#[then("le throughput total doit être mesuré")]
+#[then("the total throughput must be measured")]
 async fn measure_total_throughput(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
-    println!("📊 Throughput total: {:.0} ops/sec", metrics.last_throughput);
+    println!("📊 Total throughput: {:.0} ops/sec", metrics.last_throughput);
 }
 
-#[then(expr = "les latences P50, P95, P99 doivent être calculées")]
+#[then(expr = "the P50, P95, P99 latencies must be calculated")]
 async fn check_percentiles_calculated(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
-    println!("📊 Latences:");
+    println!("📊 Latencies:");
     println!("   P50: {:.2}ms", metrics.last_p50_latency_ms);
     println!("   P95: {:.2}ms", metrics.last_p95_latency_ms);
     println!("   P99: {:.2}ms", metrics.last_p99_latency_ms);

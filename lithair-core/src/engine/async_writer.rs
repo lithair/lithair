@@ -2,7 +2,7 @@ use crate::engine::events::{EventEnvelope, EventStore};
 use std::sync::{Arc, RwLock};
 use tokio::sync::{mpsc, oneshot};
 
-/// Message pour le writer thread
+/// Message for the writer thread
 #[derive(Debug)]
 pub enum WriteEvent {
     /// Raw JSON event string
@@ -13,41 +13,41 @@ pub enum WriteEvent {
     Flush(oneshot::Sender<()>),
 }
 
-/// Async writer pour EventStore - écriture en batch
+/// Async writer for EventStore - batch writes
 pub struct AsyncWriter {
     tx: mpsc::UnboundedSender<WriteEvent>,
     handle: Option<tokio::task::JoinHandle<()>>,
 }
 
-/// Configuration du mode de durabilité
+/// Durability mode configuration
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DurabilityMode {
-    /// Performance maximale : batch + flush périodique (10ms)
-    /// RISQUE : Perte max 10ms de données en cas de crash brutal
-    /// Usage : Benchmarks, prototypes, données non-critiques
+    /// Maximum performance: batch + periodic flush (10ms)
+    /// RISK: Up to 10ms of data loss on hard crash
+    /// Usage: Benchmarks, prototypes, non-critical data
     Performance,
 
-    /// Durabilité maximale : fsync après chaque batch (DEFAULT)
-    /// GARANTIE : Aucune perte de données, même en cas de crash
-    /// Usage : Production, données critiques, event-sourcing
-    /// Note : 10-100x plus lent, mais c'est le STANDARD des DB sérieuses
+    /// Maximum durability: fsync after each batch (DEFAULT)
+    /// GUARANTEE: No data loss, even on crash
+    /// Usage: Production, critical data, event-sourcing
+    /// Note: 10-100x slower, but this is the STANDARD for serious DBs
     #[default]
     MaxDurability,
 }
 
 impl AsyncWriter {
-    /// Créer un nouveau async writer avec durabilité maximale par défaut
+    /// Create a new async writer with maximum durability by default
     pub fn new(store: Arc<RwLock<EventStore>>, batch_size: usize) -> Self {
         Self::with_durability(store, batch_size, DurabilityMode::default())
     }
 
-    /// Créer un async writer avec mode de durabilité configurable
+    /// Create an async writer with configurable durability mode
     pub fn with_durability(
         store: Arc<RwLock<EventStore>>,
         batch_size: usize,
         durability: DurabilityMode,
     ) -> Self {
-        // Configurer fsync selon le mode de durabilité (sur le store partagé)
+        // Configure fsync based on durability mode (on the shared store)
         {
             let mut guard = store.write().expect("event store lock poisoned");
             let fsync = durability == DurabilityMode::MaxDurability;
@@ -63,7 +63,7 @@ impl AsyncWriter {
 
             loop {
                 tokio::select! {
-                    // Recevoir des événements
+                    // Receive events
                     Some(msg) = rx.recv() => {
                         match msg {
                             WriteEvent::Event(json) => {
@@ -117,7 +117,7 @@ impl AsyncWriter {
                         Self::flush_buffer(&store, &mut buffer, &mut flushes);
                     }
 
-                    // Canal fermé
+                    // Channel closed
                     else => {
                         if !buffer.is_empty() || !flushes.is_empty() {
                             Self::flush_buffer(&store, &mut buffer, &mut flushes);
@@ -136,14 +136,14 @@ impl AsyncWriter {
         &self.tx
     }
 
-    /// Écrire un événement (non-blocking)
+    /// Write an event (non-blocking)
     pub fn write(&self, event_json: String) -> Result<(), String> {
         self.tx
             .send(WriteEvent::Event(event_json))
             .map_err(|e| format!("Failed to send event: {}", e))
     }
 
-    /// Flush le buffer sur disque via EventStore
+    /// Flush the buffer to disk via EventStore
     fn flush_buffer(
         store: &Arc<RwLock<EventStore>>,
         buffer: &mut Vec<String>,
@@ -181,12 +181,12 @@ impl AsyncWriter {
         }
     }
 
-    /// Attendre que tous les événements soient écrits
+    /// Wait for all events to be written
     pub async fn shutdown(mut self) {
-        // Fermer le canal
+        // Close the channel
         drop(self.tx);
 
-        // Attendre que le writer termine
+        // Wait for the writer to finish
         if let Some(handle) = self.handle.take() {
             let _ = handle.await;
         }

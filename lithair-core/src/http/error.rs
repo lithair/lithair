@@ -18,7 +18,7 @@ fn body_from<T: Into<Bytes>>(data: T) -> RespBody {
 }
 
 pub fn json_error(status: StatusCode, code: &str, message: &str) -> Resp {
-    let body = format!(r#"{{"error":"{}","message":"{}"}}"#, code, message);
+    let body = serde_json::json!({"error": code, "message": message}).to_string();
     Response::builder()
         .status(status)
         .header("content-type", "application/json")
@@ -28,7 +28,7 @@ pub fn json_error(status: StatusCode, code: &str, message: &str) -> Resp {
 
 /// 405 Method Not Allowed with Allow header
 pub fn method_not_allowed(allowed: &str) -> Resp {
-    let body = format!(r#"{{"error":"method_not_allowed","allow":"{}"}}"#, allowed);
+    let body = serde_json::json!({"error": "method_not_allowed", "allow": allowed}).to_string();
     Response::builder()
         .status(StatusCode::METHOD_NOT_ALLOWED)
         .header("content-type", "application/json")

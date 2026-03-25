@@ -202,7 +202,7 @@ impl EventDeserializer for SessionCreatedDeserializer {
         let mut event: SessionCreated = serde_json::from_str(payload_json)
             .map_err(|e| format!("Failed to deserialize SessionCreated payload: {}", e))?;
 
-        // Exemple d'upcasting interne : normaliser les anciens event_type non versionnés
+        // Internal upcasting example: normalize old unversioned event_type values
         if event.event_type.is_empty() || event.event_type == "SessionCreated" {
             event.event_type = "SessionCreated.v1".to_string();
         }

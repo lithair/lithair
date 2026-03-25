@@ -105,7 +105,7 @@ pub struct UrlHandlerStats {
     pub total_handlers: usize,
 }
 
-/// Macro pour simplifier l'enregistrement des handlers
+/// Macro to simplify handler registration
 /// Usage: register_handler!(registry, "/api/products/getsum", calculate_sum);
 #[macro_export]
 macro_rules! register_handler {
@@ -114,7 +114,7 @@ macro_rules! register_handler {
     };
 }
 
-/// Macro pour les handlers avec préfixes
+/// Macro for prefix-based handlers
 /// Usage: register_prefix_handler!(registry, "/api/products/", product_handler);
 #[macro_export]
 macro_rules! register_prefix_handler {
@@ -123,7 +123,7 @@ macro_rules! register_prefix_handler {
     };
 }
 
-/// Helper macro pour créer des handlers rapidement
+/// Helper macro for quickly creating handlers
 /// Usage: simple_handler!(GetSumHandler, |req, server| async { ... });
 #[macro_export]
 macro_rules! simple_handler {

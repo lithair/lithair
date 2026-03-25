@@ -38,7 +38,7 @@ impl TestArticle {
     pub fn random(index: usize) -> Self {
         Self {
             id: format!("art-{:06}", index),
-            title: format!("Article de test numéro {}", index),
+            title: format!("Test article number {}", index),
             price: (index as f64 * 1.5) + 9.99,
         }
     }
@@ -48,7 +48,7 @@ impl TestArticle {
 
 #[given(expr = "a test type {string} with fields id, title, price")]
 async fn given_test_type(_world: &mut LithairWorld, type_name: String) {
-    println!("📦 Type de test défini: {} (id: String, title: String, price: f64)", type_name);
+    println!("📦 Test type defined: {} (id: String, title: String, price: f64)", type_name);
 }
 
 #[given(expr = "an article with id {string} title {string} and price {float}")]
@@ -59,7 +59,7 @@ async fn given_article_with_fields(
     price: f64,
 ) {
     let article = TestArticle::new(&id, &title, price);
-    println!("📦 Article créé: {:?}", article);
+    println!("📦 Article created: {:?}", article);
 
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(serde_json::to_string(&article).unwrap_or_default());
@@ -67,25 +67,25 @@ async fn given_article_with_fields(
 
 #[given(expr = "{int} randomly generated articles")]
 async fn given_random_articles(world: &mut LithairWorld, count: usize) {
-    println!("📦 Génération de {} articles aléatoires...", count);
+    println!("📦 Generating {} random articles...", count);
 
     let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(serde_json::to_string(&articles).unwrap_or_default());
 
-    println!("✅ {} articles générés", count);
+    println!("✅ {} articles generated", count);
 }
 
 #[given("valid JSON data representing an article")]
 async fn given_valid_json_data(world: &mut LithairWorld) {
-    let article = TestArticle::new("test-001", "Article de test", 19.99);
+    let article = TestArticle::new("test-001", "Test article", 19.99);
     let json = serde_json::to_string(&article).unwrap();
 
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(json);
 
-    println!("📦 Données JSON valides préparées");
+    println!("📦 Valid JSON data prepared");
 }
 
 #[given("an article serialized in rkyv")]
@@ -99,14 +99,14 @@ async fn given_rkyv_serialized_article(world: &mut LithairWorld) {
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(hex_encode(&bytes));
 
-    println!("📦 Article sérialisé en rkyv ({} bytes)", bytes.len());
+    println!("📦 Article serialized in rkyv ({} bytes)", bytes.len());
 }
 
 #[given(expr = "malformed JSON data {string}")]
 async fn given_malformed_json(world: &mut LithairWorld, data: String) {
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(data);
-    println!("📦 Données JSON malformées préparées");
+    println!("📦 Malformed JSON data prepared");
 }
 
 #[given(expr = "random binary data of {int} bytes")]
@@ -117,7 +117,7 @@ async fn given_random_binary(world: &mut LithairWorld, size: usize) {
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(hex_encode(&bytes));
 
-    println!("📦 {} bytes aléatoires générés", size);
+    println!("📦 {} random bytes generated", size);
 }
 
 #[given(expr = "the serialization mode {string}")]
@@ -125,7 +125,7 @@ async fn given_serialization_mode(world: &mut LithairWorld, mode: String) {
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(mode.clone());
 
-    println!("📦 Mode de sérialisation: {}", mode);
+    println!("📦 Serialization mode: {}", mode);
 }
 
 // ==================== WHEN STEPS ====================
@@ -147,7 +147,7 @@ async fn when_serialize_json(world: &mut LithairWorld) {
     metrics.last_state_json = Some(json);
     metrics.last_avg_latency_ms = elapsed.as_secs_f64() * 1000.0;
 
-    println!("📤 Article sérialisé en JSON en {:.3}ms", metrics.last_avg_latency_ms);
+    println!("📤 Article serialized to JSON in {:.3}ms", metrics.last_avg_latency_ms);
 }
 
 #[when("I deserialize the JSON data")]
@@ -165,7 +165,7 @@ async fn when_deserialize_json(world: &mut LithairWorld) {
     metrics.last_state_json = Some(serde_json::to_string(&article).unwrap());
     metrics.last_avg_latency_ms = elapsed.as_secs_f64() * 1000.0;
 
-    println!("📥 Article désérialisé depuis JSON en {:.3}ms", metrics.last_avg_latency_ms);
+    println!("📥 Article deserialized from JSON in {:.3}ms", metrics.last_avg_latency_ms);
 }
 
 #[when("I serialize the article in rkyv mode")]
@@ -188,7 +188,7 @@ async fn when_serialize_rkyv(world: &mut LithairWorld) {
     metrics.last_avg_latency_ms = elapsed.as_secs_f64() * 1000.0;
 
     println!(
-        "📤 Article sérialisé en rkyv ({} bytes) en {:.3}ms",
+        "📤 Article serialized to rkyv ({} bytes) in {:.3}ms",
         bytes.len(),
         metrics.last_avg_latency_ms
     );
@@ -211,7 +211,7 @@ async fn when_deserialize_rkyv(world: &mut LithairWorld) {
     metrics.last_state_json = Some(serde_json::to_string(&article).unwrap());
     metrics.last_avg_latency_ms = elapsed.as_secs_f64() * 1000.0;
 
-    println!("📥 Article désérialisé depuis rkyv en {:.3}ms", metrics.last_avg_latency_ms);
+    println!("📥 Article deserialized from rkyv in {:.3}ms", metrics.last_avg_latency_ms);
 }
 
 #[when(expr = "I measure the time to serialize the {int} articles in JSON")]
@@ -223,7 +223,7 @@ async fn when_benchmark_json_serialize(world: &mut LithairWorld, count: usize) {
     let articles: Vec<TestArticle> =
         serde_json::from_str(&json_data).expect("Should have valid articles JSON");
 
-    println!("⏱️  Benchmark sérialisation JSON de {} articles...", count);
+    println!("⏱️  Benchmark JSON serialization of {} articles...", count);
 
     let start = Instant::now();
     let mut total_bytes = 0usize;
@@ -240,7 +240,7 @@ async fn when_benchmark_json_serialize(world: &mut LithairWorld, count: usize) {
     metrics.last_throughput = throughput_mb_s;
 
     println!(
-        "✅ JSON serialize: {} articles, {} bytes en {:.3}s = {:.2} MB/s",
+        "✅ JSON serialize: {} articles, {} bytes in {:.3}s = {:.2} MB/s",
         count,
         total_bytes,
         elapsed.as_secs_f64(),
@@ -255,7 +255,7 @@ async fn when_benchmark_json_deserialize(world: &mut LithairWorld, count: usize)
     let json_data: Vec<Vec<u8>> =
         articles.iter().map(|a| json_mode::serialize_bytes(a).unwrap()).collect();
 
-    println!("⏱️  Benchmark désérialisation JSON de {} articles...", count);
+    println!("⏱️  Benchmark JSON deserialization of {} articles...", count);
 
     let start = Instant::now();
     let mut total_bytes = 0usize;
@@ -272,7 +272,7 @@ async fn when_benchmark_json_deserialize(world: &mut LithairWorld, count: usize)
     metrics.last_avg_latency_ms = throughput_mb_s;
 
     println!(
-        "✅ JSON deserialize: {} articles, {} bytes en {:.3}s = {:.2} MB/s",
+        "✅ JSON deserialize: {} articles, {} bytes in {:.3}s = {:.2} MB/s",
         count,
         total_bytes,
         elapsed.as_secs_f64(),
@@ -284,7 +284,7 @@ async fn when_benchmark_json_deserialize(world: &mut LithairWorld, count: usize)
 async fn when_benchmark_rkyv_serialize(world: &mut LithairWorld, count: usize) {
     let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
-    println!("⏱️  Benchmark sérialisation rkyv de {} articles...", count);
+    println!("⏱️  Benchmark rkyv serialization of {} articles...", count);
 
     let start = Instant::now();
     let mut total_bytes = 0usize;
@@ -303,7 +303,7 @@ async fn when_benchmark_rkyv_serialize(world: &mut LithairWorld, count: usize) {
     metrics.last_throughput = throughput_mb_s;
 
     println!(
-        "✅ rkyv serialize: {} articles, {} bytes en {:.3}s = {:.2} MB/s",
+        "✅ rkyv serialize: {} articles, {} bytes in {:.3}s = {:.2} MB/s",
         count,
         total_bytes,
         elapsed.as_secs_f64(),
@@ -320,7 +320,7 @@ async fn when_benchmark_rkyv_deserialize(world: &mut LithairWorld, count: usize)
         .map(|a| rkyv::to_bytes::<rkyv::rancor::Error>(a).unwrap().to_vec())
         .collect();
 
-    println!("⏱️  Benchmark désérialisation rkyv de {} articles...", count);
+    println!("⏱️  Benchmark rkyv deserialization of {} articles...", count);
 
     let start = Instant::now();
     let mut total_bytes = 0usize;
@@ -338,7 +338,7 @@ async fn when_benchmark_rkyv_deserialize(world: &mut LithairWorld, count: usize)
     metrics.last_avg_latency_ms = throughput_mb_s;
 
     println!(
-        "✅ rkyv deserialize: {} articles, {} bytes en {:.3}s = {:.2} MB/s",
+        "✅ rkyv deserialize: {} articles, {} bytes in {:.3}s = {:.2} MB/s",
         count,
         total_bytes,
         elapsed.as_secs_f64(),
@@ -359,7 +359,7 @@ async fn when_deserialize_simd_json(world: &mut LithairWorld) {
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(serde_json::to_string(&article).unwrap());
 
-    println!("📥 Article désérialisé avec simd-json");
+    println!("📥 Article deserialized with simd-json");
 }
 
 #[when("I access the data in zero-copy mode")]
@@ -379,7 +379,7 @@ async fn when_access_zero_copy(world: &mut LithairWorld) {
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(title.to_string());
 
-    println!("📥 Accès zero-copy au titre: {}", title);
+    println!("📥 Zero-copy access to title: {}", title);
 }
 
 #[when("I serialize in JSON")]
@@ -463,7 +463,7 @@ async fn when_try_deserialize_rkyv(world: &mut LithairWorld) {
 async fn when_full_benchmark_json(world: &mut LithairWorld, count: usize) {
     let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
-    println!("⏱️  Benchmark complet JSON sur {} articles...", count);
+    println!("⏱️  Full JSON benchmark on {} articles...", count);
 
     let start = Instant::now();
     let serialized: Vec<Vec<u8>> =
@@ -495,7 +495,7 @@ async fn when_full_benchmark_json(world: &mut LithairWorld, count: usize) {
 async fn when_full_benchmark_rkyv(world: &mut LithairWorld, count: usize) {
     let articles: Vec<TestArticle> = (0..count).map(TestArticle::random).collect();
 
-    println!("⏱️  Benchmark complet rkyv sur {} articles...", count);
+    println!("⏱️  Full rkyv benchmark on {} articles...", count);
 
     let start = Instant::now();
     let serialized: Vec<Vec<u8>> = articles
@@ -535,7 +535,7 @@ async fn then_article_has_id(world: &mut LithairWorld, expected_id: String) {
     let article: TestArticle = serde_json::from_str(&json_data).expect("Should have valid article");
 
     assert_eq!(article.id, expected_id, "ID mismatch");
-    println!("✅ ID vérifié: {}", expected_id);
+    println!("✅ ID verified: {}", expected_id);
 }
 
 #[then(expr = "the deserialized article must have title {string}")]
@@ -547,7 +547,7 @@ async fn then_article_has_title(world: &mut LithairWorld, expected_title: String
     let article: TestArticle = serde_json::from_str(&json_data).expect("Should have valid article");
 
     assert_eq!(article.title, expected_title, "Title mismatch");
-    println!("✅ Titre vérifié: {}", expected_title);
+    println!("✅ Title verified: {}", expected_title);
 }
 
 #[then(expr = "the deserialized article must have price {float}")]
@@ -564,7 +564,7 @@ async fn then_article_has_price(world: &mut LithairWorld, expected_price: f64) {
         article.price,
         expected_price
     );
-    println!("✅ Prix vérifié: {:.2}", expected_price);
+    println!("✅ Price verified: {:.2}", expected_price);
 }
 
 #[then(expr = "JSON serialize throughput must be greater than {int} MB/s")]
@@ -625,7 +625,7 @@ async fn then_rkyv_deserialize_throughput(world: &mut LithairWorld, min_mb_s: us
 
 #[then("parsing must use SIMD instructions if available")]
 async fn then_simd_used(_world: &mut LithairWorld) {
-    println!("✅ simd-json utilisé (SIMD activé si CPU supporte AVX2/SSE4.2)");
+    println!("✅ simd-json used (SIMD enabled if CPU supports AVX2/SSE4.2)");
 }
 
 #[then("the result must be identical to serde_json")]
@@ -643,12 +643,12 @@ async fn then_result_identical_to_serde_json(world: &mut LithairWorld) {
     let simd_parsed: serde_json::Value = serde_json::from_str(&simd_output).unwrap();
 
     assert_eq!(serde_parsed, simd_parsed, "JSON outputs should be equivalent");
-    println!("✅ Résultat identique à serde_json");
+    println!("✅ Result identical to serde_json");
 }
 
 #[then("no memory allocation must be performed")]
 async fn then_no_allocation(_world: &mut LithairWorld) {
-    println!("✅ Zero-copy confirmé (rkyv::access ne fait pas d'allocation)");
+    println!("✅ Zero-copy confirmed (rkyv::access performs no allocation)");
 }
 
 #[then("I must be able to read the title without deserializing")]
@@ -657,7 +657,7 @@ async fn then_read_title_without_deserialize(world: &mut LithairWorld) {
     let title = metrics.last_state_json.clone().unwrap_or_default();
 
     assert!(!title.is_empty(), "Title should have been read");
-    println!("✅ Titre lu sans désérialisation: {}", title);
+    println!("✅ Title read without deserialization: {}", title);
 }
 
 #[then("rkyv size must be less than or equal to JSON size")]
@@ -667,7 +667,7 @@ async fn then_rkyv_size_smaller_or_equal(world: &mut LithairWorld) {
     let rkyv_size = metrics.last_avg_latency_ms;
 
     println!(
-        "📊 Comparaison taille: JSON={} bytes, rkyv={} bytes",
+        "📊 Size comparison: JSON={} bytes, rkyv={} bytes",
         json_size as usize, rkyv_size as usize
     );
 }
@@ -678,7 +678,7 @@ async fn then_mode_selected(world: &mut LithairWorld, expected_mode: String) {
     let actual_mode = metrics.last_state_json.clone().unwrap_or_default();
 
     assert_eq!(actual_mode, expected_mode, "Mode mismatch");
-    println!("✅ Mode sélectionné: {}", expected_mode);
+    println!("✅ Mode selected: {}", expected_mode);
 }
 
 #[then(expr = "the content-type must be {string}")]
@@ -705,12 +705,12 @@ async fn then_json_error(world: &mut LithairWorld) {
 
     assert!(result.starts_with("error:"), "Expected error, got: {}", result);
     assert!(result.contains("JSON"), "Expected JSON error");
-    println!("✅ Erreur JSON retournée: {}", result);
+    println!("✅ JSON error returned: {}", result);
 }
 
 #[then("the message must indicate the error position")]
 async fn then_error_position(_world: &mut LithairWorld) {
-    println!("✅ Position d'erreur incluse dans le message");
+    println!("✅ Error position included in message");
 }
 
 #[then("a RkyvDeserializeError or RkyvValidationError must be returned")]
@@ -719,7 +719,7 @@ async fn then_rkyv_error(world: &mut LithairWorld) {
     let result = metrics.last_state_json.clone().unwrap_or_default();
 
     assert!(result.starts_with("error:"), "Expected error, got: {}", result);
-    println!("✅ Erreur rkyv retournée: {}", result);
+    println!("✅ rkyv error returned: {}", result);
 }
 
 #[then(expr = "rkyv serialize must be at least {int}x faster than JSON serialize")]
@@ -740,7 +740,7 @@ async fn then_rkyv_faster_serialize(world: &mut LithairWorld, factor: usize) {
 
     if actual_factor < factor as f64 {
         println!(
-            "⚠️  Ratio {:.1}x < {}x attendu (normal pour petits objets)",
+            "⚠️  Ratio {:.1}x < {}x expected (normal for small objects)",
             actual_factor, factor
         );
     }
@@ -764,7 +764,7 @@ async fn then_rkyv_faster_deserialize(world: &mut LithairWorld, factor: usize) {
 
     if actual_factor < factor as f64 {
         println!(
-            "⚠️  Ratio {:.1}x < {}x attendu (normal pour petits objets)",
+            "⚠️  Ratio {:.1}x < {}x expected (normal for small objects)",
             actual_factor, factor
         );
     }

@@ -49,9 +49,9 @@ impl Default for OptimizedPersistenceConfig {
             buffer_size: 1024 * 1024,    // 1MB buffer
             flush_interval_ms: 100,      // 100ms flush interval
             max_events_buffer: 1000,     // Max 1000 events in buffer
-            enable_binary_format: false, // JSON par défaut pour compatibilité
-            fsync_enabled: true,         // DURABILITÉ MAXIMALE par défaut
-            enable_checksums: true,      // CRC32 checksums par défaut
+            enable_binary_format: false, // JSON by default for compatibility
+            fsync_enabled: true,         // MAXIMUM DURABILITY by default
+            enable_checksums: true,      // CRC32 checksums by default
         }
     }
 }

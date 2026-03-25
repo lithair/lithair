@@ -30,9 +30,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
 struct Note {
     #[http(expose)]
+    #[lifecycle(immutable)]
     id: String,
 
-    #[http(expose)]
+    #[http(expose, validate = "non_empty", validate = "max_length(200)")]
     title: String,
 
     #[http(expose)]
@@ -44,13 +45,6 @@ struct Note {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("Notes App (Angular)");
-    println!("====================");
-    println!();
-    println!("API:      http://localhost:8080/api/notes");
-    println!("Frontend: http://localhost:8080/");
-    println!();
-
     LithairServer::new()
         .with_port(8080)
         .with_host("127.0.0.1")

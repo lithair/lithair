@@ -9,8 +9,6 @@ events.raftlog
 state.raftsnap
 events.raftidx
 meta.raftmeta
-examples/ecommerce/data/
-examples/**/nodes/**/
 .admin-path
 
 # Logs

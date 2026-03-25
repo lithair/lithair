@@ -1,7 +1,7 @@
-//! Test runner pour les tests de durabilité multi-fichiers
+//! Test runner for multi-file durability tests
 //!
-//! Ce test vérifie que chaque structure de données a son propre fichier
-//! avec CRC32 validé pour l'intégrité des données.
+//! This test verifies that each data structure has its own file
+//! with CRC32 validated for data integrity.
 
 use cucumber::World;
 use cucumber_tests::features::world::LithairWorld;
@@ -9,7 +9,7 @@ use cucumber_tests::features::world::LithairWorld;
 #[tokio::main]
 async fn main() {
     LithairWorld::cucumber()
-        .max_concurrent_scenarios(1) // Séquentiel pour éviter conflits de fichiers
+        .max_concurrent_scenarios(1) // Sequential to avoid file conflicts
         .filter_run("features/performance/multi_file_durability.feature", |_, _, _| true)
         .await;
 }

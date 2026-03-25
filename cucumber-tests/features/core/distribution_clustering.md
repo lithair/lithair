@@ -1,37 +1,37 @@
-# Distribution & Clustering - Stack Technique
+# Distribution & Clustering - Technical Stack
 
-## Technologies utilisées
+## Technologies Used
 
-- **Consensus**: Raft protocol (implémentation maison)
+- **Consensus**: Raft protocol (in-house implementation)
 - **State management**: SCC2 (State Concurrent Cache v2)
-- **Network**: TCP avec heartbeats personnalisés
-- **Persistence**: Event sourcing avec WAL (Write-Ahead Log)
-- **Serialization**: Bincode pour les messages Raft
+- **Network**: TCP with custom heartbeats
+- **Persistence**: Event sourcing with WAL (Write-Ahead Log)
+- **Serialization**: Bincode for Raft messages
 
-## Points de monitoring critiques
+## Critical Monitoring Points
 
-- `raft.current_term`: Terme Raft actuel
+- `raft.current_term`: Current Raft term
 - `raft.state`: Follower/Candidate/Leader
-- `scc2.partitions`: État des partitions réseau
-- `election.timeout_ms`: Timeout d'élection configuré
-- `log.committed_index`: Index des entrées commitées
+- `scc2.partitions`: Network partition state
+- `election.timeout_ms`: Configured election timeout
+- `log.committed_index`: Committed entry index
 
-## Commandes de debug
+## Debug Commands
 
 ```bash
-# Voir l'état du cluster
+# View cluster state
 curl http://localhost:8080/admin/cluster/status
 
-# Forcer une élection
+# Force an election
 curl -X POST http://localhost:8080/admin/cluster/election
 
-# Simuler une partition réseau
+# Simulate a network partition
 curl -X POST http://localhost:8080/admin/debug/partition/1
 ```
 
-## Logs patterns à surveiller
+## Log Patterns to Watch
 
-- `Election timeout`: Échec d'élection
-- `Lost leadership`: Perte de leadership
-- `Partition detected`: Détection de partition
-- `Log replication failed`: Échec de réplication
+- `Election timeout`: Election failure
+- `Lost leadership`: Leadership loss
+- `Partition detected`: Partition detection
+- `Log replication failed`: Replication failure

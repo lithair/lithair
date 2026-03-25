@@ -1,20 +1,20 @@
-//! Test runner pour les stress tests de snapshots
+//! Test runner for snapshot stress tests
 //!
-//! Ce test vérifie les performances des snapshots à grande échelle
-//! avec 10K, 100K, 500K et 1M événements.
+//! This test verifies snapshot performance at large scale
+//! with 10K, 100K, 500K and 1M events.
 
 use cucumber::World;
 use cucumber_tests::features::world::LithairWorld;
 
 #[tokio::main]
 async fn main() {
-    // Par défaut, on lance uniquement les tests rapides (@quick)
-    // Pour lancer les tests complets, utilisez: cargo test --test stress_snapshot_test -- --tags @1m
+    // By default, only run quick tests (@quick)
+    // To run full tests, use: cargo test --test stress_snapshot_test -- --tags @1m
     LithairWorld::cucumber()
-        .max_concurrent_scenarios(1) // Séquentiel pour éviter conflits de fichiers
+        .max_concurrent_scenarios(1) // Sequential to avoid file conflicts
         .filter_run("features/performance/stress_snapshot_1m.feature", |_, _, sc| {
-            // Par défaut, lancer uniquement les tests @quick
-            // Les autres tests peuvent être lancés manuellement
+            // By default, only run @quick tests
+            // Other tests can be run manually
             sc.tags.iter().any(|t| t == "quick")
         })
         .await;

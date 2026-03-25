@@ -4,15 +4,15 @@ use std::time::Instant;
 use crate::features::world::LithairWorld;
 use lithair_core::engine::events::EventEnvelope;
 
-// ==================== CRÉATION MASSIVE ====================
+// ==================== MASSIVE CREATION ====================
 
-#[when(expr = "je crée {int} événements avec throughput mesuré pour {string}")]
+#[when(expr = "I create {int} events with measured throughput for {string}")]
 async fn when_create_events_with_throughput(
     world: &mut LithairWorld,
     count: usize,
     aggregate_id: String,
 ) {
-    println!("📝 Création de {} événements pour '{}'...", count, aggregate_id);
+    println!("📝 Creating {} events for '{}'...", count, aggregate_id);
 
     let start = Instant::now();
 
@@ -40,7 +40,7 @@ async fn when_create_events_with_throughput(
 
             // Progress every 10K
             if (i + 1) % 10000 == 0 {
-                println!("  ... {} événements créés", i + 1);
+                println!("  ... {} events created", i + 1);
             }
         }
     }
@@ -49,20 +49,20 @@ async fn when_create_events_with_throughput(
     let throughput = count as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} événements créés en {:.2}s ({:.0} evt/s)",
+        "✅ {} events created in {:.2}s ({:.0} evt/s)",
         count,
         elapsed.as_secs_f64(),
         throughput
     );
 
-    // Sauvegarder dans metrics
+    // Save in metrics
     let mut metrics = world.metrics.lock().await;
     metrics.request_count = count as u64;
     metrics.total_duration = elapsed;
     metrics.throughput = throughput;
 }
 
-#[when(expr = "je crée {int} événements par batch de {int} pour {string}")]
+#[when(expr = "I create {int} events in batches of {int} for {string}")]
 async fn when_create_events_by_batch(
     world: &mut LithairWorld,
     total: usize,
@@ -70,7 +70,7 @@ async fn when_create_events_by_batch(
     aggregate_id: String,
 ) {
     println!(
-        "📝 Création de {} événements par batch de {} pour '{}'...",
+        "📝 Creating {} events in batches of {} for '{}'...",
         total, batch_size, aggregate_id
     );
 
@@ -104,13 +104,13 @@ async fn when_create_events_by_batch(
                 store.append_envelope(&envelope).expect("Failed to append envelope");
             }
 
-            // Flush après chaque batch
+            // Flush after each batch
             store.flush_all().expect("Failed to flush");
 
             let batch_elapsed = start.elapsed();
             let batch_throughput = ((batch + 1) * batch_size) as f64 / batch_elapsed.as_secs_f64();
             println!(
-                "  Batch {}/{} terminé - {:.0} evt/s cumulé",
+                "  Batch {}/{} completed - {:.0} evt/s cumulative",
                 batch + 1,
                 num_batches,
                 batch_throughput
@@ -122,7 +122,7 @@ async fn when_create_events_by_batch(
     let throughput = total as f64 / elapsed.as_secs_f64();
 
     println!(
-        "✅ {} événements créés en {:.2}s ({:.0} evt/s)",
+        "✅ {} events created in {:.2}s ({:.0} evt/s)",
         total,
         elapsed.as_secs_f64(),
         throughput
@@ -134,14 +134,14 @@ async fn when_create_events_by_batch(
     metrics.throughput = throughput;
 }
 
-#[when(expr = "je crée {int} événements répartis sur {int} aggregates")]
+#[when(expr = "I create {int} events distributed across {int} aggregates")]
 async fn when_create_distributed_events(
     world: &mut LithairWorld,
     total: usize,
     num_aggregates: usize,
 ) {
     println!(
-        "📝 Création de {} événements répartis sur {} aggregates...",
+        "📝 Creating {} events distributed across {} aggregates...",
         total, num_aggregates
     );
 
@@ -174,14 +174,14 @@ async fn when_create_distributed_events(
             }
 
             if (agg_idx + 1) % 10 == 0 {
-                println!("  ... {} aggregates traités", agg_idx + 1);
+                println!("  ... {} aggregates processed", agg_idx + 1);
             }
         }
     }
 
     let elapsed = start.elapsed();
     println!(
-        "✅ {} événements répartis sur {} aggregates en {:.2}s",
+        "✅ {} events distributed across {} aggregates in {:.2}s",
         total,
         num_aggregates,
         elapsed.as_secs_f64()
@@ -192,20 +192,20 @@ async fn when_create_distributed_events(
     metrics.total_duration = elapsed;
 }
 
-// ==================== SNAPSHOTS COMPLEXES ====================
+// ==================== COMPLEX SNAPSHOTS ====================
 
-#[when(expr = "je crée un snapshot pour {string} avec état complexe de {int} éléments")]
+#[when(expr = "I create a snapshot for {string} with complex state of {int} elements")]
 async fn when_create_complex_snapshot(
     world: &mut LithairWorld,
     aggregate_id: String,
     num_elements: usize,
 ) {
     println!(
-        "📸 Création snapshot complexe pour '{}' ({} éléments)...",
+        "📸 Creating complex snapshot for '{}' ({} elements)...",
         aggregate_id, num_elements
     );
 
-    // Générer un état complexe
+    // Generate a complex state
     let items: Vec<serde_json::Value> = (0..std::cmp::min(num_elements, 1000))
         .map(|i| {
             serde_json::json!({
@@ -237,16 +237,16 @@ async fn when_create_complex_snapshot(
     let mut metrics = world.metrics.lock().await;
     metrics.last_state_json = Some(state);
 
-    println!("✅ Snapshot complexe créé pour '{}'", aggregate_id);
+    println!("✅ Complex snapshot created for '{}'", aggregate_id);
 }
 
-#[when(expr = "je crée un snapshot pour {string} avec état de {int} éléments")]
+#[when(expr = "I create a snapshot for {string} with state of {int} elements")]
 async fn when_create_snapshot_with_count(
     world: &mut LithairWorld,
     aggregate_id: String,
     _num_elements: usize,
 ) {
-    println!("📸 Création snapshot pour '{}' ({} événements)...", aggregate_id, _num_elements);
+    println!("📸 Creating snapshot for '{}' ({} events)...", aggregate_id, _num_elements);
 
     let state = serde_json::json!({
         "count": _num_elements,
@@ -263,12 +263,12 @@ async fn when_create_snapshot_with_count(
             .expect("Failed to save snapshot");
     }
 
-    println!("✅ Snapshot créé pour '{}'", aggregate_id);
+    println!("✅ Snapshot created for '{}'", aggregate_id);
 }
 
-#[when("je crée des snapshots pour tous les aggregates")]
+#[when("I create snapshots for all aggregates")]
 async fn when_create_snapshots_for_all_aggregates(world: &mut LithairWorld) {
-    println!("📸 Création snapshots pour tous les aggregates...");
+    println!("📸 Creating snapshots for all aggregates...");
 
     let aggregates: Vec<String> = {
         let store_guard = world.multi_file_store.lock().await;
@@ -293,18 +293,18 @@ async fn when_create_snapshots_for_all_aggregates(world: &mut LithairWorld) {
         }
 
         if (idx + 1) % 10 == 0 {
-            println!("  ... {} snapshots créés", idx + 1);
+            println!("  ... {} snapshots created", idx + 1);
         }
     }
 
-    println!("✅ {} snapshots créés", count);
+    println!("✅ {} snapshots created", count);
 }
 
-// ==================== MESURES PERFORMANCE ====================
+// ==================== PERFORMANCE MEASUREMENTS ====================
 
-#[when(expr = "je mesure le temps de récupération complète pour {string}")]
+#[when(expr = "I measure the complete recovery time for {string}")]
 async fn when_measure_full_recovery_time(world: &mut LithairWorld, aggregate_id: String) {
-    println!("⏱️ Mesure temps de récupération complète pour '{}'...", aggregate_id);
+    println!("⏱️ Measuring complete recovery time for '{}'...", aggregate_id);
 
     let start = Instant::now();
 
@@ -319,12 +319,12 @@ async fn when_measure_full_recovery_time(world: &mut LithairWorld, aggregate_id:
     let mut metrics = world.metrics.lock().await;
     metrics.total_duration = elapsed;
 
-    println!("✅ Récupération complète en {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+    println!("✅ Complete recovery in {:.2}ms", elapsed.as_secs_f64() * 1000.0);
 }
 
-#[when(expr = "je mesure le temps de récupération après snapshot pour {string}")]
+#[when(expr = "I measure the recovery time after snapshot for {string}")]
 async fn when_measure_snapshot_recovery_time(world: &mut LithairWorld, aggregate_id: String) {
-    println!("⏱️ Mesure temps de récupération après snapshot pour '{}'...", aggregate_id);
+    println!("⏱️ Measuring recovery time after snapshot for '{}'...", aggregate_id);
 
     let start = Instant::now();
 
@@ -332,10 +332,10 @@ async fn when_measure_snapshot_recovery_time(world: &mut LithairWorld, aggregate
         let store_guard = world.multi_file_store.lock().await;
         let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
 
-        // Charger le snapshot
+        // Load the snapshot
         let _snapshot = store.load_snapshot(Some(&aggregate_id)).expect("Failed to load snapshot");
 
-        // Lire les événements après le snapshot
+        // Read events after the snapshot
         let _events = store
             .read_events_after_snapshot(Some(&aggregate_id))
             .expect("Failed to read events after snapshot");
@@ -346,73 +346,76 @@ async fn when_measure_snapshot_recovery_time(world: &mut LithairWorld, aggregate
     let mut metrics = world.metrics.lock().await;
     metrics.snapshot_read_duration = Some(elapsed);
 
-    println!("✅ Récupération avec snapshot en {:.2}ms", elapsed.as_secs_f64() * 1000.0);
+    println!("✅ Recovery with snapshot in {:.2}ms", elapsed.as_secs_f64() * 1000.0);
 }
 
-// ==================== VALIDATIONS EVENTS ====================
+// ==================== EVENT VALIDATIONS ====================
 
-#[then(expr = "le nombre d'événements à rejouer doit être {int}")]
+#[then(expr = "the number of events to replay must be {int}")]
 async fn then_events_to_replay_must_be(world: &mut LithairWorld, expected_count: usize) {
     let metrics = world.metrics.lock().await;
     let actual = metrics.request_count as usize;
 
     assert_eq!(
         actual, expected_count,
-        "❌ Nombre d'événements à rejouer: {} (attendu: {})",
+        "Number of events to replay: {} (expected: {})",
         actual, expected_count
     );
 
-    println!("✅ {} événements à rejouer (correct)", actual);
+    println!("✅ {} events to replay (correct)", actual);
 }
 
-// ==================== VALIDATIONS PERFORMANCE ====================
+// ==================== PERFORMANCE VALIDATIONS ====================
 
-#[then(expr = "le throughput de création doit être supérieur à {int} evt/s")]
+#[then(expr = "the creation throughput must be greater than {int} evt/s")]
 async fn then_throughput_must_be_above(world: &mut LithairWorld, min_throughput: usize) {
     let metrics = world.metrics.lock().await;
     let actual = metrics.throughput;
 
     assert!(
         actual >= min_throughput as f64,
-        "❌ Throughput insuffisant: {:.0} evt/s (minimum: {} evt/s)",
+        "Insufficient throughput: {:.0} evt/s (minimum: {} evt/s)",
         actual,
         min_throughput
     );
 
-    println!("✅ Throughput validé: {:.0} evt/s >= {} evt/s", actual, min_throughput);
+    println!("✅ Throughput validated: {:.0} evt/s >= {} evt/s", actual, min_throughput);
 }
 
-#[then(expr = "le throughput moyen doit être supérieur à {int} evt/s")]
+#[then(expr = "the average throughput must be greater than {int} evt/s")]
 async fn then_average_throughput_must_be_above(world: &mut LithairWorld, min_throughput: usize) {
     let metrics = world.metrics.lock().await;
     let actual = metrics.throughput;
 
     assert!(
         actual >= min_throughput as f64,
-        "❌ Throughput moyen insuffisant: {:.0} evt/s (minimum: {} evt/s)",
+        "Insufficient average throughput: {:.0} evt/s (minimum: {} evt/s)",
         actual,
         min_throughput
     );
 
-    println!("✅ Throughput moyen validé: {:.0} evt/s >= {} evt/s", actual, min_throughput);
+    println!(
+        "✅ Average throughput validated: {:.0} evt/s >= {} evt/s",
+        actual, min_throughput
+    );
 }
 
-#[then(expr = "le temps total de création doit être inférieur à {int} secondes")]
+#[then(expr = "the total creation time must be less than {int} seconds")]
 async fn then_creation_time_must_be_below(world: &mut LithairWorld, max_seconds: u64) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.total_duration.as_secs_f64();
 
     assert!(
         elapsed < max_seconds as f64,
-        "❌ Temps de création trop long: {:.2}s (max: {}s)",
+        "Creation time too long: {:.2}s (max: {}s)",
         elapsed,
         max_seconds
     );
 
-    println!("✅ Temps de création validé: {:.2}s < {}s", elapsed, max_seconds);
+    println!("✅ Creation time validated: {:.2}s < {}s", elapsed, max_seconds);
 }
 
-#[then(expr = "la récupération avec snapshot doit être au moins {int}x plus rapide")]
+#[then(expr = "recovery with snapshot must be at least {int}x faster")]
 async fn then_snapshot_recovery_must_be_faster(world: &mut LithairWorld, min_ratio: usize) {
     let metrics = world.metrics.lock().await;
 
@@ -420,11 +423,11 @@ async fn then_snapshot_recovery_must_be_faster(world: &mut LithairWorld, min_rat
     let snapshot_read =
         metrics.snapshot_read_duration.expect("No snapshot read duration").as_secs_f64();
 
-    // Éviter division par zéro
+    // Avoid division by zero
     let ratio = if snapshot_read > 0.0 { full_read / snapshot_read } else { f64::INFINITY };
 
     println!(
-        "📊 Performance recovery: complète={:.2}ms, snapshot={:.2}ms, ratio={:.1}x",
+        "📊 Recovery performance: full={:.2}ms, snapshot={:.2}ms, ratio={:.1}x",
         full_read * 1000.0,
         snapshot_read * 1000.0,
         ratio
@@ -432,40 +435,37 @@ async fn then_snapshot_recovery_must_be_faster(world: &mut LithairWorld, min_rat
 
     assert!(
         ratio >= min_ratio as f64,
-        "❌ Ratio de performance insuffisant: {:.1}x (minimum: {}x)",
+        "Insufficient performance ratio: {:.1}x (minimum: {}x)",
         ratio,
         min_ratio
     );
 
-    println!("✅ Performance recovery validée: {:.1}x >= {}x", ratio, min_ratio);
+    println!("✅ Recovery performance validated: {:.1}x >= {}x", ratio, min_ratio);
 }
 
-#[then(expr = "le temps de récupération avec snapshot doit être inférieur à {int} secondes")]
+#[then(expr = "recovery time with snapshot must be less than {int} seconds")]
 async fn then_snapshot_recovery_time_must_be_below(world: &mut LithairWorld, max_seconds: u64) {
     let metrics = world.metrics.lock().await;
     let elapsed = metrics.snapshot_read_duration.expect("No snapshot read duration").as_secs_f64();
 
     assert!(
         elapsed < max_seconds as f64,
-        "❌ Temps de récupération trop long: {:.2}s (max: {}s)",
+        "Recovery time too long: {:.2}s (max: {}s)",
         elapsed,
         max_seconds
     );
 
-    println!(
-        "✅ Temps de récupération avec snapshot validé: {:.2}s < {}s",
-        elapsed, max_seconds
-    );
+    println!("✅ Recovery time with snapshot validated: {:.2}s < {}s", elapsed, max_seconds);
 }
 
-// ==================== VALIDATIONS SNAPSHOT ====================
+// ==================== SNAPSHOT VALIDATIONS ====================
 
-#[then("la taille du fichier snapshot doit être raisonnable")]
+#[then("the snapshot file size must be reasonable")]
 async fn then_snapshot_size_must_be_reasonable(world: &mut LithairWorld) {
     let metrics = world.metrics.lock().await;
     let base_path = &metrics.persist_path;
 
-    // Parcourir les sous-dossiers pour trouver les snapshots
+    // Traverse subdirectories to find snapshots
     let mut total_size = 0u64;
     if let Ok(entries) = std::fs::read_dir(base_path) {
         for entry in entries.flatten() {
@@ -478,22 +478,19 @@ async fn then_snapshot_size_must_be_reasonable(world: &mut LithairWorld) {
         }
     }
 
-    // Un snapshot ne devrait pas dépasser 100MB pour être raisonnable
+    // A snapshot should not exceed 100MB to be considered reasonable
     let max_size = 100 * 1024 * 1024; // 100MB
     assert!(
         total_size < max_size,
-        "❌ Taille des snapshots trop importante: {} bytes (max: {} bytes)",
+        "Snapshot size too large: {} bytes (max: {} bytes)",
         total_size,
         max_size
     );
 
-    println!(
-        "✅ Taille des snapshots raisonnable: {:.2} MB",
-        total_size as f64 / 1024.0 / 1024.0
-    );
+    println!("✅ Snapshot size is reasonable: {:.2} MB", total_size as f64 / 1024.0 / 1024.0);
 }
 
-#[then(expr = "{int} snapshots doivent exister")]
+#[then(expr = "{int} snapshots must exist")]
 async fn then_n_snapshots_must_exist(world: &mut LithairWorld, expected_count: usize) {
     let store_guard = world.multi_file_store.lock().await;
     let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
@@ -502,15 +499,15 @@ async fn then_n_snapshots_must_exist(world: &mut LithairWorld, expected_count: u
     assert_eq!(
         snapshots.len(),
         expected_count,
-        "❌ Nombre de snapshots: {} (attendu: {})",
+        "Number of snapshots: {} (expected: {})",
         snapshots.len(),
         expected_count
     );
 
-    println!("✅ {} snapshots existent", snapshots.len());
+    println!("✅ {} snapshots exist", snapshots.len());
 }
 
-#[then("tous les snapshots doivent avoir un CRC32 valide")]
+#[then("all snapshots must have a valid CRC32")]
 async fn then_all_snapshots_must_have_valid_crc32(world: &mut LithairWorld) {
     let store_guard = world.multi_file_store.lock().await;
     let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
@@ -526,16 +523,16 @@ async fn then_all_snapshots_must_have_valid_crc32(world: &mut LithairWorld) {
 
         assert!(
             snapshot.validate().is_ok(),
-            "❌ CRC32 invalide pour snapshot '{:?}'",
+            "Invalid CRC32 for snapshot '{:?}'",
             aggregate_id_opt
         );
         valid_count += 1;
     }
 
-    println!("✅ {} snapshots avec CRC32 valide", valid_count);
+    println!("✅ {} snapshots with valid CRC32", valid_count);
 }
 
-#[then(expr = "chaque aggregate doit avoir {int} événements")]
+#[then(expr = "each aggregate must have {int} events")]
 async fn then_each_aggregate_must_have_events(world: &mut LithairWorld, expected_count: usize) {
     let store_guard = world.multi_file_store.lock().await;
     let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
@@ -546,17 +543,17 @@ async fn then_each_aggregate_must_have_events(world: &mut LithairWorld, expected
         let count = store.get_event_count(Some(aggregate_id));
         assert_eq!(
             count, expected_count,
-            "❌ Aggregate '{}' a {} événements (attendu: {})",
+            "Aggregate '{}' has {} events (expected: {})",
             aggregate_id, count, expected_count
         );
     }
 
-    println!("✅ Tous les {} aggregates ont {} événements", aggregates.len(), expected_count);
+    println!("✅ All {} aggregates have {} events", aggregates.len(), expected_count);
 }
 
-#[then("la récupération distribuée doit utiliser les snapshots")]
+#[then("distributed recovery must use snapshots")]
 async fn then_distributed_recovery_must_use_snapshots(world: &mut LithairWorld) {
-    println!("⏱️ Vérification récupération distribuée avec snapshots...");
+    println!("⏱️ Verifying distributed recovery with snapshots...");
 
     let start = Instant::now();
 
@@ -567,7 +564,7 @@ async fn then_distributed_recovery_must_use_snapshots(world: &mut LithairWorld) 
         let aggregates = store.list_aggregates();
 
         for aggregate_id in &aggregates {
-            // Charger snapshot + événements post-snapshot
+            // Load snapshot + post-snapshot events
             let _snapshot = store.load_snapshot(Some(aggregate_id));
             let _events = store.read_events_after_snapshot(Some(aggregate_id));
         }
@@ -575,12 +572,12 @@ async fn then_distributed_recovery_must_use_snapshots(world: &mut LithairWorld) 
 
     let elapsed = start.elapsed();
 
-    // La récupération avec snapshots devrait être rapide (< 2s pour 100 aggregates)
+    // Recovery with snapshots should be fast (< 2s for 100 aggregates)
     assert!(
         elapsed.as_secs() < 5,
-        "❌ Récupération trop lente: {:.2}s (max: 5s)",
+        "Recovery too slow: {:.2}s (max: 5s)",
         elapsed.as_secs_f64()
     );
 
-    println!("✅ Récupération distribuée avec snapshots en {:.2}s", elapsed.as_secs_f64());
+    println!("✅ Distributed recovery with snapshots in {:.2}s", elapsed.as_secs_f64());
 }

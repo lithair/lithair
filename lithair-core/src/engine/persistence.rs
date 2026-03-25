@@ -151,11 +151,11 @@ impl FileStorage {
         Ok(storage)
     }
 
-    /// Configure le mode fsync pour contrôler la durabilité
+    /// Configure the fsync mode to control durability
     ///
     /// # Arguments
-    /// * `enable` - true = fsync après chaque flush (durabilité maximale, plus lent)
-    ///   false = pas de fsync (performance maximale, risque perte données)
+    /// * `enable` - true = fsync after each flush (maximum durability, slower)
+    ///   false = no fsync (maximum performance, risk of data loss)
     pub fn set_fsync(&mut self, enable: bool) {
         self.fsync_on_append = enable;
     }

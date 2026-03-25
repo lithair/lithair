@@ -1990,7 +1990,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -2038,7 +2040,9 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                                .body(Full::new(Bytes::from(
+                                    serde_json::json!({"error": e.to_string()}).to_string(),
+                                )))
                                 .expect("valid HTTP response"));
                         }
                     }
@@ -2061,7 +2065,9 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                                .body(Full::new(Bytes::from(
+                                    serde_json::json!({"error": e.to_string()}).to_string(),
+                                )))
                                 .expect("valid HTTP response"));
                         }
                     }
@@ -2082,7 +2088,9 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                                .body(Full::new(Bytes::from(
+                                    serde_json::json!({"error": e.to_string()}).to_string(),
+                                )))
                                 .expect("valid HTTP response"));
                         }
                     }
@@ -2117,7 +2125,9 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                        .body(Full::new(Bytes::from(
+                            serde_json::json!({"error": e.to_string()}).to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -2157,7 +2167,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -2213,7 +2225,9 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                        .body(Full::new(Bytes::from(
+                            serde_json::json!({"error": e.to_string()}).to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -2253,7 +2267,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -2309,7 +2325,9 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                        .body(Full::new(Bytes::from(
+                            serde_json::json!({"error": e.to_string()}).to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -2349,7 +2367,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"error":"Invalid JSON: {}"}}"#, e))))
+                    .body(Full::new(Bytes::from(
+                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -2402,7 +2422,9 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                        .body(Full::new(Bytes::from(
+                            serde_json::json!({"error": e.to_string()}).to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -3446,7 +3468,9 @@ impl LithairServer {
                         Err(e) => Ok(hyper::Response::builder()
                             .status(400)
                             .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(format!(r#"{{"error":"{}"}}"#, e))))
+                            .body(Full::new(Bytes::from(
+                                serde_json::json!({"error": e.to_string()}).to_string(),
+                            )))
                             .expect("valid HTTP response")),
                     }
                 } else {
@@ -3669,7 +3693,7 @@ impl LithairServer {
                         .status(307) // Temporary Redirect
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
                         .header("X-Raft-Leader", format!("{}", leader_port))
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Not leader","leader_port":{}}}"#, leader_port))))
+                        .body(Full::new(Bytes::from(serde_json::json!({"error": "Not leader", "leader_port": leader_port}).to_string())))
                         .expect("valid HTTP response"));
                     }
                 }
@@ -3983,7 +4007,7 @@ impl LithairServer {
                         log::error!("Failed to replicate: {}", e);
                         return Ok(hyper::Response::builder()
                         .status(503) // Service Unavailable
-                        .body(Full::new(Bytes::from(format!(r#"{{"error":"Replication failed: {}"}}"#, e))))
+                        .body(Full::new(Bytes::from(serde_json::json!({"error": format!("Replication failed: {}", e)}).to_string())))
                         .expect("valid HTTP response"));
                     }
                 }

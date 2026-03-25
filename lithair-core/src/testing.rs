@@ -63,13 +63,50 @@ where
         Ok(Self { handler, _temp_dir: temp_dir })
     }
 
-    /// Create an item. Runs validation and lifecycle checks before inserting.
+    /// Create an item. Runs validation, unique constraints, and lifecycle checks before inserting.
     ///
-    /// Returns the item on success, or a validation/lifecycle error message.
+    /// Returns the item on success, or an error message.
     pub async fn create(&self, mut item: T) -> Result<T, String> {
         item.validate()?;
+        self.check_unique_constraints(&item, None).await?;
         item.apply_lifecycle()?;
         self.handler.apply_replicated_item(item.clone()).await.map(|_| item)
+    }
+
+    /// Check unique constraints against all stored items.
+    async fn check_unique_constraints(
+        &self,
+        item: &T,
+        exclude_id: Option<&str>,
+    ) -> Result<(), String> {
+        let item_json = serde_json::to_value(item).map_err(|e| e.to_string())?;
+        let all_items = self.handler.get_all_items().await;
+
+        for field_name in item.all_field_names() {
+            if let Some(policy) = item.lifecycle_policy_for_field(field_name) {
+                if !policy.unique {
+                    continue;
+                }
+                let new_val = match item_json.get(field_name) {
+                    Some(v) if !v.is_null() => v,
+                    _ => continue,
+                };
+                for existing in &all_items {
+                    if exclude_id == Some(existing.get_primary_key().as_str()) {
+                        continue;
+                    }
+                    if let Ok(existing_json) = serde_json::to_value(existing) {
+                        if existing_json.get(field_name) == Some(new_val) {
+                            return Err(format!(
+                                "'{}' must be unique: value {} already exists",
+                                field_name, new_val
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Get a single item by ID, or None if not found.

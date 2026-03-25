@@ -41,11 +41,6 @@ tasks:
             task bench:json-small     # Preset: JSON 1KB
             task bench:json-large     # Preset: JSON 64KB
             task bench:echo-large     # Preset: ECHO 1MB
-            task bench:crud-parallel  # 3-node CRUD benchmark via script
-            task bench:crud-suite:concurrency   # Suite: concurrency scaling
-            task bench:crud-suite:durability    # Suite: durability profiles
-            task bench:crud-suite:reads         # Suite: heavy vs light reads
-            task bench:crud-suite:bulk-vs-single# Suite: bulk vs single creates
             task raft:consistency     # Raft consistency test (3-node auto)
             task raft:consistency:heavy # Heavy load consistency test
             task docs                 # Show docs pointers
@@ -147,19 +142,14 @@ tasks:
       - chmod +x examples/advanced/http-firewall/run_demo.sh
       - chmod +x examples/advanced/http-firewall/run_declarative_demo.sh
       - chmod +x examples/advanced/http-hardening/run_demo.sh
-      - chmod +x examples/09-replication/bench_http_server_stateless.sh
       - echo "💨 Smoke - Firewall demo (configurable)..."
       - PORT=19100 bash examples/advanced/http-firewall/run_demo.sh
       - echo "💨 Smoke - Firewall demo (model-level declarative)..."
       - PORT=19101 bash examples/advanced/http-firewall/run_declarative_demo.sh
       - echo "💨 Smoke - HTTP hardening demo..."
       - PORT=19102 bash examples/advanced/http-hardening/run_demo.sh
-      - echo "💨 Smoke - Stateless perf endpoints (fast)..."
-      - |
-        CONCURRENCY=64 TIMEOUT_S=10 PORT=19104 TOTAL_STATUS=2000 TOTAL_JSON_1KB=2000 \
-        TOTAL_BYTES_1KB=2000 TOTAL_ECHO_1KB=1000 LT_PERF_MAX_BYTES=262144 \
-        bash examples/09-replication/bench_http_server_stateless.sh
-      - echo "💨 Smoke - GZIP negotiation (skipped - test suite complete)"
+      - echo "💨 Smoke - Example test suites..."
+      - bash scripts/test-examples.sh
       - echo "🎉 All smoke tests completed successfully!"
 
   ci:github:
@@ -264,50 +254,6 @@ tasks:
     cmds:
       - task: loadgen:echo
         vars: { BYTES: '1048576', TOTAL: '10000', CONC: '256' }
-
-  bench:crud-parallel:
-    desc: Run the distributed CRUD benchmark (3-node) via script
-    env:
-      SINGLE_NODE: "{{.SINGLE_NODE}}"
-      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
-    cmds:
-      - bash examples/09-replication/bench_1000_crud_parallel.sh {{.OPS}}
-
-  bench:crud-suite:concurrency:
-    desc: Run CRUD suite - concurrency scaling (uses CONC_LIST)
-    env:
-      BENCH_SUITE: "concurrency_scaling"
-      SINGLE_NODE: "{{.SINGLE_NODE}}"
-      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
-      CONC_LIST: "{{.CONC_LIST}}"
-    cmds:
-      - bash examples/09-replication/bench_1000_crud_parallel.sh {{.OPS}}
-
-  bench:crud-suite:durability:
-    desc: Run CRUD suite - durability profiles (high_throughput, balanced, durable_security)
-    env:
-      BENCH_SUITE: "durability_profiles"
-      SINGLE_NODE: "{{.SINGLE_NODE}}"
-    cmds:
-      - bash examples/09-replication/bench_1000_crud_parallel.sh {{.OPS}}
-
-  bench:crud-suite:reads:
-    desc: Run CRUD suite - heavy vs light reads (READ_PATH variants)
-    env:
-      BENCH_SUITE: "heavy_vs_light_reads"
-      SINGLE_NODE: "{{.SINGLE_NODE}}"
-      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
-    cmds:
-      - bash examples/09-replication/bench_1000_crud_parallel.sh {{.OPS}}
-
-  bench:crud-suite:bulk-vs-single:
-    desc: Run CRUD suite - bulk vs single create modes
-    env:
-      BENCH_SUITE: "bulk_vs_single"
-      SINGLE_NODE: "{{.SINGLE_NODE}}"
-      STORAGE_PROFILE: "{{.STORAGE_PROFILE}}"
-    cmds:
-      - bash examples/09-replication/bench_1000_crud_parallel.sh {{.OPS}}
 
   raft:consistency:
     desc: Run Raft consistency test (3 nodes, auto-launch, verify replication)
@@ -429,8 +375,7 @@ tasks:
       PORT: "3005"
       RUST_LOG: "{{.RUST_LOG}}"
     cmds:
-      - chmod +x examples/04-blog/run_blog_tests.sh
-      - bash examples/04-blog/run_blog_tests.sh
+      - bash examples/04-blog/test.sh
 
   docs:
     desc: Show key documentation pointers and example guides

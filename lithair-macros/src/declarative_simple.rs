@@ -593,6 +593,8 @@ fn extract_u64_value(token_str: &str) -> Option<u64> {
 }
 
 /// Generate a compile-time validation check for a field and rule.
+/// Each check pushes an error message to a `__errors` Vec instead of returning early,
+/// so all validation errors are collected and reported together.
 ///
 /// Supported rules:
 /// - `non_empty`         → `.is_empty()` check (String, Vec, etc.)
@@ -601,6 +603,7 @@ fn extract_u64_value(token_str: &str) -> Option<u64> {
 /// - `min_value(N)`      → `< N` (numeric fields)
 /// - `max_value(N)`      → `> N` (numeric fields)
 /// - `not_negative`      → `< 0` (numeric fields)
+/// - `email`             → must contain '@' and '.' after '@'
 fn generate_validation_check(
     field_name: &str,
     field_ident: &syn::Ident,
@@ -611,7 +614,7 @@ fn generate_validation_check(
     if rule == "non_empty" {
         return Some(quote! {
             if self.#field_ident.is_empty() {
-                return Err(format!("'{}' must not be empty", #field_name_lit));
+                __errors.push(format!("'{}' must not be empty", #field_name_lit));
             }
         });
     }
@@ -619,7 +622,22 @@ fn generate_validation_check(
     if rule == "not_negative" {
         return Some(quote! {
             if self.#field_ident < 0 {
-                return Err(format!("'{}' must not be negative", #field_name_lit));
+                __errors.push(format!("'{}' must not be negative", #field_name_lit));
+            }
+        });
+    }
+
+    if rule == "email" {
+        return Some(quote! {
+            {
+                let __val = &self.#field_ident;
+                if let Some(__at) = __val.find('@') {
+                    if __val[__at + 1..].find('.').is_none() {
+                        __errors.push(format!("'{}' is not a valid email address", #field_name_lit));
+                    }
+                } else {
+                    __errors.push(format!("'{}' is not a valid email address", #field_name_lit));
+                }
             }
         });
     }
@@ -629,7 +647,7 @@ fn generate_validation_check(
         let n: usize = inner.parse().ok()?;
         return Some(quote! {
             if self.#field_ident.len() < #n {
-                return Err(format!("'{}' must be at least {} characters", #field_name_lit, #n));
+                __errors.push(format!("'{}' must be at least {} characters", #field_name_lit, #n));
             }
         });
     }
@@ -638,7 +656,7 @@ fn generate_validation_check(
         let n: usize = inner.parse().ok()?;
         return Some(quote! {
             if self.#field_ident.len() > #n {
-                return Err(format!("'{}' must be at most {} characters", #field_name_lit, #n));
+                __errors.push(format!("'{}' must be at most {} characters", #field_name_lit, #n));
             }
         });
     }
@@ -647,7 +665,7 @@ fn generate_validation_check(
         let value: proc_macro2::TokenStream = inner.parse().ok()?;
         return Some(quote! {
             if self.#field_ident < #value {
-                return Err(format!("'{}' must be at least {}", #field_name_lit, #value));
+                __errors.push(format!("'{}' must be at least {}", #field_name_lit, #value));
             }
         });
     }
@@ -656,7 +674,7 @@ fn generate_validation_check(
         let value: proc_macro2::TokenStream = inner.parse().ok()?;
         return Some(quote! {
             if self.#field_ident > #value {
-                return Err(format!("'{}' must be at most {}", #field_name_lit, #value));
+                __errors.push(format!("'{}' must be at most {}", #field_name_lit, #value));
             }
         });
     }
@@ -1204,7 +1222,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
                     schema_fields.insert(field_name.clone(), constraints);
 
-                    // Générer les index automatiquement
+                    // Auto-generate indexes
                     if attrs.indexed {
                         indexes.push(IndexSpec {
                             name: format!("idx_{}_{}", #name_lit.to_lowercase(), field_name),
@@ -1213,12 +1231,12 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                         });
                     }
 
-                    // Générer les clés étrangères automatiquement
+                    // Auto-generate foreign keys
                     if let Some(ref fk_table) = attrs.foreign_key {
                         foreign_keys.push(ForeignKeySpec {
                             field: field_name.clone(),
                             references_table: fk_table.clone(),
-                            references_field: "id".to_string(), // Convention par défaut
+                            references_field: "id".to_string(), // Default convention
                         });
                     }
                 }
@@ -1233,7 +1251,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Implémentation automatique du trait DeclarativeSpecExtractor
+        // Auto-implement the DeclarativeSpecExtractor trait
         impl lithair_core::schema::DeclarativeSpecExtractor for #name {
             fn extract_model_spec(&self) -> lithair_core::schema::ModelSpec {
                 Self::extract_schema_spec()
@@ -1248,7 +1266,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Implémentation du trait HasSchemaSpec pour l'extraction statique
+        // Implement HasSchemaSpec trait for static extraction
         impl lithair_core::schema::HasSchemaSpec for #name {
             fn schema_spec() -> lithair_core::schema::ModelSpec {
                 Self::extract_schema_spec()
@@ -1310,8 +1328,13 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
 
             fn validate(&self) -> Result<(), String> {
+                let mut __errors: Vec<String> = Vec::new();
                 #(#validation_checks)*
-                Ok(())
+                if __errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(__errors.join("; "))
+                }
             }
 
             // INJECTED FUNCTIONS
@@ -1321,7 +1344,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Si #[server(main)] est présent, auto-générer la fonction main() complète
+    // If #[server(main)] is present, auto-generate the complete main() function
     let main_function = if server_attrs.generate_main {
         let default_port = server_attrs.default_port;
         let cli_args = if server_attrs.cli {
@@ -1434,7 +1457,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Combine toutes les générations
+    // Combine all generated code
     let final_expanded = quote! {
         #expanded
 

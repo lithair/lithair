@@ -3,12 +3,12 @@ use cucumber_tests::features::world::LithairWorld;
 
 #[tokio::main]
 async fn main() {
-    // Exécuter les tests de FIABILITÉ du moteur
-    // Recovery, Corruption, Concurrence, Durabilité
+    // Run engine RELIABILITY tests
+    // Recovery, Corruption, Concurrency, Durability
     LithairWorld::cucumber()
-        .max_concurrent_scenarios(1) // Un seul scénario à la fois pour isolation
+        .max_concurrent_scenarios(1) // One scenario at a time for isolation
         .filter_run("features/performance/engine_reliability_test.feature", |_, _, _| {
-            // Lancer tous les scénarios de test de fiabilité
+            // Run all reliability test scenarios
             true
         })
         .await;

@@ -20,9 +20,9 @@ async fn given_event_sourcing_enabled(_world: &mut LithairWorld) {
     println!("Event sourcing context enabled (initialization done at first CRUD operation)");
 }
 
-// Helper interne: s'assurer que le moteur + storage event sourcing sont initialisés
+// Internal helper: ensure engine + storage event sourcing are initialized
 async fn ensure_event_sourcing_initialized(world: &mut LithairWorld) {
-    // Si déjà initialisé (TempDir présent), ne rien refaire
+    // If already initialized (TempDir present), do nothing
     {
         let temp_dir_guard = world.temp_dir.lock().await;
         if temp_dir_guard.is_some() {
@@ -30,7 +30,7 @@ async fn ensure_event_sourcing_initialized(world: &mut LithairWorld) {
         }
     }
 
-    let path = world.init_temp_storage().await.expect("Échec init storage event sourcing");
+    let path = world.init_temp_storage().await.expect("Failed to init event sourcing storage");
 
     {
         let mut metrics = world.metrics.lock().await;
@@ -44,7 +44,7 @@ async fn ensure_event_sourcing_initialized(world: &mut LithairWorld) {
         })
         .ok();
 
-    println!("📝 Moteur event sourcing direct activé dans {:?}", path);
+    println!("📝 Direct event sourcing engine activated in {:?}", path);
 }
 
 #[given(expr = "events are persisted in {string}")]
@@ -57,7 +57,7 @@ async fn given_periodic_snapshots(_world: &mut LithairWorld) {
     println!("Periodic snapshots enabled");
 }
 
-// Scénario: Persistance des événements
+// Scenario: Event persistence
 #[when(expr = "I perform a CRUD operation")]
 async fn when_perform_crud_operation(world: &mut LithairWorld) {
     // Ensure event sourcing environment is initialized
@@ -68,7 +68,7 @@ async fn when_perform_crud_operation(world: &mut LithairWorld) {
         "content": "Content"
     });
 
-    // Appliquer un événement sur l'état en mémoire
+    // Apply an event to the in-memory state
     let event = crate::features::world::TestEvent::ArticleCreated {
         id: "es-crud-1".to_string(),
         title: "Test Article".to_string(),
@@ -82,7 +82,7 @@ async fn when_perform_crud_operation(world: &mut LithairWorld) {
         })
         .ok();
 
-    // Persister l'événement dans events.raftlog avec métadonnées explicites
+    // Persist the event to events.raftlog with explicit metadata
     let event_json = serde_json::json!({
         "event_type": "ArticleCreated",
         "event_id": "es-crud-1",
@@ -93,98 +93,94 @@ async fn when_perform_crud_operation(world: &mut LithairWorld) {
 
     let mut storage_guard = world.storage.lock().await;
     if let Some(storage) = storage_guard.as_mut() {
-        storage.append_event(&event_json).expect("Échec persistance event");
-        storage.flush_batch().expect("Échec flush batch pour event sourcing");
+        storage.append_event(&event_json).expect("Failed to persist event");
+        storage.flush_batch().expect("Failed to flush batch for event sourcing");
     } else {
-        panic!("Storage non initialisé pour event sourcing");
+        panic!("Storage not initialized for event sourcing");
     }
 
-    println!("✍️ Opération CRUD directe effectuée et événement persisté");
+    println!("✍️ Direct CRUD operation performed and event persisted");
 }
 
 #[then(expr = "an event should be created and persisted")]
 async fn then_event_created_and_persisted(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour event sourcing");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for event sourcing");
     let events_file = dir.path().join("events.raftlog");
 
-    assert!(events_file.exists(), "❌ Fichier events.raftlog introuvable: {:?}", events_file);
+    assert!(events_file.exists(), "❌ events.raftlog file not found: {:?}", events_file);
 
-    let content = std::fs::read_to_string(&events_file).expect("Impossible de lire events.raftlog");
+    let content = std::fs::read_to_string(&events_file).expect("Failed to read events.raftlog");
     let lines: Vec<_> = content.lines().filter(|l| !l.trim().is_empty()).collect();
 
-    assert!(!lines.is_empty(), "❌ Aucun événement persisté dans events.raftlog");
+    assert!(!lines.is_empty(), "❌ No events persisted in events.raftlog");
 
-    println!("✅ {} événement(s) persisté(s) dans {:?}", lines.len(), events_file);
+    println!("✅ {} event(s) persisted in {:?}", lines.len(), events_file);
 }
 
 #[then(expr = "the event should contain all metadata")]
 async fn then_event_contains_metadata(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour event sourcing");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for event sourcing");
     let events_file = dir.path().join("events.raftlog");
 
-    let content = std::fs::read_to_string(&events_file).expect("Impossible de lire events.raftlog");
+    let content = std::fs::read_to_string(&events_file).expect("Failed to read events.raftlog");
     let last_line = content
         .lines()
         .rfind(|l| !l.trim().is_empty())
-        .expect("Aucun événement trouvé dans events.raftlog");
+        .expect("No event found in events.raftlog");
 
     let json_part = strip_crc32_prefix(last_line);
-    let value: serde_json::Value =
-        serde_json::from_str(json_part).expect("Événement invalide (JSON)");
+    let value: serde_json::Value = serde_json::from_str(json_part).expect("Invalid event (JSON)");
 
-    let obj = value.as_object().expect("Événement persisté n'est pas un objet JSON");
+    let obj = value.as_object().expect("Persisted event is not a JSON object");
 
     assert!(
         obj.get("event_type").and_then(|v| v.as_str()).is_some(),
-        "❌ event_type manquant dans l'événement"
+        "❌ event_type missing in event"
     );
     assert!(
         obj.get("event_id").and_then(|v| v.as_str()).is_some(),
-        "❌ event_id manquant dans l'événement"
+        "❌ event_id missing in event"
     );
     assert!(
         obj.get("timestamp").and_then(|v| v.as_str()).is_some(),
-        "❌ timestamp manquant dans l'événement"
+        "❌ timestamp missing in event"
     );
-    assert!(obj.get("payload").is_some(), "❌ payload manquant dans l'événement");
+    assert!(obj.get("payload").is_some(), "❌ payload missing in event");
 
-    println!("✅ Métadonnées présentes dans l'événement persisté");
+    println!("✅ Metadata present in persisted event");
 }
 
 #[then(expr = "the log file should be updated atomically")]
 async fn then_log_file_updated_atomically(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour event sourcing");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for event sourcing");
     let events_file = dir.path().join("events.raftlog");
 
-    let content = std::fs::read_to_string(&events_file).expect("Impossible de lire events.raftlog");
+    let content = std::fs::read_to_string(&events_file).expect("Failed to read events.raftlog");
 
     for (idx, line) in content.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
         if parse_and_validate_event(line).is_err() {
-            panic!(
-                "❌ Ligne partielle ou corrompue détectée dans events.raftlog à la ligne {}",
-                idx + 1
-            );
+            panic!("❌ Partial or corrupted line detected in events.raftlog at line {}", idx + 1);
         }
     }
 
-    println!("✅ Toutes les lignes du log sont des JSON valides (mise à jour atomique)");
+    println!("✅ All log lines are valid JSON (atomic update)");
 }
 
-// Scénario: Reconstruction de l'état
+// Scenario: State reconstruction
 #[when(expr = "I restart the server")]
 async fn when_restart_server(world: &mut LithairWorld) {
-    println!("🔄 Préparation du scénario de reconstruction d'état...");
+    println!("🔄 Preparing state reconstruction scenario...");
 
-    // 1) S'assurer que l'environnement event sourcing est bien initialisé
+    // 1) Ensure event sourcing environment is properly initialized
     ensure_event_sourcing_initialized(world).await;
 
-    // 2) Construire un état initial en appliquant quelques événements ArticleCreated
+    // 2) Build an initial state by applying a few ArticleCreated events
     const EVENT_COUNT: u32 = 10;
     for i in 0..EVENT_COUNT {
         let id = format!("replay-{}", i);
@@ -197,7 +193,7 @@ async fn when_restart_server(world: &mut LithairWorld) {
             content: content.clone(),
         };
 
-        // Appliquer à l'état en mémoire
+        // Apply to in-memory state
         world
             .engine
             .with_state_mut(|state| {
@@ -205,7 +201,7 @@ async fn when_restart_server(world: &mut LithairWorld) {
             })
             .ok();
 
-        // Journaliser l'événement dans events.raftlog
+        // Log the event to events.raftlog
         let event_json = serde_json::json!({
             "event_type": "ArticleCreated",
             "id": id,
@@ -216,34 +212,34 @@ async fn when_restart_server(world: &mut LithairWorld) {
 
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.append_event(&event_json).expect("Échec append_event pour replay");
+            storage.append_event(&event_json).expect("Failed append_event for replay");
         } else {
-            panic!("Storage non initialisé pour reconstruction");
+            panic!("Storage not initialized for reconstruction");
         }
     }
 
-    // Flush une fois tous les événements
+    // Flush all events at once
     {
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.flush_batch().expect("Échec flush_batch pour reconstruction");
+            storage.flush_batch().expect("Failed flush_batch for reconstruction");
         }
     }
 
-    // 3) Capturer un snapshot de l'état avant redémarrage
+    // 3) Capture a state snapshot before restart
     let snapshot_data = world.engine.with_state(|state| state.data.clone()).unwrap_or_default();
     {
         let mut test_data = world.test_data.lock().await;
         *test_data = snapshot_data;
     }
 
-    // Sauvegarder le nombre d'événements pour les vérifications
+    // Save the event count for verification
     {
         let mut metrics = world.metrics.lock().await;
         metrics.request_count = EVENT_COUNT as u64;
     }
 
-    // 4) Réinitialiser l'état puis rejouer tous les événements depuis events.raftlog
+    // 4) Reset state then replay all events from events.raftlog
     world
         .engine
         .with_state_mut(|state| {
@@ -251,19 +247,19 @@ async fn when_restart_server(world: &mut LithairWorld) {
         })
         .ok();
 
-    println!("🔄 Redémarrage logique du moteur: état remis à zéro, replay des événements...");
+    println!("🔄 Logical engine restart: state reset to zero, replaying events...");
 
     let start = std::time::Instant::now();
 
     let events_lines = {
         let storage_guard = world.storage.lock().await;
-        let storage = storage_guard.as_ref().expect("Storage non initialisé pour replay");
-        storage.read_all_events().expect("Échec lecture events.raftlog pour replay")
+        let storage = storage_guard.as_ref().expect("Storage not initialized for replay");
+        storage.read_all_events().expect("Failed to read events.raftlog for replay")
     };
 
     for line in &events_lines {
         let value: serde_json::Value =
-            serde_json::from_str(line).expect("Événement invalide dans events.raftlog (replay)");
+            serde_json::from_str(line).expect("Invalid event in events.raftlog (replay)");
 
         if let Some(obj) = value.as_object() {
             let event_type =
@@ -294,7 +290,7 @@ async fn when_restart_server(world: &mut LithairWorld) {
     }
 
     println!(
-        "✅ Replay terminé: {} événements rejoués en {:.3}s",
+        "✅ Replay completed: {} events replayed in {:.3}s",
         events_lines.len(),
         duration.as_secs_f64()
     );
@@ -310,44 +306,44 @@ async fn then_all_events_replayed(world: &mut LithairWorld) {
     let actual = {
         let storage_guard = world.storage.lock().await;
         let storage =
-            storage_guard.as_ref().expect("Storage non initialisé pour vérification replay");
+            storage_guard.as_ref().expect("Storage not initialized for replay verification");
         storage
             .read_all_events()
-            .expect("Échec lecture events.raftlog pour vérification")
+            .expect("Failed to read events.raftlog for verification")
             .len()
     };
 
     assert_eq!(
         actual, expected,
-        "❌ Nombre d'événements rejoués incorrect: {} (attendu: {})",
+        "❌ Incorrect number of replayed events: {} (expected: {})",
         actual, expected
     );
 
-    println!("✅ Tous les événements ({}) ont été rejoués", actual);
+    println!("✅ All events ({}) have been replayed", actual);
 }
 
 #[then(expr = "state should be identical to before the restart")]
 async fn then_state_identical(world: &mut LithairWorld) {
-    // État avant redémarrage (snapshot)
+    // State before restart (snapshot)
     let pre_state = { world.test_data.lock().await.clone() };
 
-    // État après replay
+    // State after replay
     let post_state = world.engine.with_state(|state| state.data.clone()).unwrap_or_default();
 
     assert_eq!(
         pre_state.articles.len(),
         post_state.articles.len(),
-        "❌ Nombre d'articles différent après replay: avant={}, après={}",
+        "❌ Different article count after replay: before={}, after={}",
         pre_state.articles.len(),
         post_state.articles.len()
     );
 
     assert_eq!(
         pre_state.articles, post_state.articles,
-        "❌ Les articles après replay ne correspondent pas à l'état initial"
+        "❌ Articles after replay do not match the initial state"
     );
 
-    println!("✅ État restauré identiquement ({} articles)", post_state.articles.len());
+    println!("✅ State restored identically ({} articles)", post_state.articles.len());
 }
 
 #[then(expr = "reconstruction should take less than {int} seconds")]
@@ -358,25 +354,25 @@ async fn then_reconstruction_within(world: &mut LithairWorld, max_seconds: u32) 
 
     assert!(
         secs <= max_seconds as f64,
-        "❌ Reconstruction trop lente: {:.3}s (max: {}s)",
+        "❌ Reconstruction too slow: {:.3}s (max: {}s)",
         secs,
         max_seconds
     );
 
-    println!("✅ Reconstruction en {:.3}s (< {}s)", secs, max_seconds);
+    println!("✅ Reconstruction in {:.3}s (< {}s)", secs, max_seconds);
 }
 
-// Scénario: Snapshots optimisés
+// Scenario: Optimized snapshots
 #[when(expr = "{int} events have been created")]
 async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
-    println!("📊 Création de {} événements...", event_count);
+    println!("📊 Creating {} events...", event_count);
 
     let start = std::time::Instant::now();
 
-    // S'assurer que l'environnement event sourcing est initialisé
+    // Ensure event sourcing environment is initialized
     ensure_event_sourcing_initialized(world).await;
 
-    // Générer des événements ArticleCreated, les appliquer et les persister
+    // Generate ArticleCreated events, apply and persist them
     for i in 0..event_count {
         let id = format!("snapshot-{}", i);
         let title = format!("Article {}", i);
@@ -388,7 +384,7 @@ async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
             content: content.clone(),
         };
 
-        // Appliquer à l'état en mémoire
+        // Apply to in-memory state
         world
             .engine
             .with_state_mut(|state| {
@@ -396,7 +392,7 @@ async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
             })
             .ok();
 
-        // Écrire dans events.raftlog sous forme de JSON simple
+        // Write to events.raftlog as simple JSON
         let event_json = serde_json::json!({
             "event_type": "ArticleCreated",
             "id": id,
@@ -407,9 +403,9 @@ async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
 
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.append_event(&event_json).expect("Échec append_event pour snapshots");
+            storage.append_event(&event_json).expect("Failed append_event for snapshots");
         } else {
-            panic!("Storage non initialisé pour snapshots");
+            panic!("Storage not initialized for snapshots");
         }
 
         if i % 100 == 0 {
@@ -417,24 +413,24 @@ async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
         }
     }
 
-    // Flush tous les événements en une fois
+    // Flush all events at once
     {
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.flush_batch().expect("Échec flush_batch pour snapshots");
+            storage.flush_batch().expect("Failed flush_batch for snapshots");
         }
     }
 
-    // Générer un snapshot JSON complet de l'état courant
+    // Generate a complete JSON snapshot of the current state
     let snapshot_json = world
         .engine
-        .with_state(|state| serde_json::to_string(state).expect("Sérialisation snapshot"))
+        .with_state(|state| serde_json::to_string(state).expect("Snapshot serialization"))
         .unwrap_or_else(|_| "{}".to_string());
 
     {
         let storage_guard = world.storage.lock().await;
-        let storage = storage_guard.as_ref().expect("Storage non initialisé pour save_snapshot");
-        storage.save_snapshot(&snapshot_json).expect("Échec save_snapshot");
+        let storage = storage_guard.as_ref().expect("Storage not initialized for save_snapshot");
+        storage.save_snapshot(&snapshot_json).expect("Failed save_snapshot");
     }
 
     let elapsed = start.elapsed();
@@ -444,31 +440,25 @@ async fn when_events_created(world: &mut LithairWorld, event_count: u32) {
         metrics.request_count = event_count as u64;
     }
 
-    println!("✅ {} événements créés et snapshot écrit", event_count);
+    println!("✅ {} events created and snapshot written", event_count);
 }
 
 #[then(expr = "a snapshot should be generated automatically")]
 async fn then_snapshot_generated(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour snapshots");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for snapshots");
     let snapshot_file = dir.path().join("state.raftsnap");
 
-    assert!(
-        snapshot_file.exists(),
-        "❌ Fichier state.raftsnap introuvable: {:?}",
-        snapshot_file
-    );
+    assert!(snapshot_file.exists(), "❌ state.raftsnap file not found: {:?}", snapshot_file);
 
-    let content =
-        std::fs::read_to_string(&snapshot_file).expect("Impossible de lire state.raftsnap");
-    assert!(!content.trim().is_empty(), "❌ Snapshot vide dans state.raftsnap");
+    let content = std::fs::read_to_string(&snapshot_file).expect("Failed to read state.raftsnap");
+    assert!(!content.trim().is_empty(), "❌ Empty snapshot in state.raftsnap");
 
-    let value: serde_json::Value =
-        serde_json::from_str(&content).expect("Snapshot invalide (JSON)");
-    assert!(value.is_object(), "❌ Snapshot JSON n'est pas un objet");
+    let value: serde_json::Value = serde_json::from_str(&content).expect("Invalid snapshot (JSON)");
+    assert!(value.is_object(), "❌ Snapshot JSON is not an object");
 
     println!(
-        "✅ Snapshot généré automatiquement ({} bytes) dans {:?}",
+        "✅ Snapshot automatically generated ({} bytes) in {:?}",
         content.len(),
         snapshot_file
     );
@@ -477,24 +467,24 @@ async fn then_snapshot_generated(world: &mut LithairWorld) {
 #[then(expr = "the snapshot should compress current state")]
 async fn then_snapshot_compresses_state(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour snapshots");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for snapshots");
 
     let snapshot_file = dir.path().join("state.raftsnap");
     let events_file = dir.path().join("events.raftlog");
 
     let snapshot_size =
-        std::fs::metadata(&snapshot_file).expect("Metadata snapshot introuvable").len();
+        std::fs::metadata(&snapshot_file).expect("Snapshot metadata not found").len();
     let events_size = std::fs::metadata(&events_file)
-        .expect("Metadata events.raftlog introuvable")
+        .expect("events.raftlog metadata not found")
         .len();
 
     assert!(
         snapshot_size < events_size,
-        "❌ Snapshot ({snapshot_size} bytes) n'est pas plus compact que le log ({events_size} bytes)"
+        "❌ Snapshot ({snapshot_size} bytes) is not more compact than the log ({events_size} bytes)"
     );
 
     println!(
-        "✅ Snapshot plus compact que le log: {} bytes vs {} bytes",
+        "✅ Snapshot more compact than the log: {} bytes vs {} bytes",
         snapshot_size, events_size
     );
 }
@@ -502,26 +492,26 @@ async fn then_snapshot_compresses_state(world: &mut LithairWorld) {
 #[then(expr = "old events should be archived")]
 async fn then_old_events_archived(world: &mut LithairWorld) {
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour snapshots");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for snapshots");
     let events_file = dir.path().join("events.raftlog");
 
-    // Compacter/archiver le log en le tronquant après snapshot
+    // Compact/archive the log by truncating after snapshot
     {
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.truncate_events().expect("Échec truncate_events pour archivage");
+            storage.truncate_events().expect("Failed truncate_events for archiving");
         } else {
-            panic!("Storage non initialisé pour archivage");
+            panic!("Storage not initialized for archiving");
         }
     }
 
     let size = std::fs::metadata(&events_file)
-        .expect("Metadata events.raftlog introuvable après archivage")
+        .expect("events.raftlog metadata not found after archiving")
         .len();
 
-    assert!(size == 0, "❌ Log non archivé/compacé, taille restante: {} bytes", size);
+    assert!(size == 0, "❌ Log not archived/compacted, remaining size: {} bytes", size);
 
-    println!("✅ Anciens événements archivés (events.raftlog tronqué à 0 byte)");
+    println!("✅ Old events archived (events.raftlog truncated to 0 bytes)");
 }
 
 #[then(expr = "snapshot generation should take less than {int} seconds")]
@@ -532,26 +522,26 @@ async fn then_snapshot_generation_within(world: &mut LithairWorld, max_seconds: 
 
     assert!(
         secs <= max_seconds as f64,
-        "❌ Génération du snapshot trop lente: {:.3}s (max: {}s)",
+        "❌ Snapshot generation too slow: {:.3}s (max: {}s)",
         secs,
         max_seconds
     );
 
-    println!("✅ Génération du snapshot en {:.3}s (< {}s)", secs, max_seconds);
+    println!("✅ Snapshot generation in {:.3}s (< {}s)", secs, max_seconds);
 }
 
-// Scénario: Déduplication des événements
+// Scenario: Event deduplication
 #[when(expr = "the same event is received twice")]
 async fn when_duplicate_event_received(world: &mut LithairWorld) {
-    println!("🔁 Préparation du scénario de déduplication (moteur direct)...");
+    println!("🔁 Preparing deduplication scenario (direct engine)...");
 
     // 1) Initialiser l'environnement event sourcing
     ensure_event_sourcing_initialized(world).await;
 
-    // 2) Construire un événement ArticleCreated avec une clé d'idempotence stable
+    // 2) Build an ArticleCreated event with a stable idempotence key
     let id = "dedup-article-1".to_string();
-    let title = "Article dédoublonné".to_string();
-    let content = "Contenu dédoublonné".to_string();
+    let title = "Deduplicated Article".to_string();
+    let content = "Deduplicated Content".to_string();
 
     let event = crate::features::world::TestEvent::ArticleCreated {
         id: id.clone(),
@@ -559,7 +549,7 @@ async fn when_duplicate_event_received(world: &mut LithairWorld) {
         content: content.clone(),
     };
 
-    // Simuler deux réceptions du même événement
+    // Simulate receiving the same event twice
     let mut seen_keys = std::collections::HashSet::new();
 
     let mut apply_with_dedup = |evt: &crate::features::world::TestEvent| {
@@ -580,16 +570,16 @@ async fn when_duplicate_event_received(world: &mut LithairWorld) {
     let first_applied = apply_with_dedup(&event);
     let second_applied = apply_with_dedup(&event);
 
-    // Mettre à jour les métriques pour les assertions
+    // Update metrics for assertions
     {
         let article_count = world.engine.with_state(|state| state.data.articles.len()).unwrap_or(0);
         let mut metrics = world.metrics.lock().await;
         metrics.request_count = article_count as u64;
-        // Considérer une erreur si la déduplication ne s'est pas comportée comme attendu
+        // Consider an error if deduplication did not behave as expected
         metrics.error_count = if !first_applied || second_applied { 1 } else { 0 };
     }
 
-    // 3) Persister deux fois la même enveloppe d'événement dans events.raftlog
+    // 3) Persist the same event envelope twice in events.raftlog
     let payload = serde_json::json!({
         "id": id,
         "title": title,
@@ -610,16 +600,16 @@ async fn when_duplicate_event_received(world: &mut LithairWorld) {
     if let Some(storage) = storage_guard.as_mut() {
         storage
             .append_event(&envelope)
-            .expect("Échec append_event pour déduplication (1)");
+            .expect("Failed append_event for deduplication (1)");
         storage
             .append_event(&envelope)
-            .expect("Échec append_event pour déduplication (2)");
-        storage.flush_batch().expect("Échec flush_batch pour déduplication");
+            .expect("Failed append_event for deduplication (2)");
+        storage.flush_batch().expect("Failed flush_batch for deduplication");
     } else {
-        panic!("Storage non initialisé pour déduplication");
+        panic!("Storage not initialized for deduplication");
     }
 
-    println!("🔁 Même événement reçu deux fois, appliqué une seule fois en mémoire et persisté deux fois dans le log");
+    println!("🔁 Same event received twice, applied once in memory and persisted twice in log");
 }
 
 #[then(expr = "only the first should be applied")]
@@ -629,33 +619,33 @@ async fn then_only_first_applied(world: &mut LithairWorld) {
     assert_eq!(
         articles.len(),
         1,
-        "❌ Déduplication échouée: {} articles présents en mémoire (attendu: 1)",
+        "❌ Deduplication failed: {} articles present in memory (expected: 1)",
         articles.len()
     );
 
-    println!("✅ Seul le premier événement a été appliqué (1 article en mémoire)");
+    println!("✅ Only the first event was applied (1 article in memory)");
 }
 
 #[then(expr = "the duplicate should be ignored silently")]
 async fn then_duplicate_ignored(world: &mut LithairWorld) {
-    // Vérifier qu'aucune erreur n'a été enregistrée au niveau des métriques
+    // Verify no error was recorded in metrics
     let metrics = world.metrics.lock().await;
     assert_eq!(
         metrics.error_count, 0,
-        "❌ Une erreur a été enregistrée pendant la déduplication (error_count = {})",
+        "❌ An error was recorded during deduplication (error_count = {})",
         metrics.error_count
     );
     drop(metrics);
 
-    // Vérifier que le log contient bien deux entrées pour le même event_id
+    // Verify the log contains two entries for the same event_id
     let temp_dir = world.temp_dir.lock().await;
     let dir = temp_dir
         .as_ref()
-        .expect("TempDir non initialisé pour vérification de déduplication");
+        .expect("TempDir not initialized for deduplication verification");
     let events_file = dir.path().join("events.raftlog");
 
     let content =
-        std::fs::read_to_string(&events_file).expect("Impossible de lire events.raftlog (dédup)");
+        std::fs::read_to_string(&events_file).expect("Failed to read events.raftlog (dedup)");
 
     let mut total = 0usize;
     let mut duplicate_count = 0usize;
@@ -666,7 +656,7 @@ async fn then_duplicate_ignored(world: &mut LithairWorld) {
         total += 1;
         let json_part = strip_crc32_prefix(line);
         let value: serde_json::Value =
-            serde_json::from_str(json_part).expect("Ligne invalide dans events.raftlog (dédup)");
+            serde_json::from_str(json_part).expect("Invalid line in events.raftlog (dedup)");
         if let Some(obj) = value.as_object() {
             if let Some(eid) = obj.get("event_id").and_then(|v| v.as_str()) {
                 if eid.starts_with("article-created:dedup-article-1") {
@@ -678,26 +668,26 @@ async fn then_duplicate_ignored(world: &mut LithairWorld) {
 
     assert!(
         duplicate_count >= 2,
-        "❌ Le log ne contient pas au moins deux entrées pour le même event_id (count = {}, total = {})",
+        "❌ Log does not contain at least two entries for the same event_id (count = {}, total = {})",
         duplicate_count,
         total
     );
 
     println!(
-        "✅ Doublon ignoré silencieusement côté état: {} entrées dans le log pour le même event_id, mais une seule application",
+        "✅ Duplicate silently ignored on state side: {} entries in log for the same event_id, but only one application",
         duplicate_count
     );
 }
 
 #[then(expr = "integrity should be preserved")]
 async fn then_integrity_preserved(world: &mut LithairWorld) {
-    // Rejouer le log avec déduplication par event_id dans un état vierge
+    // Replay the log with deduplication by event_id into a clean state
     let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir non initialisé pour vérification d'intégrité");
+    let dir = temp_dir.as_ref().expect("TempDir not initialized for integrity verification");
     let events_file = dir.path().join("events.raftlog");
 
-    let content = std::fs::read_to_string(&events_file)
-        .expect("Impossible de lire events.raftlog (intégrité)");
+    let content =
+        std::fs::read_to_string(&events_file).expect("Failed to read events.raftlog (integrity)");
 
     let mut seen_ids = std::collections::HashSet::new();
     let mut rebuilt_state = crate::features::world::TestAppState::default();
@@ -708,15 +698,15 @@ async fn then_integrity_preserved(world: &mut LithairWorld) {
         }
 
         let json_part = strip_crc32_prefix(line);
-        let value: serde_json::Value = serde_json::from_str(json_part)
-            .expect("Ligne invalide dans events.raftlog (intégrité)");
+        let value: serde_json::Value =
+            serde_json::from_str(json_part).expect("Invalid line in events.raftlog (integrity)");
 
-        let obj = value.as_object().expect("Événement de log n'est pas un objet JSON (intégrité)");
+        let obj = value.as_object().expect("Log event is not a JSON object (integrity)");
 
         let event_id = obj.get("event_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
         if !seen_ids.insert(event_id) {
-            // Déjà vu: doublon, on l'ignore au replay
+            // Already seen: duplicate, skip during replay
             continue;
         }
 
@@ -740,21 +730,21 @@ async fn then_integrity_preserved(world: &mut LithairWorld) {
     assert_eq!(
         current_state.articles,
         rebuilt_state.data.articles,
-        "❌ Intégrité non préservée: état reconstruit depuis le log (avec dédup) différent de l'état actuel"
+        "❌ Integrity not preserved: state rebuilt from log (with dedup) differs from current state"
     );
 
-    println!("✅ Intégrité préservée: état actuel == état reconstruit avec déduplication du log");
+    println!("✅ Integrity preserved: current state == state rebuilt with log deduplication");
 }
 
-// Scénario: Récupération après corruption (moteur direct)
+// Scenario: Recovery after corruption (direct engine)
 #[when(expr = "the state file is corrupted")]
 async fn when_state_file_corrupted(world: &mut LithairWorld) {
-    println!("💥 Préparation d'un fichier d'état corrompu (event sourcing direct)...");
+    println!("💥 Preparing a corrupted state file (direct event sourcing)...");
 
     // 1) Initialiser l'environnement event sourcing
     ensure_event_sourcing_initialized(world).await;
 
-    // 2) Générer un état cohérent avec quelques événements ArticleCreated
+    // 2) Generate a consistent state with a few ArticleCreated events
     const EVENT_COUNT: u32 = 20;
     for i in 0..EVENT_COUNT {
         let id = format!("corrupt-{}", i);
@@ -767,7 +757,7 @@ async fn when_state_file_corrupted(world: &mut LithairWorld) {
             content: content.clone(),
         };
 
-        // Appliquer à l'état en mémoire
+        // Apply to in-memory state
         world
             .engine
             .with_state_mut(|state| {
@@ -775,7 +765,7 @@ async fn when_state_file_corrupted(world: &mut LithairWorld) {
             })
             .ok();
 
-        // Persister dans events.raftlog
+        // Persist to events.raftlog
         let event_json = serde_json::json!({
             "event_type": "ArticleCreated",
             "id": id,
@@ -786,24 +776,24 @@ async fn when_state_file_corrupted(world: &mut LithairWorld) {
 
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.append_event(&event_json).expect("Échec append_event pour corruption");
+            storage.append_event(&event_json).expect("Failed append_event for corruption");
         } else {
-            panic!("Storage non initialisé pour corruption");
+            panic!("Storage not initialized for corruption");
         }
     }
 
     {
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage.flush_batch().expect("Échec flush_batch pour corruption");
+            storage.flush_batch().expect("Failed flush_batch for corruption");
         }
     }
 
-    // 3) Sauvegarder un snapshot valide de l'état courant (dernier snapshot valide)
+    // 3) Save a valid snapshot of the current state (last valid snapshot)
     let snapshot_json = world
         .engine
         .with_state(|state| {
-            serde_json::to_string(state).expect("Sérialisation snapshot corruption")
+            serde_json::to_string(state).expect("Snapshot serialization corruption")
         })
         .unwrap_or_else(|_| "{}".to_string());
 
@@ -811,45 +801,45 @@ async fn when_state_file_corrupted(world: &mut LithairWorld) {
         let storage_guard = world.storage.lock().await;
         let storage = storage_guard
             .as_ref()
-            .expect("Storage non initialisé pour save_snapshot corruption");
-        storage.save_snapshot(&snapshot_json).expect("Échec save_snapshot corruption");
+            .expect("Storage not initialized for save_snapshot corruption");
+        storage.save_snapshot(&snapshot_json).expect("Failed save_snapshot corruption");
     }
 
-    // Conserver l'état attendu pour les vérifications
+    // Keep the expected state for verification
     let expected_data = world.engine.with_state(|state| state.data.clone()).unwrap_or_default();
     {
         let mut test_data = world.test_data.lock().await;
         *test_data = expected_data;
     }
 
-    // 4) Corrompre le fichier events.raftlog en y injectant une ligne JSON invalide
+    // 4) Corrupt the events.raftlog file by injecting an invalid JSON line
     let events_file = {
         let temp_dir = world.temp_dir.lock().await;
-        let dir = temp_dir.as_ref().expect("TempDir non initialisé pour corruption");
+        let dir = temp_dir.as_ref().expect("TempDir not initialized for corruption");
         dir.path().join("events.raftlog")
     };
 
     let mut content = std::fs::read_to_string(&events_file)
-        .expect("Impossible de lire events.raftlog pour corruption");
+        .expect("Failed to read events.raftlog for corruption");
     content.push_str("\n{ this-is-not-valid-json");
-    std::fs::write(&events_file, &content).expect("Impossible d'écrire events.raftlog corrompu");
+    std::fs::write(&events_file, &content).expect("Failed to write corrupted events.raftlog");
 
-    // Réinitialiser le flag de corruption pour les assertions suivantes
+    // Reset the corruption flag for subsequent assertions
     world.corruption_detected = false;
 
-    println!("⚠️ Fichier d'état corrompu simulé dans {:?}", events_file);
+    println!("⚠️ Corrupted state file simulated in {:?}", events_file);
 }
 
 #[then(expr = "the system should detect corruption")]
 async fn then_system_detects_corruption(world: &mut LithairWorld) {
     let events_file = {
         let temp_dir = world.temp_dir.lock().await;
-        let dir = temp_dir.as_ref().expect("TempDir non initialisé pour détection de corruption");
+        let dir = temp_dir.as_ref().expect("TempDir not initialized for corruption detection");
         dir.path().join("events.raftlog")
     };
 
-    let content = std::fs::read_to_string(&events_file)
-        .expect("Impossible de lire events.raftlog pour détection");
+    let content =
+        std::fs::read_to_string(&events_file).expect("Failed to read events.raftlog for detection");
 
     let mut invalid = 0usize;
     let mut last_invalid_line = 0usize;
@@ -866,13 +856,13 @@ async fn then_system_detects_corruption(world: &mut LithairWorld) {
 
     assert!(
         invalid > 0,
-        "❌ Aucune corruption détectée dans events.raftlog alors qu'une ligne invalide a été injectée"
+        "❌ No corruption detected in events.raftlog although an invalid line was injected"
     );
 
     world.corruption_detected = true;
 
     println!(
-        "✅ Corruption détectée: {} ligne(s) invalides (ex: ligne {})",
+        "✅ Corruption detected: {} invalid line(s) (e.g., line {})",
         invalid, last_invalid_line
     );
 }
@@ -881,23 +871,23 @@ async fn then_system_detects_corruption(world: &mut LithairWorld) {
 async fn then_rebuild_from_last_valid_snapshot(world: &mut LithairWorld) {
     assert!(
         world.corruption_detected,
-        "❌ Corruption non détectée avant tentative de reconstruction"
+        "❌ Corruption not detected before reconstruction attempt"
     );
 
-    // Charger le dernier snapshot valide depuis FileStorage
+    // Load the last valid snapshot from FileStorage
     let snapshot_json_opt = {
         let storage_guard = world.storage.lock().await;
-        let storage = storage_guard.as_ref().expect("Storage non initialisé pour load_snapshot");
-        storage.load_snapshot().expect("Échec load_snapshot pour reconstruction")
+        let storage = storage_guard.as_ref().expect("Storage not initialized for load_snapshot");
+        storage.load_snapshot().expect("Failed load_snapshot for reconstruction")
     };
 
     let snapshot_json = snapshot_json_opt
-        .expect("❌ Aucun snapshot trouvé alors qu'un snapshot valide aurait dû être sauvegardé");
+        .expect("❌ No snapshot found although a valid snapshot should have been saved");
 
     let snapshot_state: crate::features::world::TestAppState = serde_json::from_str(&snapshot_json)
-        .expect("Snapshot invalide (JSON) lors de la reconstruction");
+        .expect("Invalid snapshot (JSON) during reconstruction");
 
-    // Réinitialiser l'état du moteur avec le snapshot
+    // Reset the engine state from the snapshot
     world
         .engine
         .with_state_mut(|state| {
@@ -905,27 +895,27 @@ async fn then_rebuild_from_last_valid_snapshot(world: &mut LithairWorld) {
         })
         .ok();
 
-    // Comparer avec l'état attendu enregistré avant la corruption
+    // Compare with the expected state saved before corruption
     let expected_data = { world.test_data.lock().await.clone() };
     let current_data = world.engine.with_state(|state| state.data.clone()).unwrap_or_default();
 
     assert_eq!(
         expected_data.articles, current_data.articles,
-        "❌ État reconstruit différent du dernier snapshot valide",
+        "❌ Rebuilt state differs from last valid snapshot",
     );
 
     println!(
-        "✅ État reconstruit depuis le dernier snapshot valide ({} articles)",
+        "✅ State rebuilt from last valid snapshot ({} articles)",
         current_data.articles.len()
     );
 }
 
 #[then(expr = "continue to function normally")]
 async fn then_continue_to_operate_normally(world: &mut LithairWorld) {
-    // Appliquer un nouvel événement après récupération
+    // Apply a new event after recovery
     let id = "corruption-recovery-new-1".to_string();
-    let title = "Article après récupération".to_string();
-    let content = "Contenu après récupération".to_string();
+    let title = "Article after recovery".to_string();
+    let content = "Content after recovery".to_string();
 
     let event = crate::features::world::TestEvent::ArticleCreated {
         id: id.clone(),
@@ -951,12 +941,10 @@ async fn then_continue_to_operate_normally(world: &mut LithairWorld) {
     {
         let mut storage_guard = world.storage.lock().await;
         if let Some(storage) = storage_guard.as_mut() {
-            storage
-                .append_event(&event_json)
-                .expect("Échec append_event après récupération");
-            storage.flush_batch().expect("Échec flush_batch après récupération");
+            storage.append_event(&event_json).expect("Failed append_event after recovery");
+            storage.flush_batch().expect("Failed flush_batch after recovery");
         } else {
-            panic!("Storage non initialisé après récupération");
+            panic!("Storage not initialized after recovery");
         }
     }
 
@@ -964,64 +952,62 @@ async fn then_continue_to_operate_normally(world: &mut LithairWorld) {
 
     assert!(
         article_count > 0,
-        "❌ Aucun article présent après récupération et écriture d'un nouvel événement",
+        "❌ No articles present after recovery and writing a new event",
     );
 
     println!(
-        "✅ Moteur continue à fonctionner normalement après corruption ({} articles)",
+        "✅ Engine continues to operate normally after corruption ({} articles)",
         article_count
     );
 }
 
-// Scénario: Déduplication persistante après redémarrage
+// Scenario: Persistent deduplication after restart
 #[when(expr = "an idempotent event is applied before and after engine restart")]
 async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
-    println!(
-        "🧪 Préparation du scénario de déduplication persistante (avant/après redémarrage)..."
-    );
+    println!("🧪 Preparing persistent deduplication scenario (before/after restart)...");
 
     let base_path = "/tmp/lithair-dedup-persistent-test".to_string();
 
-    // Nettoyer le répertoire de test
+    // Clean the test directory
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path)
-        .expect("Impossible de créer le répertoire pour la déduplication persistante");
+        .expect("Failed to create directory for persistent deduplication");
 
-    // Forcer la persistance des IDs de déduplication (par défaut déjà activée, mais explicite)
+    // Force deduplication ID persistence (already enabled by default, but explicit)
     std::env::set_var("LT_DEDUP_PERSIST", "1");
 
     let config = EngineConfig { event_log_path: base_path.clone(), ..Default::default() };
 
-    // Run 1: appliquer l'événement une première fois
+    // Run 1: apply the event for the first time
     let engine = Engine::<TestEngineApp>::new(config.clone())
-        .expect("Échec d'initialisation du moteur pour la déduplication persistante");
+        .expect("Failed to initialize engine for persistent deduplication");
 
     let event = TestEvent::ArticleCreated {
         id: "dedup-persistent-1".to_string(),
-        title: "Article dédup persistant".to_string(),
-        content: "Contenu dédup persistant".to_string(),
+        title: "Persistent dedup article".to_string(),
+        content: "Persistent dedup content".to_string(),
     };
 
     let key = event.aggregate_id().unwrap_or("global".to_string());
     engine
         .apply_event(key.clone(), event.clone())
-        .expect("Échec application initiale de l'événement idempotent");
-    engine.flush().expect("Échec flush après première application");
+        .expect("Failed initial application of idempotent event");
+    engine.flush().expect("Failed flush after first application");
 
-    // Drop pour simuler un arrêt propre
+    // Drop to simulate a clean shutdown
     drop(engine);
 
-    // Run 2: redémarrer le moteur et ré-appliquer le même événement
+    // Run 2: restart the engine and re-apply the same event
     let engine2 = Engine::<TestEngineApp>::new(config)
-        .expect("Échec de réinitialisation du moteur pour la déduplication persistante");
+        .expect("Failed to reinitialize engine for persistent deduplication");
 
     let result_second = engine2.apply_event(key, event);
 
     let duplicate_rejected = matches!(result_second, Err(EngineError::DuplicateEvent(_)));
 
-    // Vérifier le contenu de dedup.raftids
+    // Verify the content of dedup.raftids
     let dedup_file = format!("{}/dedup.raftids", base_path);
     let dedup_ids = std::fs::read_to_string(&dedup_file)
         .map(|content| {
@@ -1052,7 +1038,7 @@ async fn when_idempotent_event_before_and_after_restart(world: &mut LithairWorld
     }
 
     println!(
-        "🧪 Déduplication persistante: duplicate_rejected={}, dedup_ids_count={}, contains_expected={}",
+        "🧪 Persistent deduplication: duplicate_rejected={}, dedup_ids_count={}, contains_expected={}",
         duplicate_rejected,
         dedup_ids.len(),
         contains_expected
@@ -1081,11 +1067,11 @@ async fn then_engine_rejects_duplicate_after_restart(world: &mut LithairWorld) {
 
     assert!(
         duplicate_rejected,
-        "❌ Le moteur n'a pas rejeté le doublon après redémarrage (duplicate_rejected = false)"
+        "❌ Engine did not reject the duplicate after restart (duplicate_rejected = false)"
     );
     assert!(
         contains_expected && dedup_count >= 1,
-        "❌ dedup.raftids ne contient pas la clé attendue ou est vide (contains_expected={}, count={})",
+        "❌ dedup.raftids does not contain the expected key or is empty (contains_expected={}, count={})",
         contains_expected,
         dedup_count
     );
@@ -1095,16 +1081,16 @@ async fn then_engine_rejects_duplicate_after_restart(world: &mut LithairWorld) {
 async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
-    println!("🧪 Préparation du scénario de déduplication persistante en mode multi-fichiers...",);
+    println!("🧪 Preparing persistent deduplication scenario in multi-file mode...",);
 
     let base_path = "/tmp/lithair-dedup-multifile-test".to_string();
 
-    // Nettoyer le répertoire de test
+    // Clean the test directory
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path)
-        .expect("Impossible de créer le répertoire pour la déduplication multi-fichiers");
+        .expect("Failed to create directory for multi-file deduplication");
 
-    // Forcer la persistance des IDs de déduplication
+    // Force deduplication ID persistence
     std::env::set_var("LT_DEDUP_PERSIST", "1");
 
     let config = EngineConfig {
@@ -1113,36 +1099,34 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
         ..Default::default()
     };
 
-    // Run 1: appliquer l'événement une première fois en mode multi-fichiers
-    let engine = Engine::<TestEngineApp>::new(config.clone()).expect(
-        "Échec d'initialisation du moteur en mode multi-fichiers pour la déduplication persistante",
-    );
+    // Run 1: apply the event for the first time in multi-file mode
+    let engine = Engine::<TestEngineApp>::new(config.clone())
+        .expect("Failed to initialize engine in multi-file mode for persistent deduplication");
 
     let event = TestEvent::ArticleCreated {
         id: "dedup-multifile-1".to_string(),
-        title: "Article dédup multi-file".to_string(),
-        content: "Contenu dédup multi-file".to_string(),
+        title: "Multi-file dedup article".to_string(),
+        content: "Multi-file dedup content".to_string(),
     };
 
     let key = event.aggregate_id().unwrap_or("global".to_string());
     engine
         .apply_event(key.clone(), event.clone())
-        .expect("Échec application initiale de l'événement idempotent en multi-fichiers");
-    engine.flush().expect("Échec flush après première application (multi-fichiers)");
+        .expect("Failed initial application of idempotent event in multi-file mode");
+    engine.flush().expect("Failed flush after first application (multi-file)");
 
-    // Drop pour simuler un arrêt propre
+    // Drop to simulate a clean shutdown
     drop(engine);
 
-    // Run 2: redémarrer le moteur et ré-appliquer le même événement
-    let engine2 = Engine::<TestEngineApp>::new(config).expect(
-        "Échec de réinitialisation du moteur pour la déduplication persistante en multi-fichiers",
-    );
+    // Run 2: restart the engine and re-apply the same event
+    let engine2 = Engine::<TestEngineApp>::new(config)
+        .expect("Failed to reinitialize engine for persistent deduplication in multi-file mode");
 
     let result_second = engine2.apply_event(key, event);
 
     let duplicate_rejected = matches!(result_second, Err(EngineError::DuplicateEvent(_)));
 
-    // Vérifier le contenu de dedup.raftids global (base_path/global/dedup.raftids)
+    // Verify the content of dedup.raftids global (base_path/global/dedup.raftids)
     let dedup_file = format!("{}/global/dedup.raftids", base_path);
     let dedup_ids = std::fs::read_to_string(&dedup_file)
         .map(|content| {
@@ -1159,7 +1143,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
 
     {
         let mut test_data = world.test_data.lock().await;
-        // Réutiliser les mêmes tokens que le scénario de dédup persistante existant
+        // Reuse the same tokens as the existing persistent dedup scenario
         test_data.tokens.insert(
             "dedup_persistent_duplicate_rejected".to_string(),
             duplicate_rejected.to_string(),
@@ -1172,7 +1156,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
             contains_expected.to_string(),
         );
 
-        // Tokens spécifiques au scénario multi-fichiers
+        // Tokens specific to multi-file scenario
         test_data
             .tokens
             .insert("multifile_dedup_base_path".to_string(), base_path.clone());
@@ -1182,7 +1166,7 @@ async fn when_idempotent_event_before_and_after_restart_multifile(world: &mut Li
     }
 
     println!(
-        "🧪 Dédup multi-fichiers: duplicate_rejected={}, dedup_ids_count={}, contains_expected={}",
+        "🧪 Multi-file dedup: duplicate_rejected={}, dedup_ids_count={}, contains_expected={}",
         duplicate_rejected,
         dedup_ids.len(),
         contains_expected
@@ -1207,17 +1191,17 @@ async fn then_dedup_file_is_global_multifile(world: &mut LithairWorld) {
     let global_dedup = format!("{}/global/dedup.raftids", base_path);
     assert!(
         std::path::Path::new(&global_dedup).exists(),
-        "❌ Fichier de déduplication global introuvable en mode multi-fichiers: {}",
+        "❌ Global deduplication file not found in multi-file mode: {}",
         global_dedup
     );
 
     let content = std::fs::read_to_string(&global_dedup)
-        .expect("Impossible de lire le fichier dedup.raftids global (multi-fichiers)");
+        .expect("Failed to read global dedup.raftids file (multi-file)");
     let ids: Vec<_> = content.lines().filter(|l| !l.trim().is_empty()).collect();
 
     assert!(
         !ids.is_empty(),
-        "❌ Aucun identifiant de déduplication trouvé dans le fichier global ({})",
+        "❌ No deduplication identifiers found in global file ({})",
         global_dedup
     );
 
@@ -1225,12 +1209,12 @@ async fn then_dedup_file_is_global_multifile(world: &mut LithairWorld) {
 
     assert!(
         contains_expected,
-        "❌ Le fichier global dedup.raftids ne contient pas l'identifiant attendu '{}' (ids={:?})",
+        "❌ Global dedup.raftids file does not contain expected identifier '{}' (ids={:?})",
         expected_id, ids
     );
 
     println!(
-        "✅ Fichier de déduplication global trouvé en mode multi-fichiers ({} identifiant(s))",
+        "✅ Global deduplication file found in multi-file mode ({} identifier(s))",
         ids.len()
     );
 }
@@ -1239,16 +1223,14 @@ async fn then_dedup_file_is_global_multifile(world: &mut LithairWorld) {
 async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
-    println!(
-         "🧪 Routage multi-fichiers: persistance d'événements sur plusieurs agrégats (mode multi-file)",
-     );
+    println!("🧪 Multi-file routing: persisting events on multiple aggregates (multi-file mode)",);
 
     let base_path = "/tmp/lithair-multifile-routing-test".to_string();
 
-    // Nettoyer et recréer le répertoire de test
+    // Clean and recreate the test directory
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path)
-        .expect("Impossible de créer le répertoire de test pour le mode multi-fichiers");
+        .expect("Failed to create test directory for multi-file mode");
 
     let config = EngineConfig {
         event_log_path: base_path.clone(),
@@ -1257,16 +1239,16 @@ async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld
     };
 
     let engine = Engine::<TestEngineApp>::new(config)
-        .expect("Échec d'initialisation du moteur en mode multi-fichiers");
+        .expect("Failed to initialize engine in multi-file mode");
 
-    // Deux structures / tables logiques distinctes: articles et users
+    // Two distinct logical structures / tables: articles and users
     let article_id = "article-multifile-1".to_string();
     let user_id = "user-multifile-1".to_string();
 
     let event_articles = TestEvent::ArticleCreated {
         id: article_id.clone(),
         title: "Article multi-file".to_string(),
-        content: "Contenu multi-file".to_string(),
+        content: "Multi-file content".to_string(),
     };
 
     let event_users = TestEvent::UserCreated {
@@ -1282,25 +1264,23 @@ async fn when_persist_events_multi_aggregates_multifile(world: &mut LithairWorld
 
     engine
         .apply_event(key_articles, event_articles)
-        .expect("Échec application événement aggregate_articles");
+        .expect("Failed to apply aggregate_articles event");
     engine
         .apply_event(key_users, event_users)
-        .expect("Échec application événement aggregate_users");
-    engine.flush().expect("Échec flush du moteur en mode multi-fichiers");
+        .expect("Failed to apply aggregate_users event");
+    engine.flush().expect("Failed to flush engine in multi-file mode");
 
     {
         let mut test_data = world.test_data.lock().await;
         test_data.tokens.insert("multifile_base_path".to_string(), base_path.clone());
-        // aggregate_id correspond maintenant au nom de la table/structure
+        // aggregate_id now corresponds to the table/structure name
         test_data
             .tokens
             .insert("multifile_agg_articles".to_string(), "articles".to_string());
         test_data.tokens.insert("multifile_agg_users".to_string(), "users".to_string());
     }
 
-    println!(
-        "✅ Événements persistés en mode multi-fichiers pour deux agrégats logiques distincts",
-    );
+    println!("✅ Events persisted in multi-file mode for two distinct logical aggregates",);
 }
 
 #[then(expr = "events should be distributed by aggregate into distinct files")]
@@ -1328,19 +1308,19 @@ async fn then_events_routed_to_distinct_files(world: &mut LithairWorld) {
 
     assert!(
         std::path::Path::new(&articles_path).exists(),
-        "❌ Fichier events.raftlog introuvable pour l'agrégat articles: {}",
+        "❌ events.raftlog file not found for articles aggregate: {}",
         articles_path
     );
     assert!(
         std::path::Path::new(&users_path).exists(),
-        "❌ Fichier events.raftlog introuvable pour l'agrégat users: {}",
+        "❌ events.raftlog file not found for users aggregate: {}",
         users_path
     );
 
     let articles_content = std::fs::read_to_string(&articles_path)
-        .expect("Impossible de lire le fichier events.raftlog pour l'agrégat articles");
+        .expect("Failed to read events.raftlog file for articles aggregate");
     let users_content = std::fs::read_to_string(&users_path)
-        .expect("Impossible de lire le fichier events.raftlog pour l'agrégat users");
+        .expect("Failed to read events.raftlog file for users aggregate");
 
     let articles_events: Vec<_> =
         articles_content.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -1348,16 +1328,16 @@ async fn then_events_routed_to_distinct_files(world: &mut LithairWorld) {
 
     assert!(
         !articles_events.is_empty(),
-        "❌ Aucun événement trouvé dans le fichier de l'agrégat articles ({})",
+        "❌ No events found in articles aggregate file ({})",
         articles_path
     );
     assert!(
         !users_events.is_empty(),
-        "❌ Aucun événement trouvé dans le fichier de l'agrégat users ({})",
+        "❌ No events found in users aggregate file ({})",
         users_path
     );
 
-    println!("✅ Événements correctement répartis dans des fichiers distincts pour chaque agrégat",);
+    println!("✅ Events correctly distributed into distinct files for each aggregate",);
 }
 
 #[then(expr = "each aggregate file should contain only events for that aggregate")]
@@ -1382,50 +1362,44 @@ async fn then_each_aggregate_file_contains_only_its_events(world: &mut LithairWo
 
     for (agg, label) in [(agg_articles.as_str(), "articles"), (agg_users.as_str(), "users")] {
         let file_path = format!("{}/{}/events.raftlog", base_path, agg);
-        let content =
-            std::fs::read_to_string(&file_path).expect("Impossible de lire le fichier d'agrégat");
+        let content = std::fs::read_to_string(&file_path).expect("Failed to read aggregate file");
 
         for line in content.lines() {
             if line.trim().is_empty() {
                 continue;
             }
-            let value: serde_json::Value = serde_json::from_str(line)
-                .expect("Ligne invalide dans events.raftlog (multi-fichiers)");
+            let value: serde_json::Value =
+                serde_json::from_str(line).expect("Invalid line in events.raftlog (multi-file)");
 
             let aggregate_in_file =
                 value.get("aggregate_id").and_then(|v| v.as_str()).unwrap_or("");
 
             assert_eq!(
-                aggregate_in_file,
-                agg,
-                "❌ Fichier d'agrégat {} contient un événement avec aggregate_id='{}' (attendu: '{}')",
-                label,
-                aggregate_in_file,
-                agg
+                aggregate_in_file, agg,
+                "❌ Aggregate file {} contains an event with aggregate_id='{}' (expected: '{}')",
+                label, aggregate_in_file, agg
             );
         }
     }
 
-    println!(
-        "✅ Chaque fichier d'agrégat contient uniquement les événements de son propre agrégat",
-    );
+    println!("✅ Each aggregate file contains only events for its own aggregate",);
 }
 
 #[when(expr = "I generate enough events to trigger log rotation in multi-file mode")]
 async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     use crate::features::world::{TestEngineApp, TestEvent};
 
-    println!("🧪 Préparation du scénario de rotation des logs en mode multi-fichiers...",);
+    println!("🧪 Preparing log rotation scenario in multi-file mode...",);
 
     let base_path = "/tmp/lithair-multifile-rotation-test".to_string();
 
-    // Nettoyer et recréer le répertoire de test
+    // Clean and recreate the test directory
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path)
-        .expect("Impossible de créer le répertoire de test pour la rotation multi-fichiers");
+        .expect("Failed to create test directory for multi-file rotation");
 
-    // Activer la rotation avec un seuil très bas pour forcer rapidement un rollover
-    // Note: FileStorage::new lit LT_MAX_LOG_FILE_SIZE et configure max_log_file_size en conséquence.
+    // Enable rotation with a very low threshold to quickly force a rollover
+    // Note: FileStorage::new reads LT_MAX_LOG_FILE_SIZE and configures max_log_file_size accordingly.
     std::env::set_var("LT_MAX_LOG_FILE_SIZE", "512");
 
     let config = EngineConfig {
@@ -1435,27 +1409,27 @@ async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     };
 
     let engine = Engine::<TestEngineApp>::new(config)
-        .expect("Échec d'initialisation du moteur en mode multi-fichiers pour la rotation");
+        .expect("Failed to initialize engine in multi-file mode for rotation");
 
-    // Table ciblée pour la rotation: articles (aggregate_id = "articles")
+    // Target table for rotation: articles (aggregate_id = "articles")
     let rotation_table = "articles".to_string();
 
-    // Générer un seul événement très volumineux pour dépasser le seuil (512 bytes)
+    // Generate a single very large event to exceed the threshold (512 bytes)
     let event = TestEvent::ArticleCreated {
         id: "rotation-article-1".to_string(),
         title: "Rotation large event".to_string(),
-        // Contenu suffisamment long pour déclencher la rotation en un seul append
+        // Content long enough to trigger rotation in a single append
         content: "x".repeat(5000),
     };
 
     let key = event.aggregate_id().unwrap_or("global".to_string());
     engine
         .apply_event(key, event)
-        .expect("Échec application événement de rotation en multi-fichiers");
+        .expect("Failed to apply rotation event in multi-file mode");
 
     engine
         .flush()
-        .expect("Échec flush après génération des événements de rotation (multi-fichiers)");
+        .expect("Failed to flush after generating rotation events (multi-file)");
 
     {
         let mut test_data = world.test_data.lock().await;
@@ -1468,7 +1442,7 @@ async fn when_generate_events_for_multifile_rotation(world: &mut LithairWorld) {
     }
 
     println!(
-        "✅ Événements générés pour la rotation en mode multi-fichiers (table = {})",
+        "✅ Events generated for rotation in multi-file mode (table = {})",
         rotation_table
     );
 }
@@ -1493,24 +1467,24 @@ async fn then_rotation_aggregate_log_must_be_rotated(world: &mut LithairWorld) {
 
     assert!(
         std::path::Path::new(&rotated_path).exists(),
-        "❌ Fichier rotaté introuvable pour l'agrégat de rotation: {}",
+        "❌ Rotated file not found for rotation aggregate: {}",
         rotated_path
     );
     assert!(
         std::path::Path::new(&log_path).exists(),
-        "❌ Fichier courant events.raftlog introuvable pour l'agrégat de rotation: {}",
+        "❌ Current events.raftlog file not found for rotation aggregate: {}",
         log_path
     );
 
     let rotated_size = std::fs::metadata(&rotated_path).map(|m| m.len()).unwrap_or(0);
     assert!(
         rotated_size > 0,
-        "❌ Fichier rotaté {} est vide (aucun événement persistant)",
+        "❌ Rotated file {} is empty (no persisted events)",
         rotated_path
     );
 
     println!(
-        "✅ Log rotaté détecté pour l'agrégat de rotation ({} bytes dans {})",
+        "✅ Rotated log detected for rotation aggregate ({} bytes in {})",
         rotated_size, rotated_path
     );
 }
@@ -1535,39 +1509,39 @@ async fn then_rotation_aggregate_logs_must_remain_readable_after_rotation(
     let log_path = format!("{}/{}/events.raftlog", base_path, rotation_table);
     let rotated_path = format!("{}.1", log_path);
 
-    // Vérifier que les deux fichiers (segment rotaté et fichier courant) sont lisibles
+    // Verify that both files (rotated segment and current file) are readable
     for path in [&rotated_path, &log_path] {
         if !std::path::Path::new(path).exists() {
-            // Le fichier courant peut être vide ou inexistant juste après la rotation,
-            // on se concentre surtout sur le segment rotaté.
+            // The current file may be empty or nonexistent right after rotation,
+            // we focus mainly on the rotated segment.
             if path == &rotated_path {
-                panic!("❌ Fichier rotaté inexistant: {}", path);
+                panic!("❌ Rotated file does not exist: {}", path);
             }
             continue;
         }
 
         let content = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("Impossible de lire le fichier {}: {}", path, e));
+            .unwrap_or_else(|e| panic!("Failed to read file {}: {}", path, e));
 
         for line in content.lines() {
             if line.trim().is_empty() {
                 continue;
             }
             let value: serde_json::Value = serde_json::from_str(line)
-                .expect("Ligne invalide dans events.raftlog après rotation (multi-fichiers)");
+                .expect("Invalid line in events.raftlog after rotation (multi-file)");
 
             let aggregate_in_file =
                 value.get("aggregate_id").and_then(|v| v.as_str()).unwrap_or("");
 
             assert_eq!(
                 aggregate_in_file, rotation_table,
-                "❌ Fichier {} contient un événement avec aggregate_id='{}' (attendu: '{}')",
+                "❌ File {} contains an event with aggregate_id='{}' (expected: '{}')",
                 path, aggregate_in_file, rotation_table
             );
         }
     }
 
-    println!("✅ Fichiers de log de l'agrégat de rotation lisibles et cohérents après rotation",);
+    println!("✅ Rotation aggregate log files readable and consistent after rotation",);
 }
 
 #[when(expr = "I create a linked user and article in multi-file mode")]
@@ -1575,15 +1549,15 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     use crate::features::world::{TestEngineApp, TestEvent};
 
     println!(
-        "🧪 Relations dynamiques: création d'un utilisateur, d'un article et de leur relation (multi-fichiers)...",
+        "🧪 Dynamic relations: creating a user, an article and their relationship (multi-file)...",
     );
 
     let base_path = "/tmp/lithair-multifile-relations-test".to_string();
 
-    // Nettoyer et recréer le répertoire de test
+    // Clean and recreate the test directory
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path)
-        .expect("Impossible de créer le répertoire de test pour les relations multi-fichiers");
+        .expect("Failed to create test directory for multi-file relations");
 
     let config = EngineConfig {
         event_log_path: base_path.clone(),
@@ -1591,9 +1565,8 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
         ..Default::default()
     };
 
-    let engine = Engine::<TestEngineApp>::new(config).expect(
-        "Échec d'initialisation du moteur en mode multi-fichiers pour les relations dynamiques",
-    );
+    let engine = Engine::<TestEngineApp>::new(config)
+        .expect("Failed to initialize engine in multi-file mode for dynamic relations");
 
     let user_id = "user-rel-1".to_string();
     let article_id = "article-rel-1".to_string();
@@ -1607,7 +1580,7 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     let event_article = TestEvent::ArticleCreated {
         id: article_id.clone(),
         title: "Article Relations".to_string(),
-        content: "Contenu article avec relation user".to_string(),
+        content: "Article content with user relation".to_string(),
     };
     let event_link =
         TestEvent::ArticleLinkedToUser { article_id: article_id.clone(), user_id: user_id.clone() };
@@ -1616,20 +1589,20 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     let key_user = event_user.aggregate_id().unwrap_or("global".to_string());
     let key_link = event_link.aggregate_id().unwrap_or("global".to_string());
 
-    // Appliquer les événements : d'abord données, puis relation
+    // Apply events: data first, then relation
     engine
         .apply_event(key_article, event_article)
-        .expect("Échec application événement ArticleCreated pour les relations");
+        .expect("Failed to apply ArticleCreated event for relations");
     engine
         .apply_event(key_user, event_user)
-        .expect("Échec application événement UserCreated pour les relations");
+        .expect("Failed to apply UserCreated event for relations");
     engine
         .apply_event(key_link, event_link)
-        .expect("Échec application événement ArticleLinkedToUser");
+        .expect("Failed to apply ArticleLinkedToUser event");
 
     engine
         .flush()
-        .expect("Échec flush après création des événements de relations (multi-fichiers)");
+        .expect("Failed to flush after creating relation events (multi-file)");
 
     {
         let mut test_data = world.test_data.lock().await;
@@ -1639,7 +1612,7 @@ async fn when_create_user_and_article_linked_multifile(world: &mut LithairWorld)
     }
 
     println!(
-        "✅ Utilisateur ({}) et article ({}) créés et liés en mode multi-fichiers",
+        "✅ User ({}) and article ({}) created and linked in multi-file mode",
         user_id, article_id
     );
 }
@@ -1668,14 +1641,14 @@ async fn then_dynamic_relations_rebuilt_from_multifile_events(world: &mut Lithai
 
     let mut rebuilt_state = TestAppState::default();
 
-    // Helper pour rejouer les événements depuis un fichier events.raftlog
+    // Helper to replay events from an events.raftlog file
     let replay_file = |state: &mut TestAppState, path: &str| {
         if !std::path::Path::new(path).exists() {
-            panic!("❌ Fichier events.raftlog introuvable: {}", path);
+            panic!("❌ events.raftlog file not found: {}", path);
         }
 
         let content = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("Impossible de lire le fichier {}: {}", path, e));
+            .unwrap_or_else(|e| panic!("Failed to read file {}: {}", path, e));
 
         for line in content.lines() {
             if line.trim().is_empty() {
@@ -1683,15 +1656,15 @@ async fn then_dynamic_relations_rebuilt_from_multifile_events(world: &mut Lithai
             }
 
             let value: serde_json::Value = serde_json::from_str(line)
-                .expect("Ligne invalide dans events.raftlog (replay relations)");
+                .expect("Invalid line in events.raftlog (replay relations)");
 
             let payload_str = value
                 .get("payload")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| panic!("Payload manquant dans l'enveloppe d'événement"));
+                .unwrap_or_else(|| panic!("Payload missing in event envelope"));
 
             let event: crate::features::world::TestEvent = serde_json::from_str(payload_str)
-                .expect("Impossible de désérialiser TestEvent depuis payload");
+                .expect("Failed to deserialize TestEvent from payload");
 
             event.apply(state);
         }
@@ -1705,32 +1678,33 @@ async fn then_dynamic_relations_rebuilt_from_multifile_events(world: &mut Lithai
     replay_file(&mut rebuilt_state, &users_log);
     replay_file(&mut rebuilt_state, &relations_log);
 
-    // Vérifier que l'article connaît son auteur
+    // Verify the article knows its author
     let article = rebuilt_state
         .data
         .articles
         .get(&article_id)
-        .unwrap_or_else(|| panic!("❌ Article {} introuvable après replay", article_id));
+        .unwrap_or_else(|| panic!("❌ Article {} not found after replay", article_id));
 
-    let author_id = article.get("author_id").and_then(|v| v.as_str()).unwrap_or_else(|| {
-        panic!("❌ author_id manquant sur l'article {} après replay", article_id)
-    });
+    let author_id = article
+        .get("author_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("❌ author_id missing on article {} after replay", article_id));
 
     assert_eq!(
         author_id, user_id,
-        "❌ author_id reconstruit ({}) différent de l'utilisateur attendu ({})",
+        "❌ Rebuilt author_id ({}) differs from expected user ({})",
         author_id, user_id
     );
 
-    // Vérifier que l'utilisateur connaît la liste de ses articles liés
+    // Verify the user knows their list of linked articles
     let user = rebuilt_state
         .data
         .users
         .get(&user_id)
-        .unwrap_or_else(|| panic!("❌ Utilisateur {} introuvable après replay", user_id));
+        .unwrap_or_else(|| panic!("❌ User {} not found after replay", user_id));
 
     let articles_array = user.get("articles").and_then(|v| v.as_array()).unwrap_or_else(|| {
-        panic!("❌ Champ 'articles' manquant ou non-array pour l'utilisateur {}", user_id)
+        panic!("❌ 'articles' field missing or not an array for user {}", user_id)
     });
 
     let contains_article = articles_array
@@ -1739,13 +1713,11 @@ async fn then_dynamic_relations_rebuilt_from_multifile_events(world: &mut Lithai
 
     assert!(
         contains_article,
-        "❌ L'utilisateur {} ne référence pas l'article {} dans 'articles' après replay",
+        "❌ User {} does not reference article {} in 'articles' after replay",
         user_id, article_id
     );
 
-    println!(
-        "✅ Relations dynamiques article<->user reconstruites en mémoire à partir des événements multi-fichiers",
-    );
+    println!("✅ Dynamic article<->user relations reconstructed in memory from multi-file events",);
 }
 
 #[then(expr = "events should be distributed by data table and relation table")]
@@ -1769,13 +1741,13 @@ async fn then_events_routed_by_data_and_relations_tables(world: &mut LithairWorl
     ] {
         assert!(
             std::path::Path::new(path).exists(),
-            "❌ Fichier events.raftlog introuvable pour la table {}: {}",
+            "❌ events.raftlog file not found for table {}: {}",
             expected_agg,
             path
         );
 
         let content = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("Impossible de lire le fichier {}: {}", path, e));
+            .unwrap_or_else(|e| panic!("Failed to read file {}: {}", path, e));
 
         let mut non_empty_lines = 0usize;
 
@@ -1786,27 +1758,22 @@ async fn then_events_routed_by_data_and_relations_tables(world: &mut LithairWorl
             non_empty_lines += 1;
 
             let value: serde_json::Value = serde_json::from_str(line)
-                .expect("Ligne invalide dans events.raftlog (vérification par table)");
+                .expect("Invalid line in events.raftlog (per-table verification)");
 
             let aggregate_in_file =
                 value.get("aggregate_id").and_then(|v| v.as_str()).unwrap_or("");
 
             assert_eq!(
                 aggregate_in_file, expected_agg,
-                "❌ Fichier {} contient un événement avec aggregate_id='{}' (attendu: '{}')",
+                "❌ File {} contains an event with aggregate_id='{}' (expected: '{}')",
                 path, aggregate_in_file, expected_agg
             );
         }
 
-        assert!(
-            non_empty_lines > 0,
-            "❌ Aucun événement trouvé dans la table {} ({})",
-            expected_agg,
-            path
-        );
+        assert!(non_empty_lines > 0, "❌ No events found in table {} ({})", expected_agg, path);
     }
     println!(
-        "✅ Événements correctement répartis entre les tables de données (articles/users) et la table de relations",
+        "✅ Events correctly distributed between data tables (articles/users) and relation table",
     );
 }
 
@@ -1818,20 +1785,20 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
 
     std::fs::remove_dir_all(&base_path).ok();
     std::fs::create_dir_all(&base_path)
-        .expect("Impossible de créer le répertoire de test pour le versioning d'articles");
+        .expect("Failed to create test directory for article versioning");
 
     let payload_v1 = serde_json::json!({
         "version": 1,
         "id": "version-article-v1",
         "title": "Article v1",
-        "content": "Contenu v1 sans slug",
+        "content": "Content v1 without slug",
     });
 
     let payload_v2 = serde_json::json!({
         "version": 2,
         "id": "version-article-v2",
         "title": "Article v2",
-        "content": "Contenu v2 avec slug",
+        "content": "Content v2 with slug",
         "slug": "article-v2-slug",
     });
 
@@ -1858,8 +1825,7 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
         serde_json::to_string(&envelope_v2).expect("Serialization envelope v2"),
     );
 
-    std::fs::write(&events_path, content)
-        .expect("Impossible d'écrire le log d'événements versionnés");
+    std::fs::write(&events_path, content).expect("Failed to write versioned events log");
 
     let config = EngineConfig {
         event_log_path: base_path.clone(),
@@ -1867,8 +1833,8 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
         ..Default::default()
     };
 
-    let engine = Engine::<TestEngineApp>::new(config)
-        .expect("Échec d'initialisation du moteur pour versioning");
+    let engine =
+        Engine::<TestEngineApp>::new(config).expect("Failed to initialize engine for versioning");
 
     let (v1_slug, v1_version, v2_slug, v2_version) = {
         engine
@@ -1899,7 +1865,7 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
 
                 (v1_slug, v1_version, v2_slug, v2_version)
             })
-            .expect("Impossible de lire l'état après replay")
+            .expect("Failed to read state after replay")
     };
 
     let mut test_data = world.test_data.lock().await;
@@ -1928,59 +1894,46 @@ async fn then_versioned_articles_state_must_match_current_schema(world: &mut Lit
 
     drop(test_data);
 
-    assert!(
-        v1_slug.is_empty(),
-        "❌ Article v1 ne devrait pas avoir de slug, trouvé '{}'",
-        v1_slug
-    );
+    assert!(v1_slug.is_empty(), "❌ Article v1 should not have a slug, found '{}'", v1_slug);
 
-    assert_eq!(
-        v1_version, "1",
-        "❌ Version attendue pour l'article v1 = 1, trouvée {}",
-        v1_version
-    );
+    assert_eq!(v1_version, "1", "❌ Expected version for article v1 = 1, found {}", v1_version);
 
     assert_eq!(
         v2_slug, "article-v2-slug",
-        "❌ Article v2 devrait avoir le slug 'article-v2-slug', trouvé '{}'",
+        "❌ Article v2 should have slug 'article-v2-slug', found '{}'",
         v2_slug
     );
 
-    assert_eq!(
-        v2_version, "2",
-        "❌ Version attendue pour l'article v2 = 2, trouvée {}",
-        v2_version
-    );
+    assert_eq!(v2_version, "2", "❌ Expected version for article v2 = 2, found {}", v2_version);
 
     println!(
-        "✅ Upcasting des événements ArticleCreated v1/v2: slug et version correctement reconstruits"
+        "✅ Upcasting of ArticleCreated v1/v2 events: slug and version correctly reconstructed"
     );
 }
 
-// Tests supplémentaires pour la complétude
-#[when(expr = "je consulte l'historique des événements")]
+// Additional tests for completeness
+#[when(expr = "I query the event history")]
 async fn when_query_event_history(world: &mut LithairWorld) {
     let _ = world.make_request("GET", "/api/events/history", None).await;
-    println!("📜 Historique des événements consulté");
+    println!("📜 Event history queried");
 }
 
-// ... (code après les modifications)
-#[then(expr = "je dois pouvoir filtrer par type d'événement")]
+#[then(expr = "I must be able to filter by event type")]
 async fn then_filter_by_event_type(world: &mut LithairWorld) {
     let _ = world.make_request("GET", "/api/events/history?type=ArticleCreated", None).await;
-    println!("✅ Filtrage par type d'événement");
+    println!("✅ Filtering by event type");
 }
 
-#[then(expr = "par agrégat")]
+#[then(expr = "by aggregate")]
 async fn then_filter_by_aggregate(world: &mut LithairWorld) {
     let _ = world.make_request("GET", "/api/events/history?aggregate_id=123", None).await;
-    println!("✅ Filtrage par agrégat");
+    println!("✅ Filtering by aggregate");
 }
 
-#[then(expr = "par plage de dates")]
+#[then(expr = "by date range")]
 async fn then_filter_by_date_range(world: &mut LithairWorld) {
     let _ = world
         .make_request("GET", "/api/events/history?from=2024-01-01&to=2024-12-31", None)
         .await;
-    println!("✅ Filtrage par plage de dates");
+    println!("✅ Filtering by date range");
 }

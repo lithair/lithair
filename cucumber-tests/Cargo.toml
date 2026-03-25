@@ -74,11 +74,6 @@ path = "tests/cucumber_tests.rs"
 harness = false
 
 [[test]]
-name = "declarative_test"
-path = "tests/declarative_test.rs"
-harness = false
-
-[[test]]
 name = "serialization_test"
 path = "tests/serialization_test.rs"
 harness = false
@@ -105,7 +100,7 @@ rand = "0.8"
 # Lithair core framework
 lithair-core = { path = "../lithair-core" }
 
-# Pour gérer les ports aléatoires dans les tests
+# Random port selection for tests
 portpicker = "0.1"
 
 # TOML parsing for scaffolding tests

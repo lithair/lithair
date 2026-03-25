@@ -1,45 +1,45 @@
 # RBAC Session Demo - Migration to LithairServer
 
-## 📊 Résultats de la Refactorisation
+## Refactoring Results
 
-### **Réduction de Code**
-- **Avant (V1)** : 340 lignes (Hyper manuel)
-- **Après (V2)** : 242 lignes (LithairServer)
-- **Réduction** : **30% de code en moins** ! 🎉
+### **Code Reduction**
+- **Before (V1)**: 340 lines (manual Hyper)
+- **After (V2)**: 242 lines (LithairServer)
+- **Reduction**: **30% less code**! 🎉
 
-### **Comparaison**
+### **Comparison**
 
-| Aspect | V1 (main.rs) | V2 (main_v2.rs) | Amélioration |
-|--------|--------------|-----------------|--------------|
-| Lignes de code | 340 | 242 | -30% |
-| Setup serveur | ~50 lignes | ~30 lignes | -40% |
-| Gestion connexions | Manuel (loop + spawn) | Automatique | ✅ |
-| Routing | Manuel (match) | Déclaratif | ✅ |
-| Configuration | Hardcodé | Builder pattern | ✅ |
-| Logging | env_logger manuel | Automatique | ✅ |
+| Aspect | V1 (main.rs) | V2 (main_v2.rs) | Improvement |
+|--------|--------------|-----------------|-------------|
+| Lines of code | 340 | 242 | -30% |
+| Server setup | ~50 lines | ~30 lines | -40% |
+| Connection handling | Manual (loop + spawn) | Automatic | ✅ |
+| Routing | Manual (match) | Declarative | ✅ |
+| Configuration | Hardcoded | Builder pattern | ✅ |
+| Logging | Manual env_logger | Automatic | ✅ |
 
-## 🔄 Changements Principaux
+## 🔄 Key Changes
 
-### **1. Setup Serveur**
+### **1. Server Setup**
 
-#### Avant (V1)
+#### Before (V1)
 ```rust
-// 50+ lignes de code Hyper
+// 50+ lines of Hyper code
 let addr = format!("127.0.0.1:{}", args.port);
 let listener = TcpListener::bind(&addr).await?;
 
 loop {
     let (stream, _) = listener.accept().await?;
     let io = TokioIo::new(stream);
-    
+
     let session_middleware = session_middleware.clone();
     let session_store = session_store.clone();
-    
+
     tokio::task::spawn(async move {
         let service = service_fn(move |req| {
             handle_request(req, session_middleware.clone(), session_store.clone())
         });
-        
+
         if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
             eprintln!("Error serving connection: {:?}", err);
         }
@@ -47,9 +47,9 @@ loop {
 }
 ```
 
-#### Après (V2)
+#### After (V2)
 ```rust
-// 30 lignes déclaratives
+// 30 declarative lines
 LithairServer::new()
     .with_port(args.port)
     .with_host("127.0.0.1")
@@ -63,7 +63,7 @@ LithairServer::new()
 
 ### **2. Routing**
 
-#### Avant (V1)
+#### Before (V1)
 ```rust
 async fn handle_request(
     req: Request<hyper::body::Incoming>,
@@ -72,7 +72,7 @@ async fn handle_request(
 ) -> Result<Response<Full<Bytes>>> {
     let path = req.uri().path();
     let method = req.method();
-    
+
     match (method, path) {
         (&Method::POST, "/auth/login") => login(req, session_middleware, session_store).await,
         (&Method::POST, "/auth/logout") => logout(req, session_middleware).await,
@@ -82,93 +82,93 @@ async fn handle_request(
 }
 ```
 
-#### Après (V2)
+#### After (V2)
 ```rust
-// Routing automatique dans LithairServer
-// Pas besoin de fonction handle_request manuelle !
+// Automatic routing in LithairServer
+// No manual handle_request function needed!
 ```
 
 ### **3. Logging**
 
-#### Avant (V1)
+#### Before (V1)
 ```rust
-env_logger::init(); // Manuel
+env_logger::init(); // Manual
 log::info!("🚀 Server listening on {}", addr);
 ```
 
-#### Après (V2)
+#### After (V2)
 ```rust
-// Automatique avec format standard :
+// Automatic with standard format:
 // 2025-10-02T16:43:15.234Z [INFO] 🚀 Starting Lithair Server
 // 2025-10-02T16:43:15.235Z [INFO]    Port: 3000
 // 2025-10-02T16:43:15.235Z [INFO]    Host: 127.0.0.1
 ```
 
-## 🎯 Avantages de V2
+## 🎯 Advantages of V2
 
-### **Lisibilité** ✨
-- Code déclaratif vs impératif
-- Intent clair dès la lecture
-- Moins de boilerplate
+### **Readability** ✨
+- Declarative vs imperative code
+- Clear intent at first glance
+- Less boilerplate
 
-### **Maintenabilité** 🔧
-- Moins de code = moins de bugs
-- Configuration centralisée
-- Extensibilité facile
+### **Maintainability** 🔧
+- Less code = fewer bugs
+- Centralized configuration
+- Easy extensibility
 
-### **Fonctionnalités** 🚀
-- Admin panel automatique
+### **Features** 🚀
+- Automatic admin panel
 - Metrics endpoint
-- Configuration TOML/Env
-- Hot-reload support (à venir)
+- TOML/Env configuration
+- Hot-reload support (planned)
 
 ## 📝 Migration Guide
 
-Pour migrer un exemple existant :
+To migrate an existing example:
 
-1. **Remplacer le setup Hyper**
+1. **Replace the Hyper setup**
    ```rust
-   // Avant
+   // Before
    let listener = TcpListener::bind(&addr).await?;
    loop { ... }
-   
-   // Après
+
+   // After
    LithairServer::new().with_port(port).serve().await?;
    ```
 
-2. **Convertir les routes**
+2. **Convert the routes**
    ```rust
-   // Avant
+   // Before
    match (method, path) {
        (&Method::POST, "/auth/login") => login(...).await,
    }
-   
-   // Après
+
+   // After
    .with_route(Method::POST, "/auth/login", |req| {
        Box::pin(async move { login(req, ...).await })
    })
    ```
 
-3. **Simplifier la configuration**
+3. **Simplify configuration**
    ```rust
-   // Avant
+   // Before
    env_logger::init();
    let session_config = SessionConfig::hybrid()...;
-   
-   // Après
-   // Logging automatique
-   // Config via builder ou fichier TOML
+
+   // After
+   // Automatic logging
+   // Config via builder or TOML file
    ```
 
-## 🚀 Prochaines Étapes
+## 🚀 Next Steps
 
-- [ ] Remplacer `main.rs` par `main_v2.rs`
-- [ ] Ajouter support RBAC dans les handlers
-- [ ] Tester avec curl
-- [ ] Documenter l'API finale
+- [ ] Replace `main.rs` with `main_v2.rs`
+- [ ] Add RBAC support in handlers
+- [ ] Test with curl
+- [ ] Document the final API
 
-## 📚 Fichiers
+## 📚 Files
 
-- `main.rs` - Version originale (340 lignes)
-- `main_v2.rs` - Version refactorisée (242 lignes)
-- `MIGRATION.md` - Ce document
+- `main.rs` - Original version (340 lines)
+- `main_v2.rs` - Refactored version (242 lines)
+- `MIGRATION.md` - This document
