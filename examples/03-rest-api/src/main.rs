@@ -96,10 +96,7 @@ struct Todo {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080);
+    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
 
     LithairServer::new()
         .with_port(port)

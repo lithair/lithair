@@ -102,10 +102,7 @@ async fn main() -> Result<()> {
     println!("==============");
     println!();
     println!("Models (auto-generated CRUD for each):");
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8081);
+    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8081);
 
     println!("  http://localhost:{port}/api/categories");
     println!("  http://localhost:{port}/api/products");

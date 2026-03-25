@@ -22,10 +22,7 @@ use lithair_core::logging::LoggingConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080);
+    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
 
     println!("🌐 Lithair Static Site on port {port}\n");
 

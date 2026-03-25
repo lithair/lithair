@@ -1961,11 +1961,8 @@ impl LithairServer {
 
         let models = self.models.read().await;
         let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
-        let custom_route_paths: Vec<String> = self
-            .custom_routes
-            .iter()
-            .map(|r| format!("{} {}", r.method, r.path))
-            .collect();
+        let custom_route_paths: Vec<String> =
+            self.custom_routes.iter().map(|r| format!("{} {}", r.method, r.path)).collect();
 
         let dashboard = serde_json::json!({
             "server": {
@@ -3308,17 +3305,11 @@ impl LithairServer {
 
         lines.push("# HELP lithair_custom_routes_total Number of custom routes".to_string());
         lines.push("# TYPE lithair_custom_routes_total gauge".to_string());
-        lines.push(format!(
-            "lithair_custom_routes_total {}",
-            self.custom_routes.len()
-        ));
+        lines.push(format!("lithair_custom_routes_total {}", self.custom_routes.len()));
 
         lines.push("# HELP lithair_frontend_engines_total Number of frontend engines".to_string());
         lines.push("# TYPE lithair_frontend_engines_total gauge".to_string());
-        lines.push(format!(
-            "lithair_frontend_engines_total {}",
-            self.frontend_engines.len()
-        ));
+        lines.push(format!("lithair_frontend_engines_total {}", self.frontend_engines.len()));
 
         lines.push(String::new());
 

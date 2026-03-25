@@ -58,18 +58,12 @@ async fn main() -> Result<()> {
         "svelte" => "examples/11-frontend-integrations/svelte/dist",
         "astro" => "examples/11-frontend-integrations/astro/dist",
         other => {
-            eprintln!(
-                "Unknown frontend: {}. Choose: react, angular, vue, svelte, astro",
-                other
-            );
+            eprintln!("Unknown frontend: {}. Choose: react, angular, vue, svelte, astro", other);
             std::process::exit(1);
         }
     };
 
-    println!(
-        "Starting Notes API with {} frontend on port {}",
-        args.frontend, args.port
-    );
+    println!("Starting Notes API with {} frontend on port {}", args.frontend, args.port);
 
     LithairServer::new()
         .with_port(args.port)
