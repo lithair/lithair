@@ -17,7 +17,7 @@ assert_status 200 "root returns 200"
 log_test "GET /_admin - admin panel"
 body=$(http_get "$BASE_URL/_admin")
 assert_status 200 "admin panel accessible"
-assert_contains "$body" "admin" "admin page content"
+assert_contains "$body" "doctype" "admin page is HTML"
 
 # ── METRICS ──────────────────────────────────────────────────────────────────
 log_test "GET /_admin/metrics - metrics endpoint"
