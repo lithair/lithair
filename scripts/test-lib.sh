@@ -46,7 +46,7 @@ start_server() {
     BASE_URL="http://${HOST}:${PORT}"
 
     log_info "Starting ${pkg} on port ${PORT}..."
-    RUST_LOG="${RUST_LOG:-info}" target/debug/"$pkg" "$@" \
+    PORT="${PORT}" RUST_LOG="${RUST_LOG:-info}" target/debug/"$pkg" "$@" \
         >"$log_file" 2>&1 &
     SERVER_PID=$!
 

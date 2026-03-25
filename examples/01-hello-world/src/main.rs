@@ -15,11 +15,16 @@ use lithair_core::logging::LoggingConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+
     println!("🚀 Starting Minimal Lithair Server Example\n");
 
     LithairServer::new()
         // Server config
-        .with_port(8080)
+        .with_port(port)
         .with_host("127.0.0.1")
         .with_cors(true)
 

@@ -96,8 +96,13 @@ struct Todo {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+
     LithairServer::new()
-        .with_port(8080)
+        .with_port(port)
         .with_host("127.0.0.1")
         .with_logging_config(LoggingConfig::development())
         // One line: struct → full CRUD API with validation, uniqueness, and audit

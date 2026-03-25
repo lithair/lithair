@@ -102,13 +102,18 @@ async fn main() -> Result<()> {
     println!("==============");
     println!();
     println!("Models (auto-generated CRUD for each):");
-    println!("  Category  http://localhost:8081/api/categories");
-    println!("  Product   http://localhost:8081/api/products");
-    println!("  Order     http://localhost:8081/api/orders");
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8081);
+
+    println!("  http://localhost:{port}/api/categories");
+    println!("  http://localhost:{port}/api/products");
+    println!("  http://localhost:{port}/api/orders");
     println!();
 
     LithairServer::new()
-        .with_port(8081)
+        .with_port(port)
         .with_host("127.0.0.1")
         .with_logging_config(LoggingConfig::development())
         .with_model::<Category>("./data/ecommerce/categories", "/api/categories")
