@@ -96,11 +96,7 @@ async fn check_pre_crash_state(world: &mut LithairWorld) {
     let pre_crash = world.pre_crash_state.as_ref().expect("No pre-crash state");
     let post_recovery: Vec<_> = world.scc2_articles.iter_all_sync();
 
-    assert_eq!(
-        pre_crash.len(),
-        post_recovery.len(),
-        "❌ Article count differs after recovery"
-    );
+    assert_eq!(pre_crash.len(), post_recovery.len(), "❌ Article count differs after recovery");
 
     // Verify that all articles are identical
     for article in pre_crash {
@@ -600,10 +596,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
                     Ok(_) => applied += 1,
                     Err(EngineError::DuplicateEvent(_)) => duplicates += 1,
                     Err(e) => {
-                        println!(
-                            "⚠️ Unexpected error while applying event: {:?}",
-                            e
-                        );
+                        println!("⚠️ Unexpected error while applying event: {:?}", e);
                     }
                 }
             }
@@ -680,9 +673,7 @@ async fn when_concurrent_idempotent_event(world: &mut LithairWorld) {
     );
 }
 
-#[then(
-    expr = "the idempotent event must be applied only once in presence of concurrency"
-)]
+#[then(expr = "the idempotent event must be applied only once in presence of concurrency")]
 async fn then_idempotent_event_applied_once(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
 
@@ -713,9 +704,7 @@ async fn then_idempotent_event_applied_once(world: &mut LithairWorld) {
     );
 }
 
-#[then(
-    expr = "the deduplication file must contain exactly 1 identifier for this event"
-)]
+#[then(expr = "the deduplication file must contain exactly 1 identifier for this event")]
 async fn then_dedup_file_contains_single_id(world: &mut LithairWorld) {
     let test_data = world.test_data.lock().await;
 
@@ -752,8 +741,7 @@ async fn then_dedup_file_contains_single_id(world: &mut LithairWorld) {
 
     println!(
         "✅ dedup.raftids valid: {} total identifier(s), {} unique, expected identifier present",
-        total,
-        unique
+        total, unique
     );
 }
 

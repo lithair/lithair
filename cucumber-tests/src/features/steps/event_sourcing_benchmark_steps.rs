@@ -416,7 +416,6 @@ async fn verify_event_types(_world: &mut LithairWorld) {
 
 // ==================== ADMIN EDIT API ====================
 
-
 #[given(expr = "an existing article with id {string}")]
 async fn create_article_with_id(world: &mut LithairWorld, id: String) {
     println!("📝 Creating article with id: {}", id);

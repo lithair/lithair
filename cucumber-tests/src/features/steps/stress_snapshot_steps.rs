@@ -394,7 +394,10 @@ async fn then_average_throughput_must_be_above(world: &mut LithairWorld, min_thr
         min_throughput
     );
 
-    println!("✅ Average throughput validated: {:.0} evt/s >= {} evt/s", actual, min_throughput);
+    println!(
+        "✅ Average throughput validated: {:.0} evt/s >= {} evt/s",
+        actual, min_throughput
+    );
 }
 
 #[then(expr = "the total creation time must be less than {int} seconds")]
@@ -452,10 +455,7 @@ async fn then_snapshot_recovery_time_must_be_below(world: &mut LithairWorld, max
         max_seconds
     );
 
-    println!(
-        "✅ Recovery time with snapshot validated: {:.2}s < {}s",
-        elapsed, max_seconds
-    );
+    println!("✅ Recovery time with snapshot validated: {:.2}s < {}s", elapsed, max_seconds);
 }
 
 // ==================== SNAPSHOT VALIDATIONS ====================
@@ -487,10 +487,7 @@ async fn then_snapshot_size_must_be_reasonable(world: &mut LithairWorld) {
         max_size
     );
 
-    println!(
-        "✅ Snapshot size is reasonable: {:.2} MB",
-        total_size as f64 / 1024.0 / 1024.0
-    );
+    println!("✅ Snapshot size is reasonable: {:.2} MB", total_size as f64 / 1024.0 / 1024.0);
 }
 
 #[then(expr = "{int} snapshots must exist")]

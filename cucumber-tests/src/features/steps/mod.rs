@@ -8,9 +8,9 @@ pub mod session_steps;
 pub mod webserver_steps;
 
 // Advanced steps
+pub mod bench_isolated_steps;
 pub mod cluster_steps;
 pub mod database_performance_steps;
-pub mod bench_isolated_steps;
 pub mod engine_direct_steps;
 pub mod engine_reliability_steps;
 pub mod event_sourcing_benchmark_steps;

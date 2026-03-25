@@ -693,8 +693,8 @@ impl LithairWorld {
 
         // Persist if storage is enabled
         if let Some(_storage) = self.storage.lock().await.as_mut() {
-            let event_json = serde_json::to_string(&event)
-                .map_err(|e| format!("Serialization error: {}", e))?;
+            let event_json =
+                serde_json::to_string(&event).map_err(|e| format!("Serialization error: {}", e))?;
             // FileStorage does not have a simple public append method;
             // for now just log the event
             println!("💾 Event serialized: {}", event_json);
@@ -741,8 +741,8 @@ impl LithairWorld {
         if let Some(dir) = temp_dir.as_ref() {
             let file_path = dir.path().join("events.raftlog");
             if file_path.exists() {
-                let content = std::fs::read(&file_path)
-                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                let content =
+                    std::fs::read(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
                 let mut hasher = Crc32Hasher::new();
                 hasher.update(&content);

@@ -631,17 +631,12 @@ async fn then_all_files_exist_with_valid_crc32(world: &mut LithairWorld) {
         }
     }
 
-    println!(
-        "✅ {} files exist with {} valid CRC32 events",
-        file_count, total_events
-    );
+    println!("✅ {} files exist with {} valid CRC32 events", file_count, total_events);
 }
 
 // ==================== CONCURRENT ====================
 
-#[when(
-    expr = "I launch {int} concurrent tasks each writing {int} events on a different structure"
-)]
+#[when(expr = "I launch {int} concurrent tasks each writing {int} events on a different structure")]
 async fn when_launch_concurrent_tasks(
     world: &mut LithairWorld,
     num_tasks: usize,

@@ -137,11 +137,7 @@ async fn then_snapshot_must_not_exist(world: &mut LithairWorld, aggregate_id: St
     let store = store_guard.as_ref().expect("MultiFileEventStore not initialized");
 
     let snapshot = store.load_snapshot(Some(&aggregate_id)).expect("Failed to check snapshot");
-    assert!(
-        snapshot.is_none(),
-        "Snapshot for '{}' exists when it should not",
-        aggregate_id
-    );
+    assert!(snapshot.is_none(), "Snapshot for '{}' exists when it should not", aggregate_id);
 
     println!("✅ Snapshot for '{}' does not exist (expected)", aggregate_id);
 }
@@ -200,11 +196,7 @@ async fn then_snapshot_must_have_valid_crc32(world: &mut LithairWorld, aggregate
 
     // CRC32 validation is done automatically in load_snapshot
     // If we reach here, the CRC32 is valid
-    assert!(
-        snapshot.validate().is_ok(),
-        "Invalid CRC32 for snapshot '{}'",
-        aggregate_id
-    );
+    assert!(snapshot.validate().is_ok(), "Invalid CRC32 for snapshot '{}'", aggregate_id);
 
     println!("✅ Snapshot '{}' has a valid CRC32", aggregate_id);
 }
@@ -385,11 +377,7 @@ async fn then_snapshot_must_be_faster(world: &mut LithairWorld) {
         ratio
     );
 
-    assert!(
-        ratio >= 5.0,
-        "Performance ratio is only {:.1}x (expected: >= 5x)",
-        ratio
-    );
+    assert!(ratio >= 5.0, "Performance ratio is only {:.1}x (expected: >= 5x)", ratio);
 
     println!("✅ Performance validated: {:.1}x faster with snapshot", ratio);
 }
@@ -405,11 +393,7 @@ async fn then_snapshot_should_not_be_needed(world: &mut LithairWorld, aggregate_
         .should_create_snapshot(Some(&aggregate_id))
         .expect("Failed to check snapshot threshold");
 
-    assert!(
-        !should_create,
-        "A snapshot should not be necessary for '{}'",
-        aggregate_id
-    );
+    assert!(!should_create, "A snapshot should not be necessary for '{}'", aggregate_id);
 
     println!("✅ Snapshot not necessary for '{}' (expected)", aggregate_id);
 }
