@@ -19,11 +19,7 @@ members = [
     "examples/10-blog-distributed",
 
     # Frontend framework integrations
-    "examples/11-react",
-    "examples/12-angular",
-    "examples/13-vue",
-    "examples/14-svelte",
-    "examples/15-astro",
+    "examples/11-frontend-integrations",
 
     # Advanced examples
     "examples/advanced/datatable",

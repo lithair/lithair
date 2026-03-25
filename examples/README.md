@@ -30,15 +30,11 @@ cargo run -p blog -- --port 3000
 
 ### Frontend Framework Integrations
 
-Same Notes CRUD backend, different frontend framework. `npm run build` → `dist/` → `with_frontend()` → SCC2 memory.
+Same Notes CRUD backend, different frontend framework. `npm run build` -> `dist/` -> `with_frontend()` -> SCC2 memory.
 
-| #  | Name | Framework | What you learn |
-|----|------|-----------|---------------|
-| 11 | [react](11-react/) | React 19 + Vite | useState/useEffect hooks, Vite proxy |
-| 12 | [angular](12-angular/) | Angular 19 | Standalone components, HttpClient, proxy.conf |
-| 13 | [vue](13-vue/) | Vue 3.5 + Vite | Composition API, `<script setup>`, ref/onMounted |
-| 14 | [svelte](14-svelte/) | Svelte 5 + Vite | Runes ($state, $effect), minimal boilerplate |
-| 15 | [astro](15-astro/) | Astro 5 | SSG page, vanilla JS island, zero JS framework |
+| #  | Name | What you learn |
+|----|------|---------------|
+| 11 | [frontend-integrations](11-frontend-integrations/) | Same Notes CRUD with React, Angular, Vue, Svelte, or Astro |
 
 ### Advanced
 
@@ -61,7 +57,7 @@ Same Notes CRUD backend, different frontend framework. `npm run build` → `dist
 
 **Going distributed?** 09 → 10
 
-**Frontend integrations?** 03 → 11 (React) | 12 (Angular) | 13 (Vue) | 14 (Svelte) | 15 (Astro)
+**Frontend integrations?** 03 → 11 (pick your framework)
 
 ## For AI Agents
 

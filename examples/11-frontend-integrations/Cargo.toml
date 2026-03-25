@@ -1,11 +1,12 @@
 [package]
-name = "notes-astro"
+name = "frontend-integrations"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Notes CRUD backend with React, Angular, Vue, Svelte, and Astro frontends"
 
 [[bin]]
-name = "notes-astro"
+name = "frontend-integrations"
 path = "src/main.rs"
 
 [dependencies]
@@ -15,3 +16,4 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+clap = { version = "4.5", features = ["derive"] }

@@ -1,0 +1,12 @@
+react/node_modules/
+react/dist/
+angular/node_modules/
+angular/dist/
+angular/.angular/
+vue/node_modules/
+vue/dist/
+svelte/node_modules/
+svelte/dist/
+astro/node_modules/
+astro/dist/
+data/
