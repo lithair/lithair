@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "replication-hardening-node",
+    name = "http-hardening-node",
     about = "Minimal declarative server for HTTP hardening demo"
 )]
 struct Args {

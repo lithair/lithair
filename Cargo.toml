@@ -30,6 +30,8 @@ members = [
     "examples/advanced/stress-test",
     "examples/advanced/consistency-test",
     "examples/advanced/playground",
+    "examples/advanced/http-firewall",
+    "examples/advanced/http-hardening",
 
     # Tests
     "cucumber-tests",

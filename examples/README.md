@@ -45,6 +45,8 @@ Same Notes CRUD backend, different frontend framework. `npm run build` → `dist
 | Name | Purpose |
 |------|---------|
 | [datatable](advanced/datatable/) | Interactive data table with pagination |
+| [http-firewall](advanced/http-firewall/) | IP deny/allow, rate limiting, declarative firewall |
+| [http-hardening](advanced/http-hardening/) | CORS, timeouts, body limits, security headers |
 | [stress-test](advanced/stress-test/) | Load testing and benchmarks |
 | [consistency-test](advanced/consistency-test/) | Distributed consistency verification |
 | [playground](advanced/playground/) | Multi-model experimentation sandbox |
