@@ -128,9 +128,6 @@ pub use lithair_macros::{
     SchemaEvolution,
 };
 
-// Prelude module for convenient imports
-pub mod prelude;
-
 // Re-exports of main types and traits
 pub use app::LithairServer;
 pub use engine::{RaftstoneApplication, StateEngine};
