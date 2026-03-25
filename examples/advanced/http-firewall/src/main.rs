@@ -3,7 +3,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use lithair_core::http::declarative_server::DeclarativeServer;
+use lithair_core::app::LithairServer;
 use lithair_core::http::FirewallConfig;
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
@@ -110,7 +110,9 @@ async fn main() -> Result<()> {
 
     let event_store_path = "./data/product.events";
     std::fs::create_dir_all("./data").ok();
-    DeclarativeServer::<Product>::new(event_store_path, args.port)?
+    LithairServer::new()
+        .with_port(args.port)
+        .with_model::<Product>(event_store_path, "/api/products")
         .with_firewall_config(fw_cfg)
         .serve()
         .await
