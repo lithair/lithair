@@ -30,13 +30,13 @@ kill_port_if_listening() {
 }
 
 start_node() {
-  echo "\n🚀 Starting declarative node on :${PORT} (replication-hardening-node)"
+  echo "\n🚀 Starting declarative node on :${PORT} (http-hardening-node)"
   # Tighten bulk limit to make 413 easy to demonstrate
   export LT_HTTP_MAX_BODY_BYTES_BULK=${LT_HTTP_MAX_BODY_BYTES_BULK:-2000}
   export LT_HTTP_MAX_BODY_BYTES_SINGLE=${LT_HTTP_MAX_BODY_BYTES_SINGLE:-2048}
   export LT_HTTP_TIMEOUT_MS=${LT_HTTP_TIMEOUT_MS:-10000}
 
-  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p replication --bin replication-hardening-node -- \
+  RUST_LOG=${RUST_LOG:-warn} cargo run --release -p http-hardening --bin http-hardening-node -- \
     --port "$PORT" >"$LOG_DIR/node_demo.log" 2>&1 &
   NODE_PID=$!
 
@@ -69,8 +69,8 @@ main() {
   echo "🧹 Freeing port $PORT if used..."
   kill_port_if_listening "$PORT"
 
-  echo "🔨 Building demo (replication-hardening-node)..."
-  cargo build --release -p replication --bin replication-hardening-node >/dev/null
+  echo "🔨 Building demo (http-hardening-node)..."
+  cargo build --release -p http-hardening --bin http-hardening-node >/dev/null
 
   start_node
 

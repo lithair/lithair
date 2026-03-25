@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "replication-firewall-declarative",
+    name = "http-firewall-declarative",
     about = "Model-level declarative firewall demo"
 )]
 struct Args {
