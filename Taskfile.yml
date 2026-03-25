@@ -84,7 +84,7 @@ tasks:
     desc: Build selected root example binaries and replication load generator
     cmds:
       - cargo build -q -p hello-world
-      - cargo build -q -p replication --bin replication-loadgen
+      - cargo build -q -p loadgen
 
   fmt:
     desc: Run rustfmt on the entire workspace
@@ -164,7 +164,7 @@ tasks:
     desc: Build release binaries for root examples and replication load generator
     cmds:
       - cargo build --release -p hello-world
-      - cargo build --release -p replication --bin replication-loadgen
+      - cargo build --release -p loadgen
 
   examples:list:
     desc: List current root examples
@@ -205,37 +205,37 @@ tasks:
     desc: Run stateless /status load test against the server
     deps: [build]
     cmds:
-      - cargo run -q -p replication --bin replication-loadgen -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-status --perf-path /status --accept-encoding "{{.ACCEPT_ENCODING}}"
+      - cargo run -q -p loadgen -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-status --perf-path /status --accept-encoding "{{.ACCEPT_ENCODING}}"
 
   loadgen:status:release:
     desc: Run stateless /status load test (release build)
     deps: [build:release]
     cmds:
-      - target/release/replication-loadgen --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-status --perf-path /status --accept-encoding "{{.ACCEPT_ENCODING}}"
+      - target/release/loadgen --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-status --perf-path /status --accept-encoding "{{.ACCEPT_ENCODING}}"
 
   loadgen:json:
     desc: Run stateless /perf/json load test against the server
     deps: [build]
     cmds:
-      - cargo run -q -p replication --bin replication-loadgen -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-json --perf-path /perf/json --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+      - cargo run -q -p loadgen -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-json --perf-path /perf/json --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
 
   loadgen:json:release:
     desc: Run stateless /perf/json load test (release build)
     deps: [build:release]
     cmds:
-      - target/release/replication-loadgen --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-json --perf-path /perf/json --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+      - target/release/loadgen --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-json --perf-path /perf/json --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
 
   loadgen:echo:
     desc: Run stateless /perf/echo load test against the server
     deps: [build]
     cmds:
-      - cargo run -q -p replication --bin replication-loadgen -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-echo --perf-path /perf/echo --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+      - cargo run -q -p loadgen -- --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-echo --perf-path /perf/echo --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
 
   loadgen:echo:release:
     desc: Run stateless /perf/echo load test (release build)
     deps: [build:release]
     cmds:
-      - target/release/replication-loadgen --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-echo --perf-path /perf/echo --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
+      - target/release/loadgen --leader {{.LEADER}} --total {{.TOTAL}} --concurrency {{.CONC}} --mode perf-echo --perf-path /perf/echo --perf-bytes {{.BYTES}} --accept-encoding "{{.ACCEPT_ENCODING}}"
 
   bench:json-small:
     desc: Preset benchmark - JSON 1KB, 20k total, 512 concurrency
