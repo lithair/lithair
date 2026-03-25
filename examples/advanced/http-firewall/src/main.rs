@@ -41,7 +41,7 @@ struct Args {
     fw_protected_prefixes: String,
 
     /// Comma-separated exempt URL prefixes (firewall bypassed for these)
-    #[arg(long, default_value = "/status,/health")]
+    #[arg(long, default_value = "/status")]
     fw_exempt_prefixes: String,
 }
 

@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
             global_qps: Some(1000),
             per_ip_qps: Some(50),
             protected_prefixes: vec!["/perf".into(), "/metrics".into()],
-            exempt_prefixes: vec!["/status".into(), "/health".into()],
+            exempt_prefixes: vec!["/status".into()],
         };
         server = server.with_firewall_config(fw);
     }
@@ -182,7 +182,7 @@ async fn main() -> Result<()> {
     if !open_mode {
         log::warn!("🛡️ Firewall enabled - production mode");
         log::info!("Protected endpoints: /perf, /metrics");
-        log::info!("Exempt endpoints: /status, /health");
+        log::info!("Exempt endpoints: /status");
     } else {
         log::warn!("🔓 Firewall disabled - development mode (--open flag)");
     }

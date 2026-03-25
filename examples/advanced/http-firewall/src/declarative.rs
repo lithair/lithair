@@ -25,7 +25,7 @@ fn generate_uuid() -> Uuid {
     enabled = true,
     allow = "127.0.0.1",
     protected = "/api/products",
-    exempt = "/status,/health",
+    exempt = "/status",
     global_qps = 3,
     per_ip_qps = 2
 )]
