@@ -219,11 +219,7 @@ async fn main() -> Result<()> {
             ),
             (
                 "StockManager".to_string(),
-                vec![
-                    "ProductRead".to_string(),
-                    "StockRead".to_string(),
-                    "StockWrite".to_string(),
-                ],
+                vec!["ProductRead".to_string(), "StockRead".to_string(), "StockWrite".to_string()],
             ),
             (
                 "Employee".to_string(),
