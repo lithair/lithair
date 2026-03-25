@@ -46,7 +46,7 @@ impl Default for AdminConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            path: "/admin".to_string(),
+            path: "/_admin".to_string(),
             auth_required: true,
             metrics_enabled: true,
             metrics_path: "/metrics".to_string(),
