@@ -1848,6 +1848,11 @@ impl LithairServer {
             }
         }
 
+        // Admin panel endpoint
+        if self.config.admin.enabled && path == self.config.admin.path {
+            return self.handle_admin_request(req).await;
+        }
+
         // Custom routes checked first — user overrides take priority over model prefix matches
         for route in &self.custom_routes {
             if route.method == method && Self::path_matches(&route.path, &path) {
@@ -1947,19 +1952,47 @@ impl LithairServer {
             .expect("valid HTTP response"))
     }
 
-    /// Handle admin panel request
-    #[allow(dead_code)]
+    /// Handle admin panel request — returns a JSON overview of the running server
     async fn handle_admin_request(
         &self,
         _req: hyper::Request<hyper::body::Incoming>,
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
         use http_body_util::Full;
 
-        // Note: Admin panel is not yet implemented; returns a stub response
+        let models = self.models.read().await;
+        let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
+        let custom_route_paths: Vec<String> =
+            self.custom_routes.iter().map(|r| format!("{} {}", r.method, r.path)).collect();
+
+        let dashboard = serde_json::json!({
+            "server": {
+                "host": self.config.server.host,
+                "port": self.config.server.port,
+            },
+            "models": model_names,
+            "custom_routes": custom_route_paths,
+            "features": {
+                "admin_panel": self.config.admin.enabled,
+                "metrics": self.config.admin.metrics_enabled,
+                "data_admin": self.config.admin.data_admin_enabled,
+                "sessions": self.session_manager.is_some(),
+                "frontend": !self.frontend_engines.is_empty(),
+                "cluster": self.config.replication.enabled,
+            },
+            "endpoints": {
+                "admin": self.config.admin.path,
+                "metrics": if self.config.admin.metrics_enabled { Some(&self.config.admin.metrics_path) } else { None },
+                "schema": "/_admin/schema",
+                "data_admin": if self.config.admin.data_admin_enabled { Some("/_admin/data/models") } else { None },
+            }
+        });
+
+        let body = serde_json::to_string_pretty(&dashboard).unwrap_or_default();
+
         Ok(hyper::Response::builder()
             .status(200)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(r#"{"status":"ok","admin":"panel"}"#)))
+            .body(Full::new(Bytes::from(body)))
             .expect("valid HTTP response"))
     }
 
@@ -3263,11 +3296,27 @@ impl LithairServer {
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
         use http_body_util::Full;
 
-        // Note: Prometheus metrics are not yet implemented; returns a stub response
+        let models = self.models.read().await;
+        let mut lines = Vec::new();
+
+        lines.push("# HELP lithair_models_total Number of registered models".to_string());
+        lines.push("# TYPE lithair_models_total gauge".to_string());
+        lines.push(format!("lithair_models_total {}", models.len()));
+
+        lines.push("# HELP lithair_custom_routes_total Number of custom routes".to_string());
+        lines.push("# TYPE lithair_custom_routes_total gauge".to_string());
+        lines.push(format!("lithair_custom_routes_total {}", self.custom_routes.len()));
+
+        lines.push("# HELP lithair_frontend_engines_total Number of frontend engines".to_string());
+        lines.push("# TYPE lithair_frontend_engines_total gauge".to_string());
+        lines.push(format!("lithair_frontend_engines_total {}", self.frontend_engines.len()));
+
+        lines.push(String::new());
+
         Ok(hyper::Response::builder()
             .status(200)
-            .header("Content-Type", "text/plain")
-            .body(Full::new(Bytes::from("# Metrics endpoint\n")))
+            .header("Content-Type", "text/plain; version=0.0.4")
+            .body(Full::new(Bytes::from(lines.join("\n"))))
             .expect("valid HTTP response"))
     }
 

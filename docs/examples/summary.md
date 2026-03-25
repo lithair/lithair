@@ -34,7 +34,7 @@ The main learning path lives at the repository root:
 - `08-schema-migration`
 - `09-replication`
 - `10-blog-distributed`
-- `11-react` to `15-astro`
+- `11-frontend-integrations` (React, Angular, Vue, Svelte, Astro)
 
 ### Advanced examples
 

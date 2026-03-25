@@ -41,7 +41,7 @@ The root `examples/` directory is the main learning surface:
 - `08-schema-migration`
 - `09-replication`
 - `10-blog-distributed`
-- `11-react` to `15-astro`
+- `11-frontend-integrations` (React, Angular, Vue, Svelte, Astro)
 
 These examples are intentionally diverse. Some are minimal, some are fuller
 applications, but they all belong to the public catalog because they are useful

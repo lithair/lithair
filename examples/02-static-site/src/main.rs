@@ -22,15 +22,12 @@ use lithair_core::logging::LoggingConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("🌐 Lithair Static Site");
-    println!("======================");
-    println!("Serving ./public from memory (SCC2)");
-    println!();
-    println!("  http://localhost:8080");
-    println!();
+    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
+
+    println!("🌐 Lithair Static Site on port {port}\n");
 
     LithairServer::new()
-        .with_port(8080)
+        .with_port(port)
         .with_host("127.0.0.1")
         .with_logging_config(LoggingConfig::development())
         .with_gzip_config(GzipConfig { enabled: true, min_bytes: 512 })
