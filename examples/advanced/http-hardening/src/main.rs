@@ -2,9 +2,8 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use lithair_core::app::LithairServer;
 use lithair_core::http::declarative_server::{
-    GzipConfig, ObserveConfig, PerfEndpointsConfig, ReadinessConfig, RoutePolicy,
+    DeclarativeServer, GzipConfig, ObserveConfig, PerfEndpointsConfig, ReadinessConfig, RoutePolicy,
 };
 use lithair_core::http::FirewallConfig;
 use lithair_core::logging::{FileRotation, LoggingConfig};
@@ -55,7 +54,7 @@ fn generate_uuid() -> Uuid {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    // Build the LithairServer explicitly to attach declarative perf endpoints config.
+    // Build the DeclarativeServer explicitly to attach declarative perf endpoints config.
     // EventStore path mimics serve_on_port() default: ./data/{model}.events
     std::fs::create_dir_all("./data").ok();
     let event_store_path = "./data/product.events";
@@ -99,9 +98,7 @@ async fn main() -> Result<()> {
             .with_context_field("port", &args.port.to_string())
     };
 
-    let mut server = LithairServer::new()
-        .with_port(args.port)
-        .with_model::<Product>(event_store_path, "/api/products")
+    let mut server = DeclarativeServer::<Product>::new(event_store_path, args.port)?
         // NEW: Declarative logging configuration
         .with_logging_config(logging_config)
         // NEW unified observability endpoints
@@ -139,7 +136,7 @@ async fn main() -> Result<()> {
             global_qps: Some(1000),
             per_ip_qps: Some(50),
             protected_prefixes: vec!["/perf".into(), "/metrics".into()],
-            exempt_prefixes: vec!["/status".into()],
+            exempt_prefixes: vec!["/status".into(), "/health".into()],
         };
         server = server.with_firewall_config(fw);
     }
@@ -182,7 +179,7 @@ async fn main() -> Result<()> {
     if !open_mode {
         log::warn!("🛡️ Firewall enabled - production mode");
         log::info!("Protected endpoints: /perf, /metrics");
-        log::info!("Exempt endpoints: /status");
+        log::info!("Exempt endpoints: /status, /health");
     } else {
         log::warn!("🔓 Firewall disabled - development mode (--open flag)");
     }
