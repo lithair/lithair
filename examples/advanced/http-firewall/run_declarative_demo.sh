@@ -15,7 +15,7 @@ LOG_DIR="examples/http_firewall_demo"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/node_decl_demo.log"
 
-HEALTH_URL="$BASE_URL/health"
+HEALTH_URL="$BASE_URL/status"
 PRODUCT_URL="$BASE_URL/api/products"
 
 PASSES=0
@@ -81,7 +81,7 @@ derive_product_url() {
   local base_path
   base_path=$(curl -s "$HEALTH_URL" | sed -n 's/.*"base_path":"\([^\"]*\)".*/\1/p')
   if [[ -z "$base_path" ]]; then
-    echo "⚠️  Could not derive base_path from /health"
+    echo "⚠️  Could not derive base_path from /status"
     return 1
   fi
   PRODUCT_URL="$BASE_URL$base_path"
@@ -94,7 +94,7 @@ start_node() {
     --port "$PORT" >"$LOG_FILE" 2>&1 &
   NODE_PID=$!
 
-  echo -n "⏳ Waiting for /health"
+  echo -n "⏳ Waiting for /status"
   for i in $(seq 1 40); do
     if curl -s "$HEALTH_URL" >/dev/null; then echo " — ready"; return 0; fi
     echo -n "."; sleep 0.25
@@ -116,7 +116,7 @@ main() {
   # Using hardcoded /api/products path - matches DeclarativeModel Product
 
   echo "\n===== Baseline ====="
-  assert_code 200 "Baseline: GET /health should be OK" "$HEALTH_URL"
+  assert_code 200 "Baseline: GET /status should be OK" "$HEALTH_URL"
   assert_code 200 "Baseline: GET /api/<base> should be OK" "$PRODUCT_URL"
 
   echo "\n===== Rate limit (from model attribute) ====="

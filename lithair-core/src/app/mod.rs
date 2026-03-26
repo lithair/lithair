@@ -1308,20 +1308,25 @@ impl LithairServer {
                             let client_ip = crate::http::resolve_client_ip(&req, remote_addr);
 
                             let result = (async move {
-                                // Firewall check
-                                if let Err(_denied) = firewall.check(
+                                // Firewall check (preserves 403 vs 429 distinction)
+                                if let Err(denied) = firewall.check(
                                     Some(remote_addr),
                                     req.method(),
                                     req.uri().path(),
                                 ) {
+                                    let (parts, boxed_body) = denied.into_parts();
+                                    let body_bytes = http_body_util::BodyExt::collect(boxed_body)
+                                        .await
+                                        .map(|c| c.to_bytes())
+                                        .unwrap_or_else(|_| {
+                                            bytes::Bytes::from(r#"{"error":"Forbidden"}"#)
+                                        });
                                     return Ok::<_, std::convert::Infallible>(
                                         Self::add_security_headers(
                                             hyper::Response::builder()
-                                                .status(403)
+                                                .status(parts.status)
                                                 .header("Content-Type", "application/json")
-                                                .body(http_body_util::Full::new(
-                                                    bytes::Bytes::from(r#"{"error":"Forbidden"}"#),
-                                                ))
+                                                .body(http_body_util::Full::new(body_bytes))
                                                 .expect("valid HTTP response"),
                                             tls_active,
                                         ),
