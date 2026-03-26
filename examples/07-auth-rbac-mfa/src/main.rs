@@ -11,7 +11,6 @@
 use anyhow::Result;
 use clap::Parser;
 use lithair_core::app::LithairServer;
-use lithair_core::logging::LoggingConfig;
 use lithair_core::rbac::{RbacUser, ServerRbacConfig};
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
@@ -241,7 +240,6 @@ async fn main() -> Result<()> {
     LithairServer::new()
         .with_port(args.port)
         .with_host(&args.host)
-        .with_logging_config(LoggingConfig::development())
         .with_admin_panel(true)
         .with_model::<Product>("./data/rbac_products", "/api/products")
         .with_rbac_config(rbac_config)

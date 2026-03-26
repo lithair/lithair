@@ -17,8 +17,6 @@
 
 use anyhow::Result;
 use lithair_core::app::LithairServer;
-use lithair_core::http::declarative_server::GzipConfig;
-use lithair_core::logging::LoggingConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,8 +27,6 @@ async fn main() -> Result<()> {
     LithairServer::new()
         .with_port(port)
         .with_host("127.0.0.1")
-        .with_logging_config(LoggingConfig::development())
-        .with_gzip_config(GzipConfig { enabled: true, min_bytes: 512 })
         .with_frontend("examples/02-static-site/public")
         .serve()
         .await?;

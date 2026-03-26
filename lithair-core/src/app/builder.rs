@@ -16,20 +16,12 @@ pub struct LithairServerBuilder {
     model_infos: Vec<crate::app::ModelRegistrationInfo>,
 
     // HTTP Features
-    logging_config: Option<crate::logging::LoggingConfig>,
-    readiness_config: Option<crate::http::declarative_server::ReadinessConfig>,
-    observe_config: Option<crate::http::declarative_server::ObserveConfig>,
-    perf_config: Option<crate::http::declarative_server::PerfEndpointsConfig>,
-    gzip_config: Option<crate::http::declarative_server::GzipConfig>,
-    route_policies: std::collections::HashMap<String, crate::http::declarative_server::RoutePolicy>,
     route_guards: Vec<crate::http::RouteGuardMatcher>, // Declarative route protection
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
     mfa_storage: Option<Arc<crate::mfa::MfaStorage>>, // MFA/TOTP storage
     access_log: bool,
     access_log_capacity: usize,
-    legacy_endpoints: bool,
-    deprecation_warnings: bool,
 
     // SSE real-time subscriptions
     sse_enabled: bool,
@@ -63,20 +55,12 @@ impl LithairServerBuilder {
             custom_routes: Vec::new(),
             not_found_handler: None,
             model_infos: Vec::new(),
-            logging_config: None,
-            readiness_config: None,
-            observe_config: None,
-            perf_config: None,
-            gzip_config: None,
-            route_policies: std::collections::HashMap::new(),
             route_guards: Vec::new(),
             firewall_config: None,
             anti_ddos_config: None,
             mfa_storage: None,
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
-            legacy_endpoints: false,
-            deprecation_warnings: false,
             frontend_configs: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
@@ -95,20 +79,12 @@ impl LithairServerBuilder {
             custom_routes: Vec::new(),
             not_found_handler: None,
             model_infos: Vec::new(),
-            logging_config: None,
-            readiness_config: None,
-            observe_config: None,
-            perf_config: None,
-            gzip_config: None,
-            route_policies: std::collections::HashMap::new(),
             route_guards: Vec::new(),
             firewall_config: None,
             anti_ddos_config: None,
             mfa_storage: None,
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
-            legacy_endpoints: false,
-            deprecation_warnings: false,
             frontend_configs: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
@@ -131,24 +107,6 @@ impl LithairServerBuilder {
     /// Set server host
     pub fn with_host(mut self, host: impl Into<String>) -> Self {
         self.config.server.host = host.into();
-        self
-    }
-
-    /// Set number of worker threads
-    pub fn with_workers(mut self, workers: usize) -> Self {
-        self.config.server.workers = Some(workers);
-        self
-    }
-
-    /// Enable/disable CORS
-    pub fn with_cors(mut self, enabled: bool) -> Self {
-        self.config.server.cors_enabled = enabled;
-        self
-    }
-
-    /// Set CORS origins
-    pub fn with_cors_origins(mut self, origins: Vec<String>) -> Self {
-        self.config.server.cors_origins = origins;
         self
     }
 
@@ -185,74 +143,6 @@ impl LithairServerBuilder {
     {
         self.config.sessions.enabled = true;
         self.session_manager = Some(Arc::new(manager));
-        self
-    }
-
-    /// Set session cleanup interval
-    pub fn with_session_cleanup(mut self, interval: u64) -> Self {
-        self.config.sessions.cleanup_interval = interval;
-        self
-    }
-
-    /// Set session max age
-    pub fn with_session_max_age(mut self, max_age: u64) -> Self {
-        self.config.sessions.max_age = max_age;
-        self
-    }
-
-    /// Enable/disable session cookies
-    pub fn with_session_cookie(mut self, enabled: bool) -> Self {
-        self.config.sessions.cookie_enabled = enabled;
-        self
-    }
-
-    // ========================================================================
-    // RBAC
-    // ========================================================================
-
-    /// Enable/disable RBAC
-    pub fn with_rbac(mut self, enabled: bool) -> Self {
-        self.config.rbac.enabled = enabled;
-        self
-    }
-
-    /// Set default role
-    pub fn with_default_role(mut self, role: impl Into<String>) -> Self {
-        self.config.rbac.default_role = role.into();
-        self
-    }
-
-    /// Enable/disable audit trail
-    pub fn with_audit(mut self, enabled: bool) -> Self {
-        self.config.rbac.audit_enabled = enabled;
-        self
-    }
-
-    /// Enable/disable rate limiting
-    pub fn with_rate_limit(mut self, enabled: bool) -> Self {
-        self.config.rbac.rate_limit_enabled = enabled;
-        self
-    }
-
-    // ========================================================================
-    // REPLICATION
-    // ========================================================================
-
-    /// Enable/disable replication
-    pub fn with_replication(mut self, enabled: bool) -> Self {
-        self.config.replication.enabled = enabled;
-        self
-    }
-
-    /// Set node ID
-    pub fn with_node_id(mut self, id: impl Into<String>) -> Self {
-        self.config.replication.node_id = id.into();
-        self
-    }
-
-    /// Set cluster nodes
-    pub fn with_cluster(mut self, nodes: Vec<String>) -> Self {
-        self.config.replication.cluster_nodes = nodes;
         self
     }
 
@@ -368,28 +258,6 @@ impl LithairServerBuilder {
     }
 
     // ========================================================================
-    // LOGGING
-    // ========================================================================
-
-    /// Set log level
-    pub fn with_log_level(mut self, level: impl Into<String>) -> Self {
-        self.config.logging.level = level.into();
-        self
-    }
-
-    /// Set log format
-    pub fn with_log_format(mut self, format: impl Into<String>) -> Self {
-        self.config.logging.format = format.into();
-        self
-    }
-
-    /// Enable/disable file logging
-    pub fn with_log_file(mut self, enabled: bool) -> Self {
-        self.config.logging.file_enabled = enabled;
-        self
-    }
-
-    // ========================================================================
     // STORAGE
     // ========================================================================
 
@@ -399,74 +267,9 @@ impl LithairServerBuilder {
         self
     }
 
-    /// Enable/disable backups
-    pub fn with_backup(mut self, enabled: bool) -> Self {
-        self.config.storage.backup_enabled = enabled;
-        self
-    }
-
-    // ========================================================================
-    // PERFORMANCE
-    // ========================================================================
-
-    /// Enable/disable cache
-    pub fn with_cache(mut self, enabled: bool) -> Self {
-        self.config.performance.cache_enabled = enabled;
-        self
-    }
-
     // ========================================================================
     // HTTP FEATURES (from DeclarativeServer)
     // ========================================================================
-
-    /// Configure logging
-    pub fn with_logging_config(mut self, config: crate::logging::LoggingConfig) -> Self {
-        self.logging_config = Some(config);
-        self
-    }
-
-    /// Configure readiness checks
-    pub fn with_readiness_config(
-        mut self,
-        config: crate::http::declarative_server::ReadinessConfig,
-    ) -> Self {
-        self.readiness_config = Some(config);
-        self
-    }
-
-    /// Configure observability endpoints
-    pub fn with_observe_config(
-        mut self,
-        config: crate::http::declarative_server::ObserveConfig,
-    ) -> Self {
-        self.observe_config = Some(config);
-        self
-    }
-
-    /// Configure performance endpoints
-    pub fn with_perf_endpoints(
-        mut self,
-        config: crate::http::declarative_server::PerfEndpointsConfig,
-    ) -> Self {
-        self.perf_config = Some(config);
-        self
-    }
-
-    /// Configure gzip compression
-    pub fn with_gzip_config(mut self, config: crate::http::declarative_server::GzipConfig) -> Self {
-        self.gzip_config = Some(config);
-        self
-    }
-
-    /// Set route-specific policy
-    pub fn with_route_policy(
-        mut self,
-        path: impl Into<String>,
-        policy: crate::http::declarative_server::RoutePolicy,
-    ) -> Self {
-        self.route_policies.insert(path.into(), policy);
-        self
-    }
 
     /// Enable HTTP access logging (structured JSON via `log::info!`).
     ///
@@ -490,18 +293,6 @@ impl LithairServerBuilder {
     /// that streams create/update/delete events via Server-Sent Events.
     pub fn with_sse(mut self, enabled: bool) -> Self {
         self.sse_enabled = enabled;
-        self
-    }
-
-    /// Enable legacy endpoints
-    pub fn with_legacy_endpoints(mut self, enabled: bool) -> Self {
-        self.legacy_endpoints = enabled;
-        self
-    }
-
-    /// Enable deprecation warnings
-    pub fn with_deprecation_warnings(mut self, enabled: bool) -> Self {
-        self.deprecation_warnings = enabled;
         self
     }
 
@@ -1590,18 +1381,10 @@ impl LithairServerBuilder {
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: self.frontend_configs, // Frontend configs to load in serve()
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()
-            logging_config: self.logging_config,
-            readiness_config: self.readiness_config,
-            observe_config: self.observe_config,
-            perf_config: self.perf_config,
-            gzip_config: self.gzip_config,
-            route_policies: self.route_policies,
             firewall_config: self.firewall_config,
             anti_ddos_config: self.anti_ddos_config,
             access_log: self.access_log,
             access_log_capacity: self.access_log_capacity,
-            legacy_endpoints: self.legacy_endpoints,
-            deprecation_warnings: self.deprecation_warnings,
             openapi_enabled: self.openapi_enabled,
             openapi_spec_cache: std::sync::OnceLock::new(),
             // Raft cluster

@@ -43,7 +43,6 @@
 
 use anyhow::Result;
 use lithair_core::app::LithairServer;
-use lithair_core::logging::LoggingConfig;
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 
@@ -112,7 +111,6 @@ async fn main() -> Result<()> {
     LithairServer::new()
         .with_port(port)
         .with_host("127.0.0.1")
-        .with_logging_config(LoggingConfig::development())
         .with_model::<Category>("./data/ecommerce/categories", "/api/categories")
         .with_model::<Product>("./data/ecommerce/products", "/api/products")
         .with_model::<Order>("./data/ecommerce/orders", "/api/orders")
