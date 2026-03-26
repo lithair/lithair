@@ -1315,13 +1315,12 @@ impl LithairServer {
                                     req.uri().path(),
                                 ) {
                                     let (parts, boxed_body) = denied.into_parts();
-                                    let body_bytes =
-                                        http_body_util::BodyExt::collect(boxed_body)
-                                            .await
-                                            .map(|c| c.to_bytes())
-                                            .unwrap_or_else(|_| {
-                                                bytes::Bytes::from(r#"{"error":"Forbidden"}"#)
-                                            });
+                                    let body_bytes = http_body_util::BodyExt::collect(boxed_body)
+                                        .await
+                                        .map(|c| c.to_bytes())
+                                        .unwrap_or_else(|_| {
+                                            bytes::Bytes::from(r#"{"error":"Forbidden"}"#)
+                                        });
                                     return Ok::<_, std::convert::Infallible>(
                                         Self::add_security_headers(
                                             hyper::Response::builder()

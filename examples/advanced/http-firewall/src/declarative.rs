@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use lithair_core::http::declarative_server::DeclarativeServer;
+use lithair_core::app::LithairServer;
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -25,7 +25,7 @@ fn generate_uuid() -> Uuid {
     enabled = true,
     allow = "127.0.0.1",
     protected = "/api/products",
-    exempt = "/status,/health",
+    exempt = "/status",
     global_qps = 3,
     per_ip_qps = 2
 )]
@@ -49,5 +49,9 @@ async fn main() -> Result<()> {
     let event_store_path = "./data/products_declarative.events";
 
     // Start the server
-    DeclarativeServer::<Product>::new(event_store_path, port)?.serve().await
+    LithairServer::new()
+        .with_port(port)
+        .with_model::<Product>(event_store_path, "/api/products")
+        .serve()
+        .await
 }

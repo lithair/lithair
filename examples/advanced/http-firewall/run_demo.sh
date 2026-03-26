@@ -13,7 +13,7 @@ BASE_URL="http://127.0.0.1:${PORT}"
 LOG_DIR="examples/http_firewall_demo"
 mkdir -p "$LOG_DIR"
 
-HEALTH_URL="$BASE_URL/health"
+HEALTH_URL="$BASE_URL/status"
 PRODUCT_URL="$BASE_URL/api/products"
 
 # Aggregated results
@@ -41,7 +41,7 @@ derive_product_url() {
   local base_path
   base_path=$(curl -s "$HEALTH_URL" | sed -n 's/.*"base_path":"\([^\"]*\)".*/\1/p')
   if [[ -z "$base_path" ]]; then
-    echo "⚠️  Could not derive base_path from /health"
+    echo "⚠️  Could not derive base_path from /status"
     return 1
   fi
   PRODUCT_URL="$BASE_URL$base_path"
@@ -55,7 +55,7 @@ start_node() {
     --port "$PORT" --fw-enable false >"$LOG_DIR/node_demo.log" 2>&1 &
   NODE_PID=$!
 
-  echo -n "⏳ Waiting for /health"
+  echo -n "⏳ Waiting for /status"
   for i in $(seq 1 40); do
     if curl -s "$HEALTH_URL" >/dev/null; then echo " — ready"; return 0; fi
     echo -n "."; sleep 0.25
@@ -73,7 +73,7 @@ start_node_with_cfg() {
     --port "$PORT" $* >"$LOG_DIR/node_demo.log" 2>&1 &
   NODE_PID=$!
 
-  echo -n "⏳ Waiting for /health"
+  echo -n "⏳ Waiting for /status"
   for i in $(seq 1 40); do
     if curl -s "$HEALTH_URL" >/dev/null; then echo " — ready"; return 0; fi
     echo -n "."; sleep 0.25
@@ -137,40 +137,40 @@ main() {
   kill_port_if_listening "$PORT"
   start_node
   # Using hardcoded /api/products path - matches DeclarativeModel Product
-  assert_code 200 "Baseline: GET /health should be OK" "$HEALTH_URL"
+  assert_code 200 "Baseline: GET /status should be OK" "$HEALTH_URL"
   assert_code 200 "Baseline: GET /api/<base> should be OK" "$PRODUCT_URL"
 
   # Deny list: deny localhost
   echo "\n===== Deny list (protect products only) ====="
   cleanup || true
   kill_port_if_listening "$PORT"
-  start_node_with_cfg --fw-enable true --fw-deny 127.0.0.1 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/health,/health"
+  start_node_with_cfg --fw-enable true --fw-deny 127.0.0.1 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/status,/status"
   # Using hardcoded /api/products path - matches DeclarativeModel Product
-  assert_code 200 "Deny list: /health remains open" "$HEALTH_URL"
+  assert_code 200 "Deny list: /status remains open" "$HEALTH_URL"
   assert_code 403 "Deny list: /api/products should be forbidden" "$PRODUCT_URL"
 
   # Allow list: allow only a different IP (should block), then allow localhost
   echo "\n===== Allow list mismatch (protect products only) ====="
   cleanup || true
   kill_port_if_listening "$PORT"
-  start_node_with_cfg --fw-enable true --fw-allow 192.0.2.10 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/health,/health"
+  start_node_with_cfg --fw-enable true --fw-allow 192.0.2.10 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/status,/status"
   # Using hardcoded /api/products path - matches DeclarativeModel Product
-  assert_code 200 "Allow list mismatch: /health remains open" "$HEALTH_URL"
+  assert_code 200 "Allow list mismatch: /status remains open" "$HEALTH_URL"
   assert_code 403 "Allow list mismatch: /api/products should be forbidden" "$PRODUCT_URL"
 
   echo "\n===== Allow list match (protect products only) ====="
   cleanup || true
   kill_port_if_listening "$PORT"
-  start_node_with_cfg --fw-enable true --fw-allow 127.0.0.1 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/health,/health"
+  start_node_with_cfg --fw-enable true --fw-allow 127.0.0.1 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/status,/status"
   # Using hardcoded /api/products path - matches DeclarativeModel Product
-  assert_code 200 "Allow list match: /health remains open" "$HEALTH_URL"
+  assert_code 200 "Allow list match: /status remains open" "$HEALTH_URL"
   assert_code 200 "Allow list match: /api/products should be OK" "$PRODUCT_URL"
 
   # Global rate limit
   echo "\n===== Global rate limit on product routes only (QPS=3) ====="
   cleanup || true
   kill_port_if_listening "$PORT"
-  start_node_with_cfg --fw-enable true --fw-global-qps 3 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/health,/health"
+  start_node_with_cfg --fw-enable true --fw-global-qps 3 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/status,/status"
   # Using hardcoded /api/products path - matches DeclarativeModel Product
   rate_flood "$PRODUCT_URL" 8 1 "Global rate limit on products: expect some 429"
 
@@ -178,7 +178,7 @@ main() {
   echo "\n===== Per-IP rate limit on product routes only (QPS=2) ====="
   cleanup || true
   kill_port_if_listening "$PORT"
-  start_node_with_cfg --fw-enable true --fw-perip-qps 2 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/health,/health"
+  start_node_with_cfg --fw-enable true --fw-perip-qps 2 --fw-protected-prefixes "/api/products" --fw-exempt-prefixes "/status,/status"
   # Using hardcoded /api/products path - matches DeclarativeModel Product
   rate_flood "$PRODUCT_URL" 6 1 "Per-IP rate limit on products: expect some 429"
 
