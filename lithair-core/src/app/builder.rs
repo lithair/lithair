@@ -1372,6 +1372,13 @@ impl LithairServerBuilder {
             schema_extractor: None,
         });
 
+        // Merge model-level #[firewall(...)] config if no explicit config is set
+        if self.firewall_config.is_none() {
+            if let Some(model_fw) = T::firewall_config() {
+                self.firewall_config = Some(model_fw);
+            }
+        }
+
         self
     }
 
