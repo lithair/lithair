@@ -29,6 +29,9 @@ members = [
     "examples/advanced/http-firewall",
     "examples/advanced/http-hardening",
 
+    # Tools
+    "tools/loadgen",
+
     # Tests
     "cucumber-tests",
 ]

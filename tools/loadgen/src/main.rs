@@ -9,10 +9,7 @@ use tokio::sync::{Mutex, Semaphore};
 use tokio::time::Duration;
 
 #[derive(Parser, Debug, Clone)]
-#[command(
-    name = "replication-loadgen",
-    about = "High-performance HTTP load generator for Lithair demo"
-)]
+#[command(name = "loadgen", about = "HTTP load generator for Lithair benchmarking")]
 struct Args {
     /// Leader base URL, e.g. http://127.0.0.1:8080
     #[arg(long, default_value = "http://127.0.0.1:8080")]
