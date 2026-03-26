@@ -10,8 +10,6 @@
 
 use anyhow::Result;
 use lithair_core::app::LithairServer;
-use lithair_core::http::declarative_server::GzipConfig;
-use lithair_core::logging::LoggingConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -23,14 +21,6 @@ async fn main() -> Result<()> {
         // Server config
         .with_port(port)
         .with_host("127.0.0.1")
-        .with_cors(true)
-
-        // HTTP Features
-        .with_logging_config(LoggingConfig::development())
-        .with_gzip_config(GzipConfig {
-            enabled: true,
-            min_bytes: 1024,
-        })
 
         // Admin panel
         .with_admin_panel(true)

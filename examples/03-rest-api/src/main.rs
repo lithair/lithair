@@ -60,7 +60,6 @@
 
 use anyhow::Result;
 use lithair_core::app::LithairServer;
-use lithair_core::logging::LoggingConfig;
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 
@@ -101,7 +100,6 @@ async fn main() -> Result<()> {
     LithairServer::new()
         .with_port(port)
         .with_host("127.0.0.1")
-        .with_logging_config(LoggingConfig::development())
         // One line: struct → full CRUD API with validation, uniqueness, and audit
         .with_model::<Todo>("./data/todos", "/api/todos")
         .serve()

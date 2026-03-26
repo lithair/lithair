@@ -15,7 +15,6 @@
 use anyhow::Result;
 use clap::Parser;
 use lithair_core::app::LithairServer;
-use lithair_core::logging::LoggingConfig;
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +67,6 @@ async fn main() -> Result<()> {
     LithairServer::new()
         .with_port(args.port)
         .with_host("127.0.0.1")
-        .with_logging_config(LoggingConfig::development())
         .with_model::<Note>("./data/notes", "/api/notes")
         .with_frontend(frontend_path)
         .serve()

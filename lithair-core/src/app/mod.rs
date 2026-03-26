@@ -147,18 +147,10 @@ pub struct LithairServer {
     frontend_engines: std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
 
     // HTTP Features
-    logging_config: Option<crate::logging::LoggingConfig>,
-    readiness_config: Option<crate::http::declarative_server::ReadinessConfig>,
-    observe_config: Option<crate::http::declarative_server::ObserveConfig>,
-    perf_config: Option<crate::http::declarative_server::PerfEndpointsConfig>,
-    gzip_config: Option<crate::http::declarative_server::GzipConfig>,
-    route_policies: std::collections::HashMap<String, crate::http::declarative_server::RoutePolicy>,
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
     access_log: bool,
     access_log_capacity: usize,
-    legacy_endpoints: bool,
-    deprecation_warnings: bool,
     openapi_enabled: bool,
     openapi_spec_cache: std::sync::OnceLock<serde_json::Value>,
 
@@ -615,13 +607,6 @@ impl LithairServer {
             .format_module_path(false)
             .try_init(); // Use try_init to avoid panic if already initialized
 
-        // Apply logging config if provided
-        if let Some(ref logging_config) = self.logging_config {
-            log::info!("Applying custom logging configuration");
-            // Note: Custom logging config application is not yet implemented
-            let _ = logging_config; // Suppress unused warning for now
-        }
-
         // Validate configuration
         self.config.validate()?;
 
@@ -684,32 +669,11 @@ impl LithairServer {
         }
 
         // Log HTTP features
-        if self.readiness_config.is_some() {
-            log::info!("   Readiness checks enabled");
-        }
-        if self.observe_config.is_some() {
-            log::info!("   Observability endpoints enabled");
-        }
-        if self.perf_config.is_some() {
-            log::info!("   Performance endpoints enabled");
-        }
-        if let Some(ref gzip) = self.gzip_config {
-            log::info!("   Gzip compression enabled (min: {} bytes)", gzip.min_bytes);
-        }
-        if !self.route_policies.is_empty() {
-            log::info!("   Route policies: {} configured", self.route_policies.len());
-        }
         if self.firewall_config.is_some() {
             log::info!("   Firewall enabled");
         }
         if self.anti_ddos_config.is_some() {
             log::info!("   Anti-DDoS protection enabled");
-        }
-        if self.legacy_endpoints {
-            log::info!("   Legacy endpoints enabled");
-        }
-        if self.deprecation_warnings {
-            log::info!("   Deprecation warnings enabled");
         }
 
         // Initialize Raft cluster if configured
@@ -4738,18 +4702,10 @@ impl Default for LithairServer {
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: Vec::new(),
             frontend_engines: std::collections::HashMap::new(),
-            logging_config: None,
-            readiness_config: None,
-            observe_config: None,
-            perf_config: None,
-            gzip_config: None,
-            route_policies: std::collections::HashMap::new(),
             firewall_config: None,
             anti_ddos_config: None,
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
-            legacy_endpoints: false,
-            deprecation_warnings: false,
             cluster_peers: Vec::new(),
             node_id: None,
             raft_state: None,
