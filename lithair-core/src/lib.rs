@@ -93,19 +93,12 @@ pub mod logging; // Declarative logging system with standard log crate integrati
 pub mod mfa; // Multi-Factor Authentication (TOTP)
 pub mod model; // Declarative model specifications
 pub mod model_inspect; // Internal field inspection and optimization
-pub mod raft; // OpenRaft consensus integration
 pub mod rbac; // Role-Based Access Control system
 pub mod schema;
 pub mod security; // Core RBAC security - non-optional
 pub mod serialization; // JSON and binary serialization (simd-json, rkyv, bincode)
 pub mod session; // Session management with event sourcing
 pub mod system; // System metrics (CPU, RAM, load, RSS, request stats)
-
-// Proxy and gateway functionality
-pub mod cache;
-pub mod integrations; // External source integration (blacklists, configs, etc.)
-pub mod patterns; // Pattern matching utilities (wildcards, CIDR, domains)
-pub mod proxy; // Generic proxy primitives (forward, reverse, transparent)
 
 // Application server (unified multi-model server)
 pub mod app;
@@ -123,10 +116,7 @@ mod macros;
 
 // Re-export derive macros from lithair-macros so users only need one crate
 #[cfg(feature = "macros")]
-pub use lithair_macros::{
-    lithair_api, lithair_model, DeclarativeModel, LifecycleAware, Page, RaftstoneModel, RbacRole,
-    SchemaEvolution,
-};
+pub use lithair_macros::{lithair_model, DeclarativeModel, LifecycleAware, RbacRole};
 
 // Re-exports of main types and traits
 pub use app::LithairServer;

@@ -37,7 +37,6 @@ pub mod declarative_server;
 pub mod error;
 pub mod firewall;
 pub mod openapi;
-pub mod optimized_declarative; // T021 bincode optimization
 pub mod query;
 pub mod request;
 pub mod response;
@@ -45,9 +44,6 @@ pub mod route_guard; // Declarative route protection
 pub mod router;
 pub mod server;
 pub mod sse;
-pub mod three_tier;
-pub mod ultra_performance;
-pub mod url_handlers; // Direct URL-to-Function mapping system
 pub mod utils;
 
 // Re-export main types for convenience
@@ -76,7 +72,6 @@ pub use declarative_server::{
 pub use error as http_error;
 pub use firewall::{Firewall, FirewallConfig};
 pub use openapi::{generate_openapi_spec, OpenApiModelInfo};
-pub use optimized_declarative::{OptimizedDeclarativeHttpHandler, OptimizedHttpExposable};
 pub use request::{HttpMethod, HttpRequest, HttpVersion};
 pub use response::{HttpResponse, StatusCode};
 pub use route_guard::{GuardResult, RouteGuard, RouteGuardMatcher};
@@ -86,8 +81,6 @@ pub use router::{
 };
 pub use server::HttpServer;
 pub use sse::{create_broadcaster, ModelChangeEvent, SseEventBroadcaster};
-pub use three_tier::{ThreeTierHandler, ThreeTierResult, ThreeTierRouter, ThreeTierRouterBuilder};
-pub use url_handlers::{UrlHandler, UrlHandlerRegistry, UrlHandlerStats};
 pub use utils::{
     access_log_buffer, body_from, extract_client_ip, extract_method_str, extract_path,
     init_access_log_buffer, internal_server_error_response, json_error_response,
