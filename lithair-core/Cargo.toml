@@ -18,8 +18,8 @@ doctest = false
 # Examples are in separate workspace packages in ../examples/
 
 [dependencies]
-openraft = { version = "0.9", features = ["serde"] }
-openraft-memstore = "0.9"
+openraft = { version = "0.9", features = ["serde"], optional = true }
+openraft-memstore = { version = "0.9", optional = true }
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -48,9 +48,9 @@ sha2 = "0.10"
 hmac = "0.12"                  # HMAC for JWT signatures (crypto-secure)
 argon2 = "0.5"                 # Password hashing (OWASP recommended)
 base64 = "0.22"                # Proper base64 encoding/decoding
-rustls = { version = "0.23", features = ["ring"] }
-tokio-rustls = "0.26"
-rustls-pemfile = "2"
+rustls = { version = "0.23", features = ["ring"], optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+rustls-pemfile = { version = "2", optional = true }
 hex = "0.4"
 ipnet = "2"
 brotli = "8"
@@ -61,7 +61,7 @@ mime_guess = "2"
 rand = "0.8"
 crc32fast = "1.4"  # CRC32 checksums for data integrity validation
 # MFA/TOTP support
-totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"] }  # Battle-tested TOTP implementation
+totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"], optional = true }  # Battle-tested TOTP implementation
 # OpenAPI documentation support (optional)
 utoipa = { version = "5", optional = true }
 thiserror = "2.0.17"
@@ -77,10 +77,22 @@ default = ["macros"]
 # Re-export derive macros from lithair-macros (recommended)
 macros = ["lithair-macros"]
 
+# TLS termination (rustls)
+tls = ["rustls", "tokio-rustls", "rustls-pemfile"]
+
+# Multi-Factor Authentication (TOTP)
+mfa = ["totp-rs"]
+
+# Distributed consensus (OpenRaft)
+cluster = ["openraft", "openraft-memstore"]
+
 # OpenAPI/Swagger documentation support
 openapi = ["utoipa"]
 
 # Data Admin UI - Embedded dashboard for database browsing
 # Adds ~30KB to binary when enabled
 admin-ui = []
+
+# All optional features
+full = ["macros", "tls", "mfa", "cluster", "openapi", "admin-ui"]
 

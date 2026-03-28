@@ -15,7 +15,9 @@ use serde_json;
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use crate::consensus::{ConsensusConfig, DeclarativeConsensus, ReplicatedModel};
+use crate::consensus::ReplicatedModel;
+#[cfg(feature = "cluster")]
+use crate::consensus::{ConsensusConfig, DeclarativeConsensus};
 use crate::engine::events::{EventEnvelope, EventStore};
 use crate::lifecycle::LifecycleAware;
 
@@ -84,6 +86,7 @@ where
 {
     event_store: Arc<tokio::sync::RwLock<EventStore>>,
     storage: Arc<tokio::sync::RwLock<std::collections::HashMap<String, T>>>,
+    #[cfg(feature = "cluster")]
     consensus: Option<Arc<tokio::sync::RwLock<DeclarativeConsensus<T>>>>,
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     /// Optional extractor to resolve user permissions (as strings) from the HTTP request
@@ -140,6 +143,7 @@ where
         let handler = Self {
             event_store,
             storage: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            #[cfg(feature = "cluster")]
             consensus: None,
             permission_checker: None,
             permission_extractor: None,
@@ -195,7 +199,14 @@ where
 
     /// Returns true if consensus is enabled for this handler
     pub fn is_consensus_enabled(&self) -> bool {
-        self.consensus.is_some()
+        #[cfg(feature = "cluster")]
+        {
+            self.consensus.is_some()
+        }
+        #[cfg(not(feature = "cluster"))]
+        {
+            false
+        }
     }
 
     /// Set the permission checker for RBAC enforcement
@@ -608,6 +619,7 @@ where
     }
 
     /// Enable consensus mode for distributed replication
+    #[cfg(feature = "cluster")]
     pub async fn enable_consensus(
         &mut self,
         config: ConsensusConfig,
@@ -927,56 +939,78 @@ where
         let primary_key = item.get_primary_key();
 
         // RAFT INTEGRATION: Check if consensus is required
-        if let Some(consensus_arc) = &self.consensus {
-            log::debug!("Raft: Proposing create operation for item {}", primary_key);
+        #[cfg(feature = "cluster")]
+        {
+            if let Some(consensus_arc) = &self.consensus {
+                log::debug!("Raft: Proposing create operation for item {}", primary_key);
 
-            // Real Raft consensus proposal
-            match consensus_arc
-                .read()
-                .await
-                .propose_create(item.clone(), primary_key.clone())
-                .await
-            {
-                Ok(_) => {
-                    log::info!("Raft: Consensus achieved, applying operation locally");
+                // Real Raft consensus proposal
+                match consensus_arc
+                    .read()
+                    .await
+                    .propose_create(item.clone(), primary_key.clone())
+                    .await
+                {
+                    Ok(_) => {
+                        log::info!("Raft: Consensus achieved, applying operation locally");
 
-                    // Apply to local storage after successful consensus
-                    // Use the item's actual ID as key, not the placeholder
-                    let actual_key = serde_json::to_value(&item)
-                        .ok()
-                        .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
-                        .unwrap_or_else(|| primary_key.clone());
+                        // Apply to local storage after successful consensus
+                        // Use the item's actual ID as key, not the placeholder
+                        let actual_key = serde_json::to_value(&item)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("id").and_then(|id| id.as_str().map(|s| s.to_string()))
+                            })
+                            .unwrap_or_else(|| primary_key.clone());
 
-                    log::debug!(
-                        "DEBUG: primary_key = {}, actual_key = {}",
-                        primary_key,
-                        actual_key
-                    );
-                    log::debug!(
-                        "DEBUG: item JSON = {}",
-                        serde_json::to_string(&item).unwrap_or_default()
-                    );
+                        log::debug!(
+                            "DEBUG: primary_key = {}, actual_key = {}",
+                            primary_key,
+                            actual_key
+                        );
+                        log::debug!(
+                            "DEBUG: item JSON = {}",
+                            serde_json::to_string(&item).unwrap_or_default()
+                        );
 
-                    {
-                        let mut storage = self.storage.write().await;
-                        storage.insert(actual_key.clone(), item.clone());
-                        log::debug!("DEBUG: Storage now has {} items", storage.len());
+                        {
+                            let mut storage = self.storage.write().await;
+                            storage.insert(actual_key.clone(), item.clone());
+                            log::debug!("DEBUG: Storage now has {} items", storage.len());
+                        }
+
+                        if (self.persist_to_event_store("Created", &item).await).is_err() {
+                            return Ok(self.internal_error_response());
+                        }
+
+                        log::info!(
+                            "Raft: Successfully replicated item {} across cluster",
+                            primary_key
+                        );
                     }
-
-                    if (self.persist_to_event_store("Created", &item).await).is_err() {
-                        return Ok(self.internal_error_response());
+                    Err(e) => {
+                        return Ok(self.json_error_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            &format!("Consensus failed: {}", e),
+                        ));
                     }
+                }
+            } else {
+                // Local-only mode (no replication)
+                {
+                    let mut storage = self.storage.write().await;
+                    storage.insert(primary_key.clone(), item.clone());
+                }
 
-                    log::info!("Raft: Successfully replicated item {} across cluster", primary_key);
+                if (self.persist_to_event_store("Created", &item).await).is_err() {
+                    return Ok(self.internal_error_response());
                 }
-                Err(e) => {
-                    return Ok(self.json_error_response(
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        &format!("Consensus failed: {}", e),
-                    ));
-                }
+
+                log::debug!("Local: Item {} stored locally only", primary_key);
             }
-        } else {
+        }
+        #[cfg(not(feature = "cluster"))]
+        {
             // Local-only mode (no replication)
             {
                 let mut storage = self.storage.write().await;
@@ -1049,41 +1083,55 @@ where
 
             let primary_key = item.get_primary_key();
 
-            if let Some(consensus_arc) = &self.consensus {
-                if !disable_consensus {
-                    // Consensus path
-                    match consensus_arc
-                        .read()
-                        .await
-                        .propose_create(item.clone(), primary_key.clone())
-                        .await
-                    {
-                        Ok(_) => {
-                            // Apply to local storage after successful consensus
-                            let actual_key = serde_json::to_value(&item)
-                                .ok()
-                                .and_then(|v| {
-                                    v.get("id").and_then(|id| id.as_str().map(|s| s.to_string()))
-                                })
-                                .unwrap_or_else(|| primary_key.clone());
-                            {
-                                let mut storage = self.storage.write().await;
-                                storage.insert(actual_key, item.clone());
+            #[cfg(feature = "cluster")]
+            {
+                if let Some(consensus_arc) = &self.consensus {
+                    if !disable_consensus {
+                        // Consensus path
+                        match consensus_arc
+                            .read()
+                            .await
+                            .propose_create(item.clone(), primary_key.clone())
+                            .await
+                        {
+                            Ok(_) => {
+                                // Apply to local storage after successful consensus
+                                let actual_key = serde_json::to_value(&item)
+                                    .ok()
+                                    .and_then(|v| {
+                                        v.get("id")
+                                            .and_then(|id| id.as_str().map(|s| s.to_string()))
+                                    })
+                                    .unwrap_or_else(|| primary_key.clone());
+                                {
+                                    let mut storage = self.storage.write().await;
+                                    storage.insert(actual_key, item.clone());
+                                }
+                                if (self.persist_to_event_store("Created", &item).await).is_err() {
+                                    return Ok(self.internal_error_response());
+                                }
+                                created.push(item);
                             }
-                            if (self.persist_to_event_store("Created", &item).await).is_err() {
-                                return Ok(self.internal_error_response());
+                            Err(e) => {
+                                return Ok(self.json_error_response(
+                                    StatusCode::SERVICE_UNAVAILABLE,
+                                    &format!("Consensus failed: {}", e),
+                                ));
                             }
-                            created.push(item);
                         }
-                        Err(e) => {
-                            return Ok(self.json_error_response(
-                                StatusCode::SERVICE_UNAVAILABLE,
-                                &format!("Consensus failed: {}", e),
-                            ));
+                    } else {
+                        // Consensus disabled -> local path
+                        {
+                            let mut storage = self.storage.write().await;
+                            storage.insert(primary_key.clone(), item.clone());
                         }
+                        if (self.persist_to_event_store("Created", &item).await).is_err() {
+                            return Ok(self.internal_error_response());
+                        }
+                        created.push(item);
                     }
                 } else {
-                    // Consensus disabled -> local path
+                    // No consensus configured -> local path
                     {
                         let mut storage = self.storage.write().await;
                         storage.insert(primary_key.clone(), item.clone());
@@ -1093,8 +1141,11 @@ where
                     }
                     created.push(item);
                 }
-            } else {
+            }
+            #[cfg(not(feature = "cluster"))]
+            {
                 // No consensus configured -> local path
+                let _ = disable_consensus; // suppress unused warning
                 {
                     let mut storage = self.storage.write().await;
                     storage.insert(primary_key.clone(), item.clone());
@@ -1246,30 +1297,42 @@ where
         }
 
         // RAFT INTEGRATION: Check if consensus is required for UPDATE
-        if let Some(consensus_arc) = &self.consensus {
-            log::debug!("Raft: Proposing UPDATE operation for item {}", id);
-            match consensus_arc
-                .read()
-                .await
-                .propose_update(updated_item.clone(), id.to_string())
-                .await
-            {
-                Ok(_) => {
-                    // Apply to local storage after successful consensus
-                    let mut storage = self.storage.write().await;
-                    if !storage.contains_key(id) {
-                        return Ok(self.not_found_response());
+        #[cfg(feature = "cluster")]
+        {
+            if let Some(consensus_arc) = &self.consensus {
+                log::debug!("Raft: Proposing UPDATE operation for item {}", id);
+                match consensus_arc
+                    .read()
+                    .await
+                    .propose_update(updated_item.clone(), id.to_string())
+                    .await
+                {
+                    Ok(_) => {
+                        // Apply to local storage after successful consensus
+                        let mut storage = self.storage.write().await;
+                        if !storage.contains_key(id) {
+                            return Ok(self.not_found_response());
+                        }
+                        storage.insert(id.to_string(), updated_item.clone());
                     }
-                    storage.insert(id.to_string(), updated_item.clone());
+                    Err(e) => {
+                        return Ok(self.json_error_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            &format!("Consensus failed: {}", e),
+                        ));
+                    }
                 }
-                Err(e) => {
-                    return Ok(self.json_error_response(
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        &format!("Consensus failed: {}", e),
-                    ));
+            } else {
+                // No consensus - update storage directly (single-node mode)
+                let mut storage = self.storage.write().await;
+                if !storage.contains_key(id) {
+                    return Ok(self.not_found_response());
                 }
+                storage.insert(id.to_string(), updated_item.clone());
             }
-        } else {
+        }
+        #[cfg(not(feature = "cluster"))]
+        {
             // No consensus - update storage directly (single-node mode)
             let mut storage = self.storage.write().await;
             if !storage.contains_key(id) {
@@ -1387,61 +1450,65 @@ where
         }
 
         // RAFT INTEGRATION: Check if consensus is required for DELETE
-        if let Some(consensus_arc) = &self.consensus {
-            log::debug!("Raft: Proposing DELETE operation for item {}", id);
-            match consensus_arc.read().await.propose_delete(id.to_string()).await {
-                Ok(_) => {
-                    // Apply to local storage after successful consensus
-                    let removed_item = {
-                        let mut storage = self.storage.write().await;
-                        storage.remove(id)
-                    };
+        #[cfg(feature = "cluster")]
+        {
+            if let Some(consensus_arc) = &self.consensus {
+                log::debug!("Raft: Proposing DELETE operation for item {}", id);
+                match consensus_arc.read().await.propose_delete(id.to_string()).await {
+                    Ok(_) => {
+                        // Apply to local storage after successful consensus
+                        let removed_item = {
+                            let mut storage = self.storage.write().await;
+                            storage.remove(id)
+                        };
 
-                    match removed_item {
-                        Some(item) => {
-                            // Persist deletion to EventStore
-                            if (self.persist_to_event_store("Deleted", &item).await).is_err() {
-                                return Ok(self.internal_error_response());
+                        match removed_item {
+                            Some(item) => {
+                                // Persist deletion to EventStore
+                                if (self.persist_to_event_store("Deleted", &item).await).is_err() {
+                                    return Ok(self.internal_error_response());
+                                }
+
+                                self.broadcast_sse("delete", &item).await;
+
+                                return Ok(Response::builder()
+                                    .status(StatusCode::NO_CONTENT)
+                                    .body(body_from(Bytes::new()))
+                                    .unwrap());
                             }
-
-                            self.broadcast_sse("delete", &item).await;
-
-                            Ok(Response::builder()
-                                .status(StatusCode::NO_CONTENT)
-                                .body(body_from(Bytes::new()))
-                                .unwrap())
+                            None => return Ok(self.not_found_response()),
                         }
-                        None => Ok(self.not_found_response()),
+                    }
+                    Err(e) => {
+                        return Ok(self.json_error_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            &format!("Consensus failed: {}", e),
+                        ));
                     }
                 }
-                Err(e) => Ok(self.json_error_response(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    &format!("Consensus failed: {}", e),
-                )),
             }
-        } else {
-            // No consensus - delete directly (single-node mode)
-            let removed_item = {
-                let mut storage = self.storage.write().await;
-                storage.remove(id)
-            };
+        }
+        // No consensus - delete directly (single-node mode)
+        let removed_item = {
+            let mut storage = self.storage.write().await;
+            storage.remove(id)
+        };
 
-            match removed_item {
-                Some(item) => {
-                    // Persist deletion to EventStore
-                    if (self.persist_to_event_store("Deleted", &item).await).is_err() {
-                        return Ok(self.internal_error_response());
-                    }
-
-                    self.broadcast_sse("delete", &item).await;
-
-                    Ok(Response::builder()
-                        .status(StatusCode::NO_CONTENT)
-                        .body(body_from(Bytes::new()))
-                        .unwrap())
+        match removed_item {
+            Some(item) => {
+                // Persist deletion to EventStore
+                if (self.persist_to_event_store("Deleted", &item).await).is_err() {
+                    return Ok(self.internal_error_response());
                 }
-                None => Ok(self.not_found_response()),
+
+                self.broadcast_sse("delete", &item).await;
+
+                Ok(Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .body(body_from(Bytes::new()))
+                    .unwrap())
             }
+            None => Ok(self.not_found_response()),
         }
     }
 

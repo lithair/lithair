@@ -12,7 +12,7 @@ path = "pure_declarative_node.rs"
 
 [dependencies]
 # Core Lithair framework
-lithair-core = { path = "../../lithair-core" }
+lithair-core = { path = "../../lithair-core", features = ["cluster"] }
 lithair-macros = { path = "../../lithair-macros" }
 
 # Serialization & Data

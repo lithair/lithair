@@ -23,7 +23,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-use crate::consensus::{ConsensusConfig, DeclarativeConsensus, ReplicatedModel};
+use crate::consensus::ReplicatedModel;
+#[cfg(feature = "cluster")]
+use crate::consensus::{ConsensusConfig, DeclarativeConsensus};
 use crate::http::{log_access, DeclarativeHttpHandler, Firewall, FirewallConfig, HttpExposable};
 use crate::rbac::{RbacConfig, RbacMiddleware};
 
@@ -50,6 +52,7 @@ where
     handler: DeclarativeHttpHandler<T>,
     port: u16,
     node_id: Option<u64>,
+    #[cfg(feature = "cluster")]
     consensus_config: Option<ConsensusConfig>,
     model_name: &'static str,
     firewall_config: Option<FirewallConfig>,
@@ -425,6 +428,7 @@ where
             handler,
             port,
             node_id: None,
+            #[cfg(feature = "cluster")]
             consensus_config: None,
             model_name,
             firewall_config: None,
@@ -454,6 +458,7 @@ where
         self.node_id = Some(node_id);
 
         // Auto-configure consensus if the model needs replication
+        #[cfg(feature = "cluster")]
         if T::needs_replication() {
             let consensus_config = ConsensusConfig {
                 node_id,
@@ -473,6 +478,7 @@ where
     }
 
     /// Configure cluster peers for distributed replication
+    #[cfg(feature = "cluster")]
     pub fn with_cluster_peers(mut self, peers: Vec<String>) -> Self {
         if let Some(ref mut config) = self.consensus_config {
             config.cluster_peers = peers;
@@ -506,6 +512,7 @@ where
         }
 
         // Initialize consensus if configured
+        #[cfg(feature = "cluster")]
         if let Some(ref consensus_config) = self.consensus_config {
             let mut consensus = DeclarativeConsensus::<T>::new(consensus_config.clone());
             if let Err(e) = consensus.initialize().await {
