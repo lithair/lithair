@@ -14,6 +14,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -28,13 +29,20 @@ pub struct LoginResponse {
     pub expires_in: i64,
 }
 
+/// Opaque MFA storage type used when the `mfa` feature is disabled.
+#[cfg(not(feature = "mfa"))]
+pub type MfaStorageOption = Option<()>;
+/// MFA storage type used when the `mfa` feature is enabled.
+#[cfg(feature = "mfa")]
+pub type MfaStorageOption = Option<Arc<crate::mfa::MfaStorage>>;
+
 /// Generate login handler
 pub async fn handle_rbac_login(
     mut req: Request<hyper::body::Incoming>,
     session_store: Arc<PersistentSessionStore>,
     users: &[RbacUser],
     session_duration: u64,
-    mfa_storage: Option<Arc<crate::mfa::MfaStorage>>,
+    mfa_storage: MfaStorageOption,
 ) -> Result<Response<Full<Bytes>>> {
     use http_body_util::BodyExt;
 
@@ -70,6 +78,7 @@ pub async fn handle_rbac_login(
     };
 
     // Check if MFA is enabled for this user
+    #[cfg(feature = "mfa")]
     if let Some(mfa_store) = mfa_storage {
         if let Ok(Some(mfa_data)) = mfa_store.get(&user.username).await {
             if mfa_data.status.enabled {
@@ -104,6 +113,8 @@ pub async fn handle_rbac_login(
             }
         }
     }
+    #[cfg(not(feature = "mfa"))]
+    let _ = mfa_storage; // suppress unused warning
 
     // Create session
     let session_id = Uuid::new_v4().to_string();

@@ -12,7 +12,7 @@ path = "blog_replicated_node.rs"
 
 [dependencies]
 # Core Lithair framework
-lithair-core = { path = "../../lithair-core", features = ["admin-ui"] }
+lithair-core = { path = "../../lithair-core", features = ["admin-ui", "cluster"] }
 lithair-macros = { path = "../../lithair-macros" }
 
 # Serialization & Data

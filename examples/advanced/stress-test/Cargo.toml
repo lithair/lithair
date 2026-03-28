@@ -15,7 +15,7 @@ path = "src/bombarder.rs"
 
 [dependencies]
 # Lithair
-lithair-core = { path = "../../../lithair-core" }
+lithair-core = { path = "../../../lithair-core", features = ["cluster"] }
 lithair-macros = { path = "../../../lithair-macros" }
 
 # Async runtime

@@ -19,6 +19,7 @@ pub struct LithairServerBuilder {
     route_guards: Vec<crate::http::RouteGuardMatcher>, // Declarative route protection
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
+    #[cfg(feature = "mfa")]
     mfa_storage: Option<Arc<crate::mfa::MfaStorage>>, // MFA/TOTP storage
     access_log: bool,
     access_log_capacity: usize,
@@ -58,6 +59,7 @@ impl LithairServerBuilder {
             route_guards: Vec::new(),
             firewall_config: None,
             anti_ddos_config: None,
+            #[cfg(feature = "mfa")]
             mfa_storage: None,
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
@@ -82,6 +84,7 @@ impl LithairServerBuilder {
             route_guards: Vec::new(),
             firewall_config: None,
             anti_ddos_config: None,
+            #[cfg(feature = "mfa")]
             mfa_storage: None,
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
@@ -392,11 +395,15 @@ impl LithairServerBuilder {
 
         // Add login route
         let session_store_login = session_store_shared.clone();
+        #[cfg(feature = "mfa")]
         let mfa_storage_login = self.mfa_storage.clone();
+        #[cfg(not(feature = "mfa"))]
+        let mfa_storage_login: Option<()> = None;
         self = self.with_route(http::Method::POST, "/auth/login", move |req| {
             let users = users_login.clone();
             let duration = session_duration;
             let store_clone = session_store_login.clone();
+            #[allow(clippy::clone_on_copy)] // Type changes based on feature flag
             let mfa_clone = mfa_storage_login.clone();
 
             Box::pin(async move {
@@ -531,6 +538,7 @@ impl LithairServerBuilder {
     ///     .serve()
     ///     .await?;
     /// ```
+    #[cfg(feature = "mfa")]
     pub fn with_mfa_totp(mut self, config: crate::mfa::MfaConfig) -> Self {
         use crate::mfa::{handlers, MfaStorage};
         use std::sync::Arc;

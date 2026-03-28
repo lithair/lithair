@@ -28,6 +28,7 @@ use crate::cluster::RaftLeadershipState;
 use crate::config::LithairConfig;
 use anyhow::{Context, Result};
 use bytes::Bytes;
+#[cfg(feature = "tls")]
 use sha2::Digest;
 use std::sync::Arc;
 
@@ -45,11 +46,13 @@ pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 // ============================================================================
 
 /// A TCP stream that may or may not be wrapped in TLS.
+#[cfg(feature = "tls")]
 enum MaybeTlsStream {
     Plain(tokio::net::TcpStream),
     Tls(Box<tokio_rustls::server::TlsStream<tokio::net::TcpStream>>),
 }
 
+#[cfg(feature = "tls")]
 impl tokio::io::AsyncRead for MaybeTlsStream {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
@@ -63,6 +66,7 @@ impl tokio::io::AsyncRead for MaybeTlsStream {
     }
 }
 
+#[cfg(feature = "tls")]
 impl tokio::io::AsyncWrite for MaybeTlsStream {
     fn poll_write(
         self: std::pin::Pin<&mut Self>,
@@ -97,6 +101,7 @@ impl tokio::io::AsyncWrite for MaybeTlsStream {
 }
 
 /// Load TLS certificates from a PEM file.
+#[cfg(feature = "tls")]
 fn load_tls_certs(path: &str) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>> {
     let file = std::fs::File::open(path)
         .with_context(|| format!("Failed to open TLS certificate file: {}", path))?;
@@ -111,6 +116,7 @@ fn load_tls_certs(path: &str) -> Result<Vec<rustls::pki_types::CertificateDer<'s
 }
 
 /// Load a TLS private key from a PEM file.
+#[cfg(feature = "tls")]
 fn load_tls_key(path: &str) -> Result<rustls::pki_types::PrivateKeyDer<'static>> {
     let file = std::fs::File::open(path)
         .with_context(|| format!("Failed to open TLS key file: {}", path))?;
@@ -1081,6 +1087,7 @@ impl LithairServer {
         let addr = format!("{}:{}", self.config.server.host, self.config.server.port);
 
         // Build optional TLS acceptor
+        #[cfg(feature = "tls")]
         let tls_acceptor =
             match (&self.config.server.tls_cert_path, &self.config.server.tls_key_path) {
                 (Some(cert_path), Some(key_path)) => {
@@ -1101,6 +1108,16 @@ impl LithairServer {
                 }
                 _ => None,
             };
+        #[cfg(not(feature = "tls"))]
+        let tls_acceptor: Option<()> = {
+            if self.config.server.tls_cert_path.is_some()
+                || self.config.server.tls_key_path.is_some()
+            {
+                log::warn!("TLS certificate/key configured but the 'tls' feature is not enabled");
+                log::warn!("   Add `features = [\"tls\"]` to your lithair-core dependency");
+            }
+            None
+        };
         let tls_active = tls_acceptor.is_some();
 
         // Start server
@@ -1232,32 +1249,37 @@ impl LithairServer {
             let server = server.clone();
             let firewall = firewall.clone();
             let anti_ddos = anti_ddos.clone();
+            #[cfg(feature = "tls")]
             let tls_acceptor = tls_acceptor.clone();
 
             tokio::spawn(async move {
                 // TLS handshake (if configured) or plain TCP
-                let maybe_tls = if let Some(acceptor) = tls_acceptor {
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
-                        acceptor.accept(stream),
-                    )
-                    .await
-                    {
-                        Ok(Ok(tls_stream)) => MaybeTlsStream::Tls(Box::new(tls_stream)),
-                        Ok(Err(e)) => {
-                            log::debug!("TLS handshake failed from {}: {}", remote_addr, e);
-                            return;
+                #[cfg(feature = "tls")]
+                let io = {
+                    let maybe_tls = if let Some(acceptor) = tls_acceptor {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            acceptor.accept(stream),
+                        )
+                        .await
+                        {
+                            Ok(Ok(tls_stream)) => MaybeTlsStream::Tls(Box::new(tls_stream)),
+                            Ok(Err(e)) => {
+                                log::debug!("TLS handshake failed from {}: {}", remote_addr, e);
+                                return;
+                            }
+                            Err(_) => {
+                                log::debug!("TLS handshake timeout from {}", remote_addr);
+                                return;
+                            }
                         }
-                        Err(_) => {
-                            log::debug!("TLS handshake timeout from {}", remote_addr);
-                            return;
-                        }
-                    }
-                } else {
-                    MaybeTlsStream::Plain(stream)
+                    } else {
+                        MaybeTlsStream::Plain(stream)
+                    };
+                    hyper_util::rt::TokioIo::new(maybe_tls)
                 };
-
-                let io = hyper_util::rt::TokioIo::new(maybe_tls);
+                #[cfg(not(feature = "tls"))]
+                let io = hyper_util::rt::TokioIo::new(stream);
 
                 let service = hyper::service::service_fn(
                     move |req: hyper::Request<hyper::body::Incoming>| {

@@ -7,21 +7,31 @@
 //! - Synchronizes EventStores across nodes via HTTP
 //! - Provides transparent distributed operations
 
-use std::collections::BTreeSet;
+#[cfg(feature = "cluster")]
 use std::sync::Arc;
 
+#[cfg(feature = "cluster")]
+use std::collections::BTreeSet;
+
 // OpenRaft dependencies for distributed consensus
+#[cfg(feature = "cluster")]
 use openraft::storage::Adaptor;
+#[cfg(feature = "cluster")]
 use openraft::{Config, Raft};
+#[cfg(feature = "cluster")]
 use openraft_memstore::{MemStore, TypeConfig};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "cluster")]
 use tokio::sync::RwLock;
+#[cfg(feature = "cluster")]
 use tokio::time::{sleep, timeout, Duration};
 
 // Lithair storage integration
+#[cfg(feature = "cluster")]
 use crate::engine::EventStore;
 
 // HTTP client for peer communication (reqwest)
+#[cfg(feature = "cluster")]
 use reqwest::Client as HttpClient;
 
 // ============================================================================
@@ -85,6 +95,7 @@ pub struct ConsensusConfig {
 ///
 /// Uses HYPER HTTP routes for peer communication instead of direct OpenRaft networking.
 /// Integrates with Lithair EventStore for native persistence.
+#[cfg(feature = "cluster")]
 pub struct DeclarativeConsensus<T>
 where
     T: ReplicatedModel,
@@ -95,6 +106,7 @@ where
     _phantom: std::marker::PhantomData<T>,
 }
 
+#[cfg(feature = "cluster")]
 impl<T> DeclarativeConsensus<T>
 where
     T: ReplicatedModel,
@@ -312,17 +324,20 @@ where
 // ============================================================================
 
 /// Network factory for leader election only
+#[cfg(feature = "cluster")]
 #[derive(Debug, Clone)]
 pub struct DeclarativeNetwork {
     _config: ConsensusConfig,
 }
 
+#[cfg(feature = "cluster")]
 impl DeclarativeNetwork {
     pub fn new(config: &ConsensusConfig) -> Self {
         Self { _config: config.clone() }
     }
 }
 
+#[cfg(feature = "cluster")]
 impl openraft::network::RaftNetworkFactory<TypeConfig> for DeclarativeNetwork {
     type Network = DeclarativeConnection;
 
@@ -333,12 +348,14 @@ impl openraft::network::RaftNetworkFactory<TypeConfig> for DeclarativeNetwork {
 }
 
 /// Individual connection for leader election
+#[cfg(feature = "cluster")]
 #[derive(Debug)]
 pub struct DeclarativeConnection {
     target_id: u64,
     _target_address: String,
 }
 
+#[cfg(feature = "cluster")]
 impl openraft::network::RaftNetwork<TypeConfig> for DeclarativeConnection {
     async fn append_entries(
         &mut self,
@@ -385,9 +402,11 @@ impl openraft::network::RaftNetwork<TypeConfig> for DeclarativeConnection {
 // HYPER HTTP-based Replication Coordinator
 // ============================================================================
 
+#[cfg(feature = "cluster")]
 use crate::engine::events::{Event, EventEnvelope};
 
 /// HTTP-based replication using HYPER and Lithair EventStore
+#[cfg(feature = "cluster")]
 pub struct HyperReplicationCoordinator {
     /// Native Lithair EventStore for persistence
     event_store: Arc<RwLock<EventStore>>,
@@ -401,6 +420,7 @@ pub struct HyperReplicationCoordinator {
     pending_queue: Arc<RwLock<Vec<(String, String, u32)>>>,
 }
 
+#[cfg(feature = "cluster")]
 impl HyperReplicationCoordinator {
     pub async fn new(
         event_store_path: &str,
@@ -604,6 +624,7 @@ impl HyperReplicationCoordinator {
 }
 
 /// Event for replication operations in EventStore
+#[cfg(feature = "cluster")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplicationEvent {
     pub operation_type: String,
@@ -613,6 +634,7 @@ pub struct ReplicationEvent {
     pub timestamp: u64,
 }
 
+#[cfg(feature = "cluster")]
 impl Event for ReplicationEvent {
     type State = Vec<ReplicationEvent>;
 

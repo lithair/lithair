@@ -18,7 +18,7 @@ schema-v2 = []
 schema-v3 = ["schema-v2"]
 
 [dependencies]
-lithair-core = { path = "../../../lithair-core", features = ["admin-ui"] }
+lithair-core = { path = "../../../lithair-core", features = ["admin-ui", "cluster"] }
 lithair-macros = { path = "../../../lithair-macros" }
 
 # Async runtime
