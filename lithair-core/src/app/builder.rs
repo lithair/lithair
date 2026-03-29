@@ -1400,13 +1400,24 @@ impl LithairServerBuilder {
             node_id: self.node_id,
             raft_state: None,       // Initialized in serve() if cluster mode enabled
             raft_crud_sender: None, // Initialized in serve() if cluster mode enabled
-            // Initialize consensus log only if cluster mode is enabled
+            // ── CONSENSUS LOG + WAL (cluster mode only) ──────────────────────
+            //
+            // The ConsensusLog is the in-memory ordered log of all CRUD operations.
+            // The WAL (Write-Ahead Log) persists these operations to disk for durability.
+            //
+            // On startup, we:
+            // 1. Create the empty ConsensusLog
+            // 2. Open the WAL (which reads the file header)
+            // 3. Replay WAL entries into the ConsensusLog to restore pre-crash state
+            //
+            // This ensures a node restart doesn't lose committed operations.
+            // The WAL uses rkyv (zero-copy) serialization and group commit (5ms batches)
+            // for high throughput with durability.
             consensus_log: if !self.cluster_peers.is_empty() {
                 Some(Arc::new(crate::cluster::ConsensusLog::new()))
             } else {
                 None
             },
-            // Initialize WAL for durability (only in cluster mode)
             wal: if !self.cluster_peers.is_empty() {
                 let wal_path = format!("./data/raft/node_{}/wal", self.node_id.unwrap_or(0));
                 match crate::cluster::WriteAheadLog::new(&wal_path) {

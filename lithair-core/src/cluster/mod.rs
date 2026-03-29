@@ -1,7 +1,38 @@
-//! Cluster module for Lithair distributed consensus
+//! # Cluster Module — Lithair Distributed Consensus
 //!
-//! This module provides Raft leadership state management for distributed clusters.
-//! Use `LithairServer::with_raft_cluster()` to enable clustering.
+//! Provides the building blocks for multi-node replication in Lithair.
+//! Enable with `LithairServer::with_raft_cluster(node_id, peers)`.
+//!
+//! ## Architecture
+//!
+//! The replication pipeline processes writes through these components:
+//!
+//! ```text
+//! HTTP Write
+//!   → ConsensusLog (in-memory ordered log, atomic index assignment)
+//!   → WAL (disk persistence, rkyv serialization, group commit every 5ms)
+//!   + Replication (HTTP POST /_raft/append to followers, parallel)
+//!   → Majority ack → Commit → Apply to state machine
+//! ```
+//!
+//! ## Submodules
+//!
+//! - [`consensus_log`] — In-memory append-only log with term/index tracking
+//! - [`wal`] — Write-Ahead Log for crash recovery (rkyv + group commit)
+//! - [`replication_batcher`] — Per-follower health tracking and intelligent batching
+//! - [`snapshot`] — Full-state snapshots for desynced follower resync
+//! - [`upgrade`] — Rolling upgrade support with schema migration tracking
+//!
+//! ## Leader Election
+//!
+//! Currently uses static election: lowest `node_id` among alive peers becomes leader.
+//! The [`RaftLeadershipState`] tracks leadership and sends periodic heartbeats
+//! to prevent unnecessary elections during idle periods.
+//!
+//! ## Recovery
+//!
+//! On startup, the ConsensusLog is empty. The WAL is replayed to restore
+//! all committed entries. See [`ConsensusLog::replay_from_wal_entries`].
 
 use clap::Parser;
 use reqwest::Client as HttpClient;
