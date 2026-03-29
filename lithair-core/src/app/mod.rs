@@ -750,6 +750,10 @@ impl LithairServer {
                         let mut ticker = interval(Duration::from_millis(100)); // Check every 100ms
                         let mut _catchup_counter = 0u64; // Reserved for future use
                         let mut resync_counter = 0u64; // For periodic snapshot resync
+                        let mut heartbeat_counter = 0u64; // For leader heartbeat
+
+                        // Heartbeat interval: election_timeout / 3 ≈ 1.7s = 17 ticks at 100ms
+                        let heartbeat_ticks = 17u64;
 
                         // Track last resync time per follower for cooldown
                         let mut last_resync: HashMap<String, std::time::Instant> = HashMap::new();
@@ -1001,6 +1005,38 @@ impl LithairServer {
                                                 batcher.record_failure(&peer).await;
                                             }
                                         }
+                                    });
+                                }
+                            }
+
+                            // === LEADER HEARTBEAT ===
+                            // Send empty AppendEntriesRequest to all followers periodically
+                            // to prevent them from starting unnecessary elections.
+                            heartbeat_counter += 1;
+                            if heartbeat_counter >= heartbeat_ticks {
+                                heartbeat_counter = 0;
+
+                                for peer in &peers {
+                                    let peer = peer.clone();
+                                    let heartbeat_request =
+                                        crate::cluster::consensus_log::AppendEntriesRequest {
+                                            term,
+                                            leader_id: node_id,
+                                            prev_log_index: 0,
+                                            prev_log_term: 0,
+                                            entries: vec![], // Empty = heartbeat
+                                            leader_commit: commit_index,
+                                        };
+
+                                    tokio::spawn(async move {
+                                        let client = reqwest::Client::builder()
+                                            .timeout(Duration::from_secs(2))
+                                            .build()
+                                            .unwrap_or_else(|_| reqwest::Client::new());
+
+                                        let url = format!("http://{}/_raft/append", peer);
+                                        let _ =
+                                            client.post(&url).json(&heartbeat_request).send().await;
                                     });
                                 }
                             }
@@ -3857,13 +3893,10 @@ impl LithairServer {
                 };
 
                 // Replication task (returns when majority responds)
-                // Send ALL entries from beginning to ensure lagging followers can always catch up.
-                // This is critical: if we use a window, followers stuck on entry N will never receive
-                // entries N+1 to window_start, causing permanent divergence.
-                let consensus_log_clone = consensus_log.clone();
+                // Send only the new entry to followers. The background catch-up task
+                // handles lagging followers using per-follower match_index tracking.
                 let replication_future = async move {
-                    // Always send ALL entries from index 1 to ensure no gaps
-                    let entries_to_send = consensus_log_clone.get_entries_from(1).await;
+                    let entries_to_send = vec![log_entry.clone()];
 
                     if entries_to_send.is_empty() {
                         return Ok(entry_index);
@@ -3917,14 +3950,10 @@ impl LithairServer {
                         let commit_index_to_notify = new_commit_index;
                         let term_for_notify = term;
                         let node_id_for_notify = node_id;
-                        let consensus_log_for_notify = consensus_log.clone();
                         tokio::spawn(async move {
-                            // Send ALL entries from index 1 to ensure followers can always catch up
-                            // This is critical: if we use a window, followers stuck on entry N will never
-                            // receive entries N+1 to window_start, causing permanent divergence
-                            let entries_for_notify =
-                                consensus_log_for_notify.get_entries_from(1).await;
-
+                            // Send only the commit index update to followers.
+                            // The background catch-up task handles lagging followers
+                            // using per-follower match_index tracking.
                             let client = reqwest::Client::builder()
                                 .timeout(std::time::Duration::from_secs(1))
                                 .build()
@@ -3935,7 +3964,7 @@ impl LithairServer {
                                     leader_id: node_id_for_notify,
                                     prev_log_index: 0,
                                     prev_log_term: 0,
-                                    entries: entries_for_notify, // Include entries for catch-up
+                                    entries: vec![], // Commit notification only, catch-up via background task
                                     leader_commit: commit_index_to_notify,
                                 };
                                 // Send to ALL peers IN PARALLEL
