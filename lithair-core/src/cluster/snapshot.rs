@@ -377,4 +377,47 @@ mod tests {
 
         assert_eq!(data_files.len(), 3);
     }
+
+    #[test]
+    fn test_install_snapshot_wrong_checksum() {
+        let dir = tempdir().unwrap();
+        let mut manager = SnapshotManager::new(dir.path()).unwrap();
+
+        let mut data = SnapshotData::new();
+        data.add_model("/api/items", &[serde_json::json!({"id": "1"})]);
+        let meta = manager.create_snapshot(1, 10, data).unwrap();
+
+        let bytes = manager.get_snapshot_bytes(10).unwrap();
+
+        // Corrupt the data
+        let mut corrupted = bytes.clone();
+        if let Some(last) = corrupted.last_mut() {
+            *last ^= 0xFF;
+        }
+
+        // Install with wrong checksum should fail
+        let dir2 = tempdir().unwrap();
+        let mut follower = SnapshotManager::new(dir2.path()).unwrap();
+        let result = follower.install_snapshot(meta, &corrupted);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_snapshot_multi_model() {
+        let dir = tempdir().unwrap();
+        let mut manager = SnapshotManager::new(dir.path()).unwrap();
+
+        let mut data = SnapshotData::new();
+        data.add_model(
+            "/api/products",
+            &[serde_json::json!({"id": "p1"}), serde_json::json!({"id": "p2"})],
+        );
+        data.add_model("/api/orders", &[serde_json::json!({"id": "o1"})]);
+        let _meta = manager.create_snapshot(1, 20, data).unwrap();
+
+        let (_meta, loaded) = manager.load_current().unwrap().unwrap();
+        assert_eq!(loaded.get_model("/api/products").len(), 2);
+        assert_eq!(loaded.get_model("/api/orders").len(), 1);
+        assert_eq!(loaded.get_model("/api/nonexistent").len(), 0);
+    }
 }

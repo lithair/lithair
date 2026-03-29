@@ -890,4 +890,116 @@ mod tests {
         let entries = wal.read_all().unwrap();
         assert_eq!(entries.len(), 3);
     }
+
+    #[test]
+    fn test_empty_wal() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("empty_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        let entries = wal.read_all().unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_corrupted_wal_recovery() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("corrupt_wal");
+
+        // Write 5 valid entries
+        {
+            let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+            for i in 1..=5u64 {
+                let entry = LogEntry {
+                    log_id: LogId::new(1, i),
+                    operation: CrudOperation::Create {
+                        model_path: "/api/test".to_string(),
+                        data: serde_json::json!({"id": i}),
+                    },
+                    timestamp_ms: i * 100,
+                };
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(wal.append(&entry)).unwrap();
+            }
+        }
+
+        // Append garbage bytes to the WAL file
+        let wal_file = wal_path.join("wal.bin");
+        if wal_file.exists() {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().append(true).open(&wal_file).unwrap();
+            f.write_all(&[0xFF, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02]).unwrap();
+        }
+
+        // Reopen — should recover the 5 valid entries, ignoring corruption
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_large_entry() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("large_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        // 1MB JSON payload
+        let big_data = "x".repeat(1_000_000);
+        let entry = LogEntry {
+            log_id: LogId::new(1, 1),
+            operation: CrudOperation::Create {
+                model_path: "/api/big".to_string(),
+                data: serde_json::json!({"payload": big_data}),
+            },
+            timestamp_ms: 1000,
+        };
+
+        wal.append(&entry).await.unwrap();
+
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].log_id.index, 1);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_all() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("truncate_all_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        for i in 1..=5u64 {
+            let entry = LogEntry {
+                log_id: LogId::new(1, i),
+                operation: CrudOperation::Create {
+                    model_path: "/api/test".to_string(),
+                    data: serde_json::json!({"id": i}),
+                },
+                timestamp_ms: i * 100,
+            };
+            wal.append(&entry).await.unwrap();
+        }
+
+        // Truncate after index 0 = remove everything
+        wal.truncate_after(0).await.unwrap();
+        let entries = wal.read_all().unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_double_shutdown() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("double_shutdown_wal");
+        let wal = std::sync::Arc::new(
+            WriteAheadLog::with_config(
+                wal_path.to_str().unwrap(),
+                GroupCommitConfig { flush_interval_ms: 50, max_buffer_size: 10, enabled: true },
+            )
+            .unwrap(),
+        );
+        let _flush_handle = wal.spawn_flush_task();
+
+        wal.shutdown().await.unwrap();
+        // Second shutdown should not panic or deadlock
+        wal.shutdown().await.unwrap();
+    }
 }
