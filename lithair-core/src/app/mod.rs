@@ -719,6 +719,30 @@ impl LithairServer {
                     );
                 }
 
+                // ── WAL REPLAY ──────────────────────────────────────────────
+                // On restart, the WAL contains all committed operations from
+                // before the crash. We replay them into the ConsensusLog to
+                // restore the node's state without losing data.
+                if let (Some(ref wal), Some(ref consensus_log)) = (&self.wal, &self.consensus_log) {
+                    match wal.read_all() {
+                        Ok(entries) if !entries.is_empty() => {
+                            let count = consensus_log.replay_from_wal_entries(entries).await;
+                            log::info!(
+                                "WAL replay: restored {} entries (term={}, commit_index={})",
+                                count,
+                                consensus_log.current_term(),
+                                consensus_log.commit_index(),
+                            );
+                        }
+                        Ok(_) => {
+                            log::info!("WAL replay: no entries to restore (fresh node)");
+                        }
+                        Err(e) => {
+                            log::warn!("WAL replay failed: {} — starting with empty log", e);
+                        }
+                    }
+                }
+
                 // Start WAL background flush task (group commit)
                 if let Some(ref wal) = self.wal {
                     let _flush_handle = wal.spawn_flush_task();
@@ -730,7 +754,24 @@ impl LithairServer {
                     log::info!("Snapshot manager enabled for resync");
                 }
 
-                // Start background replication task for lagging followers
+                // ── BACKGROUND REPLICATION TASK ────────────────────────────
+                //
+                // This long-running task handles three responsibilities:
+                //
+                // 1. CATCH-UP: Periodically checks each follower's last_replicated_index
+                //    and sends only the missing entries. This is how lagging followers
+                //    eventually converge with the leader — the write path only sends
+                //    the current entry, this task fills in any gaps.
+                //
+                // 2. HEARTBEAT: Every ~1.7s (election_timeout/3), sends an empty
+                //    AppendEntriesRequest to all followers. This prevents followers
+                //    from starting unnecessary elections during idle periods.
+                //
+                // 3. RESYNC: When a follower is detected as desynced (>1000 entries
+                //    behind, or unresponsive for >30s with pending work), triggers
+                //    a full snapshot transfer instead of incremental catch-up.
+                //
+                // Runs on a 100ms tick interval.
                 if let Some(ref batcher) = self.replication_batcher {
                     let batcher_clone = Arc::clone(batcher);
                     let peers = self.cluster_peers.clone();
@@ -3861,12 +3902,29 @@ impl LithairServer {
                     }
                 };
 
+                // ── WRITE PATH: CONSENSUS + REPLICATION ────────────────────
+                //
+                // The write path for a cluster leader follows this sequence:
+                //
+                //   1. Append to ConsensusLog (in-memory, atomic index assignment)
+                //   2. Queue for ReplicationBatcher (follower health tracking)
+                //   3. In parallel:
+                //      a. Write to WAL (disk durability, group commit batches fsync)
+                //      b. Send this single entry to all followers via HTTP
+                //   4. Wait for majority acknowledgment (quorum = peers/2 + 1)
+                //   5. Commit: update commit_index in the ConsensusLog
+                //   6. Apply: execute the operation on the local state machine
+                //   7. Fire-and-forget: notify remaining followers of new commit_index
+                //
+                // The background catch-up task (100ms interval) handles lagging
+                // followers by sending only their missing entries using per-follower
+                // match_index tracking.
+
                 // Step 1: Append to local consensus log (in-memory, fast)
                 let log_entry = consensus_log.append(operation.clone()).await;
                 let entry_index = log_entry.log_id.index;
                 let term = consensus_log.current_term();
                 let node_id = self.node_id.unwrap_or(0);
-                let _current_commit = consensus_log.commit_index(); // For debugging (window-based replication doesn't need this)
                 log::debug!("Appended to log: index={}, term={}", entry_index, term);
 
                 // Step 2: Queue for batcher (for lagging followers tracking)

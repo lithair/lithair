@@ -110,6 +110,56 @@ impl ConsensusLog {
         }
     }
 
+    /// Rebuild the consensus log from WAL entries after a node restart.
+    ///
+    /// The WAL (Write-Ahead Log) persists every operation to disk. When a node
+    /// restarts, the in-memory ConsensusLog is empty. This method replays the
+    /// WAL entries to restore the log to its pre-crash state.
+    ///
+    /// After replay:
+    /// - `entries` contains all recovered operations in order
+    /// - `next_index` is set past the last recovered entry
+    /// - `current_term` is restored to the highest term seen
+    /// - `commit_index` is set to the last entry (all WAL entries were committed pre-crash)
+    /// - `applied_index` matches `commit_index` (entries were applied before being persisted)
+    pub async fn replay_from_wal_entries(&self, wal_entries: Vec<LogEntry>) -> usize {
+        if wal_entries.is_empty() {
+            return 0;
+        }
+
+        let mut entries = self.entries.write().await;
+
+        let mut max_index = 0u64;
+        let mut max_term = 0u64;
+
+        for entry in wal_entries {
+            if entry.log_id.index > max_index {
+                max_index = entry.log_id.index;
+            }
+            if entry.log_id.term > max_term {
+                max_term = entry.log_id.term;
+            }
+            entries.push(entry);
+        }
+
+        // Sort by index to guarantee order (WAL should already be ordered, but be safe)
+        entries.sort_by_key(|e| e.log_id.index);
+
+        let count = entries.len();
+
+        // Restore atomic state:
+        // - next_index: one past the last entry, so new appends get the right index
+        // - current_term: the highest term seen in the WAL
+        // - commit_index: all WAL entries were committed before they were persisted
+        // - applied_index: entries were applied to state before the crash
+        self.next_index.store(max_index + 1, Ordering::SeqCst);
+        self.current_term.store(max_term, Ordering::SeqCst);
+        self.commit_index.store(max_index, Ordering::SeqCst);
+        self.applied_index.store(max_index, Ordering::SeqCst);
+
+        count
+    }
+
     /// Get the current term
     pub fn current_term(&self) -> u64 {
         self.current_term.load(Ordering::SeqCst)
@@ -577,6 +627,62 @@ mod tests {
         // Each entry should be applied exactly once (total = 10)
         assert_eq!(apply_count.load(Ordering::Relaxed), 10);
         assert_eq!(log.applied_index(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_replay_from_wal_entries() {
+        // Simulate a node restart: create entries, then replay into a fresh log
+        let original = ConsensusLog::new();
+
+        for _ in 0..5 {
+            original
+                .append(CrudOperation::Create {
+                    model_path: "/api/products".to_string(),
+                    data: serde_json::json!({"name": "Test"}),
+                })
+                .await;
+        }
+        original.commit(5);
+        original.mark_applied(5);
+
+        // Capture entries as if read from WAL
+        let entries = original.entries.read().await.clone();
+
+        // Create a fresh log (simulates restart with empty memory)
+        let restored = ConsensusLog::new();
+        assert_eq!(restored.commit_index(), 0);
+
+        let count = restored.replay_from_wal_entries(entries).await;
+        assert_eq!(count, 5);
+        assert_eq!(restored.current_term(), 1);
+        assert_eq!(restored.commit_index(), 5);
+        assert_eq!(restored.applied_index(), 5);
+
+        // New appends should continue from index 6
+        let entry = restored
+            .append(CrudOperation::Create {
+                model_path: "/api/products".to_string(),
+                data: serde_json::json!({"name": "New"}),
+            })
+            .await;
+        assert_eq!(entry.log_id.index, 6);
+    }
+
+    #[tokio::test]
+    async fn test_replay_empty_wal() {
+        let log = ConsensusLog::new();
+        let count = log.replay_from_wal_entries(vec![]).await;
+        assert_eq!(count, 0);
+        assert_eq!(log.commit_index(), 0);
+
+        // Should still work normally
+        let entry = log
+            .append(CrudOperation::Create {
+                model_path: "/api/x".to_string(),
+                data: serde_json::json!({}),
+            })
+            .await;
+        assert_eq!(entry.log_id.index, 1);
     }
 
     #[tokio::test]
