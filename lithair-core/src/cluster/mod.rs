@@ -440,4 +440,96 @@ mod tests {
         state.update_heartbeat();
         assert!(!state.should_start_election());
     }
+
+    #[test]
+    fn test_leader_never_triggers_election() {
+        let state = RaftLeadershipState::new(0, 8080, vec!["127.0.0.1:8081".to_string()]);
+        assert!(state.is_leader());
+
+        // Manually expire the heartbeat by setting it far in the past
+        {
+            let mut hb = state.last_heartbeat.lock().unwrap();
+            *hb = Instant::now() - Duration::from_secs(60);
+        }
+
+        // Leader should never start election, even with expired heartbeat
+        assert!(!state.should_start_election());
+    }
+
+    #[test]
+    fn test_concurrent_state_transitions() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let state = Arc::new(RaftLeadershipState::new(1, 8081, vec!["127.0.0.1:8080".to_string()]));
+        let mut handles = Vec::new();
+
+        for i in 0..10 {
+            let s = Arc::clone(&state);
+            handles.push(thread::spawn(move || {
+                if i % 2 == 0 {
+                    s.become_leader();
+                } else {
+                    s.become_follower(0, 8080);
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // Final state must be consistent: either leader or follower, not torn
+        let is_leader = state.is_leader();
+        let node_state = state.get_current_state();
+        if is_leader {
+            assert_eq!(node_state, RaftNodeState::Leader);
+            assert_eq!(state.get_leader_port(), 8081);
+        } else {
+            assert_eq!(node_state, RaftNodeState::Follower);
+            assert_eq!(state.get_leader_port(), 8080);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_election_with_no_alive_peers() {
+        // No HTTP servers running on peer ports — self should win
+        let state = RaftLeadershipState::new(
+            3,
+            9003,
+            vec!["127.0.0.1:19999".to_string(), "127.0.0.1:19998".to_string()],
+        );
+
+        let (should_lead, winner_id, winner_port) = state.start_election().await;
+        assert!(should_lead);
+        assert_eq!(winner_id, 3);
+        assert_eq!(winner_port, 9003);
+    }
+
+    #[test]
+    fn test_resync_stats_concurrent_increments() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let stats = Arc::new(ResyncStats::new());
+        let mut handles = Vec::new();
+
+        for _ in 0..100 {
+            let s = Arc::clone(&stats);
+            handles.push(thread::spawn(move || {
+                s.record_snapshot_created();
+                s.record_send_attempt(1);
+                s.record_send_success();
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(stats.snapshots_created.load(Ordering::Relaxed), 100);
+        assert_eq!(stats.snapshot_send_attempts.load(Ordering::Relaxed), 100);
+        assert_eq!(stats.snapshot_send_successes.load(Ordering::Relaxed), 100);
+        assert!(stats.last_resync_timestamp_ms.load(Ordering::Relaxed) > 0);
+    }
 }
