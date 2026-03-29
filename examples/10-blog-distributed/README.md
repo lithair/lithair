@@ -7,15 +7,15 @@ Write to the leader, read from any node.
 
 ```bash
 # Terminal 1 - Leader
-cargo run -p blog-distributed --bin blog_replicated_node -- \
+cargo run -p blog-distributed --bin blog-cluster-node -- \
   --node-id 0 --port 8080 --peers 8081,8082
 
 # Terminal 2 - Follower
-cargo run -p blog-distributed --bin blog_replicated_node -- \
+cargo run -p blog-distributed --bin blog-cluster-node -- \
   --node-id 1 --port 8081 --peers 8080,8082
 
 # Terminal 3 - Follower
-cargo run -p blog-distributed --bin blog_replicated_node -- \
+cargo run -p blog-distributed --bin blog-cluster-node -- \
   --node-id 2 --port 8082 --peers 8080,8081
 ```
 

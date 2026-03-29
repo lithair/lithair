@@ -6,12 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Lithair is a declarative memory-first web server framework in Rust. Core philosophy: "In Memory We Trust, In Data We Believe" - data models define infrastructure through declarative annotations.
 
+**Published on crates.io** (`lithair-core`, `lithair-macros`, `lithair-cli`).
+
 **Key crates:**
 
-- `lithair-core/` - Core framework with zero-dependency design
+- `lithair-core/` - Core framework
 - `lithair-macros/` - Proc macros for `#[derive(DeclarativeModel)]`
-- `examples/` - Production-ready examples (scc2_server_demo, raft_replication_demo, rbac_sso_demo, etc.)
-- `cucumber-tests/` - BDD tests with Cucumber
+- `lithair-cli/` - CLI scaffolding tool (`lithair new`)
+- `examples/` - 11 progressive examples (hello-world through distributed clusters)
+- `cucumber-tests/` - BDD tests with Cucumber (performance, durability, clustering)
 
 ## Common Commands
 

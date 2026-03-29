@@ -1135,7 +1135,7 @@ async fn then_real_nodes_have_hash_chains(world: &mut LithairWorld) {
 
         if let Some(node) = node {
             let event_log_path =
-                node.data_dir.join(format!("pure_node_{}/products_events/events.raftlog", i));
+                node.data_dir.join(format!("node_{}/products_events/events.raftlog", i));
             drop(nodes);
 
             if event_log_path.exists() {
@@ -1175,7 +1175,7 @@ async fn then_hash_chain_valid_on_all_real_nodes(world: &mut LithairWorld) {
 
         if let Some(node) = node {
             let event_log_path =
-                node.data_dir.join(format!("pure_node_{}/products_events/events.raftlog", i));
+                node.data_dir.join(format!("node_{}/products_events/events.raftlog", i));
             drop(nodes);
 
             if event_log_path.exists() {

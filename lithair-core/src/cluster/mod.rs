@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 
 pub mod consensus_log;
 pub mod replication_batcher;
-pub mod simple_replication;
 pub mod snapshot;
 pub mod upgrade;
 pub mod wal;

@@ -225,7 +225,7 @@ async fn main() -> Result<()> {
 
     // Auto-configure data directories (honor EXPERIMENT_DATA_BASE when provided)
     let base_dir = std::env::var("EXPERIMENT_DATA_BASE").unwrap_or_else(|_| "data".to_string());
-    let data_dir = format!("{}/pure_node_{}", base_dir, args.node_id);
+    let data_dir = format!("{}/node_{}", base_dir, args.node_id);
     std::fs::create_dir_all(&data_dir)?;
 
     // Event store paths for each model

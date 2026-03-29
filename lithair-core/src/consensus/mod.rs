@@ -6,6 +6,9 @@
 //! - Sets up OpenRaft consensus
 //! - Synchronizes EventStores across nodes via HTTP
 //! - Provides transparent distributed operations
+//!
+//! **Deprecated:** Most types in this module are superseded by `LithairServer::with_raft_cluster()`.
+//! The `ReplicatedModel` trait remains active and is not deprecated.
 
 #[cfg(feature = "cluster")]
 use std::sync::Arc;
@@ -83,6 +86,7 @@ pub trait ReplicatedModel: Send + Sync + Clone + Serialize + for<'de> Deserializ
 }
 
 /// Consensus configuration for DeclarativeServer
+#[deprecated(since = "0.2.0", note = "Use LithairServer::with_raft_cluster() instead")]
 #[derive(Debug, Clone)]
 pub struct ConsensusConfig {
     pub node_id: u64,
@@ -95,6 +99,7 @@ pub struct ConsensusConfig {
 ///
 /// Uses HYPER HTTP routes for peer communication instead of direct OpenRaft networking.
 /// Integrates with Lithair EventStore for native persistence.
+#[deprecated(since = "0.2.0", note = "Use LithairServer::with_raft_cluster() instead")]
 #[cfg(feature = "cluster")]
 pub struct DeclarativeConsensus<T>
 where
@@ -406,6 +411,7 @@ impl openraft::network::RaftNetwork<TypeConfig> for DeclarativeConnection {
 use crate::engine::events::{Event, EventEnvelope};
 
 /// HTTP-based replication using HYPER and Lithair EventStore
+#[deprecated(since = "0.2.0", note = "Use LithairServer::with_raft_cluster() instead")]
 #[cfg(feature = "cluster")]
 pub struct HyperReplicationCoordinator {
     /// Native Lithair EventStore for persistence

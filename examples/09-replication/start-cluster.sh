@@ -173,7 +173,7 @@ clean_cluster() {
     stop_cluster
 
     log_info "Cleaning data directories..."
-    rm -rf "$DATA_DIR/pure_node_"*
+    rm -rf "$DATA_DIR/node_"*
     rm -rf "$DATA_DIR/raft/node_"*
     rm -rf "$LOG_DIR"
 

@@ -1012,7 +1012,7 @@ impl LithairWorld {
 
     /// Starts a real LithairServer cluster with N nodes as external processes
     ///
-    /// Uses the `pure_declarative_node` binary compiled from `raft_replication_demo`
+    /// Uses the `lithair-cluster-node` binary compiled from the replication example
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
@@ -1021,11 +1021,11 @@ impl LithairWorld {
             .map_err(|e| format!("Failed to get current dir: {}", e))?
             .parent()  // cucumber-tests -> lithair
             .ok_or("Failed to find parent directory")?
-            .join("target/debug/pure_declarative_node");
+            .join("target/debug/lithair-cluster-node");
 
         if !binary_path.exists() {
             return Err(format!(
-                "Binary not found at {:?}. Please run: cargo build --package raft_replication_demo --bin pure_declarative_node",
+                "Binary not found at {:?}. Please run: cargo build -p replication",
                 binary_path
             ));
         }
@@ -1194,11 +1194,11 @@ impl LithairWorld {
             .map_err(|e| format!("Failed to get current dir: {}", e))?
             .parent()
             .ok_or("Failed to find parent directory")?
-            .join("target/debug/pure_declarative_node");
+            .join("target/debug/lithair-cluster-node");
 
         if !binary_path.exists() {
             return Err(format!(
-                "Binary not found at {:?}. Please run: cargo build --package raft_replication_demo --bin pure_declarative_node",
+                "Binary not found at {:?}. Please run: cargo build -p replication",
                 binary_path
             ));
         }
