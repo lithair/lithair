@@ -33,8 +33,8 @@ _cleanup_cluster() {
 trap _cleanup_cluster EXIT
 
 # ── BUILD AND START CLUSTER ──────────────────────────────────────────────────
-log_info "Building blog-distributed-node..."
-cargo build -q -p blog-distributed --bin blog-distributed-node
+log_info "Building blog-cluster-node..."
+cargo build -q -p blog-distributed --bin blog-cluster-node
 
 log_info "Starting 3-node blog cluster..."
 > "$PIDS_FILE"
@@ -48,7 +48,7 @@ for i in 0 1 2; do
             peers="$peers$((8080 + j))"
         fi
     done
-    RUST_LOG=info "$ROOT_DIR/target/debug/blog-distributed-node" \
+    RUST_LOG=info "$ROOT_DIR/target/debug/blog-cluster-node" \
         --node-id "$i" --port "$port" --peers "$peers" \
         > "$LOG_DIR/node_$i.log" 2>&1 &
     echo "$!" >> "$PIDS_FILE"

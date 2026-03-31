@@ -794,8 +794,17 @@ impl LithairServer {
                         let mut resync_counter = 0u64; // For periodic snapshot resync
                         let mut heartbeat_counter = 0u64; // For leader heartbeat
 
-                        // Heartbeat interval: election_timeout / 3 ≈ 1.7s = 17 ticks at 100ms
-                        let heartbeat_ticks = 17u64;
+                        // Heartbeat interval: election_timeout / 3, derived from config
+                        let heartbeat_ticks = raft_state
+                            .as_ref()
+                            .map(|s| (s.election_timeout.as_millis() as u64 / 3 + 50) / 100)
+                            .unwrap_or(17);
+
+                        // Shared HTTP client for background tasks (reuses connection pool)
+                        let bg_client = reqwest::Client::builder()
+                            .timeout(Duration::from_secs(5))
+                            .build()
+                            .unwrap_or_else(|_| reqwest::Client::new());
 
                         // Track last resync time per follower for cooldown
                         let mut last_resync: HashMap<String, std::time::Instant> = HashMap::new();
@@ -1070,28 +1079,32 @@ impl LithairServer {
                             // === LEADER HEARTBEAT ===
                             // Send empty AppendEntriesRequest to all followers periodically
                             // to prevent them from starting unnecessary elections.
+                            // Includes the leader's last log index/term so followers can
+                            // detect log divergence (Raft safety property).
                             heartbeat_counter += 1;
                             if heartbeat_counter >= heartbeat_ticks {
                                 heartbeat_counter = 0;
 
+                                let last_log_index = consensus_log_ref.last_index().await;
+                                let last_log_term = consensus_log_ref
+                                    .last_entry()
+                                    .await
+                                    .map_or(0, |e| e.log_id.term);
+
                                 for peer in &peers {
                                     let peer = peer.clone();
+                                    let client = bg_client.clone();
                                     let heartbeat_request =
                                         crate::cluster::consensus_log::AppendEntriesRequest {
                                             term,
                                             leader_id: node_id,
-                                            prev_log_index: 0,
-                                            prev_log_term: 0,
+                                            prev_log_index: last_log_index,
+                                            prev_log_term: last_log_term,
                                             entries: vec![], // Empty = heartbeat
                                             leader_commit: commit_index,
                                         };
 
                                     tokio::spawn(async move {
-                                        let client = reqwest::Client::builder()
-                                            .timeout(Duration::from_secs(2))
-                                            .build()
-                                            .unwrap_or_else(|_| reqwest::Client::new());
-
                                         let url = format!("http://{}/_raft/append", peer);
                                         let _ =
                                             client.post(&url).json(&heartbeat_request).send().await;
@@ -4025,10 +4038,12 @@ impl LithairServer {
                         let commit_index_to_notify = new_commit_index;
                         let term_for_notify = term;
                         let node_id_for_notify = node_id;
+                        // Capture leader's last log state for Raft consistency check
+                        let notify_prev_log_index = entry_index;
+                        let notify_prev_log_term = term;
                         tokio::spawn(async move {
-                            // Send only the commit index update to followers.
-                            // The background catch-up task handles lagging followers
-                            // using per-follower match_index tracking.
+                            // Send commit notification with leader's log position
+                            // so followers can detect divergence.
                             let client = reqwest::Client::builder()
                                 .timeout(std::time::Duration::from_secs(1))
                                 .build()
@@ -4037,8 +4052,8 @@ impl LithairServer {
                                 let request = crate::cluster::consensus_log::AppendEntriesRequest {
                                     term: term_for_notify,
                                     leader_id: node_id_for_notify,
-                                    prev_log_index: 0,
-                                    prev_log_term: 0,
+                                    prev_log_index: notify_prev_log_index,
+                                    prev_log_term: notify_prev_log_term,
                                     entries: vec![], // Commit notification only, catch-up via background task
                                     leader_commit: commit_index_to_notify,
                                 };

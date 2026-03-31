@@ -142,8 +142,12 @@ impl ConsensusLog {
             entries.push(entry);
         }
 
-        // Sort by index to guarantee order (WAL should already be ordered, but be safe)
-        entries.sort_by_key(|e| e.log_id.index);
+        // WAL entries are append-only and already ordered by index.
+        // Assert ordering in debug builds rather than sorting (O(n) vs O(n log n)).
+        debug_assert!(
+            entries.windows(2).all(|w| w[0].log_id.index <= w[1].log_id.index),
+            "WAL entries not ordered by index — WAL corruption?"
+        );
 
         let count = entries.len();
 

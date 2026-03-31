@@ -28,13 +28,13 @@ _cleanup_cluster() {
         done < "$PIDS_FILE"
         rm -f "$PIDS_FILE"
     fi
-    pkill -f "replication-declarative-node" 2>/dev/null || true
+    pkill -f "lithair-cluster-node" 2>/dev/null || true
 }
 trap _cleanup_cluster EXIT
 
 # ── BUILD AND START CLUSTER ──────────────────────────────────────────────────
-log_info "Building replication-declarative-node..."
-cargo build -q -p replication --bin replication-declarative-node
+log_info "Building lithair-cluster-node..."
+cargo build -q -p replication --bin lithair-cluster-node
 
 log_info "Starting 3-node cluster..."
 > "$PIDS_FILE"
@@ -48,7 +48,7 @@ for i in 0 1 2; do
             peers="$peers$((8080 + j))"
         fi
     done
-    RUST_LOG=info "$ROOT_DIR/target/debug/replication-declarative-node" \
+    RUST_LOG=info "$ROOT_DIR/target/debug/lithair-cluster-node" \
         --node-id "$i" --port "$port" --peers "$peers" \
         > "$LOG_DIR/node_$i.log" 2>&1 &
     echo "$!" >> "$PIDS_FILE"
