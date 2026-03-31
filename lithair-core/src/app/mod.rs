@@ -782,6 +782,7 @@ impl LithairServer {
                     let models = Arc::clone(&self.models);
                     let replication_config = self.config.replication.clone();
                     let resync_stats = Arc::clone(&self.resync_stats);
+                    let wal_for_resync = self.wal.clone();
 
                     tokio::spawn(async move {
                         use std::collections::HashMap;
@@ -879,6 +880,22 @@ impl LithairServer {
                                             } else {
                                                 // Track snapshot creation
                                                 resync_stats.record_snapshot_created();
+
+                                                // ── WAL COMPACTION ─────────────────────────
+                                                // Now that the snapshot captures state up to
+                                                // commit_index, we can safely remove older WAL
+                                                // entries. This prevents the WAL from growing
+                                                // unbounded over time.
+                                                if let Some(ref wal_for_compact) = wal_for_resync {
+                                                    match wal_for_compact.compact(commit_index).await {
+                                                        Ok(0) => {}
+                                                        Ok(n) => log::info!(
+                                                            "WAL compacted: removed {} entries (snapshot covers up to index {})",
+                                                            n, commit_index
+                                                        ),
+                                                        Err(e) => log::warn!("WAL compaction failed: {}", e),
+                                                    }
+                                                }
 
                                                 // Send snapshot to each desynced follower (in parallel, with configurable rate limit)
                                                 let max_concurrent =
