@@ -523,12 +523,13 @@ mod tests {
         let f2 = batcher.get_follower("127.0.0.1:8082").await.unwrap();
         f2.record_success(1, 800).await; // Lagging (slow)
 
-        let f3 = batcher.get_follower("127.0.0.1:8083").await.unwrap();
         batcher.mark_follower_desynced("127.0.0.1:8083").await;
-        drop(f3);
 
         let summary = batcher.get_health_summary().await;
         assert_eq!(summary.len(), 3);
+        assert_eq!(summary["127.0.0.1:8081"], FollowerHealth::Healthy);
+        assert_eq!(summary["127.0.0.1:8082"], FollowerHealth::Lagging);
+        assert_eq!(summary["127.0.0.1:8083"], FollowerHealth::Desynced);
     }
 
     #[tokio::test(flavor = "multi_thread")]

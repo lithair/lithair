@@ -608,7 +608,7 @@ async fn then_data_files_identical(_world: &mut LithairWorld) {
         let mut model_counts: HashMap<String, usize> = HashMap::new();
 
         for model in &models {
-            let events_dir = format!("node_{}/{}_events", node_id, model);
+            let events_dir = format!("{}_events", model);
             let raftlog_path = node_dir.join(&events_dir).join("events.raftlog");
 
             if raftlog_path.exists() {

@@ -978,8 +978,8 @@ mod tests {
         assert!(entries.is_empty());
     }
 
-    #[test]
-    fn test_corrupted_wal_recovery() {
+    #[tokio::test]
+    async fn test_corrupted_wal_recovery() {
         let dir = tempdir().unwrap();
         let wal_path = dir.path().join("corrupt_wal");
 
@@ -995,8 +995,7 @@ mod tests {
                     },
                     timestamp_ms: i * 100,
                 };
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                rt.block_on(wal.append(&entry)).unwrap();
+                wal.append(&entry).await.unwrap();
             }
         }
 
