@@ -1,16 +1,37 @@
-//! Write-Ahead Log (WAL) for durable consensus operations
+//! # Write-Ahead Log (WAL) for durable consensus operations
 //!
-//! This module provides a persistent log that ensures durability of operations
-//! before they are replicated. Uses rkyv for zero-copy serialization.
+//! Persists every CRUD operation to disk before it's considered committed.
+//! On node restart, the WAL is replayed to restore the ConsensusLog state.
+//! Uses rkyv for zero-copy serialization and FNV-1a checksums for integrity.
+//!
+//! ## File Format
+//!
+//! ```text
+//! [LWAL magic (4 bytes)][version u32 (4 bytes)]
+//! [len u64 (8)][checksum u64 (8)][rkyv data (len bytes)]  ← entry 1
+//! [len u64 (8)][checksum u64 (8)][rkyv data (len bytes)]  ← entry 2
+//! ...
+//! ```
 //!
 //! ## Group Commit
 //!
-//! The WAL supports group commit for high throughput. Instead of fsync per operation,
-//! entries are buffered and flushed together, amortizing the fsync cost.
+//! For high throughput, entries are buffered and flushed together (single fsync
+//! per batch). Default: flush every 5ms or when 100 entries are buffered.
 //!
-//! - `append_buffered()` - Add to buffer, returns immediately
-//! - `flush()` - Force flush buffer to disk with single fsync
-//! - Background task flushes every `group_commit_interval_ms` or when buffer is full
+//! - `append_buffered()` — Add to buffer, returns when flushed
+//! - `flush()` — Force flush buffer to disk
+//! - `spawn_flush_task()` — Background flush every 5ms
+//!
+//! ## Compaction
+//!
+//! After a snapshot is taken, entries up to the snapshot index can be removed
+//! via `compact()`. This prevents the WAL from growing unbounded.
+//!
+//! ## Recovery
+//!
+//! On startup, `read_all()` returns all valid entries. Corrupted entries
+//! (bad checksum or malformed rkyv) are silently skipped — the WAL recovers
+//! up to the last valid entry.
 
 use rkyv::{rancor::Error as RkyvError, Archive, Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
@@ -552,6 +573,13 @@ impl WriteAheadLog {
 
             let len = u64::from_le_bytes(len_buf) as usize;
 
+            // Sanity check: a single WAL entry should never exceed 256MB.
+            // If it does, we've likely hit corruption in the length field.
+            const MAX_ENTRY_SIZE: usize = 256 * 1024 * 1024;
+            if len > MAX_ENTRY_SIZE {
+                break;
+            }
+
             let mut checksum_buf = [0u8; 8];
             reader.read_exact(&mut checksum_buf)?;
             let stored_checksum = u64::from_le_bytes(checksum_buf);
@@ -629,6 +657,68 @@ impl WriteAheadLog {
         Ok(())
     }
 
+    /// Compact the WAL by removing entries at or below the given index.
+    ///
+    /// Called after a snapshot is taken. Since the snapshot captures the full
+    /// state up to `snapshot_index`, those WAL entries are no longer needed
+    /// for recovery — the node can restore from the snapshot instead.
+    ///
+    /// This prevents the WAL from growing unbounded: the typical lifecycle is:
+    ///   append → append → ... → snapshot(index=N) → compact(N) → append → ...
+    ///
+    /// Uses crash-safe write: writes to a temporary file, fsyncs it, then
+    /// atomically renames over the original. If the process crashes mid-write,
+    /// the original WAL remains intact.
+    pub async fn compact(&self, snapshot_index: u64) -> std::io::Result<usize> {
+        let _guard = self.write_lock.write().await;
+
+        let entries = self.read_all()?;
+        let before_count = entries.len();
+
+        let entries_to_keep: Vec<_> =
+            entries.into_iter().filter(|e| e.log_id.index > snapshot_index).collect();
+
+        let removed = before_count - entries_to_keep.len();
+
+        if removed == 0 {
+            return Ok(0);
+        }
+
+        // Write to a temporary file first (crash-safe: if we crash here,
+        // the original WAL is still intact and usable on next startup)
+        let tmp_path = self.path.with_extension("compact.tmp");
+        let mut file = File::create(&tmp_path)?;
+        file.write_all(&WAL_MAGIC)?;
+        file.write_all(&WAL_VERSION.to_le_bytes())?;
+
+        let mut position = 8u64;
+
+        for entry in &entries_to_keep {
+            let wal_entry = WalEntry::from_log_entry(entry);
+            let bytes = rkyv::to_bytes::<RkyvError>(&wal_entry)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+
+            let checksum = Self::fnv1a_hash(&bytes);
+
+            file.write_all(&(bytes.len() as u64).to_le_bytes())?;
+            file.write_all(&checksum.to_le_bytes())?;
+            file.write_all(&bytes)?;
+
+            position += WAL_HEADER_SIZE as u64 + bytes.len() as u64;
+        }
+
+        // Fsync the temp file, then atomic rename over the original
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp_path, &self.path)?;
+
+        self.write_position.store(position, Ordering::SeqCst);
+        self.last_synced_index
+            .store(entries_to_keep.last().map(|e| e.log_id.index).unwrap_or(0), Ordering::SeqCst);
+
+        Ok(removed)
+    }
+
     /// Get the last synced index
     pub fn last_index(&self) -> u64 {
         self.last_synced_index.load(Ordering::SeqCst)
@@ -656,6 +746,7 @@ impl WriteAheadLog {
         reader.seek(SeekFrom::Start(8))?;
 
         let mut last_index = 0u64;
+        const MAX_ENTRY_SIZE: usize = 256 * 1024 * 1024;
 
         loop {
             let mut len_buf = [0u8; 8];
@@ -666,6 +757,11 @@ impl WriteAheadLog {
             }
 
             let len = u64::from_le_bytes(len_buf) as usize;
+
+            // Corrupted length field — stop reading
+            if len > MAX_ENTRY_SIZE {
+                break;
+            }
 
             // Skip checksum
             reader.seek(SeekFrom::Current(8))?;
@@ -889,5 +985,213 @@ mod tests {
 
         let entries = wal.read_all().unwrap();
         assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_empty_wal() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("empty_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        let entries = wal.read_all().unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_corrupted_wal_recovery() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("corrupt_wal");
+
+        // Write 5 valid entries
+        {
+            let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+            for i in 1..=5u64 {
+                let entry = LogEntry {
+                    log_id: LogId::new(1, i),
+                    operation: CrudOperation::Create {
+                        model_path: "/api/test".to_string(),
+                        data: serde_json::json!({"id": i}),
+                    },
+                    timestamp_ms: i * 100,
+                };
+                wal.append(&entry).await.unwrap();
+            }
+        }
+
+        // Append garbage bytes directly to the WAL file
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().append(true).open(&wal_path).unwrap();
+            f.write_all(&[0xFF, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02]).unwrap();
+        }
+
+        // Reopen — should recover the 5 valid entries, ignoring corruption
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_large_entry() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("large_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        // 1MB JSON payload
+        let big_data = "x".repeat(1_000_000);
+        let entry = LogEntry {
+            log_id: LogId::new(1, 1),
+            operation: CrudOperation::Create {
+                model_path: "/api/big".to_string(),
+                data: serde_json::json!({"payload": big_data}),
+            },
+            timestamp_ms: 1000,
+        };
+
+        wal.append(&entry).await.unwrap();
+
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].log_id.index, 1);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_all() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("truncate_all_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        for i in 1..=5u64 {
+            let entry = LogEntry {
+                log_id: LogId::new(1, i),
+                operation: CrudOperation::Create {
+                    model_path: "/api/test".to_string(),
+                    data: serde_json::json!({"id": i}),
+                },
+                timestamp_ms: i * 100,
+            };
+            wal.append(&entry).await.unwrap();
+        }
+
+        // Truncate after index 0 = remove everything
+        wal.truncate_after(0).await.unwrap();
+        let entries = wal.read_all().unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_double_shutdown() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("double_shutdown_wal");
+        let wal = std::sync::Arc::new(
+            WriteAheadLog::with_config(
+                wal_path.to_str().unwrap(),
+                GroupCommitConfig { flush_interval_ms: 50, max_buffer_size: 10, enabled: true },
+            )
+            .unwrap(),
+        );
+        let _flush_handle = wal.spawn_flush_task();
+
+        wal.shutdown().await.unwrap();
+        // Second shutdown should not panic or deadlock
+        wal.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_compact_removes_old_entries() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("compact_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        // Write 10 entries
+        for i in 1..=10u64 {
+            let entry = LogEntry {
+                log_id: LogId::new(1, i),
+                operation: CrudOperation::Create {
+                    model_path: "/api/items".to_string(),
+                    data: serde_json::json!({"id": i}),
+                },
+                timestamp_ms: i * 100,
+            };
+            wal.append(&entry).await.unwrap();
+        }
+
+        // Compact up to index 7 (simulates snapshot at index 7)
+        let removed = wal.compact(7).await.unwrap();
+        assert_eq!(removed, 7);
+
+        // Only entries 8, 9, 10 should remain
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].log_id.index, 8);
+        assert_eq!(entries[1].log_id.index, 9);
+        assert_eq!(entries[2].log_id.index, 10);
+    }
+
+    #[tokio::test]
+    async fn test_compact_all_entries() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("compact_all_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        for i in 1..=5u64 {
+            let entry = LogEntry {
+                log_id: LogId::new(1, i),
+                operation: CrudOperation::Create {
+                    model_path: "/api/items".to_string(),
+                    data: serde_json::json!({"id": i}),
+                },
+                timestamp_ms: i * 100,
+            };
+            wal.append(&entry).await.unwrap();
+        }
+
+        // Compact everything
+        let removed = wal.compact(100).await.unwrap();
+        assert_eq!(removed, 5);
+
+        let entries = wal.read_all().unwrap();
+        assert!(entries.is_empty());
+
+        // Can still append new entries after compaction
+        let entry = LogEntry {
+            log_id: LogId::new(1, 6),
+            operation: CrudOperation::Create {
+                model_path: "/api/items".to_string(),
+                data: serde_json::json!({"id": 6}),
+            },
+            timestamp_ms: 600,
+        };
+        wal.append(&entry).await.unwrap();
+
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].log_id.index, 6);
+    }
+
+    #[tokio::test]
+    async fn test_compact_nothing_to_remove() {
+        let dir = tempdir().unwrap();
+        let wal_path = dir.path().join("compact_noop_wal");
+        let wal = WriteAheadLog::new(wal_path.to_str().unwrap()).unwrap();
+
+        for i in 5..=10u64 {
+            let entry = LogEntry {
+                log_id: LogId::new(1, i),
+                operation: CrudOperation::Create {
+                    model_path: "/api/items".to_string(),
+                    data: serde_json::json!({"id": i}),
+                },
+                timestamp_ms: i * 100,
+            };
+            wal.append(&entry).await.unwrap();
+        }
+
+        // Compact up to index 3 — all entries are > 3, nothing removed
+        let removed = wal.compact(3).await.unwrap();
+        assert_eq!(removed, 0);
+
+        let entries = wal.read_all().unwrap();
+        assert_eq!(entries.len(), 6);
     }
 }

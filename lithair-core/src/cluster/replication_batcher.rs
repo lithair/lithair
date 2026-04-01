@@ -504,4 +504,70 @@ mod tests {
         assert_eq!(entries.len(), 5);
         assert_eq!(follower.pending_count().await, 0);
     }
+
+    #[tokio::test]
+    async fn test_health_summary_mixed_states() {
+        let batcher = ReplicationBatcher::with_default_config();
+        batcher
+            .initialize(&[
+                "127.0.0.1:8081".to_string(),
+                "127.0.0.1:8082".to_string(),
+                "127.0.0.1:8083".to_string(),
+            ])
+            .await;
+
+        // Set different states
+        let f1 = batcher.get_follower("127.0.0.1:8081").await.unwrap();
+        f1.record_success(1, 100).await; // Healthy (fast)
+
+        let f2 = batcher.get_follower("127.0.0.1:8082").await.unwrap();
+        f2.record_success(1, 800).await; // Lagging (slow)
+
+        batcher.mark_follower_desynced("127.0.0.1:8083").await;
+
+        let summary = batcher.get_health_summary().await;
+        assert_eq!(summary.len(), 3);
+        assert_eq!(summary["127.0.0.1:8081"], FollowerHealth::Healthy);
+        assert_eq!(summary["127.0.0.1:8082"], FollowerHealth::Lagging);
+        assert_eq!(summary["127.0.0.1:8083"], FollowerHealth::Desynced);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_concurrent_queue_and_take() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+
+        let batcher = Arc::new(ReplicationBatcher::with_default_config());
+        let total_taken = Arc::new(AtomicU64::new(0));
+
+        // Producer: queue 200 entries
+        let b_prod = Arc::clone(&batcher);
+        let producer = tokio::spawn(async move {
+            for i in 1..=200u64 {
+                b_prod.queue_entry(make_entry(i)).await;
+            }
+        });
+
+        // Consumer: take batches until we have all 200
+        let b_cons = Arc::clone(&batcher);
+        let count = Arc::clone(&total_taken);
+        let consumer = tokio::spawn(async move {
+            loop {
+                let batch = b_cons.take_batch().await;
+                let n = batch.len() as u64;
+                if n > 0 {
+                    count.fetch_add(n, Ordering::Relaxed);
+                }
+                if count.load(Ordering::Relaxed) >= 200 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        });
+
+        producer.await.unwrap();
+        consumer.await.unwrap();
+
+        assert_eq!(total_taken.load(Ordering::Relaxed), 200);
+    }
 }

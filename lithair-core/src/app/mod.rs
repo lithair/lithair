@@ -719,6 +719,30 @@ impl LithairServer {
                     );
                 }
 
+                // ── WAL REPLAY ──────────────────────────────────────────────
+                // On restart, the WAL contains all committed operations from
+                // before the crash. We replay them into the ConsensusLog to
+                // restore the node's state without losing data.
+                if let (Some(ref wal), Some(ref consensus_log)) = (&self.wal, &self.consensus_log) {
+                    match wal.read_all() {
+                        Ok(entries) if !entries.is_empty() => {
+                            let count = consensus_log.replay_from_wal_entries(entries).await;
+                            log::info!(
+                                "WAL replay: restored {} entries (term={}, commit_index={})",
+                                count,
+                                consensus_log.current_term(),
+                                consensus_log.commit_index(),
+                            );
+                        }
+                        Ok(_) => {
+                            log::info!("WAL replay: no entries to restore (fresh node)");
+                        }
+                        Err(e) => {
+                            log::warn!("WAL replay failed: {} — starting with empty log", e);
+                        }
+                    }
+                }
+
                 // Start WAL background flush task (group commit)
                 if let Some(ref wal) = self.wal {
                     let _flush_handle = wal.spawn_flush_task();
@@ -730,7 +754,24 @@ impl LithairServer {
                     log::info!("Snapshot manager enabled for resync");
                 }
 
-                // Start background replication task for lagging followers
+                // ── BACKGROUND REPLICATION TASK ────────────────────────────
+                //
+                // This long-running task handles three responsibilities:
+                //
+                // 1. CATCH-UP: Periodically checks each follower's last_replicated_index
+                //    and sends only the missing entries. This is how lagging followers
+                //    eventually converge with the leader — the write path only sends
+                //    the current entry, this task fills in any gaps.
+                //
+                // 2. HEARTBEAT: Every ~1.7s (election_timeout/3), sends an empty
+                //    AppendEntriesRequest to all followers. This prevents followers
+                //    from starting unnecessary elections during idle periods.
+                //
+                // 3. RESYNC: When a follower is detected as desynced (>1000 entries
+                //    behind, or unresponsive for >30s with pending work), triggers
+                //    a full snapshot transfer instead of incremental catch-up.
+                //
+                // Runs on a 100ms tick interval.
                 if let Some(ref batcher) = self.replication_batcher {
                     let batcher_clone = Arc::clone(batcher);
                     let peers = self.cluster_peers.clone();
@@ -741,6 +782,7 @@ impl LithairServer {
                     let models = Arc::clone(&self.models);
                     let replication_config = self.config.replication.clone();
                     let resync_stats = Arc::clone(&self.resync_stats);
+                    let wal_for_resync = self.wal.clone();
 
                     tokio::spawn(async move {
                         use std::collections::HashMap;
@@ -750,6 +792,19 @@ impl LithairServer {
                         let mut ticker = interval(Duration::from_millis(100)); // Check every 100ms
                         let mut _catchup_counter = 0u64; // Reserved for future use
                         let mut resync_counter = 0u64; // For periodic snapshot resync
+                        let mut heartbeat_counter = 0u64; // For leader heartbeat
+
+                        // Heartbeat interval: election_timeout / 3, derived from config
+                        let heartbeat_ticks = raft_state
+                            .as_ref()
+                            .map(|s| (s.election_timeout.as_millis() as u64 / 3 + 50) / 100)
+                            .unwrap_or(17);
+
+                        // Shared HTTP client for background tasks (reuses connection pool)
+                        let bg_client = reqwest::Client::builder()
+                            .timeout(Duration::from_secs(5))
+                            .build()
+                            .unwrap_or_else(|_| reqwest::Client::new());
 
                         // Track last resync time per follower for cooldown
                         let mut last_resync: HashMap<String, std::time::Instant> = HashMap::new();
@@ -834,6 +889,22 @@ impl LithairServer {
                                             } else {
                                                 // Track snapshot creation
                                                 resync_stats.record_snapshot_created();
+
+                                                // ── WAL COMPACTION ─────────────────────────
+                                                // Now that the snapshot captures state up to
+                                                // commit_index, we can safely remove older WAL
+                                                // entries. This prevents the WAL from growing
+                                                // unbounded over time.
+                                                if let Some(ref wal_for_compact) = wal_for_resync {
+                                                    match wal_for_compact.compact(commit_index).await {
+                                                        Ok(0) => {}
+                                                        Ok(n) => log::info!(
+                                                            "WAL compacted: removed {} entries (snapshot covers up to index {})",
+                                                            n, commit_index
+                                                        ),
+                                                        Err(e) => log::warn!("WAL compaction failed: {}", e),
+                                                    }
+                                                }
 
                                                 // Send snapshot to each desynced follower (in parallel, with configurable rate limit)
                                                 let max_concurrent =
@@ -1001,6 +1072,42 @@ impl LithairServer {
                                                 batcher.record_failure(&peer).await;
                                             }
                                         }
+                                    });
+                                }
+                            }
+
+                            // === LEADER HEARTBEAT ===
+                            // Send empty AppendEntriesRequest to all followers periodically
+                            // to prevent them from starting unnecessary elections.
+                            // Includes the leader's last log index/term so followers can
+                            // detect log divergence (Raft safety property).
+                            heartbeat_counter += 1;
+                            if heartbeat_counter >= heartbeat_ticks {
+                                heartbeat_counter = 0;
+
+                                let last_log_index = consensus_log_ref.last_index().await;
+                                let last_log_term = consensus_log_ref
+                                    .last_entry()
+                                    .await
+                                    .map_or(0, |e| e.log_id.term);
+
+                                for peer in &peers {
+                                    let peer = peer.clone();
+                                    let client = bg_client.clone();
+                                    let heartbeat_request =
+                                        crate::cluster::consensus_log::AppendEntriesRequest {
+                                            term,
+                                            leader_id: node_id,
+                                            prev_log_index: last_log_index,
+                                            prev_log_term: last_log_term,
+                                            entries: vec![], // Empty = heartbeat
+                                            leader_commit: commit_index,
+                                        };
+
+                                    tokio::spawn(async move {
+                                        let url = format!("http://{}/_raft/append", peer);
+                                        let _ =
+                                            client.post(&url).json(&heartbeat_request).send().await;
                                     });
                                 }
                             }
@@ -3825,12 +3932,29 @@ impl LithairServer {
                     }
                 };
 
+                // ── WRITE PATH: CONSENSUS + REPLICATION ────────────────────
+                //
+                // The write path for a cluster leader follows this sequence:
+                //
+                //   1. Append to ConsensusLog (in-memory, atomic index assignment)
+                //   2. Queue for ReplicationBatcher (follower health tracking)
+                //   3. In parallel:
+                //      a. Write to WAL (disk durability, group commit batches fsync)
+                //      b. Send this single entry to all followers via HTTP
+                //   4. Wait for majority acknowledgment (quorum = peers/2 + 1)
+                //   5. Commit: update commit_index in the ConsensusLog
+                //   6. Apply: execute the operation on the local state machine
+                //   7. Fire-and-forget: notify remaining followers of new commit_index
+                //
+                // The background catch-up task (100ms interval) handles lagging
+                // followers by sending only their missing entries using per-follower
+                // match_index tracking.
+
                 // Step 1: Append to local consensus log (in-memory, fast)
                 let log_entry = consensus_log.append(operation.clone()).await;
                 let entry_index = log_entry.log_id.index;
                 let term = consensus_log.current_term();
                 let node_id = self.node_id.unwrap_or(0);
-                let _current_commit = consensus_log.commit_index(); // For debugging (window-based replication doesn't need this)
                 log::debug!("Appended to log: index={}, term={}", entry_index, term);
 
                 // Step 2: Queue for batcher (for lagging followers tracking)
@@ -3857,13 +3981,10 @@ impl LithairServer {
                 };
 
                 // Replication task (returns when majority responds)
-                // Send ALL entries from beginning to ensure lagging followers can always catch up.
-                // This is critical: if we use a window, followers stuck on entry N will never receive
-                // entries N+1 to window_start, causing permanent divergence.
-                let consensus_log_clone = consensus_log.clone();
+                // Send only the new entry to followers. The background catch-up task
+                // handles lagging followers using per-follower match_index tracking.
                 let replication_future = async move {
-                    // Always send ALL entries from index 1 to ensure no gaps
-                    let entries_to_send = consensus_log_clone.get_entries_from(1).await;
+                    let entries_to_send = vec![log_entry.clone()];
 
                     if entries_to_send.is_empty() {
                         return Ok(entry_index);
@@ -3917,14 +4038,12 @@ impl LithairServer {
                         let commit_index_to_notify = new_commit_index;
                         let term_for_notify = term;
                         let node_id_for_notify = node_id;
-                        let consensus_log_for_notify = consensus_log.clone();
+                        // Capture leader's last log state for Raft consistency check
+                        let notify_prev_log_index = entry_index;
+                        let notify_prev_log_term = term;
                         tokio::spawn(async move {
-                            // Send ALL entries from index 1 to ensure followers can always catch up
-                            // This is critical: if we use a window, followers stuck on entry N will never
-                            // receive entries N+1 to window_start, causing permanent divergence
-                            let entries_for_notify =
-                                consensus_log_for_notify.get_entries_from(1).await;
-
+                            // Send commit notification with leader's log position
+                            // so followers can detect divergence.
                             let client = reqwest::Client::builder()
                                 .timeout(std::time::Duration::from_secs(1))
                                 .build()
@@ -3933,9 +4052,9 @@ impl LithairServer {
                                 let request = crate::cluster::consensus_log::AppendEntriesRequest {
                                     term: term_for_notify,
                                     leader_id: node_id_for_notify,
-                                    prev_log_index: 0,
-                                    prev_log_term: 0,
-                                    entries: entries_for_notify, // Include entries for catch-up
+                                    prev_log_index: notify_prev_log_index,
+                                    prev_log_term: notify_prev_log_term,
+                                    entries: vec![], // Commit notification only, catch-up via background task
                                     leader_commit: commit_index_to_notify,
                                 };
                                 // Send to ALL peers IN PARALLEL

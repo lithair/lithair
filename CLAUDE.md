@@ -170,6 +170,15 @@ refactor: extract PEM loading helpers
 2. Ensure new or modified behavior is covered by tests
 3. `task ci:github` for final validation before requesting review
 
+### Pre-Merge Checklist
+
+Before merging any PR, always:
+
+1. **Read all review comments** — automated (CodeRabbit, Gemini) and human
+2. **Check CI pipeline status** — all checks must pass
+3. **Address critical/major findings** — don't merge with unresolved issues
+4. **Fix nits in a follow-up or same PR** — don't ignore them
+
 ## Spec-Driven Development Workflow
 
 The project uses slash commands for feature development:
