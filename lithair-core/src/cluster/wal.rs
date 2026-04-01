@@ -573,6 +573,13 @@ impl WriteAheadLog {
 
             let len = u64::from_le_bytes(len_buf) as usize;
 
+            // Sanity check: a single WAL entry should never exceed 256MB.
+            // If it does, we've likely hit corruption in the length field.
+            const MAX_ENTRY_SIZE: usize = 256 * 1024 * 1024;
+            if len > MAX_ENTRY_SIZE {
+                break;
+            }
+
             let mut checksum_buf = [0u8; 8];
             reader.read_exact(&mut checksum_buf)?;
             let stored_checksum = u64::from_le_bytes(checksum_buf);
@@ -659,14 +666,15 @@ impl WriteAheadLog {
     /// This prevents the WAL from growing unbounded: the typical lifecycle is:
     ///   append → append → ... → snapshot(index=N) → compact(N) → append → ...
     ///
-    /// The WAL file is rewritten in-place, keeping only entries with index > snapshot_index.
+    /// Uses crash-safe write: writes to a temporary file, fsyncs it, then
+    /// atomically renames over the original. If the process crashes mid-write,
+    /// the original WAL remains intact.
     pub async fn compact(&self, snapshot_index: u64) -> std::io::Result<usize> {
         let _guard = self.write_lock.write().await;
 
         let entries = self.read_all()?;
         let before_count = entries.len();
 
-        // Keep only entries after the snapshot point
         let entries_to_keep: Vec<_> =
             entries.into_iter().filter(|e| e.log_id.index > snapshot_index).collect();
 
@@ -676,8 +684,10 @@ impl WriteAheadLog {
             return Ok(0);
         }
 
-        // Rewrite the WAL with only the remaining entries
-        let mut file = File::create(&self.path)?;
+        // Write to a temporary file first (crash-safe: if we crash here,
+        // the original WAL is still intact and usable on next startup)
+        let tmp_path = self.path.with_extension("compact.tmp");
+        let mut file = File::create(&tmp_path)?;
         file.write_all(&WAL_MAGIC)?;
         file.write_all(&WAL_VERSION.to_le_bytes())?;
 
@@ -697,7 +707,10 @@ impl WriteAheadLog {
             position += WAL_HEADER_SIZE as u64 + bytes.len() as u64;
         }
 
+        // Fsync the temp file, then atomic rename over the original
         file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp_path, &self.path)?;
 
         self.write_position.store(position, Ordering::SeqCst);
         self.last_synced_index
@@ -733,6 +746,7 @@ impl WriteAheadLog {
         reader.seek(SeekFrom::Start(8))?;
 
         let mut last_index = 0u64;
+        const MAX_ENTRY_SIZE: usize = 256 * 1024 * 1024;
 
         loop {
             let mut len_buf = [0u8; 8];
@@ -743,6 +757,11 @@ impl WriteAheadLog {
             }
 
             let len = u64::from_le_bytes(len_buf) as usize;
+
+            // Corrupted length field — stop reading
+            if len > MAX_ENTRY_SIZE {
+                break;
+            }
 
             // Skip checksum
             reader.seek(SeekFrom::Current(8))?;
@@ -999,11 +1018,10 @@ mod tests {
             }
         }
 
-        // Append garbage bytes to the WAL file
-        let wal_file = wal_path.join("wal.bin");
-        if wal_file.exists() {
+        // Append garbage bytes directly to the WAL file
+        {
             use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().append(true).open(&wal_file).unwrap();
+            let mut f = std::fs::OpenOptions::new().append(true).open(&wal_path).unwrap();
             f.write_all(&[0xFF, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02]).unwrap();
         }
 

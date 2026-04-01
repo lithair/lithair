@@ -120,8 +120,16 @@ impl ConsensusLog {
     /// - `entries` contains all recovered operations in order
     /// - `next_index` is set past the last recovered entry
     /// - `current_term` is restored to the highest term seen
-    /// - `commit_index` is set to the last entry (all WAL entries were committed pre-crash)
-    /// - `applied_index` matches `commit_index` (entries were applied before being persisted)
+    /// - `commit_index` and `applied_index` are left at 0
+    ///
+    /// **Why not mark entries as committed?** On a leader, entries are written
+    /// to the WAL *before* the replication quorum is reached. If the leader
+    /// crashes before majority ack, those entries are uncommitted. We
+    /// conservatively leave commit_index at 0 — the cluster leader will
+    /// re-establish the correct commit_index via the normal replication flow.
+    /// Followers will receive the correct commit_index from the leader's
+    /// AppendEntries RPCs. The EventStore (model state) has its own persistence
+    /// and doesn't depend on the consensus log's commit_index for recovery.
     pub async fn replay_from_wal_entries(&self, wal_entries: Vec<LogEntry>) -> usize {
         if wal_entries.is_empty() {
             return 0;
@@ -151,15 +159,13 @@ impl ConsensusLog {
 
         let count = entries.len();
 
-        // Restore atomic state:
-        // - next_index: one past the last entry, so new appends get the right index
+        // Restore only the index counters:
+        // - next_index: one past the last entry, so new appends don't collide
         // - current_term: the highest term seen in the WAL
-        // - commit_index: all WAL entries were committed before they were persisted
-        // - applied_index: entries were applied to state before the crash
+        // - commit_index: stays at 0 (conservative — see docstring above)
+        // - applied_index: stays at 0 (re-apply via normal replication flow)
         self.next_index.store(max_index + 1, Ordering::SeqCst);
         self.current_term.store(max_term, Ordering::SeqCst);
-        self.commit_index.store(max_index, Ordering::SeqCst);
-        self.applied_index.store(max_index, Ordering::SeqCst);
 
         count
     }
@@ -659,8 +665,10 @@ mod tests {
         let count = restored.replay_from_wal_entries(entries).await;
         assert_eq!(count, 5);
         assert_eq!(restored.current_term(), 1);
-        assert_eq!(restored.commit_index(), 5);
-        assert_eq!(restored.applied_index(), 5);
+        // commit_index and applied_index stay at 0 (conservative replay —
+        // the cluster will re-establish commit via normal replication)
+        assert_eq!(restored.commit_index(), 0);
+        assert_eq!(restored.applied_index(), 0);
 
         // New appends should continue from index 6
         let entry = restored
