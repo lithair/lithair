@@ -1079,8 +1079,8 @@ impl LithairWorld {
                 .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
             let process =
                 cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
@@ -1251,8 +1251,8 @@ impl LithairWorld {
                 .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
             let process =
                 cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;

@@ -3843,9 +3843,19 @@ impl LithairServer {
                 let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
                 if !is_leader {
-                    // Redirect to leader
+                    // Redirect to leader (if we know the leader's port)
                     if let Some(ref raft_state) = self.raft_state {
                         let leader_port = raft_state.get_leader_port();
+                        if leader_port == 0 {
+                            // Leader port not yet discovered (haven't received first heartbeat).
+                            // Return 503 instead of redirecting to port 0.
+                            return Ok(hyper::Response::builder()
+                                .status(503)
+                                .header("Content-Type", "application/json")
+                                .header("Retry-After", "1")
+                                .body(Full::new(Bytes::from(r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#)))
+                                .expect("valid HTTP response"));
+                        }
                         return Ok(hyper::Response::builder()
                         .status(307) // Temporary Redirect
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
