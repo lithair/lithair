@@ -777,6 +777,7 @@ impl LithairServer {
                     let peers = self.cluster_peers.clone();
                     let consensus_log = self.consensus_log.clone();
                     let node_id = self.node_id.unwrap_or(0);
+                    let self_port = self.config.server.port;
                     let raft_state = self.raft_state.clone();
                     let snapshot_manager = self.snapshot_manager.clone();
                     let models = Arc::clone(&self.models);
@@ -1029,6 +1030,7 @@ impl LithairServer {
                                             crate::cluster::consensus_log::AppendEntriesRequest {
                                                 term,
                                                 leader_id: node_id,
+                                                leader_port: self_port,
                                                 prev_log_index: 0,
                                                 prev_log_term: 0,
                                                 entries: entries.clone(),
@@ -1098,6 +1100,7 @@ impl LithairServer {
                                         crate::cluster::consensus_log::AppendEntriesRequest {
                                             term,
                                             leader_id: node_id,
+                                            leader_port: self_port,
                                             prev_log_index: last_log_index,
                                             prev_log_term: last_log_term,
                                             entries: vec![], // Empty = heartbeat
@@ -1140,6 +1143,7 @@ impl LithairServer {
                                         crate::cluster::consensus_log::AppendEntriesRequest {
                                             term,
                                             leader_id: node_id,
+                                            leader_port: self_port,
                                             prev_log_index: 0,
                                             prev_log_term: 0,
                                             entries: entries.clone(),
@@ -2634,9 +2638,14 @@ impl LithairServer {
                 .expect("valid HTTP response"));
         }
 
-        // Update heartbeat (if we have raft_state)
+        // Update heartbeat and learn leader's port from the request.
+        // Followers don't know the leader's port at startup (ports are dynamic).
+        // The leader includes its port in every AppendEntries RPC.
         if let Some(ref raft_state) = self.raft_state {
             raft_state.update_heartbeat();
+            if request.leader_port > 0 {
+                raft_state.update_leader_port(request.leader_id, request.leader_port);
+            }
         }
 
         // Append entries to local log (can happen concurrently)
@@ -3309,6 +3318,7 @@ impl LithairServer {
                 commit_index,
                 term,
                 leader_id,
+                self.config.server.port,
                 self.replication_batcher.clone(),
             )
             .await;
@@ -3968,6 +3978,7 @@ impl LithairServer {
                 let wal_clone = self.wal.clone();
                 let log_entry_clone = log_entry.clone();
                 let peers_clone = self.cluster_peers.clone();
+                let port_clone = self.config.server.port;
                 let batcher_clone = self.replication_batcher.clone();
 
                 // WAL write task (uses group commit for batching)
@@ -4004,6 +4015,7 @@ impl LithairServer {
                         entry_index, // Commit up to this entry if majority responds
                         term,
                         node_id,
+                        port_clone,
                         batcher_clone,
                     )
                     .await
@@ -4038,7 +4050,7 @@ impl LithairServer {
                         let commit_index_to_notify = new_commit_index;
                         let term_for_notify = term;
                         let node_id_for_notify = node_id;
-                        // Capture leader's last log state for Raft consistency check
+                        let port_for_notify = self.config.server.port;
                         let notify_prev_log_index = entry_index;
                         let notify_prev_log_term = term;
                         tokio::spawn(async move {
@@ -4052,6 +4064,7 @@ impl LithairServer {
                                 let request = crate::cluster::consensus_log::AppendEntriesRequest {
                                     term: term_for_notify,
                                     leader_id: node_id_for_notify,
+                                    leader_port: port_for_notify,
                                     prev_log_index: notify_prev_log_index,
                                     prev_log_term: notify_prev_log_term,
                                     entries: vec![], // Commit notification only, catch-up via background task
@@ -4642,6 +4655,7 @@ impl LithairServer {
         leader_commit: u64,
         term: u64,
         leader_id: u64,
+        leader_port: u16,
         batcher: Option<Arc<crate::cluster::ReplicationBatcher>>,
     ) -> Result<u64, String> {
         if peers.is_empty() {
@@ -4657,6 +4671,7 @@ impl LithairServer {
         let request = crate::cluster::consensus_log::AppendEntriesRequest {
             term,
             leader_id,
+            leader_port,
             prev_log_index: 0, // Simplified - in real Raft this would track per-follower
             prev_log_term: 0,
             entries: entries.clone(),

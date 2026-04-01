@@ -93,20 +93,12 @@ impl RaftLeadershipState {
         // This is a static election - node_id 0 is always leader if present
         let is_leader = node_id == 0 || peers.is_empty();
 
-        // Find the leader port
-        // If we are leader, it's our port
-        // If not, find the smallest port among peers (leader is node_id=0, first allocated)
-        let leader_port = if is_leader {
-            self_port
-        } else {
-            // Find the smallest port among peers (that's the leader)
-            peers
-                .iter()
-                .filter_map(|peer| peer.split(':').nth(1))
-                .filter_map(|port_str| port_str.parse::<u16>().ok())
-                .min()
-                .unwrap_or(self_port)
-        };
+        // Leader port: if we are the leader, it's our port.
+        // For followers, we don't know the leader's port yet — it will be
+        // discovered from the first heartbeat (AppendEntriesRequest contains
+        // the leader_id, and the request comes from the leader's port).
+        // Initialize to 0 for followers; updated by update_leader_port().
+        let leader_port = if is_leader { self_port } else { 0 };
 
         // Find the leader node_id (always 0 in static election)
         let current_leader_id = 0u64;
@@ -154,6 +146,18 @@ impl RaftLeadershipState {
     pub fn update_heartbeat(&self) {
         if let Ok(mut heartbeat) = self.last_heartbeat.lock() {
             *heartbeat = Instant::now();
+        }
+    }
+
+    /// Update the leader port from AppendEntries RPC.
+    ///
+    /// Followers don't know the leader's port at startup (ports are dynamic).
+    /// The leader's port is discovered from the first heartbeat or AppendEntries
+    /// request, which includes the leader_id. The sender's address gives us the port.
+    pub fn update_leader_port(&self, leader_id: u64, leader_port: u16) {
+        self.current_leader_id.store(leader_id, Ordering::SeqCst);
+        if leader_port > 0 {
+            self.leader_port.store(leader_port, Ordering::SeqCst);
         }
     }
 
@@ -423,10 +427,14 @@ mod tests {
 
     #[test]
     fn test_raft_state_follower() {
-        // Node 1 should be follower
+        // Node 1 should be follower. Leader port is unknown until first heartbeat.
         let state = RaftLeadershipState::new(1, 8081, vec!["127.0.0.1:8080".to_string()]);
         assert!(!state.is_leader());
         assert_eq!(state.get_current_state(), RaftNodeState::Follower);
+        assert_eq!(state.get_leader_port(), 0); // Unknown until heartbeat from leader
+
+        // After receiving leader info (e.g. from heartbeat), port is updated
+        state.update_leader_port(0, 8080);
         assert_eq!(state.get_leader_port(), 8080);
     }
 

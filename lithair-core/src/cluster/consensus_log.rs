@@ -345,6 +345,9 @@ pub struct AppendEntriesRequest {
     pub term: u64,
     /// Leader's node ID
     pub leader_id: u64,
+    /// Leader's port (so followers can discover the leader's address)
+    #[serde(default)]
+    pub leader_port: u16,
     /// Index of log entry immediately preceding new ones
     pub prev_log_index: u64,
     /// Term of prev_log_index entry
