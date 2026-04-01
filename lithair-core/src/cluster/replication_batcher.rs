@@ -523,7 +523,10 @@ mod tests {
         let f2 = batcher.get_follower("127.0.0.1:8082").await.unwrap();
         f2.record_success(1, 800).await; // Lagging (slow)
 
-        batcher.mark_follower_desynced("127.0.0.1:8083").await;
+        assert!(
+            batcher.mark_follower_desynced("127.0.0.1:8083").await,
+            "Expected follower to exist before marking desynced"
+        );
 
         let summary = batcher.get_health_summary().await;
         assert_eq!(summary.len(), 3);
@@ -548,10 +551,11 @@ mod tests {
             }
         });
 
-        // Consumer: take batches until we have all 200
+        // Consumer: take batches until we have all 200 (with timeout to prevent CI hangs)
         let b_cons = Arc::clone(&batcher);
         let count = Arc::clone(&total_taken);
         let consumer = tokio::spawn(async move {
+            let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
             loop {
                 let batch = b_cons.take_batch().await;
                 let n = batch.len() as u64;
@@ -560,6 +564,12 @@ mod tests {
                 }
                 if count.load(Ordering::Relaxed) >= 200 {
                     break;
+                }
+                if tokio::time::Instant::now() > deadline {
+                    panic!(
+                        "Consumer timed out after 10s — only got {}/200 entries",
+                        count.load(Ordering::Relaxed)
+                    );
                 }
                 tokio::task::yield_now().await;
             }
