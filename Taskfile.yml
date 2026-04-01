@@ -46,10 +46,11 @@ tasks:
             task docs                 # Show docs pointers
             task bdd:setup            # Install Cucumber dependencies
             task bdd:run              # Run all Cucumber tests
-            task bdd:performance      # Performance BDD tests
-            task bdd:security         # Security BDD tests
-            task bdd:distribution     # Distribution BDD tests
-            task bdd:integration      # Integration BDD tests
+            task bdd:engine           # Engine + basic server tests
+            task bdd:persistence      # Event sourcing + hash chain tests
+            task bdd:performance      # Performance + durability benchmarks
+            task bdd:scaffolding      # CLI scaffolding tests
+            task bdd:distribution     # Cluster replication tests
             task bdd:all              # Run all BDD tests
 
           Variables (override as needed):
@@ -446,50 +447,43 @@ tasks:
       - echo "✅ All Cucumber tests completed"
 
   bdd:performance:
-    desc: "Run performance BDD tests"
+    desc: "Run performance BDD tests (engine benchmarks, durability, serialization)"
     cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/performance.feature"
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/performance/**/*.feature"
       - echo "🚀 Performance BDD tests completed"
 
-  bdd:security:
-    desc: "Run security BDD tests"
-    cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/security.feature"
-      - echo "🛡️ Security BDD tests completed"
-
   bdd:distribution:
-    desc: "Run distribution BDD tests"
+    desc: "Run distribution/cluster BDD tests (replication, leader election)"
     cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/distribution.feature"
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/*cluster*.feature"
       - echo "🔄 Distribution BDD tests completed"
 
-  bdd:integration:
-    desc: "Run integration BDD tests"
-    cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/integration/**/*.feature"
-      - echo "🔗 Integration BDD tests completed"
-
   bdd:persistence:
-    desc: "Run persistence BDD tests"
+    desc: "Run persistence BDD tests (event sourcing, hash chain)"
     cmds:
       - cd cucumber-tests && cargo run --bin cucumber -- -i "features/persistence/**/*.feature"
       - echo "💾 Persistence BDD tests completed"
 
-  bdd:observability:
-    desc: "Run observability BDD tests"
+  bdd:scaffolding:
+    desc: "Run scaffolding BDD tests (lithair new CLI)"
     cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/observability/**/*.feature"
-      - echo "📊 Observability BDD tests completed"
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/scaffolding.feature"
+      - echo "🔧 Scaffolding BDD tests completed"
+
+  bdd:engine:
+    desc: "Run engine BDD tests (declarative engine, basic server)"
+    cmds:
+      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/*.feature"
+      - echo "⚙️ Engine BDD tests completed"
 
   bdd:all:
     desc: "Run all BDD tests with comprehensive report"
     cmds:
-      - task: bdd:performance
-      - task: bdd:security
-      - task: bdd:distribution
-      - task: bdd:integration
+      - task: bdd:engine
       - task: bdd:persistence
-      - task: bdd:observability
+      - task: bdd:performance
+      - task: bdd:scaffolding
+      - task: bdd:distribution
       - echo "🎉 All BDD test suites passed successfully!"
 
   bdd:ci:
