@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-04-01
+
+### Added
+
+- **Cluster Hardening**
+  - Leader heartbeat (empty AppendEntries every election_timeout/3) to prevent unnecessary elections
+  - WAL replay on startup — restores ConsensusLog state from disk after node restart
+  - WAL compaction after snapshot — crash-safe (write to temp file, atomic rename)
+  - Corruption guard in WAL reader (max 256MB per entry, graceful stop on bad data)
+  - Conservative WAL replay: entries restored but not marked committed (cluster re-establishes consensus)
+  - Per-follower match_index tracking in background catch-up task
+  - 20 new cluster unit tests covering concurrency, corruption, edge cases
+
+- **Write Path Optimization**
+  - Write path sends single entry to followers instead of full log history (O(1) vs O(n))
+  - Commit notifications send commit index only, background task handles lagging followers
+
+- **HTTP & API**
+  - PATCH endpoint for partial JSON merge updates
+  - `#[db(unique)]` constraint enforcement on create, update, and patch
+  - `#[lifecycle(immutable)]` field enforcement on update
+  - `#[http(base_path = "custom")]` to override auto-generated REST path
+  - `#[schema(version = N)]` for configurable schema version
+  - Compile-time field validation in DeclarativeModel
+  - 409 Conflict responses for unique constraint violations
+  - PATCH added to CORS allowed methods + OPTIONS preflight handling
+  - Audited field change logging on update and patch
+  - URL percent-decoding for query filters and path IDs
+  - OpenAPI 3.1 auto-generation from DeclarativeModel (#10)
+  - SSE real-time subscriptions for model changes (#12)
+  - Query, filter, and pagination on collection endpoints (#11)
+  - System metrics module: CPU, RAM, load, RSS, request stats (#13)
+  - In-memory AccessLogBuffer for zero-spawn log reads (#8)
+  - TestHandler for integration testing DeclarativeModels
+
+- **Infrastructure**
+  - Feature-gate TLS, MFA, and cluster dependencies (#20)
+  - Access logging for LithairServer (#6)
+  - Real client IP in access logs behind reverse proxy (#7)
+  - Pre-Merge Checklist added to CLAUDE.md
+
+### Changed
+
+- Renamed cluster binaries: `pure_declarative_node` → `lithair-cluster-node`, `blog_replicated_node` → `blog-cluster-node`
+- Data directories renamed: `pure_node_{id}` → `node_{id}`
+- Deprecated `DeclarativeConsensus`, `ConsensusConfig`, `HyperReplicationCoordinator` in favor of `LithairServer::with_raft_cluster()`
+- BDD Taskfile tasks aligned with actual feature file locations
+
+### Removed
+
+- 3 dead cluster modules: `raft_replication.rs`, `optimized_replication.rs`, `simple_replication.rs` (-1310 lines)
+- Dead modules and unused dependencies (-4185 lines, #19)
+- Legacy code, old prelude, obsolete tools (#17)
+
+### Fixed
+
+- Firewall middleware configuration in LithairServer (#18)
+- BDD test references to nonexistent binary names and paths
+- Heartbeat and commit notifications now include correct `prev_log_index`/`prev_log_term`
+- WAL corruption test writing to wrong file path
+- Duplicate `node_{id}` path in stress test event directory construction
+
+## [0.1.1] - 2025-02-07
+
+### Added
+
+- `lithair new` scaffolding CLI with BDD tests
+- Native TLS termination with certificate fingerprint logging (#5)
+- LithairServer hardening for self-sufficient deployment
+- Custom handler DX improvements: error wrapping, 404 handler, response helpers
+- Frontend framework integration examples (React, Angular, Vue, Svelte, Astro)
+- Trunk-based development workflow documentation (#4)
+
+### Changed
+
+- Migrated `RS_*` env vars to `LT_*` prefix (#3)
+- Reorganized examples with numbered progression (01-hello-world through 11-frontend-integrations)
+
+### Fixed
+
+- Security hardening: fail-closed guards, symlink safety, stale asset cleanup
+- Eliminated risky `unwrap()`, fixed doc warnings, removed dead `println!()`
+- All clippy warnings resolved across workspace
+- CI pipeline optimizations (Alpine builds, disk space, release profiles)
+
 ## [0.1.0] - 2025-01-20
 
 ### Added
@@ -43,5 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/lithair/lithair/compare/v0.1.1...v0.1.3
+[0.1.1]: https://github.com/lithair/lithair/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lithair/lithair/releases/tag/v0.1.0
