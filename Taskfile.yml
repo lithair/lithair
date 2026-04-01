@@ -467,7 +467,8 @@ tasks:
   bdd:scaffolding:
     desc: "Run scaffolding BDD tests (lithair new CLI)"
     cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/core/scaffolding.feature"
+      # Uses its own ScaffoldingWorld runner, not the main cucumber binary
+      - cd cucumber-tests && cargo test --test scaffolding_test
       - echo "🔧 Scaffolding BDD tests completed"
 
   bdd:engine:

@@ -1116,11 +1116,6 @@ async fn then_stop_real_cluster(world: &mut LithairWorld) {
     println!("✅ Real cluster stopped cleanly");
 }
 
-#[then(regex = r"I can stop the real cluster cleanly")]
-async fn then_stop_real_cluster_fr(world: &mut LithairWorld) {
-    then_stop_real_cluster(world).await;
-}
-
 // ==================== HASH CHAIN VERIFICATION ON REAL CLUSTER ====================
 
 #[then("each real node should have its own hash chain")]
