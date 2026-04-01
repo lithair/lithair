@@ -7,8 +7,8 @@ description = "Lithair Distributed Replication Demo - Simple multi-node example"
 authors = ["Yoan Roblet (Arcker)"]
 
 [[bin]]
-name = "replication-declarative-node"
-path = "pure_declarative_node.rs"
+name = "lithair-cluster-node"
+path = "cluster_node.rs"
 
 [dependencies]
 # Core Lithair framework

@@ -83,6 +83,7 @@
 // Public modules - Core framework only
 pub mod cluster;
 pub mod config; // Configuration system with TOML support
+#[allow(deprecated)]
 pub mod consensus; // Distributed replication for DeclarativeModels
 pub mod engine;
 use crate::engine::events::Event; // Import Event trait for aggregate_id usage

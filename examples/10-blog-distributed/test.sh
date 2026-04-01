@@ -28,7 +28,7 @@ _cleanup_cluster() {
         done < "$PIDS_FILE"
         rm -f "$PIDS_FILE"
     fi
-    pkill -f "blog_replicated_node" 2>/dev/null || true
+    pkill -f "blog-cluster-node" 2>/dev/null || true
 }
 trap _cleanup_cluster EXIT
 

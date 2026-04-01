@@ -21,7 +21,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-BINARY_NAME="blog_replicated_node"
+BINARY_NAME="blog-cluster-node"
 DATA_DIR="${EXPERIMENT_DATA_BASE:-data}"
 LOG_DIR="/tmp/lithair_blog_cluster_logs"
 PORTS=(8080 8081 8082)

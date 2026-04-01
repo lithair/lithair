@@ -155,7 +155,7 @@ BDD tests integrate perfectly into the CI pipeline:
 Traditional examples are progressively migrated:
 - `scc2_server_demo/` → `performance.feature`
 - `http_firewall_demo/` → `security.feature`
-- `raft_replication_demo/` → `distribution.feature`
+- `09-replication/` → `distribution_clustering.feature`
 - `blog_server/` → `web_server.feature`
 
 This approach allows:

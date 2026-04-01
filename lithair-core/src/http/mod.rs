@@ -31,8 +31,10 @@ pub mod admin;
 pub mod api_router; // Generic API routing for DeclarativeHttpHandler
 pub mod async_server; // Async HTTP server with Hyper
 pub mod backend;
+#[allow(deprecated)]
 pub mod declarative;
 pub mod declarative_handlers; // Revolutionary Data-First routing system
+#[allow(deprecated)]
 pub mod declarative_server;
 pub mod error;
 pub mod firewall;

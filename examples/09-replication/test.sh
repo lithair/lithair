@@ -10,7 +10,7 @@
 source "$(dirname "$0")/../../scripts/test-lib.sh"
 
 # Clean data from previous runs
-rm -rf data/pure_node_* data/raft/node_*
+rm -rf data/node_* data/raft/node_*
 
 LEADER="http://localhost:8080"
 FOLLOWER1="http://localhost:8081"

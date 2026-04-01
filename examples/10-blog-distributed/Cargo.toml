@@ -7,8 +7,8 @@ description = "Lithair Blog with Raft Replication - Multi-node blog with RBAC an
 authors = ["Yoan Roblet (Arcker)"]
 
 [[bin]]
-name = "blog-distributed-node"
-path = "blog_replicated_node.rs"
+name = "blog-cluster-node"
+path = "blog_cluster_node.rs"
 
 [dependencies]
 # Core Lithair framework
