@@ -555,24 +555,21 @@ mod tests {
         let b_cons = Arc::clone(&batcher);
         let count = Arc::clone(&total_taken);
         let consumer = tokio::spawn(async move {
-            let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
-            loop {
-                let batch = b_cons.take_batch().await;
-                let n = batch.len() as u64;
-                if n > 0 {
-                    count.fetch_add(n, Ordering::Relaxed);
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    let batch = b_cons.take_batch().await;
+                    let n = batch.len() as u64;
+                    if n > 0 {
+                        count.fetch_add(n, Ordering::Relaxed);
+                    }
+                    if count.load(Ordering::Relaxed) >= 200 {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
                 }
-                if count.load(Ordering::Relaxed) >= 200 {
-                    break;
-                }
-                if tokio::time::Instant::now() > deadline {
-                    panic!(
-                        "Consumer timed out after 10s — only got {}/200 entries",
-                        count.load(Ordering::Relaxed)
-                    );
-                }
-                tokio::task::yield_now().await;
-            }
+            })
+            .await
+            .expect("Consumer timed out after 10s");
         });
 
         producer.await.unwrap();
