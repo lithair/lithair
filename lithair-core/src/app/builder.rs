@@ -6,6 +6,56 @@ use crate::session::{PersistentSessionStore, SessionManager};
 use anyhow::Result;
 use std::sync::Arc;
 
+/// Identifies which virtual host a per-vhost configuration belongs to.
+///
+/// Used internally by the builder to tag frontend configurations so
+/// the server can later install them into a [`crate::http::HostRouter`].
+///
+/// - [`VhostScope::Host`] — an explicit, normalized hostname.
+/// - [`VhostScope::Default`] — the fallback when no host matches.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum VhostScope {
+    /// Configuration bound to a normalized host (see
+    /// [`crate::http::normalize_host`]).
+    Host(String),
+    /// Configuration used when no registered host matches.
+    Default,
+}
+
+/// Builder for a single virtual host, obtained via
+/// [`LithairServerBuilder::with_vhost`] or
+/// [`LithairServerBuilder::with_default_vhost`].
+///
+/// The API deliberately starts small: the initial
+/// use-case (lithair.net + arcker.org on a single process, tracked in
+/// `lithair/lithair#30`) only needs per-host frontends. Models and custom
+/// routes remain host-agnostic in this first iteration. See the PR
+/// description for the follow-up plan.
+pub struct VhostBuilder {
+    #[allow(dead_code)] // reserved for richer per-vhost diagnostics in follow-ups
+    scope: VhostScope,
+    frontend_configs: Vec<(String, String)>, // (route_prefix, static_dir)
+}
+
+impl VhostBuilder {
+    fn new(scope: VhostScope) -> Self {
+        Self { scope, frontend_configs: Vec::new() }
+    }
+
+    /// Serve static files for this virtual host from `static_dir` at
+    /// `route_prefix`. Behaves like
+    /// [`LithairServerBuilder::with_frontend_at`] but is only consulted
+    /// when the request's `Host:` header matches this vhost.
+    pub fn with_frontend_at(
+        mut self,
+        route_prefix: impl Into<String>,
+        static_dir: impl Into<String>,
+    ) -> Self {
+        self.frontend_configs.push((route_prefix.into(), static_dir.into()));
+        self
+    }
+}
+
 /// Builder for LithairServer
 pub struct LithairServerBuilder {
     config: LithairConfig,
@@ -29,6 +79,16 @@ pub struct LithairServerBuilder {
 
     // Frontend configurations (path_prefix -> static_dir)
     frontend_configs: Vec<(String, String)>, // (route_prefix, static_dir)
+
+    // Per-vhost frontend configurations.
+    //
+    // Host-header based routing (see `http::host_router`). Each entry is
+    // bound to a normalized host; an entry whose host is the reserved
+    // `VhostScope::Default` acts as the fallback when no host matches.
+    //
+    // When this vec is empty, the server behaves exactly as before this
+    // feature was introduced (path-only routing).
+    vhost_frontend_configs: Vec<(VhostScope, String, String)>, // (scope, route_prefix, static_dir)
 
     // Cluster/Raft configuration
     cluster_peers: Vec<String>,
@@ -64,6 +124,7 @@ impl LithairServerBuilder {
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             frontend_configs: Vec::new(),
+            vhost_frontend_configs: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
@@ -89,6 +150,7 @@ impl LithairServerBuilder {
             access_log: false,
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             frontend_configs: Vec::new(),
+            vhost_frontend_configs: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
@@ -675,6 +737,85 @@ impl LithairServerBuilder {
         static_dir: impl Into<String>,
     ) -> Self {
         self.frontend_configs.push((route_prefix.into(), static_dir.into()));
+        self
+    }
+
+    // ========================================================================
+    // VIRTUAL HOSTS (Host-header based routing)
+    // ========================================================================
+    //
+    // See `lithair_core::http::host_router` for the underlying primitive.
+    //
+    // The vhost API is additive: existing apps that only use
+    // `.with_frontend_at(...)` continue to serve the same content on every
+    // Host. The vhost-scoped configs are consulted *first* at dispatch time;
+    // if none match and no default vhost is configured, we fall through to
+    // the host-agnostic frontends and the rest of the routing pipeline.
+
+    /// Declare a virtual host bound to a specific `Host:` header value.
+    ///
+    /// The provided closure receives a [`VhostBuilder`] with a subset of
+    /// the `LithairServerBuilder` API (currently: per-host frontends). All
+    /// configuration declared inside the closure will only respond to
+    /// requests whose `Host:` header matches `host`.
+    ///
+    /// Matching is case-insensitive and strips the `:port` suffix — see
+    /// [`crate::http::host_router`] for the exact semantics.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_vhost("arcker.org",  |v| v.with_frontend_at("/", "sites/arcker.org"))
+    ///     .with_vhost("lithair.net", |v| v.with_frontend_at("/", "public"))
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_vhost<F>(mut self, host: impl Into<String>, configure: F) -> Self
+    where
+        F: FnOnce(VhostBuilder) -> VhostBuilder,
+    {
+        let scope = VhostScope::Host(crate::http::normalize_host(&host.into()));
+        let vhost = configure(VhostBuilder::new(scope.clone()));
+        for (prefix, dir) in vhost.frontend_configs {
+            self.vhost_frontend_configs.push((scope.clone(), prefix, dir));
+        }
+        self
+    }
+
+    /// Declare the default virtual host, used when the request's `Host:`
+    /// header does not match any vhost registered via
+    /// [`Self::with_vhost`].
+    ///
+    /// Without a default vhost, requests for unknown hosts fall through
+    /// to the host-agnostic routes (`.with_frontend_at`, custom routes,
+    /// models). A default vhost is only useful if you want different
+    /// content served to unknown hosts than to the known ones — for
+    /// example a redirect-to-canonical page.
+    ///
+    /// Only one default vhost is supported; later calls overwrite
+    /// earlier ones.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_vhost("lithair.net", |v| v.with_frontend_at("/", "public"))
+    ///     .with_default_vhost(|v| v.with_frontend_at("/", "redirect"))
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_default_vhost<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(VhostBuilder) -> VhostBuilder,
+    {
+        // Remove any previously-declared default entries.
+        self.vhost_frontend_configs
+            .retain(|(scope, _, _)| !matches!(scope, VhostScope::Default));
+        let vhost = configure(VhostBuilder::new(VhostScope::Default));
+        for (prefix, dir) in vhost.frontend_configs {
+            self.vhost_frontend_configs.push((VhostScope::Default, prefix, dir));
+        }
         self
     }
 
@@ -1389,6 +1530,8 @@ impl LithairServerBuilder {
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: self.frontend_configs, // Frontend configs to load in serve()
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()
+            vhost_frontend_configs: self.vhost_frontend_configs,
+            vhost_frontend_router: crate::http::HostRouter::new(), // populated in serve()
             firewall_config: self.firewall_config,
             anti_ddos_config: self.anti_ddos_config,
             access_log: self.access_log,
@@ -1491,5 +1634,95 @@ impl LithairServerBuilder {
 impl Default for LithairServerBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+impl LithairServerBuilder {
+    /// Test-only view of the host-agnostic frontend configs.
+    pub(crate) fn frontend_configs_for_test(&self) -> &[(String, String)] {
+        &self.frontend_configs
+    }
+
+    /// Test-only view of the vhost frontend configs.
+    pub(crate) fn vhost_frontend_configs_for_test(&self) -> &[(VhostScope, String, String)] {
+        &self.vhost_frontend_configs
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_only_apps_are_unaffected() {
+        let builder = LithairServerBuilder::new()
+            .with_frontend_at("/", "public")
+            .with_frontend_at("/admin", "admin-ui");
+        assert_eq!(builder.frontend_configs_for_test().len(), 2);
+        assert!(builder.vhost_frontend_configs_for_test().is_empty());
+    }
+
+    #[test]
+    fn with_vhost_records_scope_and_frontends() {
+        let builder = LithairServerBuilder::new()
+            .with_vhost("arcker.org", |v| v.with_frontend_at("/", "sites/arcker.org"))
+            .with_vhost("lithair.net", |v| {
+                v.with_frontend_at("/", "public").with_frontend_at("/admin", "admin-ui")
+            });
+
+        let configs = builder.vhost_frontend_configs_for_test();
+        assert_eq!(configs.len(), 3);
+
+        let arcker: Vec<_> = configs
+            .iter()
+            .filter(|(s, _, _)| matches!(s, VhostScope::Host(h) if h == "arcker.org"))
+            .collect();
+        assert_eq!(arcker.len(), 1);
+        assert_eq!(arcker[0].1, "/");
+        assert_eq!(arcker[0].2, "sites/arcker.org");
+
+        let lithair: Vec<_> = configs
+            .iter()
+            .filter(|(s, _, _)| matches!(s, VhostScope::Host(h) if h == "lithair.net"))
+            .collect();
+        assert_eq!(lithair.len(), 2);
+    }
+
+    #[test]
+    fn with_vhost_normalizes_host_key() {
+        let builder = LithairServerBuilder::new()
+            .with_vhost("ARCKER.ORG:443", |v| v.with_frontend_at("/", "dir"));
+        let configs = builder.vhost_frontend_configs_for_test();
+        assert_eq!(configs.len(), 1);
+        match &configs[0].0 {
+            VhostScope::Host(h) => assert_eq!(h, "arcker.org"),
+            _ => panic!("expected Host scope"),
+        }
+    }
+
+    #[test]
+    fn with_default_vhost_replaces_previous_default() {
+        let builder = LithairServerBuilder::new()
+            .with_default_vhost(|v| v.with_frontend_at("/", "first"))
+            .with_default_vhost(|v| v.with_frontend_at("/", "second"));
+        let defaults: Vec<_> = builder
+            .vhost_frontend_configs_for_test()
+            .iter()
+            .filter(|(s, _, _)| matches!(s, VhostScope::Default))
+            .collect();
+        assert_eq!(defaults.len(), 1);
+        assert_eq!(defaults[0].2, "second");
+    }
+
+    #[test]
+    fn vhost_and_path_only_coexist() {
+        // Mixing the two styles must not cause duplication or loss.
+        let builder = LithairServerBuilder::new()
+            .with_frontend_at("/", "legacy-public")
+            .with_vhost("arcker.org", |v| v.with_frontend_at("/", "sites/arcker.org"));
+
+        assert_eq!(builder.frontend_configs_for_test().len(), 1);
+        assert_eq!(builder.vhost_frontend_configs_for_test().len(), 1);
     }
 }

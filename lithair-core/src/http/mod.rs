@@ -38,6 +38,7 @@ pub mod declarative_handlers; // Revolutionary Data-First routing system
 pub mod declarative_server;
 pub mod error;
 pub mod firewall;
+pub mod host_router;
 pub mod openapi;
 pub mod query;
 pub mod request;
@@ -73,6 +74,7 @@ pub use declarative_server::{
 };
 pub use error as http_error;
 pub use firewall::{Firewall, FirewallConfig};
+pub use host_router::{host_from_request, normalize_host, HostRouter, NoMatch};
 pub use openapi::{generate_openapi_spec, OpenApiModelInfo};
 pub use request::{HttpMethod, HttpRequest, HttpVersion};
 pub use response::{HttpResponse, StatusCode};

@@ -2215,7 +2215,7 @@ async fn verify_consistency(nodes_str: &str) -> Result<()> {
         if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send().await {
             if resp.status().is_success() {
                 if let Ok(mut entries) = resp.json::<Vec<KVEntry>>().await {
-                    entries.sort_by(|a, b| a.id.cmp(&b.id));
+                    entries.sort_by_key(|a| a.id);
                     let mut hasher = Md5::new();
                     for entry in &entries {
                         hasher.update(entry.id.to_string());
@@ -2237,7 +2237,7 @@ async fn verify_consistency(nodes_str: &str) -> Result<()> {
         if let Ok(resp) = client.get(&url).timeout(Duration::from_secs(5)).send().await {
             if resp.status().is_success() {
                 if let Ok(mut entries) = resp.json::<Vec<Counter>>().await {
-                    entries.sort_by(|a, b| a.id.cmp(&b.id));
+                    entries.sort_by_key(|a| a.id);
                     let mut hasher = Md5::new();
                     for entry in &entries {
                         hasher.update(entry.id.to_string());

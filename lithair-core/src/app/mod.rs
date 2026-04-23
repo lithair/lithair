@@ -152,6 +152,22 @@ pub struct LithairServer {
     // Key: route_prefix (e.g., "/", "/admin"), Value: FrontendEngine
     frontend_engines: std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
 
+    // Per-vhost frontend configurations declared via
+    // `LithairServerBuilder::with_vhost` / `with_default_vhost`. Loaded
+    // into `vhost_frontend_router` at startup.
+    vhost_frontend_configs: Vec<(crate::app::builder::VhostScope, String, String)>,
+
+    // Host-header based frontend router built at startup from
+    // `vhost_frontend_configs`. Each value is a map of route_prefix ->
+    // FrontendEngine for that vhost, mirroring `frontend_engines` but
+    // scoped to a specific `Host:` header.
+    //
+    // When empty (no vhosts declared) the server falls back entirely to
+    // `frontend_engines`, preserving the pre-feature behaviour.
+    vhost_frontend_router: crate::http::HostRouter<
+        std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
+    >,
+
     // HTTP Features
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
@@ -670,6 +686,110 @@ impl LithairServer {
                 }
                 Err(e) => {
                     log::warn!("   Could not create frontend engine: {}", e);
+                }
+            }
+        }
+
+        // Load per-vhost frontends (host-header based routing, see
+        // `lithair/lithair#30`). Each vhost gets its own set of
+        // FrontendEngines keyed by route prefix, exactly like the
+        // host-agnostic `frontend_engines` above. The resulting map is
+        // stored under the normalized host in `vhost_frontend_router`.
+        if !self.vhost_frontend_configs.is_empty() {
+            use crate::app::builder::VhostScope;
+
+            // Group configs by scope so we iterate each vhost once.
+            // `serve` owns `mut self` and `vhost_frontend_configs` is not
+            // used again after startup, so take it instead of cloning.
+            let mut by_scope: std::collections::HashMap<VhostScope, Vec<(String, String)>> =
+                std::collections::HashMap::new();
+            for (scope, prefix, dir) in std::mem::take(&mut self.vhost_frontend_configs) {
+                by_scope.entry(scope).or_default().push((prefix, dir));
+            }
+
+            for (scope, entries) in by_scope {
+                let scope_label = match &scope {
+                    VhostScope::Host(h) => h.clone(),
+                    VhostScope::Default => "<default>".to_string(),
+                };
+                log::info!("Loading vhost '{}' ({} frontends)", scope_label, entries.len());
+
+                let mut engines: std::collections::HashMap<
+                    String,
+                    Arc<crate::frontend::FrontendEngine>,
+                > = std::collections::HashMap::new();
+
+                // Injective byte-level encoder used for host_id segments:
+                // ASCII alphanumerics and '-' pass through, everything else
+                // becomes `_<hex>`. This makes the (vhost, prefix) → host_id
+                // mapping collision-free — otherwise pairs like ("foo.bar",
+                // "/") and ("foo_bar", "/"), or "/a/b" and "/a_b", would
+                // collapse onto the same on-disk SCC2 store.
+                let stable_host_id_segment = |input: &str| -> String {
+                    let mut out = String::with_capacity(input.len() * 3);
+                    for b in input.bytes() {
+                        match b {
+                            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' => out.push(b as char),
+                            _ => {
+                                use std::fmt::Write as _;
+                                let _ = write!(&mut out, "_{b:02x}");
+                            }
+                        }
+                    }
+                    out
+                };
+
+                for (route_prefix, static_dir) in entries {
+                    // Compose a stable host_id unique to (vhost, prefix)
+                    // so the two frontends don't clobber each other's
+                    // SCC2 event store.
+                    let prefix_segment = stable_host_id_segment(&route_prefix);
+                    let scope_segment = match &scope {
+                        VhostScope::Host(h) => stable_host_id_segment(h),
+                        VhostScope::Default => "_default".to_string(),
+                    };
+                    let host_id = format!("vhost_{}__{}", scope_segment, prefix_segment);
+
+                    match crate::frontend::FrontendEngine::new(&host_id, "./data/frontend").await {
+                        Ok(engine) => match engine.load_directory(&static_dir).await {
+                            Ok(count) => {
+                                log::info!(
+                                    "   [{}] {} → {} ({} assets)",
+                                    scope_label,
+                                    route_prefix,
+                                    static_dir,
+                                    count
+                                );
+                                engines.insert(route_prefix, Arc::new(engine));
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "   [{}] could not load {} -> {}: {}",
+                                    scope_label,
+                                    route_prefix,
+                                    static_dir,
+                                    e
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!(
+                                "   [{}] could not create frontend engine for {}: {}",
+                                scope_label,
+                                route_prefix,
+                                e
+                            );
+                        }
+                    }
+                }
+
+                match scope {
+                    VhostScope::Host(h) => {
+                        self.vhost_frontend_router.insert(h, engines);
+                    }
+                    VhostScope::Default => {
+                        self.vhost_frontend_router.set_default(engines);
+                    }
                 }
             }
         }
@@ -1611,6 +1731,19 @@ impl LithairServer {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
+        // Resolve the vhost-scoped frontend engine map (if any) before we
+        // consume `req` later in the pipeline. If no vhosts are
+        // declared, `vhost_engines` is `None` and the server behaves as
+        // before (host-agnostic path routing).
+        let vhost_engines: Option<
+            &std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
+        > = if self.vhost_frontend_router.has_entries() {
+            let host = crate::http::host_from_request(&req).unwrap_or("");
+            self.vhost_frontend_router.lookup(host)
+        } else {
+            None
+        };
+
         log::debug!("{} {}", method, path);
 
         // Raft Cluster: Check for write redirection and Raft endpoints
@@ -1968,11 +2101,31 @@ impl LithairServer {
         drop(models);
 
         // Frontend assets (memory-first serving with SCC2)
-        // Checked AFTER API routes so /admin/login.html is served but /admin/api/* can still work
-        // Try to match frontend engine by path prefix (longest match first)
-        if method == hyper::Method::GET && !self.frontend_engines.is_empty() {
+        // Checked AFTER API routes so /admin/login.html is served but /admin/api/* can still work.
+        //
+        // Resolution order:
+        //   1. Vhost-scoped frontends (if the request's Host: matches a
+        //      registered vhost or a default vhost is set).
+        //   2. Host-agnostic frontends declared via `.with_frontend_at`.
+        //
+        // This ordering means declaring a vhost *narrows* serving for
+        // that host without breaking path-only apps that never call
+        // `.with_vhost`.
+        // If a vhost matched (even with zero engines — e.g. registration
+        // succeeded but all frontend loads failed), we stay scoped to that
+        // vhost: serving host-agnostic frontends in that case would leak
+        // them into a host that explicitly opted into isolation.
+        let active_engines: &std::collections::HashMap<
+            String,
+            Arc<crate::frontend::FrontendEngine>,
+        > = match vhost_engines {
+            Some(e) => e,
+            None => &self.frontend_engines,
+        };
+
+        if method == hyper::Method::GET && !active_engines.is_empty() {
             // Sort prefixes by length (longest first) for proper matching
-            let mut prefixes: Vec<_> = self.frontend_engines.keys().collect();
+            let mut prefixes: Vec<_> = active_engines.keys().collect();
             prefixes.sort_by_key(|b| std::cmp::Reverse(b.len()));
 
             // Special handling for _astro assets: try ALL frontends as fallback
@@ -1980,7 +2133,7 @@ impl LithairServer {
             if path.starts_with("/_astro/") {
                 // Try each frontend engine directly via SCC2 lookup
                 for prefix in &prefixes {
-                    if let Some(engine) = self.frontend_engines.get(*prefix) {
+                    if let Some(engine) = active_engines.get(*prefix) {
                         // Check if this engine has the asset in its SCC2 storage
                         if let Some(asset) = engine.get_asset(&path).await {
                             // Use mime_type from asset
@@ -1998,7 +2151,7 @@ impl LithairServer {
                 // Normal path matching: find the first matching prefix
                 for prefix in prefixes {
                     if path.starts_with(prefix) {
-                        if let Some(engine) = self.frontend_engines.get(prefix) {
+                        if let Some(engine) = active_engines.get(prefix) {
                             let frontend_server =
                                 crate::frontend::FrontendServer::new_scc2(engine.clone());
 
@@ -4843,6 +4996,8 @@ impl Default for LithairServer {
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: Vec::new(),
             frontend_engines: std::collections::HashMap::new(),
+            vhost_frontend_configs: Vec::new(),
+            vhost_frontend_router: crate::http::HostRouter::new(),
             firewall_config: None,
             anti_ddos_config: None,
             access_log: false,
