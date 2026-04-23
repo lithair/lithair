@@ -699,9 +699,11 @@ impl LithairServer {
             use crate::app::builder::VhostScope;
 
             // Group configs by scope so we iterate each vhost once.
+            // `serve` owns `mut self` and `vhost_frontend_configs` is not
+            // used again after startup, so take it instead of cloning.
             let mut by_scope: std::collections::HashMap<VhostScope, Vec<(String, String)>> =
                 std::collections::HashMap::new();
-            for (scope, prefix, dir) in self.vhost_frontend_configs.clone() {
+            for (scope, prefix, dir) in std::mem::take(&mut self.vhost_frontend_configs) {
                 by_scope.entry(scope).or_default().push((prefix, dir));
             }
 
@@ -2093,12 +2095,16 @@ impl LithairServer {
         // This ordering means declaring a vhost *narrows* serving for
         // that host without breaking path-only apps that never call
         // `.with_vhost`.
+        // If a vhost matched (even with zero engines — e.g. registration
+        // succeeded but all frontend loads failed), we stay scoped to that
+        // vhost: serving host-agnostic frontends in that case would leak
+        // them into a host that explicitly opted into isolation.
         let active_engines: &std::collections::HashMap<
             String,
             Arc<crate::frontend::FrontendEngine>,
         > = match vhost_engines {
-            Some(e) if !e.is_empty() => e,
-            _ => &self.frontend_engines,
+            Some(e) => e,
+            None => &self.frontend_engines,
         };
 
         if method == hyper::Method::GET && !active_engines.is_empty() {
