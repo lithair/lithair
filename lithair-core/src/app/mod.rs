@@ -729,9 +729,7 @@ impl LithairServer {
                     let mut out = String::with_capacity(input.len() * 3);
                     for b in input.bytes() {
                         match b {
-                            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' => {
-                                out.push(b as char)
-                            }
+                            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' => out.push(b as char),
                             _ => {
                                 use std::fmt::Write as _;
                                 let _ = write!(&mut out, "_{b:02x}");
