@@ -291,7 +291,7 @@ fn compute_column_meta<T: Serialize>(items: &[T], dataset_name: &str) -> MetaRes
                 .into_iter()
                 .map(|(v, c)| ValueCount { value: v.to_string(), count: c })
                 .collect();
-            sorted.sort_by(|a, b| b.count.cmp(&a.count));
+            sorted.sort_by_key(|b| std::cmp::Reverse(b.count));
 
             let (min, max) = if is_numeric {
                 let nums: Vec<f64> =
@@ -879,11 +879,7 @@ fn parse_count(req: &http::Request<hyper::body::Incoming>, default: usize) -> us
 
 fn throughput(count: usize, duration: std::time::Duration) -> u64 {
     let ms = duration.as_millis() as u64;
-    if ms > 0 {
-        (count as u64 * 1000) / ms
-    } else {
-        count as u64
-    }
+    (count as u64 * 1000).checked_div(ms).unwrap_or(count as u64)
 }
 
 fn json_response(value: &serde_json::Value) -> Result<Response<Full<Bytes>>> {
