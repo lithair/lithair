@@ -719,17 +719,35 @@ impl LithairServer {
                     Arc<crate::frontend::FrontendEngine>,
                 > = std::collections::HashMap::new();
 
+                // Injective byte-level encoder used for host_id segments:
+                // ASCII alphanumerics and '-' pass through, everything else
+                // becomes `_<hex>`. This makes the (vhost, prefix) → host_id
+                // mapping collision-free — otherwise pairs like ("foo.bar",
+                // "/") and ("foo_bar", "/"), or "/a/b" and "/a_b", would
+                // collapse onto the same on-disk SCC2 store.
+                let stable_host_id_segment = |input: &str| -> String {
+                    let mut out = String::with_capacity(input.len() * 3);
+                    for b in input.bytes() {
+                        match b {
+                            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' => {
+                                out.push(b as char)
+                            }
+                            _ => {
+                                use std::fmt::Write as _;
+                                let _ = write!(&mut out, "_{b:02x}");
+                            }
+                        }
+                    }
+                    out
+                };
+
                 for (route_prefix, static_dir) in entries {
                     // Compose a stable host_id unique to (vhost, prefix)
                     // so the two frontends don't clobber each other's
                     // SCC2 event store.
-                    let prefix_segment = if route_prefix == "/" {
-                        "root".to_string()
-                    } else {
-                        route_prefix.trim_matches('/').replace('/', "_")
-                    };
+                    let prefix_segment = stable_host_id_segment(&route_prefix);
                     let scope_segment = match &scope {
-                        VhostScope::Host(h) => h.replace('.', "_"),
+                        VhostScope::Host(h) => stable_host_id_segment(h),
                         VhostScope::Default => "_default".to_string(),
                     };
                     let host_id = format!("vhost_{}__{}", scope_segment, prefix_segment);
