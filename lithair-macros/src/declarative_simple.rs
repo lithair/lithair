@@ -449,38 +449,32 @@ fn parse_relation_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
                 "lazy" => attrs.relation_lazy = true,
                 "eager" => attrs.relation_lazy = false,
                 "indexed" => { /* handled in db attributes */ }
-                "foreign_key" => {
+                "foreign_key"
                     // Look for = "Value" pattern
-                    if i + 2 < tokens.len() && tokens[i + 1] == "=" {
-                        if let Some(value) = extract_string_value(&tokens[i + 2]) {
-                            attrs.foreign_key = Some(value);
-                        }
-                        i += 2; // Skip = and value tokens
+                    if i + 2 < tokens.len() && tokens[i + 1] == "=" =>
+                {
+                    if let Some(value) = extract_string_value(&tokens[i + 2]) {
+                        attrs.foreign_key = Some(value);
                     }
+                    i += 2; // Skip = and value tokens
                 }
-                "has_many" => {
-                    if i + 2 < tokens.len() && tokens[i + 1] == "=" {
-                        if let Some(value) = extract_string_value(&tokens[i + 2]) {
-                            attrs.has_many = Some(value);
-                        }
-                        i += 2;
+                "has_many" if i + 2 < tokens.len() && tokens[i + 1] == "=" => {
+                    if let Some(value) = extract_string_value(&tokens[i + 2]) {
+                        attrs.has_many = Some(value);
                     }
+                    i += 2;
                 }
-                "has_one" => {
-                    if i + 2 < tokens.len() && tokens[i + 1] == "=" {
-                        if let Some(value) = extract_string_value(&tokens[i + 2]) {
-                            attrs.has_one = Some(value);
-                        }
-                        i += 2;
+                "has_one" if i + 2 < tokens.len() && tokens[i + 1] == "=" => {
+                    if let Some(value) = extract_string_value(&tokens[i + 2]) {
+                        attrs.has_one = Some(value);
                     }
+                    i += 2;
                 }
-                "belongs_to" => {
-                    if i + 2 < tokens.len() && tokens[i + 1] == "=" {
-                        if let Some(value) = extract_string_value(&tokens[i + 2]) {
-                            attrs.belongs_to = Some(value);
-                        }
-                        i += 2;
+                "belongs_to" if i + 2 < tokens.len() && tokens[i + 1] == "=" => {
+                    if let Some(value) = extract_string_value(&tokens[i + 2]) {
+                        attrs.belongs_to = Some(value);
                     }
+                    i += 2;
                 }
                 _ => {}
             }
