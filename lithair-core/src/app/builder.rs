@@ -848,10 +848,24 @@ impl LithairServerBuilder {
     ///
     /// # Loop guard
     ///
-    /// This method does not validate that `from` and `to` differ — it is
-    /// the caller's responsibility to avoid redirect loops. Self-redirects
-    /// (`with_redirect("a", "a")`) are accepted as a no-op-ish entry but
-    /// **will** produce a redirect to themselves; don't do that.
+    /// Self-redirects (`with_redirect("a", "a")` after normalization) are
+    /// rejected at registration time: the entry is **not** stored and a
+    /// `log::warn!` is emitted. This prevents the most common foot-gun —
+    /// a config pass that ends up pointing a host at itself — without
+    /// requiring callers to wrap the call in a `Result`. Cross-host loops
+    /// (`a -> b -> a`) are still the caller's responsibility.
+    ///
+    /// # Status code: 301 vs 308
+    ///
+    /// We emit `301 Moved Permanently`. RFC 7231 historically allowed
+    /// clients to rewrite the method to `GET` on 301, which is why
+    /// `308 Permanent Redirect` (RFC 7538) was introduced for cases that
+    /// must preserve the verb. In practice all modern clients preserve
+    /// the method on 301 too, and 301 is the universally-understood
+    /// canonical-URL signal for caches, CDNs, and SEO tooling. If your
+    /// use-case strictly requires method preservation by spec rather
+    /// than by convention, fall back to [`Self::with_route`] and emit
+    /// 308 yourself.
     ///
     /// # Scheme
     ///
@@ -877,13 +891,23 @@ impl LithairServerBuilder {
     ///     .serve()
     ///     .await?;
     /// ```
-    pub fn with_redirect(
-        mut self,
-        from: impl Into<String>,
-        to: impl Into<String>,
-    ) -> Self {
+    pub fn with_redirect(mut self, from: impl Into<String>, to: impl Into<String>) -> Self {
         let from_norm = crate::http::normalize_host(&from.into());
         let to_norm = crate::http::normalize_host(&to.into());
+
+        // Loop guard: a host pointing at itself would yield a 301 → same
+        // host → 301 → ... loop until the client gives up. Refuse the
+        // entry rather than silently shipping a broken config. Returning
+        // `Self` (not `Result`) keeps the builder ergonomic, so we log
+        // and skip — the call is effectively a no-op.
+        if from_norm == to_norm {
+            log::warn!(
+                "with_redirect: ignoring self-redirect for host '{}' (would loop)",
+                from_norm
+            );
+            return self;
+        }
+
         // Last-write-wins on the same source host, mirroring the
         // semantics of `HostRouter::insert`.
         self.host_redirects.retain(|(f, _)| f != &from_norm);
@@ -1818,8 +1842,7 @@ mod tests {
     fn with_redirect_records_normalized_pair() {
         // Mixed casing + port on both ends must collapse to bare lower-case
         // hosts so dispatch lookup matches normalized request hosts.
-        let builder = LithairServerBuilder::new()
-            .with_redirect("WWW.Arcker.ORG:443", "Arcker.ORG");
+        let builder = LithairServerBuilder::new().with_redirect("WWW.Arcker.ORG:443", "Arcker.ORG");
         let redirects = builder.host_redirects_for_test();
         assert_eq!(redirects.len(), 1);
         assert_eq!(redirects[0].0, "www.arcker.org");
@@ -1852,8 +1875,34 @@ mod tests {
     fn redirects_default_empty_when_unused() {
         // Existing apps that never call `with_redirect` must not pay any
         // cost — the slice is empty, so the dispatch fast-path kicks in.
-        let builder = LithairServerBuilder::new()
-            .with_frontend_at("/", "public");
+        let builder = LithairServerBuilder::new().with_frontend_at("/", "public");
         assert!(builder.host_redirects_for_test().is_empty());
+    }
+
+    #[test]
+    fn with_redirect_rejects_self_loop() {
+        // Self-redirects after normalization are silently dropped (the
+        // builder still returns `Self`) so a misconfigured call doesn't
+        // ship a 301 → same-host loop in production.
+        let builder = LithairServerBuilder::new().with_redirect("Example.COM", "example.com:443");
+        assert!(
+            builder.host_redirects_for_test().is_empty(),
+            "self-redirect should be rejected after normalization"
+        );
+    }
+
+    #[test]
+    fn with_redirect_self_loop_does_not_clobber_other_entries() {
+        // Calling `with_redirect` with a self-loop must be a no-op —
+        // including not clearing previously-registered, valid entries
+        // for unrelated hosts. Otherwise users could lose redirects by
+        // accidentally re-registering one of their existing sources.
+        let builder = LithairServerBuilder::new()
+            .with_redirect("www.a.test", "a.test")
+            .with_redirect("a.test", "a.test"); // self-loop, ignored
+        let r = builder.host_redirects_for_test();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].0, "www.a.test");
+        assert_eq!(r[0].1, "a.test");
     }
 }

@@ -1753,23 +1753,41 @@ impl LithairServer {
         if self.host_redirects.has_entries() {
             let req_host = crate::http::host_from_request(&req).unwrap_or("");
             if let Some(target_host) = self.host_redirects.lookup(req_host) {
-                let path_and_query = req
-                    .uri()
-                    .path_and_query()
-                    .map(|pq| pq.as_str())
-                    .unwrap_or("/");
+                let path_and_query =
+                    req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
                 let location = format!("https://{}{}", target_host, path_and_query);
-                log::debug!(
-                    "301 host redirect: {} -> {}",
-                    req_host,
-                    location
-                );
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::MOVED_PERMANENTLY)
-                    .header(hyper::header::LOCATION, location)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(Full::new(Bytes::from_static(b"Moved Permanently")))
-                    .expect("valid HTTP response"));
+
+                // Build the `Location:` header value defensively.
+                // `target_host` was normalized at config time and
+                // `path_and_query` comes from a parsed `hyper::Uri`, so
+                // the bytes should already be header-safe. We still go
+                // through `HeaderValue::try_from` rather than panicking:
+                // an unexpected failure here (e.g. a future change to the
+                // URI parser) should produce a clean 500 to the client,
+                // not crash the worker.
+                match hyper::header::HeaderValue::try_from(location.as_str()) {
+                    Ok(loc_hv) => {
+                        log::debug!("301 host redirect: {} -> {}", req_host, location);
+                        return Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                            .header(hyper::header::LOCATION, loc_hv)
+                            .header("Content-Type", "text/plain; charset=utf-8")
+                            .body(Full::new(Bytes::from_static(b"Moved Permanently")))
+                            .expect("static body + valid status never fails"));
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "host redirect: refusing to emit invalid Location='{}' ({})",
+                            location,
+                            e
+                        );
+                        return Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "text/plain; charset=utf-8")
+                            .body(Full::new(Bytes::from_static(b"Internal Server Error")))
+                            .expect("static body + valid status never fails"));
+                    }
+                }
             }
         }
 
