@@ -895,11 +895,26 @@ impl LithairServerBuilder {
         let from_norm = crate::http::normalize_host(&from.into());
         let to_norm = crate::http::normalize_host(&to.into());
 
+        // Empty-host guard: `normalize_host` only trims/lowercases — it does
+        // not reject malformed inputs. An empty `from` would register an
+        // empty-string key in the router, which `host_from_request` returns
+        // when the request has neither a URI authority nor a `Host:` header.
+        // That's a silent foot-gun: every host-less request would suddenly
+        // 301 to whatever was configured. Refuse both ends. Returning
+        // `Self` (not `Result`) keeps the builder ergonomic, so we log
+        // and skip.
+        if from_norm.is_empty() || to_norm.is_empty() {
+            log::warn!(
+                "with_redirect: ignoring redirect with empty host (from='{}', to='{}')",
+                from_norm,
+                to_norm
+            );
+            return self;
+        }
+
         // Loop guard: a host pointing at itself would yield a 301 → same
         // host → 301 → ... loop until the client gives up. Refuse the
-        // entry rather than silently shipping a broken config. Returning
-        // `Self` (not `Result`) keeps the builder ergonomic, so we log
-        // and skip — the call is effectively a no-op.
+        // entry rather than silently shipping a broken config.
         if from_norm == to_norm {
             log::warn!(
                 "with_redirect: ignoring self-redirect for host '{}' (would loop)",
@@ -1904,5 +1919,23 @@ mod tests {
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].0, "www.a.test");
         assert_eq!(r[0].1, "a.test");
+    }
+
+    #[test]
+    fn with_redirect_rejects_empty_hosts() {
+        // `normalize_host` only trims/lowercases — it does not reject
+        // malformed inputs. An empty source host would register an empty
+        // key in the router, which `host_from_request` returns when the
+        // request has neither URI authority nor a `Host:` header. That
+        // would silently 301 every host-less request. Both empty source
+        // and empty target must be refused.
+        let builder = LithairServerBuilder::new()
+            .with_redirect("", "example.com")
+            .with_redirect("example.com", "")
+            .with_redirect("   ", "example.com"); // whitespace -> empty after normalize
+        assert!(
+            builder.host_redirects_for_test().is_empty(),
+            "redirects with empty (post-normalization) endpoints must be rejected"
+        );
     }
 }

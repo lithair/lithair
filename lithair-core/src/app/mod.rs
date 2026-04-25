@@ -1740,6 +1740,16 @@ impl LithairServer {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
+        // Resolve the request host once and reuse it for both the host
+        // redirect (below) and the vhost lookup (further down). Both
+        // call paths previously called `host_from_request` independently;
+        // hoisting it avoids duplicate header parsing and keeps the two
+        // dispatch decisions consistent on a single source of truth.
+        // `host_from_request` returns `None` only when neither URI
+        // authority nor `Host:` header is present — we treat that as
+        // "" (matches no entry).
+        let req_host = crate::http::host_from_request(&req).unwrap_or("").to_string();
+
         // Host-to-host 301 redirect (canonical URL hygiene).
         //
         // Declared via `LithairServerBuilder::with_redirect`. Runs before
@@ -1751,8 +1761,7 @@ impl LithairServer {
         //
         // Zero-cost when no redirects are configured.
         if self.host_redirects.has_entries() {
-            let req_host = crate::http::host_from_request(&req).unwrap_or("");
-            if let Some(target_host) = self.host_redirects.lookup(req_host) {
+            if let Some(target_host) = self.host_redirects.lookup(&req_host) {
                 let path_and_query =
                     req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
                 let location = format!("https://{}{}", target_host, path_and_query);
@@ -1798,8 +1807,7 @@ impl LithairServer {
         let vhost_engines: Option<
             &std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
         > = if self.vhost_frontend_router.has_entries() {
-            let host = crate::http::host_from_request(&req).unwrap_or("");
-            self.vhost_frontend_router.lookup(host)
+            self.vhost_frontend_router.lookup(&req_host)
         } else {
             None
         };
