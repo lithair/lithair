@@ -168,6 +168,15 @@ pub struct LithairServer {
         std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
     >,
 
+    // Host-to-host 301 redirects declared via
+    // [`crate::app::LithairServerBuilder::with_redirect`]. Looked up by
+    // the request's normalized `Host:` header *before* any vhost frontend
+    // dispatch — see `handle_request`. The value stored is the canonical
+    // target host (already normalized).
+    //
+    // When empty (no redirects declared) the server behaves as before.
+    host_redirects: crate::http::HostRouter<String>,
+
     // HTTP Features
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
@@ -1731,6 +1740,66 @@ impl LithairServer {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
+        // Resolve the request host once and reuse it for both the host
+        // redirect (below) and the vhost lookup (further down). Both
+        // call paths previously called `host_from_request` independently;
+        // hoisting it avoids duplicate header parsing and keeps the two
+        // dispatch decisions consistent on a single source of truth.
+        // `host_from_request` returns `None` only when neither URI
+        // authority nor `Host:` header is present — we treat that as
+        // "" (matches no entry).
+        let req_host = crate::http::host_from_request(&req).unwrap_or("").to_string();
+
+        // Host-to-host 301 redirect (canonical URL hygiene).
+        //
+        // Declared via `LithairServerBuilder::with_redirect`. Runs before
+        // any other dispatch logic so a redirected host never reaches the
+        // vhost router, frontends, or custom routes — the only thing the
+        // client gets back is a 301 with `Location:` pointing at the
+        // canonical host, preserving path + query string. Applies to ALL
+        // HTTP methods (clients may follow 301 on any verb).
+        //
+        // Zero-cost when no redirects are configured.
+        if self.host_redirects.has_entries() {
+            if let Some(target_host) = self.host_redirects.lookup(&req_host) {
+                let path_and_query =
+                    req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+                let location = format!("https://{}{}", target_host, path_and_query);
+
+                // Build the `Location:` header value defensively.
+                // `target_host` was normalized at config time and
+                // `path_and_query` comes from a parsed `hyper::Uri`, so
+                // the bytes should already be header-safe. We still go
+                // through `HeaderValue::try_from` rather than panicking:
+                // an unexpected failure here (e.g. a future change to the
+                // URI parser) should produce a clean 500 to the client,
+                // not crash the worker.
+                match hyper::header::HeaderValue::try_from(location.as_str()) {
+                    Ok(loc_hv) => {
+                        log::debug!("301 host redirect: {} -> {}", req_host, location);
+                        return Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                            .header(hyper::header::LOCATION, loc_hv)
+                            .header("Content-Type", "text/plain; charset=utf-8")
+                            .body(Full::new(Bytes::from_static(b"Moved Permanently")))
+                            .expect("static body + valid status never fails"));
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "host redirect: refusing to emit invalid Location='{}' ({})",
+                            location,
+                            e
+                        );
+                        return Ok(hyper::Response::builder()
+                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "text/plain; charset=utf-8")
+                            .body(Full::new(Bytes::from_static(b"Internal Server Error")))
+                            .expect("static body + valid status never fails"));
+                    }
+                }
+            }
+        }
+
         // Resolve the vhost-scoped frontend engine map (if any) before we
         // consume `req` later in the pipeline. If no vhosts are
         // declared, `vhost_engines` is `None` and the server behaves as
@@ -1738,8 +1807,7 @@ impl LithairServer {
         let vhost_engines: Option<
             &std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
         > = if self.vhost_frontend_router.has_entries() {
-            let host = crate::http::host_from_request(&req).unwrap_or("");
-            self.vhost_frontend_router.lookup(host)
+            self.vhost_frontend_router.lookup(&req_host)
         } else {
             None
         };
@@ -4998,6 +5066,7 @@ impl Default for LithairServer {
             frontend_engines: std::collections::HashMap::new(),
             vhost_frontend_configs: Vec::new(),
             vhost_frontend_router: crate::http::HostRouter::new(),
+            host_redirects: crate::http::HostRouter::new(),
             firewall_config: None,
             anti_ddos_config: None,
             access_log: false,
