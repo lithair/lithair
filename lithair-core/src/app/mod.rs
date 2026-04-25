@@ -168,6 +168,15 @@ pub struct LithairServer {
         std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
     >,
 
+    // Host-to-host 301 redirects declared via
+    // [`crate::app::LithairServerBuilder::with_redirect`]. Looked up by
+    // the request's normalized `Host:` header *before* any vhost frontend
+    // dispatch — see `handle_request`. The value stored is the canonical
+    // target host (already normalized).
+    //
+    // When empty (no redirects declared) the server behaves as before.
+    host_redirects: crate::http::HostRouter<String>,
+
     // HTTP Features
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
@@ -1730,6 +1739,39 @@ impl LithairServer {
 
         let method = req.method().clone();
         let path = req.uri().path().to_string();
+
+        // Host-to-host 301 redirect (canonical URL hygiene).
+        //
+        // Declared via `LithairServerBuilder::with_redirect`. Runs before
+        // any other dispatch logic so a redirected host never reaches the
+        // vhost router, frontends, or custom routes — the only thing the
+        // client gets back is a 301 with `Location:` pointing at the
+        // canonical host, preserving path + query string. Applies to ALL
+        // HTTP methods (clients may follow 301 on any verb).
+        //
+        // Zero-cost when no redirects are configured.
+        if self.host_redirects.has_entries() {
+            let req_host = crate::http::host_from_request(&req).unwrap_or("");
+            if let Some(target_host) = self.host_redirects.lookup(req_host) {
+                let path_and_query = req
+                    .uri()
+                    .path_and_query()
+                    .map(|pq| pq.as_str())
+                    .unwrap_or("/");
+                let location = format!("https://{}{}", target_host, path_and_query);
+                log::debug!(
+                    "301 host redirect: {} -> {}",
+                    req_host,
+                    location
+                );
+                return Ok(hyper::Response::builder()
+                    .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                    .header(hyper::header::LOCATION, location)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(Full::new(Bytes::from_static(b"Moved Permanently")))
+                    .expect("valid HTTP response"));
+            }
+        }
 
         // Resolve the vhost-scoped frontend engine map (if any) before we
         // consume `req` later in the pipeline. If no vhosts are
@@ -4998,6 +5040,7 @@ impl Default for LithairServer {
             frontend_engines: std::collections::HashMap::new(),
             vhost_frontend_configs: Vec::new(),
             vhost_frontend_router: crate::http::HostRouter::new(),
+            host_redirects: crate::http::HostRouter::new(),
             firewall_config: None,
             anti_ddos_config: None,
             access_log: false,

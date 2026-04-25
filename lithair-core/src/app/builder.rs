@@ -90,6 +90,17 @@ pub struct LithairServerBuilder {
     // feature was introduced (path-only routing).
     vhost_frontend_configs: Vec<(VhostScope, String, String)>, // (scope, route_prefix, static_dir)
 
+    // Host-to-host 301 redirects, declared via [`Self::with_redirect`].
+    //
+    // Keyed by normalized source host, value is the canonical target host
+    // (also normalized). At dispatch time, requests whose `Host:` header
+    // matches a key are answered with a `301 Moved Permanently` whose
+    // `Location:` header is `https://<target>{path_and_query}`.
+    //
+    // Stored as a plain `Vec` here so the builder stays cheap to clone /
+    // inspect; the `HostRouter` is materialized in `build()`.
+    host_redirects: Vec<(String, String)>, // (from_host_normalized, to_host_normalized)
+
     // Cluster/Raft configuration
     cluster_peers: Vec<String>,
     node_id: Option<u64>,
@@ -125,6 +136,7 @@ impl LithairServerBuilder {
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             frontend_configs: Vec::new(),
             vhost_frontend_configs: Vec::new(),
+            host_redirects: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
@@ -151,6 +163,7 @@ impl LithairServerBuilder {
             access_log_capacity: crate::http::DEFAULT_ACCESS_LOG_CAPACITY,
             frontend_configs: Vec::new(),
             vhost_frontend_configs: Vec::new(),
+            host_redirects: Vec::new(),
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
@@ -816,6 +829,65 @@ impl LithairServerBuilder {
         for (prefix, dir) in vhost.frontend_configs {
             self.vhost_frontend_configs.push((VhostScope::Default, prefix, dir));
         }
+        self
+    }
+
+    /// Declare a permanent (`301 Moved Permanently`) redirect from one
+    /// host to another, preserving the request path and query string.
+    ///
+    /// Typical use-case: canonical-URL hygiene — sending `www.example.com`
+    /// traffic to the bare `example.com`, or the other way around. The
+    /// redirect is matched on the request's `Host:` header *before* any
+    /// vhost frontend lookup, so it short-circuits the normal vhost
+    /// dispatch entirely.
+    ///
+    /// Both arguments are normalized via [`crate::http::normalize_host`]
+    /// (case-insensitive, port stripped, trailing dot removed). Matching
+    /// is case-insensitive and applies to **all HTTP methods** — clients
+    /// may follow redirects on any verb.
+    ///
+    /// # Loop guard
+    ///
+    /// This method does not validate that `from` and `to` differ — it is
+    /// the caller's responsibility to avoid redirect loops. Self-redirects
+    /// (`with_redirect("a", "a")`) are accepted as a no-op-ish entry but
+    /// **will** produce a redirect to themselves; don't do that.
+    ///
+    /// # Scheme
+    ///
+    /// The generated `Location:` header always uses `https://`. This
+    /// matches the dominant deployment shape (TLS in front of the server)
+    /// and avoids accidental downgrades. If you need an HTTP target,
+    /// implement the redirect with [`Self::with_route`] instead.
+    ///
+    /// # Interaction with vhosts
+    ///
+    /// A host listed as a redirect source should not also have a vhost
+    /// (`with_vhost("www.example.com", ...)`) — the redirect runs first
+    /// and the vhost would be unreachable. The opposite is fine: the
+    /// target host typically has its own vhost serving real content.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_vhost("example.com", |v| v.with_frontend_at("/", "public"))
+    ///     // Canonical-URL: send www. traffic to the bare host.
+    ///     .with_redirect("www.example.com", "example.com")
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_redirect(
+        mut self,
+        from: impl Into<String>,
+        to: impl Into<String>,
+    ) -> Self {
+        let from_norm = crate::http::normalize_host(&from.into());
+        let to_norm = crate::http::normalize_host(&to.into());
+        // Last-write-wins on the same source host, mirroring the
+        // semantics of `HostRouter::insert`.
+        self.host_redirects.retain(|(f, _)| f != &from_norm);
+        self.host_redirects.push((from_norm, to_norm));
         self
     }
 
@@ -1532,6 +1604,17 @@ impl LithairServerBuilder {
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()
             vhost_frontend_configs: self.vhost_frontend_configs,
             vhost_frontend_router: crate::http::HostRouter::new(), // populated in serve()
+            host_redirects: {
+                // Materialize the declared (from, to) pairs into a HostRouter
+                // for O(1) lookup at dispatch time. `with_redirect` already
+                // normalized both ends, but `HostRouter::insert` re-normalizes
+                // defensively — see `host_router::normalize_host`.
+                let mut router = crate::http::HostRouter::<String>::new();
+                for (from, to) in self.host_redirects {
+                    router.insert(&from, to);
+                }
+                router
+            },
             firewall_config: self.firewall_config,
             anti_ddos_config: self.anti_ddos_config,
             access_log: self.access_log,
@@ -1648,6 +1731,11 @@ impl LithairServerBuilder {
     pub(crate) fn vhost_frontend_configs_for_test(&self) -> &[(VhostScope, String, String)] {
         &self.vhost_frontend_configs
     }
+
+    /// Test-only view of the (from_host, to_host) redirect pairs.
+    pub(crate) fn host_redirects_for_test(&self) -> &[(String, String)] {
+        &self.host_redirects
+    }
 }
 
 #[cfg(test)]
@@ -1724,5 +1812,48 @@ mod tests {
 
         assert_eq!(builder.frontend_configs_for_test().len(), 1);
         assert_eq!(builder.vhost_frontend_configs_for_test().len(), 1);
+    }
+
+    #[test]
+    fn with_redirect_records_normalized_pair() {
+        // Mixed casing + port on both ends must collapse to bare lower-case
+        // hosts so dispatch lookup matches normalized request hosts.
+        let builder = LithairServerBuilder::new()
+            .with_redirect("WWW.Arcker.ORG:443", "Arcker.ORG");
+        let redirects = builder.host_redirects_for_test();
+        assert_eq!(redirects.len(), 1);
+        assert_eq!(redirects[0].0, "www.arcker.org");
+        assert_eq!(redirects[0].1, "arcker.org");
+    }
+
+    #[test]
+    fn with_redirect_last_write_wins_per_source_host() {
+        // Re-declaring a redirect for the same source replaces the target.
+        // This mirrors `HostRouter::insert` semantics so behaviour stays
+        // predictable when configuration is built incrementally.
+        let builder = LithairServerBuilder::new()
+            .with_redirect("www.example.com", "example.com")
+            .with_redirect("www.example.com", "canonical.example.com");
+        let redirects = builder.host_redirects_for_test();
+        assert_eq!(redirects.len(), 1);
+        assert_eq!(redirects[0].0, "www.example.com");
+        assert_eq!(redirects[0].1, "canonical.example.com");
+    }
+
+    #[test]
+    fn multiple_redirects_are_all_recorded() {
+        let builder = LithairServerBuilder::new()
+            .with_redirect("www.arcker.org", "arcker.org")
+            .with_redirect("www.lithair.net", "lithair.net");
+        assert_eq!(builder.host_redirects_for_test().len(), 2);
+    }
+
+    #[test]
+    fn redirects_default_empty_when_unused() {
+        // Existing apps that never call `with_redirect` must not pay any
+        // cost — the slice is empty, so the dispatch fast-path kicks in.
+        let builder = LithairServerBuilder::new()
+            .with_frontend_at("/", "public");
+        assert!(builder.host_redirects_for_test().is_empty());
     }
 }
