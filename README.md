@@ -102,7 +102,8 @@ leader election and data replication.
 rate limiting, gzip compression, and CORS.
 
 **Host-header routing** -- A single binary can serve multiple hostnames, each
-with its own frontend, models, and routes. Background and rationale:
+with its own frontend. Models and custom routes remain host-agnostic in this
+first iteration. Background and rationale:
 [The Layer I Stopped Choosing](https://arcker.org/blog/2026-04-24-lithair-vhost-routing/).
 
 ```rust
@@ -126,7 +127,7 @@ LithairServer::new()
     .await
 ```
 
-**Built-in operations** -- Every Lithair server comes with `/status`, `/ready`,
+**Built-in operations** -- Every Lithair server comes with `/health`, `/ready`,
 and `/info` endpoints out of the box. Enable `/observe/metrics` for
 Prometheus-compatible monitoring.
 
