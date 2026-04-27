@@ -101,6 +101,32 @@ leader election and data replication.
 **HTTP server** -- Built on Hyper. Includes firewall with IP filtering and
 rate limiting, gzip compression, and CORS.
 
+**Host-header routing** -- A single binary can serve multiple hostnames, each
+with its own frontend. Models and custom routes remain host-agnostic in this
+first iteration. Background and rationale:
+[The Layer I Stopped Choosing](https://arcker.org/blog/2026-04-24-lithair-vhost-routing/).
+
+```rust
+LithairServer::new()
+    .with_vhost("arcker.org", |v| v.with_frontend_at("/", "sites/arcker.org"))
+    .with_vhost("lithair.net", |v| v.with_frontend_at("/", "sites/lithair.net"))
+    .with_default_vhost(|v| v.with_frontend_at("/", "sites/lithair.net"))
+    .serve()
+    .await
+```
+
+**Host-to-host redirects** -- Declarative 301 redirects between hostnames,
+useful for canonical-URL enforcement (e.g. `www.` to bare domain) without a
+separate reverse proxy.
+
+```rust
+LithairServer::new()
+    .with_redirect("www.arcker.org", "arcker.org")
+    .with_redirect("www.lithair.net", "lithair.net")
+    .serve()
+    .await
+```
+
 **Built-in operations** -- Every Lithair server comes with `/health`, `/ready`,
 and `/info` endpoints out of the box. Enable `/observe/metrics` for
 Prometheus-compatible monitoring.
