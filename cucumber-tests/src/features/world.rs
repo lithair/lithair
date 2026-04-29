@@ -1016,11 +1016,51 @@ impl LithairWorld {
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
-        // Kill any leftover processes from previous failed runs (Unix-only;
-        // Windows CI relies on per-run unique data dirs to avoid collisions).
-        #[cfg(unix)]
-        {
-            let _ = Command::new("pkill").arg("-f").arg("lithair-cluster-node").output();
+        // Reap any nodes still tracked from a prior scenario in this harness
+        // process. We intentionally do NOT run `pkill -f lithair-cluster-node`
+        // here: that would also kill unrelated lithair-cluster-node processes
+        // on a developer machine. Cross-invocation leftover processes (from a
+        // previously crashed harness) are not cleaned automatically; per-run
+        // unique tempdirs prevent data-dir collisions, and CI containers start
+        // fresh.
+        //
+        // We drain the Child handles out of the async mutex first, then reap
+        // them on a blocking thread. process.wait() is synchronous and could
+        // stall the Tokio executor if a child is slow to exit; doing it inside
+        // the lock would also block any other task that needs the cluster
+        // registry.
+        let leftovers: Vec<std::process::Child> = {
+            let mut tracked = self.real_cluster_nodes.lock().await;
+            let drained: Vec<std::process::Child> =
+                tracked.iter_mut().filter_map(|n| n.process.take()).collect();
+            tracked.clear();
+            drained
+        };
+        if !leftovers.is_empty() {
+            let leftover_count = leftovers.len();
+            tokio::task::spawn_blocking(move || {
+                for mut process in leftovers {
+                    if let Err(e) = process.kill() {
+                        eprintln!(
+                            "⚠️  start_real_cluster: failed to kill leftover node pid {}: {}",
+                            process.id(),
+                            e
+                        );
+                    }
+                    if let Err(e) = process.wait() {
+                        eprintln!(
+                            "⚠️  start_real_cluster: failed to wait on leftover node pid {}: {}",
+                            process.id(),
+                            e
+                        );
+                    }
+                }
+            })
+            .await
+            .map_err(|e| format!("Leftover-node reap task panicked: {}", e))?;
+            eprintln!("🧹 Reaped {} leftover cluster node(s)", leftover_count);
+            // Brief pause to let the OS release ports bound by the killed
+            // children before portpicker tries to reuse them.
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
