@@ -1675,6 +1675,33 @@ impl LithairServer {
         hyper::Response::from_parts(parts, body)
     }
 
+    /// Build the canonical "leader port unknown" 503 response used by every
+    /// follower-side write redirect path.
+    ///
+    /// A follower learns the leader's port from the first AppendEntries it
+    /// receives. Until then `raft_state.get_leader_port()` returns 0, and
+    /// blindly redirecting to `http://127.0.0.1:0` would point clients at the
+    /// kernel's "ephemeral port" sentinel. Callers must short-circuit to this
+    /// 503 when `leader_port == 0`. The body and headers are kept identical
+    /// across call sites so clients can recognize and back off uniformly.
+    ///
+    /// Note: only the 503 fallback is centralized here. The 307 redirect
+    /// branches in `handle_request`, `handle_model_request`, and
+    /// `handle_migrate_operation` differ in body shape, headers
+    /// (`X-Raft-Leader`), and the path/query forwarded in `Location`, so
+    /// folding them would change wire behavior. They remain inlined.
+    fn leader_port_unknown_503() -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
+        use http_body_util::Full;
+        hyper::Response::builder()
+            .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+            .header("Content-Type", "application/json")
+            .header("Retry-After", "1")
+            .body(Full::new(Bytes::from(
+                r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
+            )))
+            .expect("valid HTTP response")
+    }
+
     /// Match a path against a pattern with wildcard support
     ///
     /// Supports:
@@ -1907,14 +1934,7 @@ impl LithairServer {
             if is_write && !raft_state.is_leader() && !is_internal {
                 let leader_port = raft_state.get_leader_port();
                 if leader_port == 0 {
-                    return Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                        .header("Content-Type", "application/json")
-                        .header("Retry-After", "1")
-                        .body(Full::new(Bytes::from(
-                            r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
-                        )))
-                        .expect("valid HTTP response"));
+                    return Ok(Self::leader_port_unknown_503());
                 }
 
                 let redirect_url = format!(
@@ -3478,14 +3498,7 @@ impl LithairServer {
         if !is_leader {
             let leader_port = self.raft_state.as_ref().map(|s| s.get_leader_port()).unwrap_or(0);
             if leader_port == 0 {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                    .header("Content-Type", "application/json")
-                    .header("Retry-After", "1")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(Self::leader_port_unknown_503());
             }
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::TEMPORARY_REDIRECT)
@@ -4101,12 +4114,7 @@ impl LithairServer {
                         if leader_port == 0 {
                             // Leader port not yet discovered (haven't received first heartbeat).
                             // Return 503 instead of redirecting to port 0.
-                            return Ok(hyper::Response::builder()
-                                .status(503)
-                                .header("Content-Type", "application/json")
-                                .header("Retry-After", "1")
-                                .body(Full::new(Bytes::from(r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#)))
-                                .expect("valid HTTP response"));
+                            return Ok(Self::leader_port_unknown_503());
                         }
                         return Ok(hyper::Response::builder()
                         .status(307) // Temporary Redirect
