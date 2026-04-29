@@ -1016,6 +1016,14 @@ impl LithairWorld {
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
+        // Kill any leftover processes from previous failed runs (Unix-only;
+        // Windows CI relies on per-run unique data dirs to avoid collisions).
+        #[cfg(unix)]
+        {
+            let _ = Command::new("pkill").arg("-f").arg("lithair-cluster-node").output();
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
         // Find the binary path
         let binary_path = std::env::current_dir()
             .map_err(|e| format!("Failed to get current dir: {}", e))?
@@ -1075,8 +1083,8 @@ impl LithairWorld {
                 .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
             let process =
                 cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
@@ -1247,8 +1255,8 @@ impl LithairWorld {
                 .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
             let process =
                 cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;

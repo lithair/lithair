@@ -906,6 +906,7 @@ impl LithairServer {
                     let peers = self.cluster_peers.clone();
                     let consensus_log = self.consensus_log.clone();
                     let node_id = self.node_id.unwrap_or(0);
+                    let self_port = self.config.server.port;
                     let raft_state = self.raft_state.clone();
                     let snapshot_manager = self.snapshot_manager.clone();
                     let models = Arc::clone(&self.models);
@@ -1158,6 +1159,7 @@ impl LithairServer {
                                             crate::cluster::consensus_log::AppendEntriesRequest {
                                                 term,
                                                 leader_id: node_id,
+                                                leader_port: self_port,
                                                 prev_log_index: 0,
                                                 prev_log_term: 0,
                                                 entries: entries.clone(),
@@ -1227,6 +1229,7 @@ impl LithairServer {
                                         crate::cluster::consensus_log::AppendEntriesRequest {
                                             term,
                                             leader_id: node_id,
+                                            leader_port: self_port,
                                             prev_log_index: last_log_index,
                                             prev_log_term: last_log_term,
                                             entries: vec![], // Empty = heartbeat
@@ -1269,6 +1272,7 @@ impl LithairServer {
                                         crate::cluster::consensus_log::AppendEntriesRequest {
                                             term,
                                             leader_id: node_id,
+                                            leader_port: self_port,
                                             prev_log_index: 0,
                                             prev_log_term: 0,
                                             entries: entries.clone(),
@@ -1902,6 +1906,17 @@ impl LithairServer {
 
             if is_write && !raft_state.is_leader() && !is_internal {
                 let leader_port = raft_state.get_leader_port();
+                if leader_port == 0 {
+                    return Ok(hyper::Response::builder()
+                        .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+                        .header("Content-Type", "application/json")
+                        .header("Retry-After", "1")
+                        .body(Full::new(Bytes::from(
+                            r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
+                        )))
+                        .expect("valid HTTP response"));
+                }
+
                 let redirect_url = format!(
                     "http://127.0.0.1:{}{}",
                     leader_port,
@@ -2855,8 +2870,23 @@ impl LithairServer {
                 .expect("valid HTTP response"));
         }
 
-        // Update heartbeat (if we have raft_state)
+        // Reconcile Raft role: an accepted AppendEntries means another node is
+        // the legitimate leader for this term. If we still think we're a
+        // leader/candidate, or the leader has changed, take the full
+        // become_follower path so we never keep an old leader's port mapped to
+        // a new leader_id (relevant when a legacy peer omits leader_port and
+        // update_leader_port would preserve the stale port).
         if let Some(ref raft_state) = self.raft_state {
+            let was_follower =
+                raft_state.get_current_state() == crate::cluster::RaftNodeState::Follower;
+            let same_leader =
+                raft_state.current_leader_id.load(std::sync::atomic::Ordering::Relaxed)
+                    == request.leader_id;
+            if was_follower && same_leader {
+                raft_state.update_leader_port(request.leader_id, request.leader_port);
+            } else {
+                raft_state.become_follower(request.leader_id, request.leader_port);
+            }
             raft_state.update_heartbeat();
         }
 
@@ -3447,6 +3477,16 @@ impl LithairServer {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(true);
         if !is_leader {
             let leader_port = self.raft_state.as_ref().map(|s| s.get_leader_port()).unwrap_or(0);
+            if leader_port == 0 {
+                return Ok(hyper::Response::builder()
+                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Content-Type", "application/json")
+                    .header("Retry-After", "1")
+                    .body(Full::new(Bytes::from(
+                        r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
+                    )))
+                    .expect("valid HTTP response"));
+            }
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::TEMPORARY_REDIRECT)
                 .header("Content-Type", "application/json")
@@ -3530,6 +3570,7 @@ impl LithairServer {
                 commit_index,
                 term,
                 leader_id,
+                self.config.server.port,
                 self.replication_batcher.clone(),
             )
             .await;
@@ -4054,9 +4095,19 @@ impl LithairServer {
                 let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
                 if !is_leader {
-                    // Redirect to leader
+                    // Redirect to leader (if we know the leader's port)
                     if let Some(ref raft_state) = self.raft_state {
                         let leader_port = raft_state.get_leader_port();
+                        if leader_port == 0 {
+                            // Leader port not yet discovered (haven't received first heartbeat).
+                            // Return 503 instead of redirecting to port 0.
+                            return Ok(hyper::Response::builder()
+                                .status(503)
+                                .header("Content-Type", "application/json")
+                                .header("Retry-After", "1")
+                                .body(Full::new(Bytes::from(r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#)))
+                                .expect("valid HTTP response"));
+                        }
                         return Ok(hyper::Response::builder()
                         .status(307) // Temporary Redirect
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
@@ -4189,6 +4240,7 @@ impl LithairServer {
                 let wal_clone = self.wal.clone();
                 let log_entry_clone = log_entry.clone();
                 let peers_clone = self.cluster_peers.clone();
+                let port_clone = self.config.server.port;
                 let batcher_clone = self.replication_batcher.clone();
 
                 // WAL write task (uses group commit for batching)
@@ -4225,6 +4277,7 @@ impl LithairServer {
                         entry_index, // Commit up to this entry if majority responds
                         term,
                         node_id,
+                        port_clone,
                         batcher_clone,
                     )
                     .await
@@ -4259,7 +4312,7 @@ impl LithairServer {
                         let commit_index_to_notify = new_commit_index;
                         let term_for_notify = term;
                         let node_id_for_notify = node_id;
-                        // Capture leader's last log state for Raft consistency check
+                        let port_for_notify = self.config.server.port;
                         let notify_prev_log_index = entry_index;
                         let notify_prev_log_term = term;
                         tokio::spawn(async move {
@@ -4273,6 +4326,7 @@ impl LithairServer {
                                 let request = crate::cluster::consensus_log::AppendEntriesRequest {
                                     term: term_for_notify,
                                     leader_id: node_id_for_notify,
+                                    leader_port: port_for_notify,
                                     prev_log_index: notify_prev_log_index,
                                     prev_log_term: notify_prev_log_term,
                                     entries: vec![], // Commit notification only, catch-up via background task
@@ -4863,6 +4917,7 @@ impl LithairServer {
         leader_commit: u64,
         term: u64,
         leader_id: u64,
+        leader_port: u16,
         batcher: Option<Arc<crate::cluster::ReplicationBatcher>>,
     ) -> Result<u64, String> {
         if peers.is_empty() {
@@ -4878,6 +4933,7 @@ impl LithairServer {
         let request = crate::cluster::consensus_log::AppendEntriesRequest {
             term,
             leader_id,
+            leader_port,
             prev_log_index: 0, // Simplified - in real Raft this would track per-follower
             prev_log_term: 0,
             entries: entries.clone(),
