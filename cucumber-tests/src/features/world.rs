@@ -1016,11 +1016,26 @@ impl LithairWorld {
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
-        // Kill any leftover processes from previous failed runs (Unix-only;
-        // Windows CI relies on per-run unique data dirs to avoid collisions).
-        #[cfg(unix)]
+        // Reap any nodes still tracked from a prior scenario in this harness
+        // process. We intentionally do NOT run `pkill -f lithair-cluster-node`
+        // here: that would also kill unrelated lithair-cluster-node processes
+        // on a developer machine. Cross-invocation leftover processes (from a
+        // previously crashed harness) are not cleaned automatically; per-run
+        // unique tempdirs prevent data-dir collisions, and CI containers start
+        // fresh.
         {
-            let _ = Command::new("pkill").arg("-f").arg("lithair-cluster-node").output();
+            let mut tracked = self.real_cluster_nodes.lock().await;
+            for node in tracked.iter_mut() {
+                if let Some(mut process) = node.process.take() {
+                    let _ = process.kill();
+                    let _ = process.wait();
+                }
+            }
+            tracked.clear();
+            // Drop the lock before any awaits below.
+            drop(tracked);
+            // Brief pause to let the OS release ports bound by the killed
+            // children before portpicker tries to reuse them.
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
