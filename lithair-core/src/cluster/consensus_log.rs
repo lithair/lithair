@@ -721,4 +721,29 @@ mod tests {
             .await;
         assert_eq!(entry.log_id.term, 5);
     }
+
+    /// Wire-compat: a payload from a node that predates the `leader_port` field
+    /// must still deserialize, with `leader_port` defaulting to 0. Guards
+    /// `#[serde(default)]` against accidental removal.
+    #[test]
+    fn test_append_entries_request_legacy_deserialization() {
+        let legacy_payload = serde_json::json!({
+            "term": 3,
+            "leader_id": 1,
+            "prev_log_index": 0,
+            "prev_log_term": 0,
+            "entries": [],
+            "leader_commit": 0
+        });
+
+        let request: AppendEntriesRequest = serde_json::from_value(legacy_payload)
+            .expect("legacy AppendEntriesRequest payload must deserialize");
+
+        assert_eq!(request.term, 3);
+        assert_eq!(request.leader_id, 1);
+        assert_eq!(
+            request.leader_port, 0,
+            "missing leader_port must default to 0 for backward compatibility"
+        );
+    }
 }

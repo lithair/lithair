@@ -1016,9 +1016,13 @@ impl LithairWorld {
     pub async fn start_real_cluster(&mut self, node_count: usize) -> Result<Vec<u16>, String> {
         use std::process::{Command, Stdio};
 
-        // Kill any leftover processes from previous failed runs
-        let _ = Command::new("pkill").arg("-f").arg("lithair-cluster-node").output();
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        // Kill any leftover processes from previous failed runs (Unix-only;
+        // Windows CI relies on per-run unique data dirs to avoid collisions).
+        #[cfg(unix)]
+        {
+            let _ = Command::new("pkill").arg("-f").arg("lithair-cluster-node").output();
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
 
         // Find the binary path
         let binary_path = std::env::current_dir()
