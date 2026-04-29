@@ -2651,13 +2651,20 @@ impl LithairServer {
 
         // Reconcile Raft role: an accepted AppendEntries means another node is
         // the legitimate leader for this term. If we still think we're a
-        // leader/candidate, step down before refreshing heartbeat so we stop
-        // running leader-only work in the new term.
+        // leader/candidate, or the leader has changed, take the full
+        // become_follower path so we never keep an old leader's port mapped to
+        // a new leader_id (relevant when a legacy peer omits leader_port and
+        // update_leader_port would preserve the stale port).
         if let Some(ref raft_state) = self.raft_state {
-            if raft_state.get_current_state() != crate::cluster::RaftNodeState::Follower {
-                raft_state.become_follower(request.leader_id, request.leader_port);
-            } else {
+            let was_follower =
+                raft_state.get_current_state() == crate::cluster::RaftNodeState::Follower;
+            let same_leader =
+                raft_state.current_leader_id.load(std::sync::atomic::Ordering::Relaxed)
+                    == request.leader_id;
+            if was_follower && same_leader {
                 raft_state.update_leader_port(request.leader_id, request.leader_port);
+            } else {
+                raft_state.become_follower(request.leader_id, request.leader_port);
             }
             raft_state.update_heartbeat();
         }
