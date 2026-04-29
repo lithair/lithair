@@ -1705,6 +1705,17 @@ impl LithairServer {
 
             if is_write && !raft_state.is_leader() && !is_internal {
                 let leader_port = raft_state.get_leader_port();
+                if leader_port == 0 {
+                    return Ok(hyper::Response::builder()
+                        .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+                        .header("Content-Type", "application/json")
+                        .header("Retry-After", "1")
+                        .body(Full::new(Bytes::from(
+                            r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
+                        )))
+                        .expect("valid HTTP response"));
+                }
+
                 let redirect_url = format!(
                     "http://127.0.0.1:{}{}",
                     leader_port,
@@ -2638,14 +2649,17 @@ impl LithairServer {
                 .expect("valid HTTP response"));
         }
 
-        // Update heartbeat and learn leader's port from the request.
-        // Followers don't know the leader's port at startup (ports are dynamic).
-        // The leader includes its port in every AppendEntries RPC.
+        // Reconcile Raft role: an accepted AppendEntries means another node is
+        // the legitimate leader for this term. If we still think we're a
+        // leader/candidate, step down before refreshing heartbeat so we stop
+        // running leader-only work in the new term.
         if let Some(ref raft_state) = self.raft_state {
-            raft_state.update_heartbeat();
-            if request.leader_port > 0 {
+            if raft_state.get_current_state() != crate::cluster::RaftNodeState::Follower {
+                raft_state.become_follower(request.leader_id, request.leader_port);
+            } else {
                 raft_state.update_leader_port(request.leader_id, request.leader_port);
             }
+            raft_state.update_heartbeat();
         }
 
         // Append entries to local log (can happen concurrently)
@@ -3235,6 +3249,16 @@ impl LithairServer {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(true);
         if !is_leader {
             let leader_port = self.raft_state.as_ref().map(|s| s.get_leader_port()).unwrap_or(0);
+            if leader_port == 0 {
+                return Ok(hyper::Response::builder()
+                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Content-Type", "application/json")
+                    .header("Retry-After", "1")
+                    .body(Full::new(Bytes::from(
+                        r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
+                    )))
+                    .expect("valid HTTP response"));
+            }
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::TEMPORARY_REDIRECT)
                 .header("Content-Type", "application/json")
