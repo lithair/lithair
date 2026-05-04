@@ -283,7 +283,8 @@ fn escape_json_value(s: &str) -> String {
 /// Log an HTTP access entry in structured JSON format.
 ///
 /// Generic over the response body type — only reads status and headers.
-/// Used by both `LithairServer` and `DeclarativeServer`.
+/// Used by `LithairServer` (and historically `DeclarativeServer`, which is
+/// being retired — see `docs/internal/declarative-server-retirement.md`).
 ///
 /// The `remote` parameter is the TCP socket address. When behind a reverse
 /// proxy, use [`log_access_ip`] instead to pass the real client IP extracted
