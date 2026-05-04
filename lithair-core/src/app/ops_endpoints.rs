@@ -68,7 +68,14 @@ pub(crate) fn serve_health() -> Response<Full<Bytes>> {
 /// (consensus state, custom fields, etc.) is additive and won't break
 /// existing clients.
 pub(crate) fn serve_ready() -> Response<Full<Bytes>> {
-    let body = format!(r#"{{"status":"ready","version":"{}"}}"#, env!("CARGO_PKG_VERSION"));
+    // Use `serde_json::json!` so any string field is escaped correctly
+    // even if it contains characters that would break a hand-rolled
+    // `format!` template (quotes, backslashes, control chars).
+    let body = serde_json::json!({
+        "status": "ready",
+        "version": env!("CARGO_PKG_VERSION"),
+    })
+    .to_string();
     response::json(StatusCode::OK, body)
 }
 
@@ -80,22 +87,22 @@ pub(crate) fn serve_ready() -> Response<Full<Bytes>> {
 /// server, the well-known endpoints it serves, and the registered
 /// models, so operators can curl `/info` and confirm what's wired.
 pub(crate) fn serve_info(model_base_paths: &[String]) -> Response<Full<Bytes>> {
-    // Build the models array as a serde_json::Value so paths are
-    // properly escaped — model base paths are user-supplied and should
-    // not be inlined naively into a format string.
-    let models_value = serde_json::Value::Array(
-        model_base_paths.iter().map(|p| serde_json::Value::String(p.clone())).collect(),
-    );
-    let models_json = models_value.to_string();
-
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
 
-    let body = format!(
-        r#"{{"server":"Lithair Server","version":"{version}","endpoints":{{"health":"/health","ready":"/ready","info":"/info"}},"models":{models},"timestamp":"{ts}"}}"#,
-        version = env!("CARGO_PKG_VERSION"),
-        models = models_json,
-        ts = timestamp,
-    );
+    // `serde_json::json!` handles all the escaping for us — model base
+    // paths are user-supplied so this is the safe construction path.
+    let body = serde_json::json!({
+        "server": "Lithair Server",
+        "version": env!("CARGO_PKG_VERSION"),
+        "endpoints": {
+            "health": HEALTH_PATH,
+            "ready": READY_PATH,
+            "info": INFO_PATH,
+        },
+        "models": model_base_paths,
+        "timestamp": timestamp,
+    })
+    .to_string();
 
     response::json(StatusCode::OK, body)
 }
