@@ -34,6 +34,7 @@ use std::sync::Arc;
 
 pub mod builder;
 pub mod model_handler;
+mod ops_endpoints;
 pub mod response;
 pub mod router;
 mod schema_handlers;
@@ -2191,6 +2192,34 @@ impl LithairServer {
         for route in &self.custom_routes {
             if route.method == method && Self::path_matches(&route.path, &path) {
                 return (route.handler)(req).await;
+            }
+        }
+
+        // Built-in operations endpoints (`/health`, `/ready`, `/info`).
+        //
+        // These match the README's "Every Lithair server comes with
+        // /health, /ready, and /info out of the box" promise (see issue
+        // #40). They live AFTER the `custom_routes` loop above so a
+        // user calling `.with_route(GET, "/health", ...)` always wins
+        // over the default — the override remains a one-line opt-out.
+        // They live BEFORE model dispatch so a model whose base_path
+        // happens to be `/health` (unlikely but legal) cannot shadow
+        // them.
+        //
+        // The dispatch is a method-and-path equality check so we never
+        // accidentally swallow `POST /health` or `/health/sub`.
+        if method == hyper::Method::GET {
+            match path.as_str() {
+                ops_endpoints::HEALTH_PATH => return Ok(ops_endpoints::serve_health()),
+                ops_endpoints::READY_PATH => return Ok(ops_endpoints::serve_ready()),
+                ops_endpoints::INFO_PATH => {
+                    let models = self.models.read().await;
+                    let base_paths: Vec<String> =
+                        models.iter().map(|m| m.base_path.clone()).collect();
+                    drop(models);
+                    return Ok(ops_endpoints::serve_info(&base_paths));
+                }
+                _ => {}
             }
         }
 
