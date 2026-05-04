@@ -67,7 +67,7 @@ This is a substantively different shape than the issue body suggested. Recommend
 
 ### 4. `lithair-core/src/http/utils.rs`
 
-- **What it imports/uses from DeclarativeServer**: nothing in code. Single mention at line 286 in the rustdoc for `log_access`: `/// Used by both `LithairServer` and `DeclarativeServer`.`
+- **What it imports/uses from DeclarativeServer**: nothing in code. Single mention at line 286 in the rustdoc for `log_access` reads: `Used by both LithairServer and DeclarativeServer.`
 - **Why it depends on it**: it doesn't — the function is reused by both server types because it's pure utility code (logs an HTTP access entry from a `Response` and headers). Once `DeclarativeServer` is retired, the comment becomes wrong.
 - **Migration approach**: **C / docs-only** — drop the "and `DeclarativeServer`" half of the sentence, or rephrase to "Used by all Lithair HTTP server backends." For phase 1, simplest path is: keep the comment factually true today by saying "Used by `LithairServer` (and historically `DeclarativeServer`)."
 - **Migration size estimate**: **S** (1-line change). **This is the simplest migration of the five.**
