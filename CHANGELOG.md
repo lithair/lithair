@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-05
+
 ### Removed (breaking)
 
 - `lithair_core::http::DeclarativeServer<T>` — the legacy single-model
@@ -31,8 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[server(main, ...)]`) builds on `LithairServer` end-to-end —
   no remaining reference to `DeclarativeServer` in emitted code.
 
-> Recommended next release: **0.2.0** (semver-major; this is the
-> breaking-change-defining commit series for the 0.2 line).
+### Added
+
+- `LithairServer` now serves built-in `/health`, `/ready`, `/info` ops
+  endpoints out of the box (#40, #41) — previously only `DeclarativeServer`
+  did. User-registered `.with_route()` overrides take precedence.
 
 ## [0.1.3] - 2026-04-01
 
