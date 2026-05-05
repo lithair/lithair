@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed (breaking)
+
+- `lithair_core::http::DeclarativeServer<T>` — the legacy single-model
+  Hyper-direct server is gone. Use [`LithairServer::new()`](crate::app::LithairServer)
+  with `.with_port(...)`, `.with_declarative_model::<T>(path, base_path)`,
+  and `.serve()` instead. Tracking: #42 (phase 4 + 5).
+- `lithair_core::http::{GzipConfig, ObserveConfig, PerfEndpointsConfig,
+  ReadinessConfig, RoutePolicy}` — these helper config types were defined
+  alongside `DeclarativeServer` and only used through it. They were not
+  referenced by any in-tree consumer outside `declarative_server.rs`.
+- `lithair_core::http::DeclarativeServe` re-export — the `DeclarativeServe`
+  convenience trait (`MyModel::serve_on_port(port).await?`) survives at
+  its new public path **`lithair_core::app::DeclarativeServe`**. Default
+  impls now delegate to `LithairServer` (behavior-preserving). The trait
+  bound now also requires `HasSchemaSpec`; every type produced by
+  `#[derive(DeclarativeModel)]` already implements it, so in-tree macro
+  users are unaffected.
+
+### Changed
+
+- Macro-generated `main()` (single-node and distributed variants of
+  `#[server(main, ...)]`) builds on `LithairServer` end-to-end —
+  no remaining reference to `DeclarativeServer` in emitted code.
+
+> Recommended next release: **0.2.0** (semver-major; this is the
+> breaking-change-defining commit series for the 0.2 line).
+
 ## [0.1.3] - 2026-04-01
 
 ### Added
