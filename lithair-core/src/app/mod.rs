@@ -34,6 +34,7 @@ use std::sync::Arc;
 
 pub mod builder;
 pub mod model_handler;
+mod ops_endpoints;
 pub mod response;
 pub mod router;
 mod schema_handlers;
@@ -2191,6 +2192,34 @@ impl LithairServer {
         for route in &self.custom_routes {
             if route.method == method && Self::path_matches(&route.path, &path) {
                 return (route.handler)(req).await;
+            }
+        }
+
+        // Built-in operations endpoints (`/health`, `/ready`, `/info`).
+        //
+        // These match the README's "Every Lithair server comes with
+        // /health, /ready, and /info out of the box" promise (see issue
+        // #40). They live AFTER the `custom_routes` loop above so a
+        // user calling `.with_route(GET, "/health", ...)` always wins
+        // over the default — the override remains a one-line opt-out.
+        // They live BEFORE model dispatch so a model whose base_path
+        // happens to be `/health` (unlikely but legal) cannot shadow
+        // them.
+        //
+        // The dispatch is a method-and-path equality check so we never
+        // accidentally swallow `POST /health` or `/health/sub`.
+        if method == hyper::Method::GET {
+            match path.as_str() {
+                ops_endpoints::HEALTH_PATH => return Ok(ops_endpoints::serve_health()),
+                ops_endpoints::READY_PATH => return Ok(ops_endpoints::serve_ready()),
+                ops_endpoints::INFO_PATH => {
+                    let models = self.models.read().await;
+                    let base_paths: Vec<String> =
+                        models.iter().map(|m| m.base_path.clone()).collect();
+                    drop(models);
+                    return Ok(ops_endpoints::serve_info(&base_paths));
+                }
+                _ => {}
             }
         }
 
@@ -5162,5 +5191,170 @@ mod tests {
     #[test]
     fn test_server_creation() {
         let _server = LithairServer::default();
+    }
+
+    // ------------------------------------------------------------------
+    // Built-in operations endpoints (`/health`, `/ready`, `/info`).
+    //
+    // These tests cover the LithairServer regression reported in
+    // lithair/lithair#40: the README claims every Lithair server
+    // ships with /health, /ready, /info, but `LithairServer` had no
+    // dispatch for them and returned 404. We spin up a `LithairServer`
+    // via `build()` (skipping the heavy `serve()` startup — schema
+    // load, model factories, system metrics — none of which are
+    // relevant here), bind a hyper service to a loopback ephemeral
+    // port, and exercise the dispatch with a real reqwest client.
+    // ------------------------------------------------------------------
+
+    /// Serve a `LithairServer` on a loopback ephemeral port, return
+    /// (base_url, abort_handle). Drop the abort_handle (or call
+    /// `.abort()`) to stop the server.
+    ///
+    /// We deliberately *don't* call `LithairServer::serve()` here —
+    /// it pulls in schema validation, env_logger init, frontend
+    /// loading, and system metrics. None of that is wired for these
+    /// tests, and serve() also blocks forever, which would deadlock
+    /// the test harness.
+    async fn spawn_for_test(server: LithairServer) -> (String, tokio::task::JoinHandle<()>) {
+        use hyper::service::service_fn;
+        use hyper_util::rt::TokioIo;
+        use std::sync::Arc;
+
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local_addr");
+        let base = format!("http://{}", addr);
+
+        let server = Arc::new(server);
+
+        let handle = tokio::spawn(async move {
+            loop {
+                let (stream, _peer) = match listener.accept().await {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                let io = TokioIo::new(stream);
+                let server = server.clone();
+                tokio::spawn(async move {
+                    let service = service_fn(move |req| {
+                        let server = server.clone();
+                        async move {
+                            match server.handle_request(req).await {
+                                Ok(resp) => Ok::<_, std::convert::Infallible>(resp),
+                                Err(_) => Ok(hyper::Response::builder()
+                                    .status(500)
+                                    .body(http_body_util::Full::new(bytes::Bytes::from(
+                                        r#"{"error":"handler error"}"#,
+                                    )))
+                                    .expect("valid HTTP response")),
+                            }
+                        }
+                    });
+                    let _ = hyper::server::conn::http1::Builder::new()
+                        .serve_connection(io, service)
+                        .await;
+                });
+            }
+        });
+
+        (base, handle)
+    }
+
+    #[tokio::test]
+    async fn lithair_server_serves_default_health() {
+        let server = LithairServer::new().build().expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/health", base)).await.expect("GET /health succeeded");
+        assert_eq!(resp.status(), 200);
+        let body = resp.text().await.expect("read body");
+        assert_eq!(body, r#"{"status":"healthy"}"#);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn lithair_server_serves_default_ready() {
+        let server = LithairServer::new().build().expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/ready", base)).await.expect("GET /ready succeeded");
+        assert_eq!(resp.status(), 200);
+        let body = resp.text().await.expect("read body");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&body).expect("ready body must be JSON");
+        assert_eq!(parsed["status"], "ready");
+        assert_eq!(parsed["version"], env!("CARGO_PKG_VERSION"));
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn lithair_server_serves_default_info() {
+        let server = LithairServer::new().build().expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/info", base)).await.expect("GET /info succeeded");
+        assert_eq!(resp.status(), 200);
+        let body = resp.text().await.expect("read body");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&body).expect("info body must be JSON");
+        assert_eq!(parsed["server"], "Lithair Server");
+        assert_eq!(parsed["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(parsed["endpoints"]["health"], "/health");
+        assert_eq!(parsed["endpoints"]["ready"], "/ready");
+        assert_eq!(parsed["endpoints"]["info"], "/info");
+        // No models registered, so the array must be empty.
+        assert!(parsed["models"].as_array().expect("models array").is_empty());
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn lithair_server_user_with_route_overrides_default_health() {
+        // A user calling `.with_route(GET, "/health", ...)` must win
+        // over the built-in handler. The dispatch order in
+        // handle_request places the custom_routes loop *before* the
+        // ops endpoints precisely so this works.
+        let server = LithairServer::new()
+            .with_route(http::Method::GET, "/health", |_req| {
+                Box::pin(async move {
+                    Ok(hyper::Response::builder()
+                        .status(418)
+                        .header("Content-Type", "application/json")
+                        .body(http_body_util::Full::new(bytes::Bytes::from(
+                            r#"{"status":"i-am-a-teapot"}"#,
+                        )))
+                        .expect("valid HTTP response"))
+                })
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/health", base)).await.expect("GET /health succeeded");
+        assert_eq!(resp.status(), 418, "user override must take precedence");
+        let body = resp.text().await.expect("read body");
+        assert_eq!(body, r#"{"status":"i-am-a-teapot"}"#);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn lithair_server_returns_404_for_non_get_health() {
+        // The dispatch checks `method == GET`, so a POST /health
+        // should still 404 (no built-in POST /health handler).
+        let server = LithairServer::new().build().expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{}/health", base))
+            .send()
+            .await
+            .expect("POST /health succeeded");
+        assert_eq!(resp.status(), 404);
+
+        handle.abort();
     }
 }
