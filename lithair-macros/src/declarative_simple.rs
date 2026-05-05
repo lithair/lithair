@@ -1377,8 +1377,18 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                     println!("   Data Dir: {}", data_dir);
                     println!("   Port: {}", args.port);
 
-                    lithair_core::http::DeclarativeServer::<#name>::new(&event_store_path, args.port)?
-                        .with_node_id(node_id)
+                    // Phase 3 of DeclarativeServer retirement (issue #42):
+                    // emit a LithairServer-based main() instead of DeclarativeServer.
+                    // Behavior-preserving migration — see PR for the old→new API map.
+                    let base_path = format!(
+                        "/api/{}",
+                        <#name as lithair_core::http::HttpExposable>::http_base_path()
+                    );
+                    lithair_core::app::LithairServer::new()
+                        .with_port(args.port)
+                        .with_data_dir(&data_dir)
+                        .with_raft_cluster(node_id, Vec::<String>::new())
+                        .with_declarative_model::<#name>(event_store_path.clone(), base_path)
                         .serve()
                         .await?;
                 } else {
@@ -1461,4 +1471,81 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     };
 
     final_expanded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::derive_declarative_model;
+    use quote::quote;
+
+    /// Phase 3 of DeclarativeServer retirement (issue #42): the auto-generated
+    /// `main()` for `#[server(main, cli, distributed)]` must emit
+    /// `LithairServer`-based code, not `DeclarativeServer`-based code.
+    ///
+    /// This is a token-level smoke test. It does not exercise runtime behavior;
+    /// runtime parity is tracked separately (see PR description). It does
+    /// guarantee no regression of the macro's emitted text.
+    #[test]
+    fn server_main_distributed_emits_lithair_server_not_declarative_server() {
+        let input = quote! {
+            #[derive(DeclarativeModel)]
+            #[server(main, cli, distributed, port = 8080)]
+            struct Product {
+                id: u64,
+                name: String,
+            }
+        };
+
+        let output = derive_declarative_model(input).to_string();
+
+        // The migrated cluster branch must call into LithairServer.
+        assert!(
+            output.contains("LithairServer"),
+            "expected emitted code to reference LithairServer; got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("with_declarative_model"),
+            "expected emitted code to call with_declarative_model; got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("with_raft_cluster"),
+            "expected emitted code to call with_raft_cluster; got:\n{}",
+            output
+        );
+        // Phase 3 leaves declarative_server.rs in place (it stays until Phase 5),
+        // but no code path emitted by THIS macro should reference DeclarativeServer
+        // anymore.
+        assert!(
+            !output.contains("DeclarativeServer"),
+            "macro should no longer emit DeclarativeServer (Phase 3 of issue #42); got:\n{}",
+            output
+        );
+    }
+
+    /// Sanity: the simple (non-distributed) generated `main()` keeps using
+    /// `serve_on_port` (defined as part of the `DeclarativeServe` trait). That
+    /// trait still lives in `declarative_server.rs` and is in scope for Phase 5,
+    /// not Phase 3. Lock it in here so a future refactor doesn't accidentally
+    /// expand Phase 3's scope.
+    #[test]
+    fn server_main_single_node_still_uses_serve_on_port() {
+        let input = quote! {
+            #[derive(DeclarativeModel)]
+            #[server(main, cli, port = 8080)]
+            struct Product {
+                id: u64,
+                name: String,
+            }
+        };
+
+        let output = derive_declarative_model(input).to_string();
+
+        assert!(
+            output.contains("serve_on_port"),
+            "single-node branch should keep emitting serve_on_port; got:\n{}",
+            output
+        );
+    }
 }
