@@ -1386,9 +1386,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                     );
                     lithair_core::app::LithairServer::new()
                         .with_port(args.port)
-                        .with_data_dir(&data_dir)
+                        .with_data_dir(data_dir)
                         .with_raft_cluster(node_id, Vec::<String>::new())
-                        .with_declarative_model::<#name>(event_store_path.clone(), base_path)
+                        .with_declarative_model::<#name>(event_store_path, base_path)
                         .serve()
                         .await?;
                 } else {
