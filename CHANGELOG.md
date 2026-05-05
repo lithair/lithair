@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed (breaking)
 
 - `lithair_core::http::DeclarativeServer<T>` — the legacy single-model
-  Hyper-direct server is gone. Use [`LithairServer::new()`](crate::app::LithairServer)
-  with `.with_port(...)`, `.with_declarative_model::<T>(path, base_path)`,
+  Hyper-direct server is gone. Use `LithairServer::new()` with
+  `.with_port(...)`, `.with_declarative_model::<T>(path, base_path)`,
   and `.serve()` instead. Tracking: #42 (phase 4 + 5).
 - `lithair_core::http::{GzipConfig, ObserveConfig, PerfEndpointsConfig,
   ReadinessConfig, RoutePolicy}` — these helper config types were defined

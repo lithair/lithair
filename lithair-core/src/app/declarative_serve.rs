@@ -38,8 +38,8 @@ pub trait DeclarativeServe:
     /// model is exposed is `/api/{HttpExposable::http_base_path()}`.
     fn serve_on_port(port: u16) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
         let model_name = std::any::type_name::<Self>()
-            .split("::")
-            .last()
+            .rsplit("::")
+            .next()
             .unwrap_or("UnknownModel")
             .to_lowercase();
 
