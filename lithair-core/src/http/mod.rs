@@ -34,8 +34,6 @@ pub mod backend;
 #[allow(deprecated)]
 pub mod declarative;
 pub mod declarative_handlers; // Revolutionary Data-First routing system
-#[allow(deprecated)]
-pub mod declarative_server;
 pub mod error;
 pub mod firewall;
 pub mod host_router;
@@ -67,10 +65,6 @@ pub use declarative_handlers::{
     AdminHandlerConfig, ApiProxyConfig, CustomHandlerCallback, CustomHandlerConfig,
     CustomHandlerRegistry, DeclarativeHandlerConfig, DeclarativeHandlerSystem,
     FrontendHandlerConfig, GlobalHandlerConfig, HandlerDeclaration, HandlerType, ProxyTarget,
-};
-pub use declarative_server::{
-    DeclarativeServer, GzipConfig, ObserveConfig, PerfEndpointsConfig, ReadinessConfig,
-    RoutePolicy,
 };
 pub use error as http_error;
 pub use firewall::{Firewall, FirewallConfig};
