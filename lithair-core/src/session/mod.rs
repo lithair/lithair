@@ -9,16 +9,14 @@
 //! # Example
 //!
 //! ```no_run
-//! use lithair_core::session::{SessionConfig, MemorySessionStore};
-//! use lithair_core::http::DeclarativeServer;
+//! use lithair_core::session::{MemorySessionStore, SessionManager};
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let session_config = SessionConfig::new()
-//!     .with_store(MemorySessionStore::new())
-//!     .with_cookie_name("app_session")
-//!     .with_max_age(std::time::Duration::from_secs(3600 * 24));
-//!
-//! // Sessions will be automatically available in request handlers
+//! // Build a session manager backed by an in-memory store. Wire it into
+//! // a `LithairServer` via `LithairServer::new().with_sessions(manager)`
+//! // (see `lithair_core::app::LithairServer`).
+//! let manager = SessionManager::new(MemorySessionStore::new());
+//! let _store = manager.store();
 //! # Ok(())
 //! # }
 //! ```

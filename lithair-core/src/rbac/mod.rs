@@ -8,7 +8,7 @@
 //! - Multiple auth providers (password, OAuth, SAML, custom)
 //! - Field-level access control
 //! - Role-based authorization
-//! - Automatic middleware integration with DeclarativeServer
+//! - Automatic middleware integration with LithairServer
 //!
 //! # Example
 //! ```rust,ignore

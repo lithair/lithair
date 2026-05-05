@@ -346,7 +346,7 @@ impl LithairServerBuilder {
     }
 
     // ========================================================================
-    // HTTP FEATURES (from DeclarativeServer)
+    // HTTP FEATURES
     // ========================================================================
 
     /// Enable HTTP access logging (structured JSON via `log::info!`).

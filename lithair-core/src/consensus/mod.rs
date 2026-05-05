@@ -85,7 +85,11 @@ pub trait ReplicatedModel: Send + Sync + Clone + Serialize + for<'de> Deserializ
     }
 }
 
-/// Consensus configuration for DeclarativeServer
+/// Consensus configuration (legacy).
+///
+/// Was the consensus configuration for the now-retired `DeclarativeServer`.
+/// `LithairServer` configures clustering directly via
+/// [`LithairServer::with_raft_cluster()`](crate::app::LithairServerBuilder::with_raft_cluster).
 #[deprecated(since = "0.2.0", note = "Use LithairServer::with_raft_cluster() instead")]
 #[derive(Debug, Clone)]
 pub struct ConsensusConfig {
