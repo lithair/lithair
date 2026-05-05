@@ -69,8 +69,8 @@ pub use declarative_handlers::{
     FrontendHandlerConfig, GlobalHandlerConfig, HandlerDeclaration, HandlerType, ProxyTarget,
 };
 pub use declarative_server::{
-    DeclarativeServe, DeclarativeServer, GzipConfig, ObserveConfig, PerfEndpointsConfig,
-    ReadinessConfig, RoutePolicy,
+    DeclarativeServer, GzipConfig, ObserveConfig, PerfEndpointsConfig, ReadinessConfig,
+    RoutePolicy,
 };
 pub use error as http_error;
 pub use firewall::{Firewall, FirewallConfig};

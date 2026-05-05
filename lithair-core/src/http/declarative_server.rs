@@ -1616,46 +1616,6 @@ where
     Ok(resp)
 }
 
-// ============================================================================
-// Convenience traits for ultra-simple usage
-// ============================================================================
-
-/// Extension trait to make model serving even simpler
-///
-/// This allows: `MyModel::serve_on_port(8080).await?`
-pub trait DeclarativeServe:
-    HttpExposable + LifecycleAware + ReplicatedModel + Send + Sync + 'static
-{
-    /// Serve this model on the given port with auto-generated EventStore path
-    ///
-    /// This is the simplest possible Lithair experience!
-    fn serve_on_port(port: u16) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
-        let model_name = std::any::type_name::<Self>()
-            .split("::")
-            .last()
-            .unwrap_or("UnknownModel")
-            .to_lowercase();
-
-        let event_store_path = format!("./data/{}.events", model_name);
-        std::fs::create_dir_all("./data").ok();
-
-        Box::pin(
-            async move { DeclarativeServer::<Self>::new(&event_store_path, port)?.serve().await },
-        )
-    }
-
-    /// Serve with explicit EventStore path
-    fn serve_with_storage(
-        port: u16,
-        event_store_path: &str,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
-        let path = event_store_path.to_string();
-        Box::pin(async move { DeclarativeServer::<Self>::new(&path, port)?.serve().await })
-    }
-}
-
-// Auto-implement for all HttpExposable + LifecycleAware types
-impl<T> DeclarativeServe for T where
-    T: HttpExposable + LifecycleAware + ReplicatedModel + Send + Sync + 'static
-{
-}
+// `DeclarativeServe` (formerly defined here) was migrated in Phase 4 of issue
+// #42 to `crate::app::declarative_serve` and now delegates to `LithairServer`.
+// The full file is retired in the same commit series.

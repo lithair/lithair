@@ -33,6 +33,7 @@ use sha2::Digest;
 use std::sync::Arc;
 
 pub mod builder;
+pub mod declarative_serve;
 pub mod model_handler;
 mod ops_endpoints;
 pub mod response;
@@ -40,6 +41,7 @@ pub mod router;
 mod schema_handlers;
 
 pub use builder::LithairServerBuilder;
+pub use declarative_serve::DeclarativeServe;
 pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 
 // ============================================================================
