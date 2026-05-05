@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test script for 07-auth-rbac-mfa example
-# Tests DeclarativeServer with RBAC (password-based auth)
+# Tests LithairServer with RBAC (password-based auth)
 #
 # Usage: ./test.sh
 
