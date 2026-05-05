@@ -9,28 +9,19 @@
 //!
 //! # Why a separate module
 //!
-//! These endpoints are shared in spirit with the older
-//! `DeclarativeServer` (see `crate::http::declarative_server`), but the
-//! two builders have different surfaces:
-//!
-//! * `DeclarativeServer` is parameterised over a single model type `T`
-//!   and reports model-specific fields (`"model"`, `"api"`).
-//! * `LithairServer` hosts multiple models (or none at all), so its
-//!   responses describe the *server*, not a single model.
-//!
-//! We deliberately keep the response shapes minimal and stable. They
-//! are part of the public contract the README advertises ("Every
-//! Lithair server comes with `/health`, `/ready`, and `/info`").
+//! `LithairServer` hosts multiple models (or none at all), so its
+//! ops responses describe the *server*, not a single model. We
+//! deliberately keep the response shapes minimal and stable. They are
+//! part of the public contract the README advertises ("Every Lithair
+//! server comes with `/health`, `/ready`, and `/info`").
 //!
 //! # Response shapes
 //!
-//! * `GET /health` → `200 {"status":"healthy"}` — matches
-//!   `DeclarativeServer` byte-for-byte.
+//! * `GET /health` → `200 {"status":"healthy"}`.
 //! * `GET /ready`  → `200 {"status":"ready","version":"<crate version>"}`.
-//!   The `version` field mirrors `DeclarativeServer`'s
-//!   `include_version` opt-in; we surface it unconditionally here
-//!   because `LithairServer` has no equivalent `readiness_cfg` knob and
-//!   leaving it out would make the endpoint silent.
+//!   `version` is surfaced unconditionally because `LithairServer` has
+//!   no readiness configuration knob and leaving it out would make the
+//!   endpoint silent.
 //! * `GET /info`   → `200 <JSON document>` — server name, version,
 //!   list of well-known endpoints, registered model base paths, and a
 //!   UTC timestamp.
@@ -53,9 +44,8 @@ pub(crate) const INFO_PATH: &str = "/info";
 
 /// Build the default response for `GET /health`.
 ///
-/// Always returns `200 {"status":"healthy"}`. The body matches the
-/// `DeclarativeServer` implementation byte-for-byte so existing
-/// monitoring tooling that scrapes either builder sees the same shape.
+/// Always returns `200 {"status":"healthy"}`. Stable shape;
+/// monitoring tooling can scrape it without parsing.
 pub(crate) fn serve_health() -> Response<Full<Bytes>> {
     response::json(StatusCode::OK, r#"{"status":"healthy"}"#)
 }

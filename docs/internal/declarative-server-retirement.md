@@ -2,7 +2,18 @@
 
 > Working spec for retiring `DeclarativeServer` in favor of `LithairServer`.
 > Tracks issue [#42](https://github.com/lithair/lithair/issues/42).
-> Authored 2026-05-04 as the deliverable of phase 1 (this PR).
+> Authored 2026-05-04 as the deliverable of phase 1 (PR #43).
+> **Status (2026-05-04)**: phases 1–5 all complete. The plan below is kept as
+> a historical record of how the migration was sequenced. Any future
+> retirement of similar size should imitate this format (per-callsite
+> citations, evidence-based migration sizing, smallest-first rollout).
+>
+> | Phase | PR | Status |
+> |-------|-----|--------|
+> | 1 — inventory + smallest doc migration | #43 | merged |
+> | 2 — batch the remaining doc-only fixes | #44 | merged |
+> | 3 — migrate the macro-emitted `main()` | #45 | merged |
+> | 4 + 5 — migrate the trait, delete the file, drop re-exports | this PR | open |
 
 ## Scope and gating
 

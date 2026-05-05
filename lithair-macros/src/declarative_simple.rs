@@ -1377,9 +1377,9 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                     println!("   Data Dir: {}", data_dir);
                     println!("   Port: {}", args.port);
 
-                    // Phase 3 of DeclarativeServer retirement (issue #42):
-                    // emit a LithairServer-based main() instead of DeclarativeServer.
-                    // Behavior-preserving migration — see PR for the old→new API map.
+                    // Distributed `main()` — issue #42 phase 3 migrated this branch
+                    // off the now-retired DeclarativeServer; phase 4/5 finished
+                    // the retirement. Behavior-preserving migration.
                     let base_path = format!(
                         "/api/{}",
                         <#name as lithair_core::http::HttpExposable>::http_base_path()
@@ -1478,13 +1478,13 @@ mod tests {
     use super::derive_declarative_model;
     use quote::quote;
 
-    /// Phase 3 of DeclarativeServer retirement (issue #42): the auto-generated
-    /// `main()` for `#[server(main, cli, distributed)]` must emit
-    /// `LithairServer`-based code, not `DeclarativeServer`-based code.
+    /// Issue #42: the auto-generated `main()` for
+    /// `#[server(main, cli, distributed)]` must emit `LithairServer`-based
+    /// code. The `DeclarativeServer` type was retired in phase 5; this test
+    /// guards against any regression that would re-introduce its name in
+    /// the macro output.
     ///
-    /// This is a token-level smoke test. It does not exercise runtime behavior;
-    /// runtime parity is tracked separately (see PR description). It does
-    /// guarantee no regression of the macro's emitted text.
+    /// Token-level smoke test only — runtime behavior is not exercised.
     #[test]
     fn server_main_distributed_emits_lithair_server_not_declarative_server() {
         let input = quote! {
@@ -1514,21 +1514,19 @@ mod tests {
             "expected emitted code to call with_raft_cluster; got:\n{}",
             output
         );
-        // Phase 3 leaves declarative_server.rs in place (it stays until Phase 5),
-        // but no code path emitted by THIS macro should reference DeclarativeServer
-        // anymore.
+        // Regression guard: the macro must never re-introduce a reference to
+        // the retired `DeclarativeServer` (phase 4/5 of issue #42).
         assert!(
             !output.contains("DeclarativeServer"),
-            "macro should no longer emit DeclarativeServer (Phase 3 of issue #42); got:\n{}",
+            "macro must not emit DeclarativeServer (issue #42); got:\n{}",
             output
         );
     }
 
     /// Sanity: the simple (non-distributed) generated `main()` keeps using
-    /// `serve_on_port` (defined as part of the `DeclarativeServe` trait). That
-    /// trait still lives in `declarative_server.rs` and is in scope for Phase 5,
-    /// not Phase 3. Lock it in here so a future refactor doesn't accidentally
-    /// expand Phase 3's scope.
+    /// `serve_on_port` (defined on the `DeclarativeServe` trait, now living
+    /// in `lithair_core::app::declarative_serve`). The trait surface is part
+    /// of the macro's public contract, so we lock it in here.
     #[test]
     fn server_main_single_node_still_uses_serve_on_port() {
         let input = quote! {
