@@ -1115,7 +1115,27 @@ impl LithairWorld {
                 node_id, port, peers
             );
 
-            // Start the process
+            // Start the process — capture stderr to per-node file so panics,
+            // log lines, and request-handler errors are visible after a failing
+            // scenario. RUST_LOG bumped to debug so replication-layer events
+            // (Raft step-down, dropped connections, queue back-pressure) land
+            // in the log. The file path is stable so an inspector can `tail -f`
+            // during a long run; we don't truncate between scenarios because
+            // each run uses a fresh tempdir-driven data_dir.
+            let stderr_path = std::path::PathBuf::from(format!(
+                "/tmp/cucumber-cluster-node-{}-stderr.log",
+                node_id
+            ));
+            // Truncate previous content for this node so each `start_real_cluster`
+            // call leaves a clean log surface for the failing scenario.
+            let stderr_file = std::fs::File::create(&stderr_path)
+                .map_err(|e| format!("Failed to create stderr log for node {}: {}", node_id, e))?;
+            let stdout_file =
+                std::fs::File::create(format!("/tmp/cucumber-cluster-node-{}-stdout.log", node_id))
+                    .map_err(|e| {
+                        format!("Failed to create stdout log for node {}: {}", node_id, e)
+                    })?;
+
             let mut cmd = Command::new(&binary_path);
             cmd.arg("--node-id")
                 .arg(node_id.to_string())
@@ -1123,11 +1143,14 @@ impl LithairWorld {
                 .arg(port.to_string())
                 .args(&peers_args)
                 .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit());
+                .env("RUST_LOG", std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".to_string()))
+                .stdout(Stdio::from(stdout_file))
+                .stderr(Stdio::from(stderr_file));
 
             let process =
                 cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
+
+            eprintln!("📝 Node {} stderr captured to {:?}", node_id, stderr_path);
 
             let node = RealClusterNode { node_id, port, process: Some(process), data_dir, peers };
 

@@ -2,6 +2,25 @@ use crate::features::world::LithairWorld;
 use cucumber::{given, then, when};
 use tokio::time::{sleep, Duration};
 
+// ==================== HELPERS ====================
+
+/// Extract the `id` of the first product from a list response.
+///
+/// LithairServer's list endpoint always returns a paginated envelope of the
+/// shape `{"data": [...], "total": N, ...}`. Tests sometimes get a bare array
+/// (some older mock paths), so we accept both shapes defensively.
+///
+/// Returns `None` if the response is an `Err`, the data field is missing, the
+/// array is empty, or the first entry has no string `id`.
+fn extract_first_product_id(response: &Result<serde_json::Value, String>) -> Option<String> {
+    let value = response.as_ref().ok()?;
+    let array = value.get("data").and_then(|d| d.as_array()).or_else(|| value.as_array())?;
+    array
+        .first()
+        .and_then(|p| p.get("id").and_then(|id| id.as_str()))
+        .map(|s| s.to_string())
+}
+
 // ==================== ENGLISH STEPS ====================
 
 // Match "a Raft cluster of X nodes" or "a Lithair cluster of X nodes"
@@ -772,22 +791,16 @@ async fn when_create_products_on_leader(world: &mut LithairWorld, count: u32) {
 
 #[when("I update the product on the leader")]
 async fn when_update_product_on_leader(world: &mut LithairWorld) {
-    // Get the product ID from the last created product
+    // Get the product ID from the last created product.
+    // LithairServer's list endpoint (handle_list in lithair-core/src/http/declarative.rs)
+    // always returns a paginated envelope `{"data": [...], "total": N, "skip", "take",
+    // "has_more"}` — never a bare JSON array. This step previously tried `response
+    // .as_array()` which silently produced None on every run, masked by the leader
+    // hang fixed in builder.rs. With the leader actually responsive, we now have to
+    // parse the envelope correctly.
     let products_result = world.make_real_cluster_request(0, "GET", "/api/products", None).await;
 
-    let product_id = match products_result {
-        Ok(response) => {
-            if let Some(arr) = response.as_array() {
-                arr.first()
-                    .and_then(|p| p.get("id").and_then(|id| id.as_str()))
-                    .map(|s| s.to_string())
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    };
-
+    let product_id = extract_first_product_id(&products_result);
     let id = product_id.expect("No product found to update");
 
     // Store the ID for later verification
@@ -823,22 +836,11 @@ async fn when_update_product_on_leader(world: &mut LithairWorld) {
 
 #[when("I delete the product on the leader")]
 async fn when_delete_product_on_leader(world: &mut LithairWorld) {
-    // Get the product ID from the last created product
+    // See `when_update_product_on_leader` for context on the response shape:
+    // the list endpoint returns a `{"data": [...]}` envelope, not a bare array.
     let products_result = world.make_real_cluster_request(0, "GET", "/api/products", None).await;
 
-    let product_id = match products_result {
-        Ok(response) => {
-            if let Some(arr) = response.as_array() {
-                arr.first()
-                    .and_then(|p| p.get("id").and_then(|id| id.as_str()))
-                    .map(|s| s.to_string())
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    };
-
+    let product_id = extract_first_product_id(&products_result);
     let id = product_id.expect("No product found to delete");
 
     // Store the ID for later verification
