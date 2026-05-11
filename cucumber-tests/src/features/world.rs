@@ -932,11 +932,49 @@ impl LithairWorld {
             };
 
             nodes.push(node);
-            println!("✅ Node {} started on port {}", i, port);
+            println!("✅ Node {} spawned on port {}", i, port);
         }
 
-        // Wait for all servers to be ready
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        // Active readiness probe: poll each node's /health until it responds, up
+        // to ~5s. Using sleep alone is racy: `pick_unused_port()` returns a port
+        // that is *free at the time of the call*, but `HttpServer::serve()` does
+        // the actual bind inside `spawn_blocking` -- between the picker
+        // releasing the port and the server thread binding it, another listener
+        // (or the runtime delaying the blocking task) can win. Polling makes
+        // the harness deterministic.
+        let probe = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(500))
+            .build()
+            .map_err(|e| format!("Failed to build probe client: {}", e))?;
+        for (i, port) in ports.iter().enumerate() {
+            let url = format!("http://127.0.0.1:{}/health", port);
+            let mut ready = false;
+            let mut last_err: Option<String> = None;
+            for _ in 0..50 {
+                match probe.get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        ready = true;
+                        break;
+                    }
+                    Ok(resp) => {
+                        last_err = Some(format!("HTTP {}", resp.status()));
+                    }
+                    Err(e) => {
+                        last_err = Some(e.to_string());
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            }
+            if !ready {
+                return Err(format!(
+                    "Node {} not ready on port {} after 5s: {}",
+                    i,
+                    port,
+                    last_err.unwrap_or_else(|| "no response".to_string())
+                ));
+            }
+        }
+        println!("✅ All {} nodes ready", node_count);
 
         // Save the nodes
         *self.cluster_nodes.lock().await = nodes;
