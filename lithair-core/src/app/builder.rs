@@ -6,6 +6,39 @@ use crate::session::{PersistentSessionStore, SessionManager};
 use anyhow::Result;
 use std::sync::Arc;
 
+/// Resolve the base directory for Raft persistent state (WAL, snapshots).
+///
+/// In production this defaults to `./data` (relative to the server's working
+/// directory), which is the long-standing convention used by the replication
+/// example. Tests and integration harnesses that need isolated per-run state
+/// can override it by setting one of two environment variables:
+///
+/// - `LITHAIR_DATA_DIR` — primary override, framework-scoped name.
+/// - `EXPERIMENT_DATA_BASE` — back-compat with the existing example/CI
+///   convention already used by `examples/09-replication/cluster_node.rs`
+///   to scope the per-node *event-store* directories. Honoring it here lets
+///   the BDD harness scope the *Raft WAL and snapshots* with the same
+///   env var it already sets — no harness change required.
+///
+/// Resolution order: `LITHAIR_DATA_DIR` > `EXPERIMENT_DATA_BASE` > `./data`.
+///
+/// Returning a String keeps the call sites simple (`format!("{}/...", ...)`).
+/// The path is intentionally not validated/created here — `WriteAheadLog::new`
+/// and `SnapshotManager::new` already create parent directories as needed.
+fn raft_base_dir() -> String {
+    if let Ok(v) = std::env::var("LITHAIR_DATA_DIR") {
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    if let Ok(v) = std::env::var("EXPERIMENT_DATA_BASE") {
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    "./data".to_string()
+}
+
 /// Identifies which virtual host a per-vhost configuration belongs to.
 ///
 /// Used internally by the builder to tag frontend configurations so
@@ -1684,7 +1717,8 @@ impl LithairServerBuilder {
                 None
             },
             wal: if !self.cluster_peers.is_empty() {
-                let wal_path = format!("./data/raft/node_{}/wal", self.node_id.unwrap_or(0));
+                let wal_path =
+                    format!("{}/raft/node_{}/wal", raft_base_dir(), self.node_id.unwrap_or(0));
                 match crate::cluster::WriteAheadLog::new(&wal_path) {
                     Ok(wal) => {
                         log::info!("WAL initialized at {}", wal_path);
@@ -1707,8 +1741,11 @@ impl LithairServerBuilder {
             },
             // Initialize snapshot manager for resync
             snapshot_manager: if !self.cluster_peers.is_empty() {
-                let snapshot_path =
-                    format!("./data/raft/node_{}/snapshots", self.node_id.unwrap_or(0));
+                let snapshot_path = format!(
+                    "{}/raft/node_{}/snapshots",
+                    raft_base_dir(),
+                    self.node_id.unwrap_or(0)
+                );
                 match crate::cluster::SnapshotManager::new(&snapshot_path) {
                     Ok(mgr) => {
                         log::info!("Snapshot manager initialized at {}", snapshot_path);

@@ -1115,19 +1115,50 @@ impl LithairWorld {
                 node_id, port, peers
             );
 
-            // Start the process
+            // Start the process — capture stderr to per-node file so panics,
+            // log lines, and request-handler errors are visible after a failing
+            // scenario. RUST_LOG bumped to debug so replication-layer events
+            // (Raft step-down, dropped connections, queue back-pressure) land
+            // in the log. The file path is rooted at `std::env::temp_dir()` so
+            // the harness stays portable across Linux/macOS/Windows (the path
+            // is stable per `node_id` so an inspector can `tail -f` during a
+            // long run); we don't truncate between scenarios because each run
+            // uses a fresh tempdir-driven data_dir.
+            let log_base = std::env::temp_dir();
+            let stderr_path =
+                log_base.join(format!("cucumber-cluster-node-{}-stderr.log", node_id));
+            let stdout_path =
+                log_base.join(format!("cucumber-cluster-node-{}-stdout.log", node_id));
+            let stderr_file = std::fs::File::create(&stderr_path)
+                .map_err(|e| format!("Failed to create stderr log for node {}: {}", node_id, e))?;
+            let stdout_file = std::fs::File::create(&stdout_path)
+                .map_err(|e| format!("Failed to create stdout log for node {}: {}", node_id, e))?;
+
+            // Pass the per-node tempdir via BOTH env vars: `EXPERIMENT_DATA_BASE`
+            // is consumed by the cluster_node example for its event-store
+            // directories, `LITHAIR_DATA_DIR` is consumed by lithair-core's
+            // builder for the Raft WAL/snapshot paths. Setting both
+            // unconditionally also overrides any value inherited from the
+            // harness's own environment, so a developer with `LITHAIR_DATA_DIR`
+            // exported in their shell can't accidentally make spawned child
+            // nodes share Raft state across tests.
+            let data_dir_str = data_dir.to_string_lossy().to_string();
             let mut cmd = Command::new(&binary_path);
             cmd.arg("--node-id")
                 .arg(node_id.to_string())
                 .arg("--port")
                 .arg(port.to_string())
                 .args(&peers_args)
-                .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit());
+                .env("EXPERIMENT_DATA_BASE", &data_dir_str)
+                .env("LITHAIR_DATA_DIR", &data_dir_str)
+                .env("RUST_LOG", std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".to_string()))
+                .stdout(Stdio::from(stdout_file))
+                .stderr(Stdio::from(stderr_file));
 
             let process =
                 cmd.spawn().map_err(|e| format!("Failed to spawn node {}: {}", node_id, e))?;
+
+            eprintln!("📝 Node {} stderr captured to {:?}", node_id, stderr_path);
 
             let node = RealClusterNode { node_id, port, process: Some(process), data_dir, peers };
 
@@ -1287,14 +1318,20 @@ impl LithairWorld {
                 node_id, port, peers, data_dir
             );
 
-            // Start the process
+            // Start the process. Same dual env-var pattern as `start_real_cluster`
+            // — set both `EXPERIMENT_DATA_BASE` (event-store) and
+            // `LITHAIR_DATA_DIR` (Raft WAL/snapshot) to the per-node persistent
+            // dir so a developer's shell-exported `LITHAIR_DATA_DIR` can't
+            // accidentally redirect Raft state away from this run's data root.
+            let data_dir_str = data_dir.to_string_lossy().to_string();
             let mut cmd = Command::new(&binary_path);
             cmd.arg("--node-id")
                 .arg(node_id.to_string())
                 .arg("--port")
                 .arg(port.to_string())
                 .args(&peers_args)
-                .env("EXPERIMENT_DATA_BASE", data_dir.to_string_lossy().to_string())
+                .env("EXPERIMENT_DATA_BASE", &data_dir_str)
+                .env("LITHAIR_DATA_DIR", &data_dir_str)
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit());
 
