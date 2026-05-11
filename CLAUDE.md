@@ -27,6 +27,21 @@ task ci:full        # Fast CI (~2-3min): fmt + build + clippy + tests with -D wa
 task ci:github      # Complete validation (~10-15min): ci:full + smoke tests - run before push
 ```
 
+For containerized parity with CI (rustfmt, clippy, cargo-audit, gitleaks, trivy,
+workspace test/build) use [cidx](https://github.com/cidx-org/cidx):
+
+```bash
+cidx run code       # rustfmt + clippy (fast feedback)
+cidx run security   # cargo-audit + gitleaks + trivy
+cidx run test       # cargo test --workspace --lib --bins --release
+cidx run build      # cargo build --workspace --release
+cidx run ci         # full pipeline
+```
+
+Sub-agents and automation should prefer `cidx run code` over waiting on GitHub
+Actions for tight loops. CI runs the same phases via `.github/workflows/cidx.yml`
+(pinned to cidx v1.7.0).
+
 ### Build & Test
 
 ```bash

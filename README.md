@@ -194,6 +194,24 @@ task fmt           # Format code
 task help          # List all available tasks
 ```
 
+### Containerized CI with cidx (optional)
+
+[cidx](https://github.com/cidx-org/cidx) runs the same code-quality, security, test,
+and build phases locally in Docker containers, matching what GitHub Actions does.
+Useful for reproducing CI failures without pushing.
+
+```bash
+cidx run code      # rustfmt + clippy
+cidx run security  # cargo-audit + gitleaks + trivy
+cidx run test      # workspace unit tests (lib + bins)
+cidx run build     # workspace release build
+cidx run ci        # full pipeline
+```
+
+CI mirrors the same phases via `.github/workflows/cidx.yml` (pinned to cidx
+v1.7.0). It runs alongside the existing `ci.yml` and `ci-fast.yml` workflows
+during the integration cycle.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
