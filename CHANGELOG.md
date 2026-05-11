@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   responses without `.to_string()` boilerplate (#47).
 - `response::json_serialize<T: Serialize>(status, &T)` for typed JSON
   responses serialized directly from a `Serialize` value (#47).
+- `query::param(query, key)` for single-key extraction from a query
+  string, percent-decoded, bypassing the filter-spec semantics of
+  `parse_query_params` (#48). Values like `>foo` are returned as the
+  literal string instead of being parsed as a `Gt` filter. First
+  occurrence wins on duplicate keys; empty decoded values map to `None`.
 
 ## [0.2.0] - 2026-05-05
 

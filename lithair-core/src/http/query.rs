@@ -85,6 +85,65 @@ fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
+/// Extract a single `key=value` from a query string, percent-decoded.
+///
+/// This is the right primitive for custom routes that need one literal
+/// query parameter (e.g. `GET /api/fs?path=<dir>`). Unlike
+/// [`parse_query_params`], it does **not** apply any filter-spec
+/// semantics — values like `>foo` are returned as the literal string
+/// `">foo"`, not parsed as a `Gt` filter.
+///
+/// Both the key and the value are percent-decoded via [`percent_decode`],
+/// which means `+` is interpreted as a space (the form-urlencoded
+/// convention used throughout this module).
+///
+/// Returns `None` if:
+/// - the query string is empty,
+/// - the key is absent,
+/// - the pair has no `=` (e.g. `?path` with no value),
+/// - the decoded value is the empty string.
+///
+/// When the same key appears multiple times, the **first occurrence wins**.
+///
+/// # Examples
+///
+/// ```
+/// use lithair_core::http::query;
+///
+/// assert_eq!(query::param("path=/etc", "path"), Some("/etc".to_string()));
+/// assert_eq!(query::param("path=%2Fetc", "path"), Some("/etc".to_string()));
+/// assert_eq!(query::param("filter=%3Efoo", "filter"), Some(">foo".to_string()));
+/// assert_eq!(query::param("path=", "path"), None);
+/// assert_eq!(query::param("", "path"), None);
+/// ```
+pub fn param(query: &str, key: &str) -> Option<String> {
+    if query.is_empty() {
+        return None;
+    }
+    for pair in query.split('&') {
+        let (raw_key, raw_value) = match pair.split_once('=') {
+            Some(kv) => kv,
+            None => continue,
+        };
+        // Fast path: skip the allocation when the raw key contains no
+        // percent-encoding or `+` — by far the common case for simple
+        // identifier keys like `path`, `id`, `filter`.
+        let key_matches = if raw_key.as_bytes().iter().any(|&b| b == b'%' || b == b'+') {
+            percent_decode(raw_key) == key
+        } else {
+            raw_key == key
+        };
+        if key_matches {
+            let decoded = percent_decode(raw_value);
+            if decoded.is_empty() {
+                return None;
+            }
+            return Some(decoded);
+        }
+    }
+    None
+}
+
 /// Parse query string into structured QueryParams
 pub fn parse_query_params(query: &str) -> QueryParams {
     let mut skip = 0u64;
@@ -401,5 +460,91 @@ mod tests {
         assert_eq!(params.filters.len(), 2);
         assert_eq!(params.filters[0].value, "hello world");
         assert_eq!(params.filters[1].value, "São Paulo");
+    }
+
+    // ---------- query::param ----------
+
+    #[test]
+    fn test_param_empty_query() {
+        assert_eq!(param("", "path"), None);
+    }
+
+    #[test]
+    fn test_param_basic_match() {
+        assert_eq!(param("path=/etc", "path"), Some("/etc".to_string()));
+    }
+
+    #[test]
+    fn test_param_empty_value_returns_none() {
+        // Per spec: empty value after decode → None.
+        assert_eq!(param("path=", "path"), None);
+    }
+
+    #[test]
+    fn test_param_picks_correct_key_among_many() {
+        assert_eq!(param("foo=1&path=/etc&bar=2", "path"), Some("/etc".to_string()));
+        assert_eq!(param("foo=1&path=/etc&bar=2", "foo"), Some("1".to_string()));
+        assert_eq!(param("foo=1&path=/etc&bar=2", "bar"), Some("2".to_string()));
+    }
+
+    #[test]
+    fn test_param_percent_decodes_value() {
+        assert_eq!(param("path=%2Fetc", "path"), Some("/etc".to_string()));
+        assert_eq!(param("name=hello%20world", "name"), Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_param_missing_key_returns_none() {
+        assert_eq!(param("foo=1", "missing"), None);
+    }
+
+    #[test]
+    fn test_param_key_without_equals_returns_none() {
+        // Bare key with no `=` is not a value-bearing pair.
+        assert_eq!(param("path", "path"), None);
+        // …but a value-bearing pair after a bare key is still findable.
+        assert_eq!(param("flag&path=/etc", "path"), Some("/etc".to_string()));
+        // And asking for the bare key still returns None.
+        assert_eq!(param("flag&path=/etc", "flag"), None);
+    }
+
+    #[test]
+    fn test_param_multiple_occurrences_first_wins() {
+        // Documented convention: first occurrence wins.
+        assert_eq!(param("path=/first&path=/second", "path"), Some("/first".to_string()));
+    }
+
+    #[test]
+    fn test_param_does_not_split_on_encoded_equals() {
+        // `%3D` inside the value must NOT be confused with the key/value
+        // delimiter. The raw `=` that separates key from value is the
+        // first literal `=` in the pair.
+        assert_eq!(param("filter=a%3Db", "filter"), Some("a=b".to_string()));
+    }
+
+    #[test]
+    fn test_param_does_not_apply_filter_semantics() {
+        // The whole point of this helper: ">foo" comes back as ">foo",
+        // not as a Gt operator. (Compare with parse_query_params which
+        // would parse this as FilterOp::Gt + value="foo".)
+        assert_eq!(param("filter=%3Efoo", "filter"), Some(">foo".to_string()));
+        // Same for the literal (non-encoded) form.
+        assert_eq!(param("filter=>foo", "filter"), Some(">foo".to_string()));
+        assert_eq!(param("filter=!bar", "filter"), Some("!bar".to_string()));
+        assert_eq!(param("filter=~baz", "filter"), Some("~baz".to_string()));
+    }
+
+    #[test]
+    fn test_param_decodes_key() {
+        // The key in the query string is also percent-decoded before
+        // matching, mirroring parse_query_params behavior.
+        assert_eq!(param("my%20key=value", "my key"), Some("value".to_string()));
+    }
+
+    #[test]
+    fn test_param_value_with_equals_kept_intact() {
+        // Only the FIRST `=` splits key from value; further `=` are
+        // part of the value (e.g. base64 padding).
+        assert_eq!(param("token=abc=def==", "token"), Some("abc=def==".to_string()));
     }
 }
