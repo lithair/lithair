@@ -125,7 +125,15 @@ pub fn param(query: &str, key: &str) -> Option<String> {
             Some(kv) => kv,
             None => continue,
         };
-        if percent_decode(raw_key) == key {
+        // Fast path: skip the allocation when the raw key contains no
+        // percent-encoding or `+` — by far the common case for simple
+        // identifier keys like `path`, `id`, `filter`.
+        let key_matches = if raw_key.as_bytes().iter().any(|&b| b == b'%' || b == b'+') {
+            percent_decode(raw_key) == key
+        } else {
+            raw_key == key
+        };
+        if key_matches {
             let decoded = percent_decode(raw_value);
             if decoded.is_empty() {
                 return None;
