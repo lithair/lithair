@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `response::json_value(status, &serde_json::Value)` for typed JSON
+  responses without `.to_string()` boilerplate (#47).
+- `response::json_serialize<T: Serialize>(status, &T)` for typed JSON
+  responses serialized directly from a `Serialize` value (#47).
+
 ## [0.2.0] - 2026-05-05
 
 ### Removed (breaking)
