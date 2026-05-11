@@ -17,6 +17,8 @@ use bytes::Bytes;
 use http::StatusCode;
 use http_body_util::Full;
 use hyper::Response;
+use serde::Serialize;
+use serde_json::Value;
 
 /// JSON response with the given status code.
 ///
@@ -55,7 +57,7 @@ pub fn json(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>
 ///     &json!({"id": 42, "status": "queued"}),
 /// );
 /// ```
-pub fn json_value(status: StatusCode, body: &serde_json::Value) -> Response<Full<Bytes>> {
+pub fn json_value(status: StatusCode, body: &Value) -> Response<Full<Bytes>> {
     // `serde_json::to_vec` only fails when a custom `Serialize` impl
     // emits an error or a map has non-string keys. A `Value` produced
     // by `serde_json::json!` or `Value` constructors can never trigger
@@ -91,7 +93,7 @@ pub fn json_value(status: StatusCode, body: &serde_json::Value) -> Response<Full
 /// let resp = response::json_serialize(StatusCode::CREATED, &Created { id: 42 })?;
 /// # Ok::<(), serde_json::Error>(())
 /// ```
-pub fn json_serialize<T: serde::Serialize + ?Sized>(
+pub fn json_serialize<T: Serialize + ?Sized>(
     status: StatusCode,
     body: &T,
 ) -> Result<Response<Full<Bytes>>, serde_json::Error> {
@@ -142,7 +144,6 @@ pub fn empty(status: StatusCode) -> Response<Full<Bytes>> {
 mod tests {
     use super::*;
     use http_body_util::BodyExt;
-    use serde::Serialize;
     use serde_json::json;
 
     async fn body_bytes(resp: Response<Full<Bytes>>) -> Vec<u8> {
