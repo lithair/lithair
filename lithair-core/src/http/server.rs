@@ -112,7 +112,7 @@ impl HttpServer {
         // panics on `Handle::current()` and clients see "connection refused"
         // / TCP resets -- which is exactly the failure mode that wedged the
         // `distribution_clustering.feature` mock cluster (issue #52).
-        let (handle, _owned_runtime) = match tokio::runtime::Handle::try_current() {
+        let (handle, owned_runtime) = match tokio::runtime::Handle::try_current() {
             Ok(h) => (h, None),
             Err(_) => {
                 let rt = tokio::runtime::Builder::new_multi_thread()
@@ -161,7 +161,7 @@ impl HttpServer {
         // accept loop above only exits when the listener is dropped/errors,
         // which is fine -- runtime is dropped here, terminating any in-flight
         // request workers cleanly).
-        drop(_owned_runtime);
+        drop(owned_runtime);
         Ok(())
     }
 

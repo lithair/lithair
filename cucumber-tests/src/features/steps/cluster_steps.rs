@@ -1486,7 +1486,11 @@ async fn then_100_items_replicated(world: &mut LithairWorld) {
     // contractual side that IS observable: every follower responds to
     // GET /api/articles (replication endpoint is wired and addressable on
     // every node). Real replication is verified in real_cluster_test.feature.
-    sleep(Duration::from_millis(500)).await;
+    //
+    // No post-write sleep: the previous `when` step awaits all 100 leader
+    // POSTs synchronously, and the mock performs no async replication, so
+    // followers are reachable for reads as soon as their server task is
+    // running (already asserted by the `/health` probe in `start_cluster`).
     let cluster_size = world.cluster_size().await;
     assert!(cluster_size >= 3, "Expected >=3 nodes, got {}", cluster_size);
     for i in 1..cluster_size {
