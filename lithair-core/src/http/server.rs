@@ -102,6 +102,34 @@ impl HttpServer {
         log::info!("Max connections: {}", self.config.max_connections);
         log::info!("Keep-alive: {}", self.config.keep_alive);
 
+        // Each request dispatches into the async router via `Handle::block_on`.
+        // The per-connection workers are plain `std::thread::spawn` threads with
+        // no tokio context of their own, so we must give them an explicit
+        // `Handle`. Reuse the caller's runtime when one exists (typical when
+        // invoked from `LithairServer` or a `#[tokio::main]`-style entry point);
+        // otherwise own a dedicated multi-thread runtime for the lifetime of
+        // this `serve()` call. Without this, every accepted connection thread
+        // panics on `Handle::current()` and clients see "connection refused"
+        // / TCP resets -- which is exactly the failure mode that wedged the
+        // `distribution_clustering.feature` mock cluster (issue #52).
+        let (handle, _owned_runtime) = match tokio::runtime::Handle::try_current() {
+            Ok(h) => (h, None),
+            Err(_) => {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .thread_name("lithair-httpserver-worker")
+                    .build()
+                    .map_err(|e| {
+                        HttpError::ServerError(format!(
+                            "Failed to build tokio runtime for HttpServer: {}",
+                            e
+                        ))
+                    })?;
+                let h = rt.handle().clone();
+                (h, Some(rt))
+            }
+        };
+
         // Clone configuration and router for sharing between threads
         let config = self.config.clone();
         let router = self.router.clone();
@@ -111,11 +139,14 @@ impl HttpServer {
                 Ok(stream) => {
                     let config = config.clone();
                     let router = router.clone();
+                    let handle = handle.clone();
 
                     // Handle each connection in a separate thread
                     // Note: currently spawns a thread per connection; a thread pool could improve performance
                     thread::spawn(move || {
-                        if let Err(e) = handle_connection(stream, &config, router.as_deref()) {
+                        if let Err(e) =
+                            handle_connection(stream, &config, router.as_deref(), &handle)
+                        {
                             log::error!("Error handling connection: {}", e);
                         }
                     });
@@ -126,6 +157,11 @@ impl HttpServer {
             }
         }
 
+        // Keep the owned runtime alive for the lifetime of `serve()` (the
+        // accept loop above only exits when the listener is dropped/errors,
+        // which is fine -- runtime is dropped here, terminating any in-flight
+        // request workers cleanly).
+        drop(_owned_runtime);
         Ok(())
     }
 
@@ -146,6 +182,7 @@ fn handle_connection(
     mut stream: TcpStream,
     config: &ServerConfig,
     router: Option<&Router>,
+    handle: &tokio::runtime::Handle,
 ) -> HttpResult<()> {
     // Set timeouts
     stream
@@ -161,7 +198,7 @@ fn handle_connection(
 
     // Handle keep-alive connections
     loop {
-        match handle_request(&mut stream, config, router) {
+        match handle_request(&mut stream, config, router, handle) {
             Ok(should_close) => {
                 if should_close || !config.keep_alive {
                     break;
@@ -197,20 +234,23 @@ fn handle_request(
     stream: &mut TcpStream,
     config: &ServerConfig,
     router: Option<&Router>,
+    handle: &tokio::runtime::Handle,
 ) -> HttpResult<bool> {
     // Parse the HTTP request
     let request = parse_request(stream, config)?;
 
     // Route the request and generate response
     let response = if let Some(router) = router {
-        // Use the async router to handle the request (supports both sync and async routes)
-        // We use block_in_place to call async from sync context
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                // Create dummy state for stateless routing
-                let dummy_state = ();
-                router.handle_request_async(&request, &dummy_state).await
-            })
+        // Drive the async router from this sync per-connection worker thread
+        // by calling `block_on` on the explicit runtime handle owned by the
+        // server. We avoid `Handle::current()` (which panics in plain
+        // `std::thread::spawn` workers) and `block_in_place` (which only
+        // applies when we're already executing on a runtime worker thread --
+        // we are not).
+        handle.block_on(async {
+            // Create dummy state for stateless routing
+            let dummy_state = ();
+            router.handle_request_async(&request, &dummy_state).await
         })
     } else {
         // Default response when no router is configured
