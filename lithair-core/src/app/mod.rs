@@ -5644,9 +5644,13 @@ mod tests {
         use super::{response, Method, RouteRequest, StatusCode};
 
         let server = LithairServer::new()
-            .with_route_async(Method::POST, "/issue-59-route-async", |_req: RouteRequest| async move {
-                Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
-            })
+            .with_route_async(
+                Method::POST,
+                "/issue-59-route-async",
+                |_req: RouteRequest| async move {
+                    Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
+                },
+            )
             .build()
             .expect("build server");
         let (base, handle) = spawn_for_test(server).await;
