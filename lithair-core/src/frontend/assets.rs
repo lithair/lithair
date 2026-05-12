@@ -182,9 +182,22 @@ fn detect_mime_type(path: &str) -> String {
 }
 
 fn should_compress(mime_type: &str) -> bool {
+    // Strip any MIME parameters (e.g. `; charset=utf-8`) before
+    // matching — `detect_mime_type` now emits charset-qualified
+    // values for text/* types, and the previous exact-string match
+    // would drop those from the compressible set silently.
+    // (Reported by CodeRabbit on PR #57.)
+    let base = mime_type.split(';').next().unwrap_or(mime_type).trim();
     matches!(
-        mime_type,
-        "text/html" | "text/css" | "application/javascript" | "application/json" | "text/plain"
+        base,
+        "text/html"
+            | "text/css"
+            | "text/plain"
+            | "application/javascript"
+            | "application/json"
+            | "application/xml"
+            | "application/manifest+json"
+            | "image/svg+xml"
     )
 }
 
@@ -225,5 +238,24 @@ mod tests {
         // imported from external sources. The lookup must normalize.
         assert_eq!(detect_mime_type("/MAP.XML"), "application/xml");
         assert_eq!(detect_mime_type("/INDEX.HTML"), "text/html");
+    }
+
+    #[test]
+    fn should_compress_ignores_mime_parameters_and_covers_new_types() {
+        // Regression guard: `text/plain` now comes back with a
+        // charset suffix from `detect_mime_type`, and the previous
+        // exact-string match silently dropped it from compression.
+        // Both forms must compress.
+        assert!(should_compress("text/plain"));
+        assert!(should_compress("text/plain; charset=utf-8"));
+        assert!(should_compress("text/html"));
+        // New MIME types added in this fix should be compressible.
+        assert!(should_compress("application/xml"));
+        assert!(should_compress("application/manifest+json"));
+        assert!(should_compress("image/svg+xml"));
+        // Non-text/non-structured types still skip compression.
+        assert!(!should_compress("image/png"));
+        assert!(!should_compress("font/woff2"));
+        assert!(!should_compress("application/octet-stream"));
     }
 }
