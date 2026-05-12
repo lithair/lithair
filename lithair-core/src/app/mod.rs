@@ -36,6 +36,7 @@ pub mod builder;
 pub mod declarative_serve;
 pub mod model_handler;
 mod ops_endpoints;
+pub mod request;
 pub mod response;
 pub mod router;
 mod schema_handlers;
@@ -5771,6 +5772,140 @@ mod tests {
         );
         let body = resp.text().await.expect("body");
         assert_eq!(body, "<h1>Page not found</h1>");
+
+        handle.abort();
+    }
+
+    // ------------------------------------------------------------------
+    // `request::*` body-reading helpers (issue #63).
+    //
+    // The unit tests in `app/request.rs` exercise the helpers through
+    // `Request<Full<Bytes>>` because `hyper::body::Incoming` has no
+    // public constructor. This e2e test drives the helpers through the
+    // real wire path — request comes in as `Incoming`, handler calls
+    // the helper, response goes out — so we catch any signature
+    // mismatch the unit shims would miss.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn request_read_body_as_string_drains_put_body_end_to_end() {
+        use super::{request, response, Method, RouteRequest, StatusCode};
+
+        let server = LithairServer::new()
+            .with_route_async(Method::PUT, "/echo", |req: RouteRequest| async move {
+                let body = request::read_body_as_string(req).await?;
+                Ok(response::text(StatusCode::OK, body))
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .put(format!("{}/echo", base))
+            .body("config: ok\nname: kovre\n")
+            .send()
+            .await
+            .expect("PUT /echo");
+        assert_eq!(resp.status(), 200);
+        let body = resp.text().await.expect("body");
+        assert_eq!(body, "config: ok\nname: kovre\n");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn request_read_body_json_deserializes_put_body_end_to_end() {
+        use super::{request, response, Method, RouteRequest, StatusCode};
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        struct Payload {
+            name: String,
+            count: u32,
+        }
+
+        let server = LithairServer::new()
+            .with_route_async(Method::POST, "/json", |req: RouteRequest| async move {
+                let payload: Payload = request::read_body_json(req).await?;
+                Ok(response::text(StatusCode::OK, format!("{} x{}", payload.name, payload.count)))
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{}/json", base))
+            .header("content-type", "application/json")
+            .body(r#"{"name":"widget","count":3}"#)
+            .send()
+            .await
+            .expect("POST /json");
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.text().await.expect("body"), "widget x3");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn request_read_body_with_limit_rejects_oversize_end_to_end() {
+        // Send a 4 KiB payload to a route that caps the read at 1 KiB.
+        // The handler returns 413 on rejection, mirroring how a real
+        // consumer (kovre) would map the error.
+        use super::{request, response, Method, RouteRequest, StatusCode};
+
+        let server = LithairServer::new()
+            .with_route_async(Method::PUT, "/limited", |req: RouteRequest| async move {
+                match request::read_body_with_limit(req, 1024).await {
+                    Ok(_bytes) => Ok(response::text(StatusCode::OK, "ok")),
+                    Err(e) => Ok(response::text(StatusCode::PAYLOAD_TOO_LARGE, format!("{e}"))),
+                }
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let big = vec![b'a'; 4096];
+        let client = reqwest::Client::new();
+        let resp = client
+            .put(format!("{}/limited", base))
+            .body(big)
+            .send()
+            .await
+            .expect("PUT /limited");
+        assert_eq!(resp.status(), 413);
+        let body = resp.text().await.expect("body");
+        assert!(
+            body.contains("exceeds limit"),
+            "error body should describe the rejection, got: {body}"
+        );
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn request_read_body_with_limit_accepts_undersize_end_to_end() {
+        use super::{request, response, Method, RouteRequest, StatusCode};
+
+        let server = LithairServer::new()
+            .with_route_async(Method::PUT, "/limited", |req: RouteRequest| async move {
+                let bytes = request::read_body_with_limit(req, 1024).await?;
+                Ok(response::text(StatusCode::OK, format!("read {} bytes", bytes.len())))
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .put(format!("{}/limited", base))
+            .body("small payload")
+            .send()
+            .await
+            .expect("PUT /limited");
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.text().await.expect("body"), "read 13 bytes");
 
         handle.abort();
     }
