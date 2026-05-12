@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `lithair_core::app::request` module with body-reading helpers for custom
+  routes (#63):
+  - `read_body(req) -> Result<Vec<u8>>` — drain request body into bytes
+  - `read_body_with_limit(req, max_bytes) -> Result<Vec<u8>>` — bounded read
+    with `Content-Length` pre-check and post-collection enforcement
+  - `read_body_as_string(req) -> Result<String>` — drain + UTF-8 decode
+  - `read_body_json::<T>(req) -> Result<T>` — drain + `serde_json::from_slice`
+
+  Closes the last consumer-side leak below the Lithair abstraction (after
+  #59 closed handler signatures and #61 closed the response builder).
+  Consumers like kovre serving `PUT /api/config` no longer need to re-add
+  `http-body-util` and `bytes` as direct dependencies just to call
+  `BodyExt::collect()` and walk the resulting `Bytes`.
+
 ## [0.5.0] - 2026-05-12
 
 ### Added
