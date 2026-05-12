@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `RouteRequest` and `RouteResponse` type aliases in `lithair_core::app` for
+  consumer ergonomics. Custom-route consumers can now drop direct deps on
+  `bytes`, `http`, `http-body-util`, and `hyper` from their `Cargo.toml` when
+  they only need to type the handler signature — the four crates remain
+  transitive deps of `lithair-core`, but no longer have to be tracked in
+  lock-step by every downstream `Cargo.toml`. `http::Method` and
+  `http::StatusCode` are also re-exported from `lithair_core::app` for the
+  same reason (#59).
+- `LithairServerBuilder::route_async` — convenience builder that accepts an
+  async-closure handler and applies `Box::pin` internally. Mirrors the common
+  `|req| async move { ... }` ergonomic while leaving the existing
+  `with_route` (manual `Pin<Box<dyn Future<...>>>`) available for handlers
+  that need explicit pinning control or that compose pre-built futures (#59).
+
 ## [0.3.0] - 2026-05-12
 
 ### Added

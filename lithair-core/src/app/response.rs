@@ -3,16 +3,20 @@
 //! These functions simplify building common HTTP responses
 //! so you don't need to assemble `Response::builder()` chains by hand.
 //!
+//! Every helper returns a [`RouteResponse`] — the same type aliased in
+//! [`crate::app`] — so handler call sites can drop direct deps on `hyper`,
+//! `http-body-util`, and `bytes` (see lithair/lithair#59).
+//!
 //! # Example
 //!
 //! ```rust,ignore
-//! use lithair_core::app::response;
-//! use http::StatusCode;
+//! use lithair_core::app::{response, StatusCode};
 //!
 //! // In a route handler:
 //! Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#))
 //! ```
 
+use super::RouteResponse;
 use bytes::Bytes;
 use http::StatusCode;
 use http_body_util::Full;
@@ -27,7 +31,7 @@ use serde_json::Value;
 /// `serde_json::json!` or hold a `serde_json::Value`, prefer
 /// [`json_value`] to avoid the `.to_string()` round-trip. If you're
 /// serializing a typed struct, prefer [`json_serialize`].
-pub fn json(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>> {
+pub fn json(status: StatusCode, body: impl Into<String>) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
@@ -57,7 +61,7 @@ pub fn json(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>
 ///     &json!({"id": 42, "status": "queued"}),
 /// );
 /// ```
-pub fn json_value(status: StatusCode, body: &Value) -> Response<Full<Bytes>> {
+pub fn json_value(status: StatusCode, body: &Value) -> RouteResponse {
     // `serde_json::to_vec` only fails when a custom `Serialize` impl
     // emits an error or a map has non-string keys. A `Value` produced
     // by `serde_json::json!` or `Value` constructors can never trigger
@@ -96,7 +100,7 @@ pub fn json_value(status: StatusCode, body: &Value) -> Response<Full<Bytes>> {
 pub fn json_serialize<T: Serialize + ?Sized>(
     status: StatusCode,
     body: &T,
-) -> Result<Response<Full<Bytes>>, serde_json::Error> {
+) -> Result<RouteResponse, serde_json::Error> {
     let bytes = serde_json::to_vec(body)?;
     Ok(Response::builder()
         .status(status)
@@ -106,7 +110,7 @@ pub fn json_serialize<T: Serialize + ?Sized>(
 }
 
 /// Plain-text response with the given status code.
-pub fn text(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>> {
+pub fn text(status: StatusCode, body: impl Into<String>) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "text/plain; charset=utf-8")
@@ -115,7 +119,7 @@ pub fn text(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>
 }
 
 /// HTML response with the given status code.
-pub fn html(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>> {
+pub fn html(status: StatusCode, body: impl Into<String>) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "text/html; charset=utf-8")
@@ -124,7 +128,7 @@ pub fn html(status: StatusCode, body: impl Into<String>) -> Response<Full<Bytes>
 }
 
 /// 302 redirect to the given location.
-pub fn redirect(location: &str) -> Response<Full<Bytes>> {
+pub fn redirect(location: &str) -> RouteResponse {
     Response::builder()
         .status(StatusCode::FOUND)
         .header("Location", location)
@@ -133,7 +137,7 @@ pub fn redirect(location: &str) -> Response<Full<Bytes>> {
 }
 
 /// Empty-body response with the given status code.
-pub fn empty(status: StatusCode) -> Response<Full<Bytes>> {
+pub fn empty(status: StatusCode) -> RouteResponse {
     Response::builder()
         .status(status)
         .body(Full::new(Bytes::new()))
@@ -146,7 +150,7 @@ mod tests {
     use http_body_util::BodyExt;
     use serde_json::json;
 
-    async fn body_bytes(resp: Response<Full<Bytes>>) -> Vec<u8> {
+    async fn body_bytes(resp: RouteResponse) -> Vec<u8> {
         resp.into_body().collect().await.expect("collect body").to_bytes().to_vec()
     }
 

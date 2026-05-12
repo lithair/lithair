@@ -45,6 +45,59 @@ pub use declarative_serve::DeclarativeServe;
 pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 
 // ============================================================================
+// Public route-handler type aliases (issue #59)
+// ============================================================================
+//
+// Consumers registering custom routes via `LithairServerBuilder::with_route`
+// only need to spell out the request and response types in their handler
+// signatures. Exposing them as aliases — together with the underlying
+// `http::Method` and `http::StatusCode` re-exports — lets downstream crates
+// drop direct dependencies on `bytes`, `http`, `http-body-util`, and `hyper`
+// from their `Cargo.toml` when they don't otherwise interact with those
+// crates. See `lithair/lithair#59` for the motivating use case (kovre's
+// custom dashboard routes).
+
+/// Request passed to handlers registered via
+/// [`LithairServerBuilder::with_route`], [`LithairServerBuilder::route_async`],
+/// and [`LithairServerBuilder::with_not_found_handler`].
+///
+/// This is a type alias for `hyper::Request<hyper::body::Incoming>` — no
+/// wrapping, no overhead. The alias exists so consumers can type their
+/// handlers without depending on `hyper` directly.
+pub type RouteRequest = hyper::Request<hyper::body::Incoming>;
+
+/// Response returned by handlers registered via
+/// [`LithairServerBuilder::with_route`], [`LithairServerBuilder::route_async`],
+/// and [`LithairServerBuilder::with_not_found_handler`], and by every helper
+/// in [`response`] (`json`, `json_value`, `json_serialize`, `text`, `html`,
+/// `redirect`, `empty`).
+///
+/// This is a type alias for `hyper::Response<http_body_util::Full<bytes::Bytes>>`
+/// — no wrapping, no overhead. The alias exists so consumers can type their
+/// handlers and return values without depending on `hyper`, `http-body-util`,
+/// or `bytes` directly.
+pub type RouteResponse = hyper::Response<http_body_util::Full<bytes::Bytes>>;
+
+/// HTTP method re-exported from the `http` crate.
+///
+/// `LithairServerBuilder::with_route` accepts a `http::Method`; re-exporting
+/// it lets consumers write `use lithair_core::app::Method;` instead of pulling
+/// in the `http` crate as a direct dependency.
+pub use http::Method;
+
+/// HTTP status code re-exported from the `http` crate.
+///
+/// All response helpers in [`response`] accept a `http::StatusCode`;
+/// re-exporting it lets consumers write `use lithair_core::app::StatusCode;`
+/// instead of pulling in the `http` crate as a direct dependency.
+///
+/// Note: this is the `http` crate's `StatusCode`, **not** the Lithair custom
+/// `lithair_core::http::StatusCode` enum (which is used by the lithair-native
+/// `HttpServer` / `Route` abstraction). The two types are distinct — this
+/// alias matches the one used by `with_route` and the `response::*` helpers.
+pub use http::StatusCode;
+
+// ============================================================================
 // TLS support types
 // ============================================================================
 
@@ -230,17 +283,19 @@ pub struct RaftCrudOperation {
     pub response_tx: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
 }
 
-/// Type alias for async route handlers
+/// Type alias for async route handlers, as stored internally after a call to
+/// [`LithairServerBuilder::with_route`] or
+/// [`LithairServerBuilder::route_async`].
+///
+/// The handler input/output types are exposed as [`RouteRequest`] and
+/// [`RouteResponse`] for consumers; this alias just bundles the
+/// `Arc<dyn Fn(...) -> Pin<Box<dyn Future>>>` machinery used by the dispatcher.
 pub type RouteHandler = Arc<
     dyn Fn(
-            hyper::Request<hyper::body::Incoming>,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>,
-                    > + Send,
-            >,
-        > + Send
+            RouteRequest,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RouteResponse>> + Send>>
+        + Send
         + Sync,
 >;
 
@@ -5526,6 +5581,124 @@ mod tests {
             resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
             "application/json"
         );
+
+        handle.abort();
+    }
+
+    // ------------------------------------------------------------------
+    // Route handler type aliases + `route_async` helper (issue #59).
+    //
+    // The aliases (`RouteRequest`, `RouteResponse`) and the re-exports
+    // (`Method`, `StatusCode`) exist so consumers can write handler
+    // signatures without depending on `bytes`, `http`, `http-body-util`,
+    // and `hyper` directly. The tests below prove:
+    //
+    // 1. The aliases are drop-in compatible with the existing
+    //    `with_route` signature (no behavior change).
+    // 2. The `route_async` helper accepts a plain async closure — no
+    //    `Box::pin` boilerplate at the call site.
+    // 3. Both registration paths route requests to the same dispatcher
+    //    and produce the same response shape, so consumers can pick
+    //    based on ergonomics alone.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn with_route_alias_signature_compiles_and_serves() {
+        // Prove `RouteRequest`/`RouteResponse` are drop-in replacements
+        // for the long inline hyper types: register a route whose
+        // closure uses *only* the public aliases plus the re-exported
+        // `Method` / `StatusCode`, and dispatch a request through it.
+        use super::{response, Method, RouteRequest, RouteResponse, StatusCode};
+
+        let server = LithairServer::new()
+            .with_route(Method::GET, "/issue-59-aliases", |_req: RouteRequest| {
+                Box::pin(async move {
+                    let resp: RouteResponse = response::json(StatusCode::OK, r#"{"alias":"ok"}"#);
+                    Ok(resp)
+                })
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/issue-59-aliases", base))
+            .await
+            .expect("GET /issue-59-aliases");
+        assert_eq!(resp.status(), 200);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "application/json"
+        );
+        let body = resp.text().await.expect("body");
+        assert_eq!(body, r#"{"alias":"ok"}"#);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn route_async_compiles_without_box_pin_and_serves() {
+        // `route_async` accepts a plain async closure — no manual
+        // `Box::pin`, no explicit `Pin<Box<dyn Future>>` return type.
+        // The dispatcher must still route the request correctly and
+        // return the body the handler produced.
+        use super::{response, Method, RouteRequest, StatusCode};
+
+        let server = LithairServer::new()
+            .route_async(Method::POST, "/issue-59-route-async", |_req: RouteRequest| async move {
+                Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{}/issue-59-route-async", base))
+            .send()
+            .await
+            .expect("POST /issue-59-route-async");
+        assert_eq!(resp.status(), 202);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "application/json"
+        );
+        let body = resp.text().await.expect("body");
+        assert_eq!(body, r#"{"status":"queued"}"#);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn route_async_and_with_route_share_dispatch_precedence() {
+        // Two routes registered via the two registration paths must
+        // both win against the default ops endpoints. This is a
+        // regression test against `route_async` accidentally routing
+        // through a different code path than `with_route` (which would
+        // be a silent behavior split).
+        use super::{response, Method, RouteRequest, StatusCode};
+
+        let server = LithairServer::new()
+            // Override the built-in /health via the *new* helper.
+            .route_async(Method::GET, "/health", |_req: RouteRequest| async move {
+                Ok(response::json(StatusCode::IM_A_TEAPOT, r#"{"status":"teapot-async"}"#))
+            })
+            // Override /ready via the existing `with_route` API.
+            .with_route(Method::GET, "/ready", |_req: RouteRequest| {
+                Box::pin(async move {
+                    Ok(response::json(StatusCode::IM_A_TEAPOT, r#"{"status":"teapot-with"}"#))
+                })
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let health = reqwest::get(format!("{}/health", base)).await.expect("GET /health succeeded");
+        assert_eq!(health.status(), 418, "route_async override must take precedence");
+        assert_eq!(health.text().await.expect("body"), r#"{"status":"teapot-async"}"#);
+
+        let ready = reqwest::get(format!("{}/ready", base)).await.expect("GET /ready succeeded");
+        assert_eq!(ready.status(), 418, "with_route override must still work");
+        assert_eq!(ready.text().await.expect("body"), r#"{"status":"teapot-with"}"#);
 
         handle.abort();
     }
