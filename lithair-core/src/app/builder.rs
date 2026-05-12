@@ -1214,7 +1214,7 @@ impl LithairServerBuilder {
     /// `with_route` requires the handler to return a manually pinned future
     /// (`Box::pin(async move { ... })`). For the common case where you just
     /// want to write `|req| async move { ... }`, prefer
-    /// [`Self::route_async`].
+    /// [`Self::with_route_async`].
     ///
     /// # Example
     /// ```ignore
@@ -1264,13 +1264,13 @@ impl LithairServerBuilder {
     /// This is the ergonomic counterpart of [`Self::with_route`]: the handler
     /// is an `async` closure (or a regular closure returning a future), and
     /// the builder applies the `Box::pin` internally. Behaviour is
-    /// identical — `route_async` forwards into the same dispatch path,
+    /// identical — `with_route_async` forwards into the same dispatch path,
     /// preserving the "custom routes win over model and ops endpoints"
     /// precedence.
     ///
     /// Use [`Self::with_route`] when you need to construct the future from
     /// outside (e.g. an existing pinned future, or a free `fn` that already
-    /// returns `Pin<Box<dyn Future<...>>>`). Use `route_async` for everything
+    /// returns `Pin<Box<dyn Future<...>>>`). Use `with_route_async` for everything
     /// else.
     ///
     /// # Example
@@ -1278,13 +1278,13 @@ impl LithairServerBuilder {
     /// use lithair_core::app::{LithairServer, Method, RouteRequest, StatusCode, response};
     ///
     /// LithairServer::new()
-    ///     .route_async(Method::POST, "/api/jobs/:name/run", |_req: RouteRequest| async move {
+    ///     .with_route_async(Method::POST, "/api/jobs/:name/run", |_req: RouteRequest| async move {
     ///         Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
     ///     })
     ///     .serve()
     ///     .await?;
     /// ```
-    pub fn route_async<F, Fut>(
+    pub fn with_route_async<F, Fut>(
         self,
         method: http::Method,
         path: impl Into<String>,
@@ -1294,7 +1294,12 @@ impl LithairServerBuilder {
         F: Fn(RouteRequest) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = Result<RouteResponse>> + Send + 'static,
     {
-        self.with_route(method, path, move |req| Box::pin(handler(req)))
+        self.with_route(method, path, move |req| {
+            Box::pin(handler(req))
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<RouteResponse>> + Send>,
+                >
+        })
     }
 
     /// Set a custom handler for 404 Not Found responses.

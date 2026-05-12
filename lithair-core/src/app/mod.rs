@@ -58,7 +58,7 @@ pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 // custom dashboard routes).
 
 /// Request passed to handlers registered via
-/// [`LithairServerBuilder::with_route`], [`LithairServerBuilder::route_async`],
+/// [`LithairServerBuilder::with_route`], [`LithairServerBuilder::with_route_async`],
 /// and [`LithairServerBuilder::with_not_found_handler`].
 ///
 /// This is a type alias for `hyper::Request<hyper::body::Incoming>` — no
@@ -67,7 +67,7 @@ pub use model_handler::{DeclarativeModelHandler, ModelHandler};
 pub type RouteRequest = hyper::Request<hyper::body::Incoming>;
 
 /// Response returned by handlers registered via
-/// [`LithairServerBuilder::with_route`], [`LithairServerBuilder::route_async`],
+/// [`LithairServerBuilder::with_route`], [`LithairServerBuilder::with_route_async`],
 /// and [`LithairServerBuilder::with_not_found_handler`], and by every helper
 /// in [`response`] (`json`, `json_value`, `json_serialize`, `text`, `html`,
 /// `redirect`, `empty`).
@@ -285,7 +285,7 @@ pub struct RaftCrudOperation {
 
 /// Type alias for async route handlers, as stored internally after a call to
 /// [`LithairServerBuilder::with_route`] or
-/// [`LithairServerBuilder::route_async`].
+/// [`LithairServerBuilder::with_route_async`].
 ///
 /// The handler input/output types are exposed as [`RouteRequest`] and
 /// [`RouteResponse`] for consumers; this alias just bundles the
@@ -5586,7 +5586,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Route handler type aliases + `route_async` helper (issue #59).
+    // Route handler type aliases + `with_route_async` helper (issue #59).
     //
     // The aliases (`RouteRequest`, `RouteResponse`) and the re-exports
     // (`Method`, `StatusCode`) exist so consumers can write handler
@@ -5595,7 +5595,7 @@ mod tests {
     //
     // 1. The aliases are drop-in compatible with the existing
     //    `with_route` signature (no behavior change).
-    // 2. The `route_async` helper accepts a plain async closure — no
+    // 2. The `with_route_async` helper accepts a plain async closure — no
     //    `Box::pin` boilerplate at the call site.
     // 3. Both registration paths route requests to the same dispatcher
     //    and produce the same response shape, so consumers can pick
@@ -5636,15 +5636,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_async_compiles_without_box_pin_and_serves() {
-        // `route_async` accepts a plain async closure — no manual
+    async fn with_route_async_compiles_without_box_pin_and_serves() {
+        // `with_route_async` accepts a plain async closure — no manual
         // `Box::pin`, no explicit `Pin<Box<dyn Future>>` return type.
         // The dispatcher must still route the request correctly and
         // return the body the handler produced.
         use super::{response, Method, RouteRequest, StatusCode};
 
         let server = LithairServer::new()
-            .route_async(Method::POST, "/issue-59-route-async", |_req: RouteRequest| async move {
+            .with_route_async(Method::POST, "/issue-59-route-async", |_req: RouteRequest| async move {
                 Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
             })
             .build()
@@ -5669,17 +5669,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_async_and_with_route_share_dispatch_precedence() {
+    async fn with_route_async_and_with_route_share_dispatch_precedence() {
         // Two routes registered via the two registration paths must
         // both win against the default ops endpoints. This is a
-        // regression test against `route_async` accidentally routing
+        // regression test against `with_route_async` accidentally routing
         // through a different code path than `with_route` (which would
         // be a silent behavior split).
         use super::{response, Method, RouteRequest, StatusCode};
 
         let server = LithairServer::new()
             // Override the built-in /health via the *new* helper.
-            .route_async(Method::GET, "/health", |_req: RouteRequest| async move {
+            .with_route_async(Method::GET, "/health", |_req: RouteRequest| async move {
                 Ok(response::json(StatusCode::IM_A_TEAPOT, r#"{"status":"teapot-async"}"#))
             })
             // Override /ready via the existing `with_route` API.
@@ -5693,7 +5693,7 @@ mod tests {
         let (base, handle) = spawn_for_test(server).await;
 
         let health = reqwest::get(format!("{}/health", base)).await.expect("GET /health succeeded");
-        assert_eq!(health.status(), 418, "route_async override must take precedence");
+        assert_eq!(health.status(), 418, "with_route_async override must take precedence");
         assert_eq!(health.text().await.expect("body"), r#"{"status":"teapot-async"}"#);
 
         let ready = reqwest::get(format!("{}/ready", base)).await.expect("GET /ready succeeded");

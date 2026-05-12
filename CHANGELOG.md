@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lock-step by every downstream `Cargo.toml`. `http::Method` and
   `http::StatusCode` are also re-exported from `lithair_core::app` for the
   same reason (#59).
-- `LithairServerBuilder::route_async` — convenience builder that accepts an
+- `LithairServerBuilder::with_route_async` — convenience builder that accepts an
   async-closure handler and applies `Box::pin` internally. Mirrors the common
   `|req| async move { ... }` ergonomic while leaving the existing
   `with_route` (manual `Pin<Box<dyn Future<...>>>`) available for handlers
