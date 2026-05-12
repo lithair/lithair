@@ -5706,4 +5706,72 @@ mod tests {
 
         handle.abort();
     }
+
+    // ------------------------------------------------------------------
+    // `with_not_found_handler_async` (issue #61).
+    //
+    // Mirrors the `with_route` → `with_route_async` pairing from v0.4.0:
+    // a plain async closure registers a 404 handler, no manual `Box::pin`.
+    // Tests:
+    //   1. The async variant routes through to the custom 404 path and
+    //      its body/status reach the wire.
+    //   2. The sync-pinned variant still works (regression guard).
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn with_not_found_handler_async_compiles_without_box_pin_and_serves() {
+        use super::{response, RouteRequest, StatusCode};
+
+        let server = LithairServer::new()
+            .with_not_found_handler_async(|req: RouteRequest| async move {
+                let path = req.uri().path().to_string();
+                Ok(response::json_value(
+                    StatusCode::NOT_FOUND,
+                    &serde_json::json!({"error": "not_found", "path": path}),
+                ))
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/nope/missing", base)).await.expect("GET /nope/missing");
+        assert_eq!(resp.status(), 404);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "application/json"
+        );
+
+        let body: serde_json::Value = resp.json().await.expect("json body");
+        assert_eq!(body, serde_json::json!({"error": "not_found", "path": "/nope/missing"}));
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn with_not_found_handler_sync_pinned_still_works() {
+        // Regression: the sync-pinned `with_not_found_handler` must keep
+        // working unchanged. Adding the `_async` variant is purely additive.
+        use super::{response, StatusCode};
+
+        let server = LithairServer::new()
+            .with_not_found_handler(|_req| {
+                Box::pin(async {
+                    Ok(response::html(StatusCode::NOT_FOUND, "<h1>Page not found</h1>"))
+                })
+            })
+            .build()
+            .expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/nope", base)).await.expect("GET /nope");
+        assert_eq!(resp.status(), 404);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "text/html; charset=utf-8"
+        );
+        let body = resp.text().await.expect("body");
+        assert_eq!(body, "<h1>Page not found</h1>");
+
+        handle.abort();
+    }
 }
