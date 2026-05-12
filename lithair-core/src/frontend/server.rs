@@ -152,12 +152,24 @@ impl FrontendServer {
     }
 
     /// Handle HTTP request for assets
+    ///
+    /// Supports both `GET` and `HEAD`. For a HEAD request the response
+    /// is identical to GET (same status, same headers including
+    /// `Content-Type` and `Content-Length`) but the body is empty, as
+    /// required by RFC 7231 §4.3.2. Before this changed (issue #56),
+    /// HEAD requests fell through the `Method::GET` arm into the
+    /// `_ => METHOD_NOT_ALLOWED` branch, which in turn caused the
+    /// caller in `LithairServer::handle_request` to skip static
+    /// dispatch entirely and emit the default `{"error":"Not found"}`
+    /// 404 — confusing SEO crawlers and monitoring probes that issue
+    /// HEAD by default (e.g. `curl -I`, Uptime Robot, Googlebot).
     pub async fn handle_request(&self, req: Req) -> Result<Resp, Infallible> {
         let method = req.method();
+        let is_head = method == Method::HEAD;
         let mut path = req.uri().path().to_string();
 
         match method {
-            &Method::GET => {
+            &Method::GET | &Method::HEAD => {
                 // Try exact path first
                 let mut result = self.asset_server.serve_asset(&path).await;
 
@@ -175,12 +187,20 @@ impl FrontendServer {
                 }
 
                 match result {
-                    Some((content, mime_type)) => Ok(Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Content-Type", mime_type)
-                        .header("X-Served-From", "Lithair-Memory")
-                        .body(body_from(content))
-                        .unwrap()),
+                    Some((content, mime_type)) => {
+                        // For HEAD we still emit Content-Length matching
+                        // what GET would return, but with an empty body.
+                        let content_length = content.len();
+                        let body_bytes: Bytes =
+                            if is_head { Bytes::new() } else { Bytes::from(content) };
+                        Ok(Response::builder()
+                            .status(StatusCode::OK)
+                            .header("Content-Type", mime_type)
+                            .header("Content-Length", content_length)
+                            .header("X-Served-From", "Lithair-Memory")
+                            .body(body_from(body_bytes))
+                            .unwrap())
+                    }
                     None => {
                         // Return beautiful 404 HTML page with terminal style
                         let html_404 = r#"<!DOCTYPE html>
@@ -218,10 +238,13 @@ impl FrontendServer {
     </div>
 </body>
 </html>"#;
+                        let body_bytes: Bytes =
+                            if is_head { Bytes::new() } else { Bytes::from(html_404) };
                         Ok(Response::builder()
                             .status(StatusCode::NOT_FOUND)
                             .header("Content-Type", "text/html; charset=utf-8")
-                            .body(body_from(html_404))
+                            .header("Content-Length", html_404.len())
+                            .body(body_from(body_bytes))
                             .unwrap())
                     }
                 }

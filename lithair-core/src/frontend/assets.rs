@@ -148,24 +148,56 @@ fn generate_uuid() -> Uuid {
 fn detect_mime_type(path: &str) -> String {
     let extension = path.rsplit('.').next().unwrap_or("");
 
+    // The catch-all returns `application/octet-stream`, which means
+    // every uncovered extension serves bytes correctly but advertises
+    // the wrong type — bad for SEO, RSS readers, and feed validators.
+    // Issue #56's acceptance criteria explicitly call out `/rss.xml`
+    // (must be `application/xml`), so XML and the most common Astro /
+    // Lithair-served extensions are mapped explicitly. Everything
+    // else still falls through to `application/octet-stream`, which
+    // remains the safe default for unknown binary content.
     match extension.to_lowercase().as_str() {
         "html" | "htm" => "text/html",
         "css" => "text/css",
         "js" | "mjs" => "application/javascript",
         "json" => "application/json",
+        "xml" | "rss" | "atom" => "application/xml",
+        "txt" | "md" => "text/plain; charset=utf-8",
+        "ico" => "image/x-icon",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
+        "webp" => "image/webp",
         "svg" => "image/svg+xml",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "webmanifest" | "manifest" => "application/manifest+json",
+        "pdf" => "application/pdf",
+        "wasm" => "application/wasm",
         _ => "application/octet-stream",
     }
     .to_string()
 }
 
 fn should_compress(mime_type: &str) -> bool {
+    // Strip any MIME parameters (e.g. `; charset=utf-8`) before
+    // matching — `detect_mime_type` now emits charset-qualified
+    // values for text/* types, and the previous exact-string match
+    // would drop those from the compressible set silently.
+    // (Reported by CodeRabbit on PR #57.)
+    let base = mime_type.split(';').next().unwrap_or(mime_type).trim();
     matches!(
-        mime_type,
-        "text/html" | "text/css" | "application/javascript" | "application/json" | "text/plain"
+        base,
+        "text/html"
+            | "text/css"
+            | "text/plain"
+            | "application/javascript"
+            | "application/json"
+            | "application/xml"
+            | "application/manifest+json"
+            | "image/svg+xml"
     )
 }
 
@@ -175,5 +207,55 @@ fn default_cache_ttl(mime_type: &str) -> u32 {
         "text/css" | "application/javascript" => 3600,
         mime if mime.starts_with("image/") => 86400,
         _ => 3600,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_mime_type_maps_common_static_extensions() {
+        // Spot-check the extensions issue #56 specifically called out
+        // (XML and the broader Astro-generated set). The previous
+        // table only covered html/css/js/json/png/jpg/gif/svg, which
+        // meant rss.xml and .webmanifest were served as
+        // `application/octet-stream` — wrong for feed readers and
+        // PWAs.
+        assert_eq!(detect_mime_type("/rss.xml"), "application/xml");
+        assert_eq!(detect_mime_type("/sitemap.xml"), "application/xml");
+        assert_eq!(detect_mime_type("/index.html"), "text/html");
+        assert_eq!(detect_mime_type("/site.webmanifest"), "application/manifest+json");
+        assert_eq!(detect_mime_type("/font.woff2"), "font/woff2");
+        assert_eq!(detect_mime_type("/favicon.ico"), "image/x-icon");
+        // Unknown extension still falls through to the safe default.
+        assert_eq!(detect_mime_type("/blob.unknown"), "application/octet-stream");
+    }
+
+    #[test]
+    fn detect_mime_type_is_case_insensitive() {
+        // Astro sometimes generates uppercase extensions for assets
+        // imported from external sources. The lookup must normalize.
+        assert_eq!(detect_mime_type("/MAP.XML"), "application/xml");
+        assert_eq!(detect_mime_type("/INDEX.HTML"), "text/html");
+    }
+
+    #[test]
+    fn should_compress_ignores_mime_parameters_and_covers_new_types() {
+        // Regression guard: `text/plain` now comes back with a
+        // charset suffix from `detect_mime_type`, and the previous
+        // exact-string match silently dropped it from compression.
+        // Both forms must compress.
+        assert!(should_compress("text/plain"));
+        assert!(should_compress("text/plain; charset=utf-8"));
+        assert!(should_compress("text/html"));
+        // New MIME types added in this fix should be compressible.
+        assert!(should_compress("application/xml"));
+        assert!(should_compress("application/manifest+json"));
+        assert!(should_compress("image/svg+xml"));
+        // Non-text/non-structured types still skip compression.
+        assert!(!should_compress("image/png"));
+        assert!(!should_compress("font/woff2"));
+        assert!(!should_compress("application/octet-stream"));
     }
 }
