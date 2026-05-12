@@ -144,6 +144,102 @@ pub fn empty(status: StatusCode) -> RouteResponse {
         .expect("valid HTTP response")
 }
 
+/// Start a chained response builder for cases that need custom headers
+/// (`Cache-Control`, `ETag`, `Location`, custom CORS) on top of an
+/// arbitrary body — the gap left by [`json`] / [`json_value`] / [`text`]
+/// / [`html`], which hard-code `Content-Type` and nothing else.
+///
+/// The builder wraps [`hyper::Response::builder`] internally and produces
+/// a [`RouteResponse`] at the terminal step. Consumers that previously
+/// dropped to direct `hyper` / `http-body-util` / `bytes` deps just to
+/// set a couple of headers can keep their `Cargo.toml` lean.
+///
+/// # Default status
+///
+/// `200 OK` — matches `hyper::Response::builder()`. Override with
+/// [`ResponseBuilder::status`].
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use lithair_core::app::{response, StatusCode};
+/// use bytes::Bytes;
+///
+/// let asset_bytes: Bytes = Bytes::from_static(b"...");
+/// let resp = response::builder()
+///     .status(StatusCode::OK)
+///     .header("content-type", "application/wasm")
+///     .header("cache-control", "public, max-age=31536000, immutable")
+///     .body(asset_bytes);
+/// ```
+pub fn builder() -> ResponseBuilder {
+    ResponseBuilder::new()
+}
+
+/// Chained builder for [`RouteResponse`] with arbitrary headers.
+///
+/// Created via [`builder`]. Wraps `hyper::Response::builder()` and only
+/// commits to a body at the terminal step ([`Self::body`] /
+/// [`Self::json_value`]), so the intermediate methods stay infallible
+/// and chainable.
+///
+/// See [`builder`] for usage and motivation.
+pub struct ResponseBuilder {
+    inner: hyper::http::response::Builder,
+}
+
+impl ResponseBuilder {
+    fn new() -> Self {
+        Self { inner: Response::builder() }
+    }
+
+    /// Set the HTTP status code. Defaults to `200 OK` if not called.
+    pub fn status(mut self, status: StatusCode) -> Self {
+        self.inner = self.inner.status(status);
+        self
+    }
+
+    /// Append a header. Same semantics as `hyper::Response::builder().header(...)`:
+    /// multiple calls with the same key append rather than overwrite, which
+    /// matches HTTP-level multi-value header behaviour (`Set-Cookie`, etc.).
+    ///
+    /// Accepts anything `AsRef<str>` — `&str`, `String`, `Cow<str>`, etc. —
+    /// so consumers don't have to coerce types at every call site.
+    pub fn header(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {
+        self.inner = self.inner.header(key.as_ref(), value.as_ref());
+        self
+    }
+
+    /// Terminate the chain with an explicit body and produce a
+    /// [`RouteResponse`].
+    ///
+    /// Accepts anything that converts into [`Bytes`] (`Bytes`, `Vec<u8>`,
+    /// `&'static [u8]`, `String`, `&'static str`, …) so static-asset and
+    /// dynamic-payload callers share the same shape.
+    pub fn body(self, body: impl Into<Bytes>) -> RouteResponse {
+        self.inner.body(Full::new(body.into())).expect("valid HTTP response")
+    }
+
+    /// Terminate the chain with a [`serde_json::Value`] body, setting
+    /// `content-type: application/json` and serializing the value to
+    /// bytes via [`serde_json::to_vec`].
+    ///
+    /// Equivalent to chaining `.header("content-type", "application/json")`
+    /// before `.body(serde_json::to_vec(value).unwrap())`, but spells
+    /// the common case out in one call.
+    ///
+    /// As with [`json_value`], serialization of a [`serde_json::Value`]
+    /// produced by `serde_json::json!` cannot fail, so this returns a
+    /// [`RouteResponse`] directly (no `Result`).
+    pub fn json_value(self, value: &Value) -> RouteResponse {
+        let bytes = serde_json::to_vec(value).expect("serde_json::Value always serializes");
+        self.inner
+            .header("content-type", "application/json")
+            .body(Full::new(Bytes::from(bytes)))
+            .expect("valid HTTP response")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +320,85 @@ mod tests {
         let got = body_bytes(resp).await;
         let parsed: serde_json::Value = serde_json::from_slice(&got).unwrap();
         assert_eq!(parsed, json!({"id": 42, "name": "widget"}));
+    }
+
+    // ------------------------------------------------------------------
+    // `response::builder()` chained builder (issue #61).
+    //
+    // The motivating use case is serving content-addressed static assets
+    // with `Cache-Control: immutable` — see kovre's `asset_response()`,
+    // which today imports `bytes`, `http-body-util`, and `hyper` just to
+    // set two headers. These tests pin the surface so consumers can rely
+    // on it.
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn builder_default_status_is_200_ok() {
+        // Skipping `.status(...)` must yield `200 OK`, matching
+        // `hyper::Response::builder()` defaults — otherwise consumers
+        // get a surprise when porting from direct hyper usage.
+        let resp = builder().body(Bytes::from_static(b"hello"));
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn builder_terminates_with_explicit_body_bytes() {
+        let resp = builder().status(StatusCode::CREATED).body(Bytes::from("hello"));
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let got = body_bytes(resp).await;
+        assert_eq!(got, b"hello".to_vec());
+    }
+
+    #[tokio::test]
+    async fn builder_with_custom_headers_emits_them() {
+        // The whole point of `builder()` is letting consumers set
+        // arbitrary headers (Cache-Control on static assets, Location
+        // on redirects, etc.) without dropping to `hyper::Response::builder`.
+        // Verify each one round-trips verbatim.
+        let resp = builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/wasm")
+            .header("cache-control", "public, max-age=31536000, immutable")
+            .body(Bytes::from_static(b"\0asm"));
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers().get("content-type").map(|h| h.to_str().unwrap()),
+            Some("application/wasm")
+        );
+        assert_eq!(
+            resp.headers().get("cache-control").map(|h| h.to_str().unwrap()),
+            Some("public, max-age=31536000, immutable")
+        );
+
+        let got = body_bytes(resp).await;
+        assert_eq!(got, b"\0asm".to_vec());
+    }
+
+    #[tokio::test]
+    async fn builder_json_value_sets_content_type_and_body() {
+        let value = json!({"x": 1, "items": ["a", "b"]});
+        let resp = builder().status(StatusCode::ACCEPTED).json_value(&value);
+
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        assert_eq!(
+            resp.headers().get("content-type").map(|h| h.to_str().unwrap()),
+            Some("application/json")
+        );
+
+        let got = body_bytes(resp).await;
+        let parsed: serde_json::Value = serde_json::from_slice(&got).unwrap();
+        assert_eq!(parsed, value);
+    }
+
+    #[tokio::test]
+    async fn builder_accepts_string_and_static_str_bodies() {
+        // `body: impl Into<Bytes>` must accept `&'static str` and `String`
+        // — the two shapes consumers most often hold. If this stops
+        // compiling, the bound regressed.
+        let _r1 = builder().body("hello");
+        let _r2 = builder().body(String::from("hello"));
+        let _r3 = builder().body(Vec::<u8>::from(b"hello".as_slice()));
     }
 }

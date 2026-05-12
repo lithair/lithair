@@ -1337,6 +1337,48 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Set a 404 handler from an async closure — no `Box::pin` boilerplate.
+    ///
+    /// Ergonomic counterpart of [`Self::with_not_found_handler`], mirroring
+    /// the [`Self::with_route`] → [`Self::with_route_async`] pairing from
+    /// v0.4.0 (#59, #60). The handler is a plain `async` closure (or a
+    /// regular closure returning a future), and the builder applies the
+    /// `Box::pin` internally.
+    ///
+    /// Use [`Self::with_not_found_handler`] when you need to construct the
+    /// future from outside (an existing pinned future, or a free `fn` that
+    /// already returns `Pin<Box<dyn Future<...>>>`). Use this for everything
+    /// else.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use lithair_core::app::{LithairServer, RouteRequest, StatusCode, response};
+    /// use serde_json::json;
+    ///
+    /// LithairServer::new()
+    ///     .with_not_found_handler_async(|req: RouteRequest| async move {
+    ///         let path = req.uri().path().to_string();
+    ///         Ok(response::json_value(
+    ///             StatusCode::NOT_FOUND,
+    ///             &json!({"error": "not_found", "path": path}),
+    ///         ))
+    ///     })
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_not_found_handler_async<F, Fut>(self, handler: F) -> Self
+    where
+        F: Fn(RouteRequest) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<RouteResponse>> + Send + 'static,
+    {
+        self.with_not_found_handler(move |req| {
+            Box::pin(handler(req))
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<RouteResponse>> + Send>,
+                >
+        })
+    }
+
     /// Add declarative route guard for authentication, authorization, etc.
     ///
     /// # Example

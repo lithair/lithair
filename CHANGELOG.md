@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `response::builder()` — chained `ResponseBuilder` returning `RouteResponse`,
+  supporting `.status()`, `.header()`, `.body()`, and `.json_value()`. Lets
+  consumers (e.g. kovre serving static assets with `Cache-Control: immutable`)
+  drop direct `bytes` / `http-body-util` / `hyper` deps for the custom-header
+  case that `response::json` / `text` / `html` can't cover (those hard-code
+  `Content-Type` and nothing else). `body(...)` accepts anything
+  `Into<Bytes>` — `&'static str`, `String`, `Vec<u8>`, `Bytes` — so the same
+  shape covers static-asset and dynamic-payload callers (#61).
+- `LithairServerBuilder::with_not_found_handler_async` — async-closure variant
+  of `with_not_found_handler` that applies `Box::pin` internally. Mirrors
+  `with_route_async` (v0.4.0) for symmetry; the existing sync-pinned variant
+  remains for handlers that need explicit pinning control (#61).
+
 ## [0.4.0] - 2026-05-12
 
 ### Added
