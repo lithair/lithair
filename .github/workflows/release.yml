@@ -17,31 +17,27 @@ jobs:
           fetch-depth: 0
 
       - name: Extract release notes from CHANGELOG
-        id: notes
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Extract the section between "## [VERSION]" and the next "## ["
-          NOTES=$(awk -v v="$VERSION" '
+          # Extract the section between "## [VERSION]" and the next "## [".
+          # Write directly to a file to preserve backticks, dollar signs, and
+          # other shell metacharacters that would otherwise be interpreted
+          # if passed via `--notes "..."` on the command line.
+          awk -v v="$VERSION" '
             $0 ~ "^## \\[" v "\\]" {flag=1; next}
             flag && $0 ~ /^## \[/ {exit}
             flag {print}
-          ' CHANGELOG.md)
+          ' CHANGELOG.md > /tmp/release-notes.md
 
           # Fall back to the annotated tag message if no CHANGELOG section.
-          if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
-            NOTES=$(git for-each-ref --format='%(contents)' "refs/tags/${GITHUB_REF_NAME}")
+          if [ ! -s /tmp/release-notes.md ]; then
+            git for-each-ref --format='%(contents)' "refs/tags/${GITHUB_REF_NAME}" > /tmp/release-notes.md
           fi
 
           # Final fallback: a minimal message.
-          if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
-            NOTES="Release ${GITHUB_REF_NAME}. See CHANGELOG.md for details."
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "Release ${GITHUB_REF_NAME}. See CHANGELOG.md for details." > /tmp/release-notes.md
           fi
-
-          {
-            echo "notes<<RELEASE_NOTES_EOF"
-            echo "$NOTES"
-            echo "RELEASE_NOTES_EOF"
-          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         env:
@@ -49,5 +45,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes "${{ steps.notes.outputs.notes }}" \
+            --notes-file /tmp/release-notes.md \
             --latest
