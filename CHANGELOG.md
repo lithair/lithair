@@ -58,6 +58,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active `/health` poll (named-and-causal error message on timeout). Surfaces
   the next cluster-layer regression in seconds rather than minutes.
 
+## [0.1.4] - 2026-04-29
+
+### Added
+
+- `LithairServer::with_vhost(host, builder)` and `with_default_vhost(builder)`
+  — host-header-based routing primitive enabling multi-site hosting from a
+  single binary without an external proxy (#30, #31). O(1) lookup, 23 tests.
+- `LithairServer::with_redirect(from_host, to_host, ...)` — built-in 301
+  redirect primitive (#36). Preserves path + query, applies to all HTTP
+  methods, self-redirect-loop guard included.
+- Blog post: ["The Layer I Stopped Choosing"](https://arcker.org/blog/2026-04-24-lithair-vhost-routing/).
+
+### Fixed
+
+- Clippy 1.95 compatibility fixes across macros and examples.
+- `host_id` collision fix in the SCC2 store (per-vhost SCC2 derivation now
+  collision-free).
+- `LithairServer` no longer leaks host-agnostic frontends into a matched
+  empty vhost.
+
 ## [0.2.0] - 2026-05-05
 
 ### Removed (breaking)
