@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-12
+
 ### Added
 
 - `response::json_value(status, &serde_json::Value)` for typed JSON
@@ -18,6 +20,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `parse_query_params` (#48). Values like `>foo` are returned as the
   literal string instead of being parsed as a `Gt` filter. First
   occurrence wins on duplicate keys; empty decoded values map to `None`.
+
+### Fixed
+
+- **BDD cluster test isolation** (#29): Raft WAL/snapshot paths were hard-coded
+  to `./data/raft/node_{N}/...` and ignored the test harness's
+  `EXPERIMENT_DATA_BASE` tempdir, causing stale entry replay across runs and
+  apparent leader connection drops (real cause: leader hang on apply-wait-loop
+  for phantom entry indices). New `raft_base_dir()` helper resolves
+  `LITHAIR_DATA_DIR` > `EXPERIMENT_DATA_BASE` > `./data`. Closed 4/11 → 11/11
+  on `real_cluster_test.feature`.
+- **`HttpServer::serve()` panic on std::thread workers** (#52): worker threads
+  called `Handle::current()` from a `std::thread::spawn` context — panics
+  silently, clients see `Empty reply from server`. Latent since the initial
+  threaded-server implementation; surfaced only on in-process mock cluster
+  paths. `serve()` now owns an explicit `tokio::Handle` (reuse from caller or
+  build dedicated multi-thread); per-connection workers use it directly.
+  Closed 0/14 → 14/14 on `distribution_clustering.feature`.
+- **HTTP 404 status on successful static file responses** (#56): static-file
+  dispatch gated on `method == GET`, so HEAD requests (used by `curl -I`,
+  SEO bots, and monitoring probes) fell through to the default 404 JSON
+  handler — body was correct on GET so browsers never noticed, but headers
+  lied for HEAD. Static dispatch now accepts both GET and HEAD; HEAD emits
+  `Content-Length` and an empty body per HTTP spec.
+- `detect_mime_type` extended for `.xml`, `.rss`, `.atom`, `.woff2`,
+  `.webmanifest`, `.ico`, `.wasm`, `.pdf`, `.webp`, `.txt`, `.md` (#56) —
+  `/rss.xml` was previously served as `application/octet-stream`.
+
+### Infrastructure
+
+- Switched CI to [cidx](https://github.com/cidx-org/cidx) v1.7.0 (#53). The
+  workflow `.github/workflows/cidx.yml` replaces the legacy `ci.yml` +
+  `ci-fast.yml`. Developers and sub-agents can now run `cidx run code` (~6s)
+  locally instead of waiting on GitHub Actions wall-clock time.
+- BDD test harness now captures spawned-node stderr/stdout to a deterministic
+  temp dir, and the cluster startup probe replaces a 500 ms sleep with an
+  active `/health` poll (named-and-causal error message on timeout). Surfaces
+  the next cluster-layer regression in seconds rather than minutes.
 
 ## [0.2.0] - 2026-05-05
 
