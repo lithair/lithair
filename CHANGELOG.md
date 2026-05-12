@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   routes (#63):
   - `read_body(req) -> Result<Vec<u8>>` — drain request body into bytes
   - `read_body_with_limit(req, max_bytes) -> Result<Vec<u8>>` — bounded read
-    with `Content-Length` pre-check and post-collection enforcement
+    with a `Content-Length` pre-check plus a streaming `http_body_util::Limited`
+    enforcement that aborts the read as soon as the cap is exceeded (closes
+    the DoS path on chunked / unknown-length bodies — flagged by Gemini)
   - `read_body_as_string(req) -> Result<String>` — drain + UTF-8 decode
   - `read_body_json::<T>(req) -> Result<T>` — drain + `serde_json::from_slice`
 

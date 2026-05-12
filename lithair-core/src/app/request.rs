@@ -35,7 +35,7 @@
 
 use super::RouteRequest;
 use anyhow::{anyhow, bail, Context, Result};
-use http_body_util::BodyExt;
+use http_body_util::{BodyExt, LengthLimitError, Limited};
 use hyper::body::Body;
 use serde::de::DeserializeOwned;
 
@@ -53,22 +53,19 @@ pub async fn read_body(req: RouteRequest) -> Result<Vec<u8>> {
 /// Drain the request body into a byte vector, rejecting any payload
 /// that would exceed `max_bytes`.
 ///
-/// The size is checked twice for defense in depth:
+/// The limit is enforced in two layers for defense in depth:
 ///
 /// 1. **Pre-check** via [`http_body::Body::size_hint`]. When the upper
 ///    bound is known (typically because the client sent a
-///    `Content-Length` header), oversized requests are rejected without
-///    reading any body bytes.
-/// 2. **Post-check** after collection. Chunked / streaming bodies that
-///    don't expose an upper bound are still bounded — the final byte
-///    count is verified against `max_bytes` once the stream finishes,
-///    and oversized bodies error out.
-///
-/// Note: the post-check accepts the full body into memory before
-/// rejecting it. For genuinely adversarial inputs the upstream server
-/// or a reverse proxy should also enforce a request-body limit; this
-/// helper is meant as a sensible default for application code, not a
-/// substitute for transport-level protection.
+///    `Content-Length` header), oversized requests are rejected before
+///    a single body byte is read off the wire.
+/// 2. **Streaming check** via [`http_body_util::Limited`]. The body is
+///    wrapped in a `Limited` adapter that aborts the read as soon as
+///    more than `max_bytes` total bytes have been consumed — so chunked
+///    / streaming bodies that don't expose an upper bound are *not*
+///    fully buffered before being rejected. This closes the DoS path a
+///    malicious client could use by sending a chunked-encoded payload
+///    with no `Content-Length`.
 pub async fn read_body_with_limit(req: RouteRequest, max_bytes: usize) -> Result<Vec<u8>> {
     // Pre-check: if the upper bound is known, refuse oversized requests
     // before reading a single byte.
@@ -82,17 +79,20 @@ pub async fn read_body_with_limit(req: RouteRequest, max_bytes: usize) -> Result
         }
     }
 
-    let bytes = read_body(req).await?;
+    // Streaming check: `Limited` aborts the body stream as soon as
+    // `max_bytes` is exceeded, even for chunked / unknown-length bodies.
+    // The error path inspects the boxed source to distinguish a length
+    // overrun from a generic transport error, so consumers can map the
+    // former to 413 Payload Too Large and the latter to 400 / 500.
+    let collected = Limited::new(req.into_body(), max_bytes).collect().await.map_err(|e| {
+        if e.downcast_ref::<LengthLimitError>().is_some() {
+            anyhow!("request body exceeds limit: limit is {} bytes", max_bytes)
+        } else {
+            anyhow!("failed to read request body: {e}")
+        }
+    })?;
 
-    if bytes.len() > max_bytes {
-        return Err(anyhow!(
-            "request body exceeds limit: read {} bytes, limit is {} bytes",
-            bytes.len(),
-            max_bytes
-        ));
-    }
-
-    Ok(bytes)
+    Ok(collected.to_bytes().to_vec())
 }
 
 /// Drain the request body and decode it as UTF-8.
@@ -215,6 +215,36 @@ mod tests {
         assert!(
             msg.contains("exceeds limit"),
             "error message must mention 'exceeds limit', got: {msg}"
+        );
+        assert!(msg.contains("1024"), "error must include the configured limit, got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn read_body_with_limit_streaming_check_rejects_oversize_payload() {
+        // Exercise the `Limited` streaming-check path directly. Even
+        // when the pre-check is bypassed (or doesn't fire because the
+        // upper bound isn't known), the `Limited` wrapper must abort
+        // the read and surface a `LengthLimitError` that we map to a
+        // human-readable "exceeds limit" message. Real `Incoming`
+        // bodies behind chunked transfers go through the exact same
+        // code path; the e2e test confirms it on the wire.
+        let payload = Bytes::from(vec![b'a'; 2048]);
+        let body = Full::new(payload);
+        let max_bytes: usize = 1024;
+
+        let res = Limited::new(body, max_bytes).collect().await.map_err(|e| {
+            if e.downcast_ref::<LengthLimitError>().is_some() {
+                anyhow!("request body exceeds limit: limit is {} bytes", max_bytes)
+            } else {
+                anyhow!("failed to read request body: {e}")
+            }
+        });
+
+        let err = res.expect_err("Limited must abort the 2 KiB body against a 1 KiB cap");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("exceeds limit"),
+            "streaming check must surface the limit error, got: {msg}"
         );
         assert!(msg.contains("1024"), "error must include the configured limit, got: {msg}");
     }
