@@ -148,15 +148,34 @@ fn generate_uuid() -> Uuid {
 fn detect_mime_type(path: &str) -> String {
     let extension = path.rsplit('.').next().unwrap_or("");
 
+    // The catch-all returns `application/octet-stream`, which means
+    // every uncovered extension serves bytes correctly but advertises
+    // the wrong type — bad for SEO, RSS readers, and feed validators.
+    // Issue #56's acceptance criteria explicitly call out `/rss.xml`
+    // (must be `application/xml`), so XML and the most common Astro /
+    // Lithair-served extensions are mapped explicitly. Everything
+    // else still falls through to `application/octet-stream`, which
+    // remains the safe default for unknown binary content.
     match extension.to_lowercase().as_str() {
         "html" | "htm" => "text/html",
         "css" => "text/css",
         "js" | "mjs" => "application/javascript",
         "json" => "application/json",
+        "xml" | "rss" | "atom" => "application/xml",
+        "txt" | "md" => "text/plain; charset=utf-8",
+        "ico" => "image/x-icon",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
+        "webp" => "image/webp",
         "svg" => "image/svg+xml",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "webmanifest" | "manifest" => "application/manifest+json",
+        "pdf" => "application/pdf",
+        "wasm" => "application/wasm",
         _ => "application/octet-stream",
     }
     .to_string()
@@ -175,5 +194,36 @@ fn default_cache_ttl(mime_type: &str) -> u32 {
         "text/css" | "application/javascript" => 3600,
         mime if mime.starts_with("image/") => 86400,
         _ => 3600,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_mime_type_maps_common_static_extensions() {
+        // Spot-check the extensions issue #56 specifically called out
+        // (XML and the broader Astro-generated set). The previous
+        // table only covered html/css/js/json/png/jpg/gif/svg, which
+        // meant rss.xml and .webmanifest were served as
+        // `application/octet-stream` — wrong for feed readers and
+        // PWAs.
+        assert_eq!(detect_mime_type("/rss.xml"), "application/xml");
+        assert_eq!(detect_mime_type("/sitemap.xml"), "application/xml");
+        assert_eq!(detect_mime_type("/index.html"), "text/html");
+        assert_eq!(detect_mime_type("/site.webmanifest"), "application/manifest+json");
+        assert_eq!(detect_mime_type("/font.woff2"), "font/woff2");
+        assert_eq!(detect_mime_type("/favicon.ico"), "image/x-icon");
+        // Unknown extension still falls through to the safe default.
+        assert_eq!(detect_mime_type("/blob.unknown"), "application/octet-stream");
+    }
+
+    #[test]
+    fn detect_mime_type_is_case_insensitive() {
+        // Astro sometimes generates uppercase extensions for assets
+        // imported from external sources. The lookup must normalize.
+        assert_eq!(detect_mime_type("/MAP.XML"), "application/xml");
+        assert_eq!(detect_mime_type("/INDEX.HTML"), "text/html");
     }
 }

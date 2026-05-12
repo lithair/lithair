@@ -2257,7 +2257,16 @@ impl LithairServer {
             None => &self.frontend_engines,
         };
 
-        if method == hyper::Method::GET && !active_engines.is_empty() {
+        // Static-file dispatch accepts both GET and HEAD. HEAD must
+        // return the same status + headers as GET with an empty body
+        // (RFC 7231 §4.3.2). Before this change, HEAD requests fell
+        // straight through to the default 404 below — search engines
+        // and uptime monitors that probe with HEAD saw
+        // `404 Not Found / Content-Type: application/json` on every
+        // static page, even though the body served on GET was correct
+        // (issue #56).
+        let is_head = method == hyper::Method::HEAD;
+        if (method == hyper::Method::GET || is_head) && !active_engines.is_empty() {
             // Sort prefixes by length (longest first) for proper matching
             let mut prefixes: Vec<_> = active_engines.keys().collect();
             prefixes.sort_by_key(|b| std::cmp::Reverse(b.len()));
@@ -2271,11 +2280,15 @@ impl LithairServer {
                         // Check if this engine has the asset in its SCC2 storage
                         if let Some(asset) = engine.get_asset(&path).await {
                             // Use mime_type from asset
+                            let content_length = asset.content.len();
+                            let body_bytes: Bytes =
+                                if is_head { Bytes::new() } else { Bytes::from(asset.content) };
                             return Ok(hyper::Response::builder()
                                 .status(200)
                                 .header("Content-Type", asset.mime_type)
+                                .header("Content-Length", content_length)
                                 .header("Cache-Control", "public, max-age=31536000, immutable")
-                                .body(Full::new(Bytes::from(asset.content)))
+                                .body(Full::new(body_bytes))
                                 .expect("valid HTTP response"));
                         }
                     }
@@ -5356,6 +5369,163 @@ mod tests {
             .await
             .expect("POST /health succeeded");
         assert_eq!(resp.status(), 404);
+
+        handle.abort();
+    }
+
+    // ------------------------------------------------------------------
+    // Static-file HEAD support (issue #56).
+    //
+    // Before the fix, the static-file dispatch in `handle_request` only
+    // matched `Method::GET`, and `FrontendServer::handle_request`
+    // returned `METHOD_NOT_ALLOWED` for anything else. The result: any
+    // HEAD probe on a perfectly-served static page (homepage, blog
+    // post, rss.xml) fell through to the default
+    // `{"error":"Not found"}` JSON 404 — silently breaking SEO
+    // crawlers, monitors (`curl -I`, Uptime Robot), and any other
+    // tooling that does HEAD-then-GET.
+    //
+    // RFC 7231 §4.3.2: HEAD must return the same status and headers
+    // as GET, with an empty body.
+    // ------------------------------------------------------------------
+
+    /// Build a LithairServer wired with a single in-memory frontend
+    /// engine serving the supplied (path, content, mime) tuples.
+    async fn server_with_frontend(assets: &[(&str, &[u8])]) -> (LithairServer, tempfile::TempDir) {
+        // FrontendEngine::new requires an on-disk data_dir for the
+        // event store; the tempdir is dropped when the test ends.
+        let tmp = tempfile::tempdir().expect("tempdir for frontend event store");
+        let engine = crate::frontend::FrontendEngine::new("test_static", tmp.path())
+            .await
+            .expect("create FrontendEngine");
+
+        for (path, content) in assets {
+            engine.update_asset(path, content.to_vec()).await.expect("insert asset");
+        }
+
+        let mut server = LithairServer::new().build().expect("build server");
+        // Inject directly — bypasses the on-disk load_directory path
+        // that LithairServer normally uses in `serve()` (#56 test
+        // doesn't exercise that path).
+        server.frontend_engines.insert("/".to_string(), std::sync::Arc::new(engine));
+        (server, tmp)
+    }
+
+    #[tokio::test]
+    async fn static_file_get_returns_200_with_correct_content_type() {
+        let (server, _tmp) = server_with_frontend(&[("/index.html", b"<h1>home</h1>")]).await;
+        let (base, handle) = spawn_for_test(server).await;
+
+        let resp = reqwest::get(format!("{}/index.html", base)).await.expect("GET /index.html");
+        assert_eq!(resp.status(), 200);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "text/html"
+        );
+        let body = resp.text().await.expect("body");
+        assert_eq!(body, "<h1>home</h1>");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn static_file_head_returns_200_with_correct_content_type_and_no_body() {
+        // The original #56 reproduction: `curl -I /index.html` must
+        // return 200 OK + text/html, not 404 + application/json.
+        let (server, _tmp) = server_with_frontend(&[("/index.html", b"<h1>home</h1>")]).await;
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .head(format!("{}/index.html", base))
+            .send()
+            .await
+            .expect("HEAD /index.html");
+
+        assert_eq!(resp.status(), 200, "HEAD must mirror GET status");
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "text/html",
+            "HEAD must mirror GET content-type"
+        );
+        // Content-Length must describe what GET would have sent.
+        assert_eq!(
+            resp.headers().get("content-length").and_then(|v| v.to_str().ok()),
+            Some("13"),
+            "HEAD must advertise the GET payload size"
+        );
+        let body = resp.bytes().await.expect("body");
+        assert!(body.is_empty(), "HEAD must not carry a body");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn static_file_head_rss_xml_returns_200_with_xml_content_type() {
+        // The #56 acceptance list calls out /rss.xml specifically —
+        // RSS readers and feed validators issue HEAD before GET. The
+        // content-type must come from the asset's MIME guess, not be
+        // hard-coded to text/html.
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?><rss/>"#;
+        let (server, _tmp) = server_with_frontend(&[("/rss.xml", xml)]).await;
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+        let resp = client.head(format!("{}/rss.xml", base)).send().await.expect("HEAD /rss.xml");
+
+        assert_eq!(resp.status(), 200);
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        // mime_guess maps .xml to either text/xml or application/xml
+        // depending on platform DB; the key invariant is "not
+        // application/json" (the broken 404 default).
+        assert!(ct.contains("xml"), "expected an XML content-type, got `{}`", ct);
+
+        let body = resp.bytes().await.expect("body");
+        assert!(body.is_empty(), "HEAD must not carry a body");
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn unknown_route_returns_404_with_json_error_negative_case() {
+        // The negative case from #56's acceptance criteria: when no
+        // frontend (and no other handler) matches, the default
+        // `{"error":"Not found"}` JSON 404 must still fire — both for
+        // GET and for HEAD. We deliberately do NOT register a
+        // frontend here so the static dispatch is skipped entirely.
+        let server = LithairServer::new().build().expect("build server");
+        let (base, handle) = spawn_for_test(server).await;
+
+        let client = reqwest::Client::new();
+
+        // GET on a path with no handler.
+        let resp = client
+            .get(format!("{}/totally-unknown", base))
+            .send()
+            .await
+            .expect("GET /totally-unknown");
+        assert_eq!(resp.status(), 404);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "application/json"
+        );
+        let body = resp.text().await.expect("body");
+        assert_eq!(body, r#"{"error":"Not found"}"#);
+
+        // HEAD on the same unmatched path: hyper strips the body
+        // automatically for HEAD responses on the wire, but the
+        // status and content-type must still be the JSON 404 shape.
+        let resp = client.head(format!("{}/totally-unknown", base)).send().await.expect("HEAD");
+        assert_eq!(resp.status(), 404);
+        assert_eq!(
+            resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+            "application/json"
+        );
 
         handle.abort();
     }
