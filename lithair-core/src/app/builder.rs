@@ -1,6 +1,6 @@
 //! Builder pattern for LithairServer
 
-use super::{CustomRoute, LithairServer};
+use super::{CustomRoute, LithairServer, RouteRequest, RouteResponse};
 use crate::config::LithairConfig;
 use crate::session::{PersistentSessionStore, SessionManager};
 use anyhow::Result;
@@ -1206,25 +1206,27 @@ impl LithairServerBuilder {
     /// `/api/items/search` will take priority over the DeclarativeModel
     /// prefix match on `/api/items`.
     ///
-    /// The handler receives a `hyper::Request<Incoming>` and returns a
-    /// `Result<Response<Full<Bytes>>>`.
+    /// The handler receives a [`RouteRequest`] and returns a
+    /// `Result<`[`RouteResponse`]`>`. Both are public type aliases
+    /// re-exported from [`crate::app`], so consumers don't need to depend on
+    /// `hyper`, `http-body-util`, or `bytes` directly to type their handlers.
+    ///
+    /// `with_route` requires the handler to return a manually pinned future
+    /// (`Box::pin(async move { ... })`). For the common case where you just
+    /// want to write `|req| async move { ... }`, prefer
+    /// [`Self::with_route_async`].
     ///
     /// # Example
     /// ```ignore
-    /// use bytes::Bytes;
-    /// use http_body_util::Full;
-    /// use hyper::{Request, Response, body::Incoming};
+    /// use lithair_core::app::{Method, RouteRequest, RouteResponse, StatusCode, response};
     ///
     /// fn health(
-    ///     _req: Request<Incoming>,
+    ///     _req: RouteRequest,
     /// ) -> std::pin::Pin<Box<dyn std::future::Future<
-    ///     Output = anyhow::Result<Response<Full<Bytes>>>,
+    ///     Output = anyhow::Result<RouteResponse>,
     /// > + Send>> {
     ///     Box::pin(async {
-    ///         Ok(Response::builder()
-    ///             .status(200)
-    ///             .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
-    ///             .unwrap())
+    ///         Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#))
     ///     })
     /// }
     ///
@@ -1241,14 +1243,10 @@ impl LithairServerBuilder {
     ) -> Self
     where
         F: Fn(
-                hyper::Request<hyper::body::Incoming>,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<
-                            Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>,
-                        > + Send,
-                >,
-            > + Send
+                RouteRequest,
+            )
+                -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RouteResponse>> + Send>>
+            + Send
             + Sync
             + 'static,
     {
@@ -1258,6 +1256,50 @@ impl LithairServerBuilder {
             handler: Arc::new(handler),
         });
         self
+    }
+
+    /// Add a custom route with an async-closure handler — no `Box::pin`
+    /// boilerplate required.
+    ///
+    /// This is the ergonomic counterpart of [`Self::with_route`]: the handler
+    /// is an `async` closure (or a regular closure returning a future), and
+    /// the builder applies the `Box::pin` internally. Behaviour is
+    /// identical — `with_route_async` forwards into the same dispatch path,
+    /// preserving the "custom routes win over model and ops endpoints"
+    /// precedence.
+    ///
+    /// Use [`Self::with_route`] when you need to construct the future from
+    /// outside (e.g. an existing pinned future, or a free `fn` that already
+    /// returns `Pin<Box<dyn Future<...>>>`). Use `with_route_async` for everything
+    /// else.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use lithair_core::app::{LithairServer, Method, RouteRequest, StatusCode, response};
+    ///
+    /// LithairServer::new()
+    ///     .with_route_async(Method::POST, "/api/jobs/:name/run", |_req: RouteRequest| async move {
+    ///         Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
+    ///     })
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_route_async<F, Fut>(
+        self,
+        method: http::Method,
+        path: impl Into<String>,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(RouteRequest) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<RouteResponse>> + Send + 'static,
+    {
+        self.with_route(method, path, move |req| {
+            Box::pin(handler(req))
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<RouteResponse>> + Send>,
+                >
+        })
     }
 
     /// Set a custom handler for 404 Not Found responses.
@@ -1284,14 +1326,10 @@ impl LithairServerBuilder {
     pub fn with_not_found_handler<F>(mut self, handler: F) -> Self
     where
         F: Fn(
-                hyper::Request<hyper::body::Incoming>,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<
-                            Output = Result<hyper::Response<http_body_util::Full<bytes::Bytes>>>,
-                        > + Send,
-                >,
-            > + Send
+                RouteRequest,
+            )
+                -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RouteResponse>> + Send>>
+            + Send
             + Sync
             + 'static,
     {
