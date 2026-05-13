@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Resolved 11 transitive `cargo-audit` advisories surfaced by `cidx run
+  security` (closes #54). All fixed via `cargo update`; no direct-dep
+  Cargo.toml changes required:
+  - `aws-lc-sys` 0.35.0 → 0.41.0 — RUSTSEC-2026-0044/0045/0046/0047/0048
+  - `bytes` 1.11.0 → 1.11.1 — RUSTSEC-2026-0007
+  - `quinn-proto` 0.11.13 → 0.11.14 — RUSTSEC-2026-0037
+  - `rustls-webpki` 0.103.8 → 0.103.13 — RUSTSEC-2026-0049/0098/0099/0104
+- Added `.gitleaks.toml` with an allowlist for `jwt_token_*_authenticated`
+  documentation placeholders in API examples (10 false positives, all in
+  `docs/guides/crud-integration.md` and `docs/reference/api-reference.md`).
+- Re-enabled the `security` phase in the cidx CI pipeline (`cidx.toml` and
+  regenerated `.github/workflows/cidx.yml`). Two transitive unmaintained
+  warnings remain (`bincode` 2.x and `rustls-pemfile` 2.x) with no
+  published replacement — kept visible in `cargo audit` output without
+  blocking CI.
+
 ## [0.6.0] - 2026-05-12
 
 ### Added

@@ -64,6 +64,22 @@ jobs:
       - name: Run test
         run: ./bin/cidx run test
 
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    needs: [bootstrap]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: cidx-binary
+          path: bin
+      - run: chmod +x bin/cidx
+      - name: Run security
+        run: ./bin/cidx run security
+
   build:
     name: Build
     runs-on: ubuntu-latest

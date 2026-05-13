@@ -1,0 +1,16 @@
+# gitleaks configuration for lithair
+#
+# Extends the bundled default ruleset and allowlists known documentation
+# placeholders that the default `curl-auth-header` rule classifies as
+# secrets.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholder tokens used in API documentation examples"
+regexes = [
+    # JWT placeholders in docs (e.g. `Bearer jwt_token_admin_authenticated`).
+    # These are illustrative, not real credentials.
+    '''jwt_token_[a-z_]+_authenticated''',
+]

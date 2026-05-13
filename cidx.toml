@@ -35,26 +35,26 @@ command = "cargo test --workspace --lib --bins --release"
 [containers.cargo-build]
 command = "cargo build --workspace --release"
 
-# Trivy: filesystem scan, match existing ci.yml severity policy.
+# Trivy filesystem scan. `--skip-dirs target` excludes build artifacts:
+# `cargo package` leaves frozen Cargo.locks under target/package/ that
+# report already-fixed historical CVEs. Source Cargo.lock stays scanned.
+# `--exit-code 0` matches existing policy — trivy stays informational;
+# cargo-audit is the hard gate on Rust deps.
 [containers.trivy]
-severity = "HIGH,CRITICAL"
-exit_code = 0
+command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 
-# cargo-audit: informational locally. 11 pre-existing CVEs in the dep tree
-# (aws-lc-sys, quinn-proto, etc.) are tracked separately; flip back to
-# blocking once they're addressed.
+# cargo-audit: two transitive unmaintained warnings remain (bincode 2.x,
+# rustls-pemfile 2.x) with no published replacement. The preset default
+# adds `--deny warnings` which would fail on them; override the command
+# to run plain `cargo audit` (still fails on real vulnerabilities, just
+# not on warnings) until upstream replacements ship.
 [containers.cargo-audit]
-command = "sh -c 'cargo install cargo-audit && (cargo audit || true)'"
+command = "sh -c 'cargo install --quiet cargo-audit && cargo audit'"
 
 # ─── pipelines ───
-# CI pipeline (GitHub Actions): scope reduced for the initial cidx integration.
-# Security phase runs locally only — surfacing pre-existing CVEs (11 advisories)
-# and gitleaks findings (10, likely false positives in test fixtures) revealed
-# by the integration. Tracked in a follow-up issue; security to be re-added
-# to CI once those are triaged.
 [pipelines.ci]
-phases = ["code", "test", "build"]
-description = "Full CI pipeline (security runs locally pending triage)"
+phases = ["security", "code", "test", "build"]
+description = "Full CI pipeline"
 
 [pipelines.pr]
 phases = ["code", "test"]
