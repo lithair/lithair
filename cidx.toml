@@ -49,7 +49,7 @@ command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 # to run plain `cargo audit` (still fails on real vulnerabilities, just
 # not on warnings) until upstream replacements ship.
 [containers.cargo-audit]
-command = "sh -c 'cargo install --quiet cargo-audit && cargo audit'"
+command = "sh -c 'command -v cargo-audit || cargo install --quiet cargo-audit && cargo audit'"
 
 # ─── pipelines ───
 [pipelines.ci]
