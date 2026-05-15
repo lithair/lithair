@@ -120,6 +120,28 @@ mod macros;
 #[cfg(feature = "macros")]
 pub use lithair_macros::{lithair_model, DeclarativeModel, LifecycleAware, RbacRole};
 
+/// Private re-exports used by derive macros.
+///
+/// These are implementation details that allow `lithair-macros` derives
+/// (e.g. `DeclarativeModel`) to reference external crates without forcing
+/// consumers to declare those crates in their own `Cargo.toml`.
+///
+/// `lithair-macros` is a `proc-macro` crate and therefore cannot expose
+/// non-macro items itself. The canonical workaround (used by `serde`,
+/// `tokio`, etc.) is to host the `__private` namespace on the companion
+/// regular crate — here, `lithair-core`. Macro-emitted code references
+/// `::lithair_core::__private::<crate>::…` instead of `::<crate>::…`.
+///
+/// Do not use these paths from application code — they are not part of the
+/// stable public API and may move or disappear between versions.
+#[doc(hidden)]
+pub mod __private {
+    pub use anyhow;
+    pub use clap;
+    pub use serde_json;
+    pub use tokio;
+}
+
 // Re-exports of main types and traits
 pub use app::LithairServer;
 pub use engine::{RaftstoneApplication, StateEngine};
