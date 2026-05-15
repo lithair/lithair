@@ -792,7 +792,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                 let value_lit = syn::LitStr::new(&value, Span::call_site());
                 quote! {
                     // Public-if condition
-                    if let Ok(__v) = serde_json::to_value(self) {
+                    if let Ok(__v) = ::lithair_core::__private::serde_json::to_value(self) {
                         if let Some(__s) = __v.get(#field_lit).and_then(|x| x.as_str()) {
                             if __s == #value_lit { return true; }
                         }
@@ -1343,9 +1343,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         let default_port = server_attrs.default_port;
         let cli_args = if server_attrs.cli {
             quote! {
-                use clap::Parser;
-
-                #[derive(Parser, Debug)]
+                #[derive(::lithair_core::__private::clap::Parser, Debug)]
                 #[command(name = "lithair-app")]
                 #[command(about = "Lithair Generated Application - One Model = One App!")]
                 struct Args {
@@ -1412,8 +1410,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             quote! {
                 #cli_args
 
-                #[tokio::main]
-                async fn main() -> anyhow::Result<()> {
+                #[::lithair_core::__private::tokio::main]
+                async fn main() -> ::lithair_core::__private::anyhow::Result<()> {
                     let args = Args::parse();
                     #server_logic
                     Ok(())
@@ -1421,8 +1419,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-                #[tokio::main]
-                async fn main() -> anyhow::Result<()> {
+                #[::lithair_core::__private::tokio::main]
+                async fn main() -> ::lithair_core::__private::anyhow::Result<()> {
                     let port = #default_port;
 
                     println!("🚀 Lithair Auto-Generated Application");
@@ -1445,13 +1443,13 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             let name_lit = syn::LitStr::new(name, Span::call_site());
             let name_ident = syn::Ident::new(name, Span::call_site());
             quote! {
-                #name_lit => serde_json::to_value(&self.#name_ident).ok(),
+                #name_lit => ::lithair_core::__private::serde_json::to_value(&self.#name_ident).ok(),
             }
         });
 
         quote! {
-            impl lithair_core::model_inspect::Inspectable for #name {
-                fn get_field_value(&self, field_name: &str) -> Option<serde_json::Value> {
+            impl ::lithair_core::model_inspect::Inspectable for #name {
+                fn get_field_value(&self, field_name: &str) -> Option<::lithair_core::__private::serde_json::Value> {
                     match field_name {
                         #(#field_match_arms)*
                         _ => None,
