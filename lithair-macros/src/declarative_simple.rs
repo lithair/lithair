@@ -1343,6 +1343,11 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         let default_port = server_attrs.default_port;
         let cli_args = if server_attrs.cli {
             quote! {
+                // Bring `Parser` into scope so the generated `Args::parse()`
+                // call below resolves. `as _` keeps the local name space
+                // clean while still importing the trait's associated fns.
+                use ::lithair_core::__private::clap::Parser as _;
+
                 #[derive(::lithair_core::__private::clap::Parser, Debug)]
                 #[command(name = "lithair-app")]
                 #[command(about = "Lithair Generated Application - One Model = One App!")]
@@ -1542,6 +1547,91 @@ mod tests {
             output.contains("serve_on_port"),
             "single-node branch should keep emitting serve_on_port; got:\n{}",
             output
+        );
+    }
+
+    /// Issue #66: macro must reach external crates via
+    /// `lithair_core::__private::*` so consumers don't need to declare
+    /// `serde_json` / `tokio` / `anyhow` / `clap` as direct deps.
+    ///
+    /// Also guards against the regression Gemini caught on PR #67: when
+    /// `#[server(cli)]` is on, the generated `Args::parse()` call needs
+    /// `clap::Parser` in scope at the call site — silently removing the
+    /// trait import (or only emitting the derive path) breaks the
+    /// generated `main()`.
+    #[test]
+    fn server_main_cli_imports_parser_trait_via_private_namespace() {
+        let input = quote! {
+            #[derive(DeclarativeModel)]
+            #[server(main, cli, port = 8080)]
+            struct Product {
+                id: u64,
+                name: String,
+            }
+        };
+
+        let output = derive_declarative_model(input).to_string();
+
+        // Defense in depth: external crates must be reached via
+        // `::lithair_core::__private`, never as bare top-level paths in
+        // the emitted code.
+        assert!(
+            output.contains(":: lithair_core :: __private :: clap"),
+            "clap must be reached via lithair_core::__private; got:\n{}",
+            output
+        );
+        assert!(
+            output.contains(":: lithair_core :: __private :: tokio"),
+            "tokio must be reached via lithair_core::__private; got:\n{}",
+            output
+        );
+        assert!(
+            output.contains(":: lithair_core :: __private :: anyhow"),
+            "anyhow must be reached via lithair_core::__private; got:\n{}",
+            output
+        );
+
+        // Regression guard for the Gemini catch: `Args::parse()` requires
+        // `clap::Parser` to be in scope as a trait, not just the derive
+        // helper. We import it as `Parser as _` to keep the local name
+        // space clean — the marker we check for is the `as _` form.
+        assert!(
+            output.contains("use :: lithair_core :: __private :: clap :: Parser as _"),
+            "Parser trait must be imported into scope (as _) so Args::parse() resolves; got:\n{}",
+            output
+        );
+    }
+
+    /// Issue #66: the bare `DeclarativeModel` derive (no `#[server(...)]`)
+    /// must not emit unqualified `serde_json::…` paths into the consumer
+    /// crate. The `Inspectable` impl and the `public_if` check are the
+    /// two sites that historically leaked.
+    #[test]
+    fn declarative_model_routes_serde_json_through_private_namespace() {
+        let input = quote! {
+            #[derive(DeclarativeModel)]
+            struct Account {
+                id: String,
+                name: String,
+            }
+        };
+
+        let output = derive_declarative_model(input).to_string();
+
+        assert!(
+            output.contains(":: lithair_core :: __private :: serde_json"),
+            "serde_json must be reached via lithair_core::__private; got:\n{}",
+            output
+        );
+
+        // Tight regression guard: no bare `serde_json ::` path (with the
+        // post-tokenizer space) should appear outside the __private route.
+        // We strip the qualified occurrences and look at what's left.
+        let stripped = output.replace(":: lithair_core :: __private :: serde_json", "");
+        assert!(
+            !stripped.contains("serde_json ::"),
+            "no bare `serde_json ::` paths may remain; got after strip:\n{}",
+            stripped
         );
     }
 }
