@@ -96,7 +96,8 @@ storage, JWT support, and cookie-based auth.
 each field directly on the struct.
 
 **Distributed consensus** -- OpenRaft integration for multi-node clusters with
-leader election and data replication.
+leader election and data replication. Opt-in via the `cluster` feature; single-
+node deployments don't pay for it.
 
 **HTTP server** -- Built on Hyper. Includes firewall with IP filtering and
 rate limiting, gzip compression, and CORS.
@@ -128,8 +129,8 @@ LithairServer::new()
 ```
 
 **Built-in operations** -- Every Lithair server comes with `/health`, `/ready`,
-and `/info` endpoints out of the box. Enable `/observe/metrics` for
-Prometheus-compatible monitoring.
+and `/info` endpoints out of the box. A `/observe/metrics` endpoint for
+Prometheus-compatible monitoring is planned.
 
 **Admin interface** -- Optional data admin API (`/_admin/data/*`) lets you
 browse models, export data, inspect event history, and trigger backups. Schema
