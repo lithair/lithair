@@ -349,27 +349,40 @@ fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
 }
 
 /// Parse #[http(...)] attributes
+///
+/// Splits the attribute token stream by commas at the proc-macro2 string level
+/// so that each fragment like `validate = "non_empty"` arrives as a single
+/// substring containing both the key AND the string literal. Walking
+/// `meta_list.tokens.into_iter()` (TokenTree by TokenTree) was the original
+/// implementation, but that breaks pair-shaped attributes: the `validate`
+/// Ident and the `"non_empty"` Literal arrive as separate `TokenTree`s, so
+/// `extract_string_value("validate")` returns `None` and the rule is silently
+/// dropped. Result: `attrs.validation` stayed empty for every model, and the
+/// generated `HttpExposable::validate()` was a no-op on POST/PUT/PATCH —
+/// exactly the symptom reported in issue #75.
 fn parse_http_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
-        for nested in meta_list.tokens.clone().into_iter() {
-            let nested_str = nested.to_string();
-            match nested_str.as_str() {
-                "expose" => attrs.expose = true,
-                _ if nested_str.starts_with("expose") && nested_str.contains("false") => {
-                    attrs.expose = false;
+        // `tokens.to_string()` joins TokenTrees with spaces, producing e.g.
+        // `expose , validate = "non_empty" , validate = "max_length(200)"`.
+        // Splitting on `,` then walks one logical attribute per iteration.
+        // Commas inside string literals (e.g. `"foo,bar"`) stay grouped
+        // because the literal token survives stringification as one chunk.
+        let nested_str = meta_list.tokens.to_string();
+        for token in nested_str.split(',') {
+            let token = token.trim();
+            if token == "expose" {
+                attrs.expose = true;
+            } else if token.starts_with("expose") && token.contains("false") {
+                attrs.expose = false;
+            } else if token.starts_with("validate") {
+                if let Some(value) = extract_string_value(token) {
+                    attrs.validation.push(value);
                 }
-                _ if nested_str.starts_with("validate") => {
-                    if let Some(value) = extract_string_value(&nested_str) {
-                        attrs.validation.push(value);
-                    }
+            } else if token.starts_with("serialize") {
+                if let Some(value) = extract_string_value(token) {
+                    attrs.serialization = Some(value);
                 }
-                _ if nested_str.starts_with("serialize") => {
-                    if let Some(value) = extract_string_value(&nested_str) {
-                        attrs.serialization = Some(value);
-                    }
-                }
-                _ => {}
             }
         }
     }
@@ -1632,6 +1645,67 @@ mod tests {
             !stripped.contains("serde_json ::"),
             "no bare `serde_json ::` paths may remain; got after strip:\n{}",
             stripped
+        );
+    }
+
+    /// Issue #75: `#[http(validate = "non_empty")]` was silently dropped
+    /// by the parser, so the generated `HttpExposable::validate()` body
+    /// contained no rule checks and POST handlers accepted empty fields.
+    ///
+    /// This token-level test asserts the macro actually emits the
+    /// canonical "must not be empty" / "at most N characters" branches
+    /// for a model that carries `validate = "non_empty"` and
+    /// `validate = "max_length(N)"` on the same field. A behavior-level
+    /// regression (POST returning 400) is also covered by
+    /// `lithair-core/tests/validate_attribute_test.rs` — that's the
+    /// load-bearing test; this one guards the macro emission so a parser
+    /// regression doesn't slip through silently.
+    #[test]
+    fn http_validate_rules_emit_compile_time_checks_issue_75() {
+        let input = quote! {
+            #[derive(DeclarativeModel)]
+            struct Todo {
+                #[http(expose)]
+                #[db(unique)]
+                id: String,
+                #[http(expose, validate = "non_empty", validate = "max_length(200)")]
+                title: String,
+                #[http(expose)]
+                done: bool,
+            }
+        };
+
+        let output = derive_declarative_model(input).to_string();
+
+        // The `non_empty` rule must produce an is_empty() check and the
+        // canonical "must not be empty" error string in the emitted
+        // `validate()` body.
+        assert!(
+            output.contains("is_empty"),
+            "expected emitted validate() to call .is_empty() for non_empty rule; got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("must not be empty"),
+            "expected emitted validate() to format the canonical 'must not be empty' error; got:\n{}",
+            output
+        );
+
+        // The `max_length(200)` rule must emit a length check with the
+        // canonical "at most N characters" error.
+        assert!(
+            output.contains("at most"),
+            "expected emitted validate() to format the canonical 'at most N characters' error \
+             for max_length rule; got:\n{}",
+            output
+        );
+
+        // Both rules must reference the `title` field name in the error
+        // string so the user sees which field was invalid.
+        assert!(
+            output.contains("\"title\""),
+            "expected emitted validate() to embed the 'title' field name in error messages; got:\n{}",
+            output
         );
     }
 }
