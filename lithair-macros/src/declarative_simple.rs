@@ -360,14 +360,27 @@ fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
 /// dropped. Result: `attrs.validation` stayed empty for every model, and the
 /// generated `HttpExposable::validate()` was a no-op on POST/PUT/PATCH —
 /// exactly the symptom reported in issue #75.
+///
+/// Known limitation: this parser splits on `,` *after* stringification, so a
+/// rule value that itself contains a comma — e.g. a hypothetical
+/// `validate = "length(5, 50)"` — would be torn in half and silently
+/// dropped. This is acceptable today because every rule currently
+/// implemented by `generate_validation_check` (`non_empty`,
+/// `not_negative`, `email`, `min_length(N)`, `max_length(N)`,
+/// `min_value(N)`, `max_value(N)`) is single-argument and comma-free. If
+/// `length(N, N)`, `range(N, N)`, or `enum(A, B, C)` rules are added
+/// later (they are advertised in `docs/reference/declarative-attributes.md`
+/// but not yet implemented), this parser must be upgraded to either
+/// quote-aware splitting or windowed `TokenTree` matching first.
 fn parse_http_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         // `tokens.to_string()` joins TokenTrees with spaces, producing e.g.
         // `expose , validate = "non_empty" , validate = "max_length(200)"`.
-        // Splitting on `,` then walks one logical attribute per iteration.
-        // Commas inside string literals (e.g. `"foo,bar"`) stay grouped
-        // because the literal token survives stringification as one chunk.
+        // Splitting on `,` walks one logical attribute per iteration.
+        // String literals survive stringification as one chunk (the token
+        // boundary is preserved), but the subsequent `split(',')` is not
+        // quote-aware — see the "Known limitation" note on this function.
         let nested_str = meta_list.tokens.to_string();
         for token in nested_str.split(',') {
             let token = token.trim();
