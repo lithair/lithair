@@ -247,3 +247,121 @@ async fn flag_on_options_preflight_passes() {
         resp.status()
     );
 }
+
+/// Cookie fallback: the gate accepts `Cookie: session_token=<id>` when no
+/// Authorization header is provided. This matches the pre-existing pattern
+/// already used by `/auth/validate` (`builder.rs:642`) and `route_guard.rs:167`,
+/// so browser clients that rely on cookie sessions are not broken when the
+/// new gate is turned on. (CodeRabbit / Gemini review feedback on PR #79.)
+#[tokio::test]
+async fn flag_on_cookie_session_get_returns_200() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let (base, token) = spawn_server(true, true, tmp.path()).await;
+    let token = token.expect("seeded session token");
+
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/accounts", base))
+        .header("cookie", format!("session_token={}", token))
+        .send()
+        .await
+        .expect("request sent");
+    assert_eq!(resp.status(), 200, "Cookie session must be accepted by the gate");
+}
+
+/// Lowercase `bearer` scheme should be accepted. RFC 6750 mandates "Bearer"
+/// but real-world clients send mixed case; the framework's tolerance here
+/// avoids surprise 401s for clients that follow common practice.
+/// (Gemini review feedback on PR #79.)
+#[tokio::test]
+async fn flag_on_lowercase_bearer_get_returns_200() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let (base, token) = spawn_server(true, true, tmp.path()).await;
+    let token = token.expect("seeded session token");
+
+    let resp = reqwest::Client::new()
+        .get(format!("{}/api/accounts", base))
+        .header("authorization", format!("bearer {}", token)) // lowercase
+        .send()
+        .await
+        .expect("request sent");
+    assert_eq!(resp.status(), 200, "lowercase `bearer` scheme must be accepted");
+}
+
+// ------------------------------------------------------------------------
+// `with_model_full(...)` exemption: the issue #78 gate is intentionally
+// scoped to the simple-CRUD path (`with_model` / `with_declarative_model`).
+// Handlers registered via `with_model_full(...)` have their own RBAC story
+// and the global flag does NOT cover them. This test verifies that
+// distinction holds by spinning up a server with the flag ON and a
+// `with_model_full` registration, then confirming an anonymous GET still
+// passes (the RBAC checker is not configured for this test, so the
+// pre-existing `with_model_full` path is open-by-default). (CodeRabbit
+// review feedback on PR #79.)
+// ------------------------------------------------------------------------
+
+/// Mirror model for `with_model_full` — same shape as Account, distinct
+/// type to avoid event-store collision with the other tests.
+#[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
+struct AccountFull {
+    #[http(expose)]
+    id: String,
+    #[http(expose)]
+    name: String,
+}
+
+#[tokio::test]
+async fn flag_on_with_model_full_path_is_not_gated() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let port = portpicker::pick_unused_port().expect("free port");
+    let session_dir = tmp.path().join("sessions");
+    let account_dir = tmp.path().join("accounts-full");
+    std::fs::create_dir_all(&session_dir).expect("create session dir");
+    std::fs::create_dir_all(&account_dir).expect("create account dir");
+
+    let store = PersistentSessionStore::new(session_dir.clone()).expect("session store");
+    let manager = SessionManager::new(store);
+
+    let builder = LithairServer::new()
+        .with_host("127.0.0.1")
+        .with_port(port)
+        .with_sessions(manager)
+        .with_models_require_session(true)
+        // `with_model_full` registers a handler with its own RBAC opt-in.
+        // The issue #78 gate does NOT cover this path — operators who
+        // want gating here must use the RBAC checker, not the new flag.
+        .with_model_full::<AccountFull>(
+            account_dir.to_string_lossy().to_string(),
+            "/api/accounts-full",
+            None, // no RBAC checker → fully open per existing semantics
+            None, // no per-model session store override
+        );
+
+    tokio::spawn(async move {
+        let _ = builder.serve().await;
+    });
+
+    // Wait for readiness.
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(2)).build().unwrap();
+    let health = format!("http://127.0.0.1:{}/health", port);
+    for _ in 0..50 {
+        if let Ok(r) = client.get(&health).send().await {
+            if r.status().is_success() {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // No session, no Authorization header — but `with_model_full`
+    // registration must NOT be 401 by the issue #78 gate.
+    let resp = client
+        .get(format!("http://127.0.0.1:{}/api/accounts-full", port))
+        .send()
+        .await
+        .expect("request sent");
+    assert_ne!(
+        resp.status(),
+        401,
+        "with_model_full handlers must NOT be gated by with_models_require_session — got 401 anyway"
+    );
+}

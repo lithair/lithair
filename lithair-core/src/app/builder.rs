@@ -1517,6 +1517,10 @@ impl LithairServerBuilder {
             data_path: data_path_str,
             factory,
             schema_extractor: None,
+            // `with_model_full` is the RBAC-aware path; the issue #78
+            // session gate intentionally does NOT apply here.
+            // See `LithairServerBuilder::with_models_require_session`.
+            require_session_applies: false,
         });
 
         self
@@ -1588,6 +1592,9 @@ impl LithairServerBuilder {
             data_path: data_path_str,
             factory,
             schema_extractor: None,
+            // Simple-CRUD path — issue #78 gate applies when the builder
+            // flag is on.
+            require_session_applies: true,
         });
 
         // Merge model-level #[firewall(...)] config if no explicit config is set
@@ -1655,6 +1662,8 @@ impl LithairServerBuilder {
             data_path: data_path_str,
             factory,
             schema_extractor: Some(schema_extractor),
+            // Same simple-CRUD path as `with_model`; issue #78 gate applies.
+            require_session_applies: true,
         });
 
         self

@@ -36,6 +36,49 @@ fn strip_body(resp: Resp) -> Resp {
     Response::from_parts(parts, Full::new(Bytes::new()).boxed())
 }
 
+/// Extract a session token from the request, trying the `Authorization`
+/// header first then falling back to the `session_token=` cookie.
+///
+/// Bearer scheme matching is case-insensitive per common practice (the RFC
+/// only mandates `Bearer` but many clients send `bearer`; route_guard.rs
+/// and the `/auth/validate` route both already accept the cookie form).
+/// Used by [`DeclarativeHttpHandler::has_valid_session`] to gate
+/// auto-generated `/api/{model}` endpoints when
+/// `with_models_require_session(true)` is on (issue #78).
+///
+/// Returns `None` if no usable token is found.
+fn extract_session_token(req: &Req) -> Option<String> {
+    // 1) Authorization: Bearer <token>  (case-insensitive scheme)
+    if let Some(auth_header) = req.headers().get(http::header::AUTHORIZATION) {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.len() >= 7 && auth_str[..7].eq_ignore_ascii_case("bearer ") {
+                let token = auth_str[7..].trim();
+                if !token.is_empty() {
+                    return Some(token.to_string());
+                }
+            }
+        }
+    }
+
+    // 2) Cookie: session_token=<id>  (matches the pattern used by
+    //    `LithairServerBuilder` line 642 and `route_guard.rs` line 167)
+    if let Some(cookie_header) = req.headers().get(http::header::COOKIE) {
+        if let Ok(cookie_str) = cookie_header.to_str() {
+            for part in cookie_str.split(';') {
+                let part = part.trim();
+                if let Some(value) = part.strip_prefix("session_token=") {
+                    let token = value.trim();
+                    if !token.is_empty() {
+                        return Some(token.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Trait for models that can be exposed via HTTP
 ///
 /// This trait is automatically implemented by the DeclarativeModel macro
@@ -290,7 +333,8 @@ where
     /// - The session store is neither `PersistentSessionStore` nor
     ///   `SessionManager<PersistentSessionStore>` (the two shapes Lithair
     ///   currently stores in `session_manager`)
-    /// - The `Authorization: Bearer <token>` header is missing/malformed
+    /// - Neither the `Authorization: Bearer <token>` header nor the
+    ///   `Cookie: session_token=<id>` cookie carries a usable id
     /// - The session id is not found in the store
     /// - The session has expired
     ///
@@ -299,6 +343,13 @@ where
     /// `with_rbac_config(...)` (lithair-core/src/app/builder.rs:540) but
     /// `Arc<SessionManager<S>>` when configured via `with_sessions(...)`
     /// (lithair-core/src/app/builder.rs:256). Both must work.
+    ///
+    /// Cookie fallback matches the pattern already used by
+    /// `lithair-core/src/app/builder.rs` (the `/auth/validate` route, line 642)
+    /// and `lithair-core/src/http/route_guard.rs` (line 167) — both lookup
+    /// `session_token=...` in the `Cookie` header. Keeping this gate aligned
+    /// avoids breaking callers (e.g. browser clients with cookie auth) who
+    /// already rely on the cookie path elsewhere in the framework.
     async fn has_valid_session(&self, req: &Req) -> bool {
         use crate::session::{PersistentSessionStore, SessionManager, SessionStore};
 
@@ -307,28 +358,17 @@ where
         };
         let store_any = session_store_any.clone();
 
-        // Extract Bearer token first (fail fast if missing).
-        let Some(auth_header) = req.headers().get(http::header::AUTHORIZATION) else {
+        let Some(token) = extract_session_token(req) else {
             return false;
         };
-        let Ok(auth_str) = auth_header.to_str() else {
-            return false;
-        };
-        let Some(token) = auth_str.strip_prefix("Bearer ") else {
-            return false;
-        };
-        let token = token.trim();
-        if token.is_empty() {
-            return false;
-        }
 
         // Try the two known concrete shapes. `Arc::downcast` consumes the
         // Arc, so we clone for the second attempt.
         if let Ok(store) = store_any.clone().downcast::<PersistentSessionStore>() {
-            return matches!(store.get(token).await, Ok(Some(s)) if !s.is_expired());
+            return matches!(store.get(&token).await, Ok(Some(s)) if !s.is_expired());
         }
         if let Ok(manager) = store_any.downcast::<SessionManager<PersistentSessionStore>>() {
-            return matches!(manager.get_session(token).await, Ok(Some(s)) if !s.is_expired());
+            return matches!(manager.get_session(&token).await, Ok(Some(s)) if !s.is_expired());
         }
         false
     }

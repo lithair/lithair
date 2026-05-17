@@ -335,6 +335,13 @@ pub struct ModelRegistrationInfo {
     pub factory: ModelFactory,
     /// Optional schema spec extractor for migration detection
     pub schema_extractor: Option<SchemaSpecExtractor>,
+    /// Whether the builder-level `with_models_require_session(true)` switch
+    /// should apply to this registration (issue #78). Set to `true` for
+    /// models registered via `with_model(...)` / `with_declarative_model(...)`,
+    /// `false` for `with_model_full(...)` — that path already supports RBAC
+    /// via `PermissionChecker` and the issue #78 flag is intentionally
+    /// scoped to the simple-CRUD path.
+    pub require_session_applies: bool,
 }
 
 impl LithairServer {
@@ -697,24 +704,39 @@ impl LithairServer {
                     // the builder-level configuration is authoritative
                     // (any RBAC checker provided via `with_model_full`
                     // continues to use the same shared store).
+                    //
+                    // We fail-fast (bail) rather than warn here: if a
+                    // factory hands back a shared `Arc`, the session store
+                    // wiring would silently drop and RBAC / the #78 gate
+                    // would both become no-ops. That's a security-relevant
+                    // silent failure — better to refuse to start than
+                    // serve unauthenticated traffic that the operator
+                    // believed to be gated. (Built-in factories return a
+                    // fresh `Arc::new(handler)` so this never triggers in
+                    // practice; the bail is a guard against external
+                    // factory implementations that misbehave.)
                     if let Some(ref store) = self.session_manager {
                         if let Some(h) = Arc::get_mut(&mut handler) {
                             h.set_session_store_any(Arc::clone(store));
                         } else {
-                            log::warn!(
-                                "Could not wire session store for model '{}': Arc has multiple strong references",
+                            anyhow::bail!(
+                                "Could not wire session store for model '{}': handler Arc has multiple strong references — refusing to start to avoid a silent auth-bypass",
                                 info.name
                             );
                         }
                     }
 
-                    // Apply the issue #78 require-session flag.
-                    if self.models_require_session {
+                    // Apply the issue #78 require-session flag — but only
+                    // to registrations that opted in via the simple-CRUD
+                    // path. `with_model_full(...)` registrations carry
+                    // their own RBAC story (see PermissionChecker) and the
+                    // flag is intentionally scoped to NOT cover them.
+                    if self.models_require_session && info.require_session_applies {
                         if let Some(h) = Arc::get_mut(&mut handler) {
                             h.set_require_session(true);
                         } else {
-                            log::warn!(
-                                "Could not enable require-session for model '{}': Arc has multiple strong references",
+                            anyhow::bail!(
+                                "Could not enable require-session for model '{}': handler Arc has multiple strong references — refusing to start because the operator-requested gate would silently not engage",
                                 info.name
                             );
                         }
