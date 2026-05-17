@@ -95,6 +95,27 @@ pub trait ModelHandler: Send + Sync {
 
     /// Set the SSE broadcaster for real-time change notifications (no-op by default)
     fn set_sse_broadcaster(&mut self, _broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {}
+
+    /// Enable or disable the session-presence gate for this model's
+    /// auto-generated `/api/{model}` endpoints (issue #78).
+    ///
+    /// Called by `LithairServer::serve()` after the model factory runs, so
+    /// that the global `with_models_require_session(...)` flag applies
+    /// regardless of the order in which the builder methods were chained.
+    ///
+    /// Default impl is a no-op so non-Declarative handlers (e.g. future
+    /// custom `ModelHandler` impls) stay unaffected.
+    fn set_require_session(&mut self, _require: bool) {}
+
+    /// Attach a type-erased session store to this handler.
+    ///
+    /// Called by `LithairServer::serve()` after the model factory runs to
+    /// thread the configured session store (set via `with_sessions(...)` or
+    /// `with_rbac_config(...)`) into every registered model. This makes the
+    /// session lookup available regardless of the builder-method ordering.
+    ///
+    /// Default impl is a no-op for custom handlers that don't use sessions.
+    fn set_session_store_any(&mut self, _store: Arc<dyn std::any::Any + Send + Sync>) {}
 }
 
 /// Wrapper for DeclarativeHttpHandler that implements ModelHandler
@@ -151,8 +172,14 @@ where
         self
     }
 
-    /// Set session store directly (for type-erased Arc<dyn Any>)
-    pub(crate) fn set_session_store_any(
+    /// Set session store directly (consuming-self variant for callers that
+    /// own the handler before it has been wrapped in `Arc` — currently used
+    /// by `LithairServerBuilder::with_model_full`).
+    ///
+    /// At-runtime wiring (after the handler is already in `Arc<dyn
+    /// ModelHandler>`) goes through the trait method
+    /// [`ModelHandler::set_session_store_any`] instead.
+    pub(crate) fn set_session_store_any_owned(
         mut self,
         store: Arc<dyn std::any::Any + Send + Sync>,
     ) -> Self {
@@ -301,5 +328,13 @@ where
 
     fn set_sse_broadcaster(&mut self, broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {
         self.handler.sse_broadcaster = Some(broadcaster);
+    }
+
+    fn set_require_session(&mut self, require: bool) {
+        self.handler.set_require_session(require);
+    }
+
+    fn set_session_store_any(&mut self, store: Arc<dyn std::any::Any + Send + Sync>) {
+        self.handler.session_store = Some(store);
     }
 }

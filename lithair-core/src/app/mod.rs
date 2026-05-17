@@ -200,6 +200,13 @@ pub struct LithairServer {
     not_found_handler: Option<RouteHandler>,
     route_guards: Vec<crate::http::RouteGuardMatcher>,
     model_infos: Vec<ModelRegistrationInfo>,
+    /// Issue #78: when true, every auto-generated `/api/{model}` endpoint
+    /// must carry a valid session, otherwise the request is rejected with
+    /// HTTP 401. Wired from
+    /// `LithairServerBuilder::with_models_require_session(...)` and applied
+    /// uniformly to every model handler in `serve()` after each model's
+    /// factory has produced its handler.
+    models_require_session: bool,
     models: Arc<tokio::sync::RwLock<Vec<ModelRegistration>>>,
 
     // Frontend configurations to load (path_prefix -> static_dir)
@@ -328,6 +335,13 @@ pub struct ModelRegistrationInfo {
     pub factory: ModelFactory,
     /// Optional schema spec extractor for migration detection
     pub schema_extractor: Option<SchemaSpecExtractor>,
+    /// Whether the builder-level `with_models_require_session(true)` switch
+    /// should apply to this registration (issue #78). Set to `true` for
+    /// models registered via `with_model(...)` / `with_declarative_model(...)`,
+    /// `false` for `with_model_full(...)` — that path already supports RBAC
+    /// via `PermissionChecker` and the issue #78 flag is intentionally
+    /// scoped to the simple-CRUD path.
+    pub require_session_applies: bool,
 }
 
 impl LithairServer {
@@ -670,6 +684,59 @@ impl LithairServer {
                         } else {
                             log::warn!(
                                 "Could not set SSE broadcaster for model '{}': Arc has multiple strong references",
+                                info.name
+                            );
+                        }
+                    }
+
+                    // Wire the session store into every model handler.
+                    //
+                    // Pre-issue-#78, `with_model(...)` never threaded the
+                    // session store through (only `with_model_full` did), so
+                    // even when sessions were configured the simple-CRUD
+                    // path had no way to look one up. We now plumb it here,
+                    // uniformly, after the factory has produced the handler.
+                    // This makes builder-method ordering irrelevant.
+                    //
+                    // `with_model_full` may have already attached its own
+                    // store via the owned setter; this call overwrites it
+                    // with the builder-level store. That is intentional —
+                    // the builder-level configuration is authoritative
+                    // (any RBAC checker provided via `with_model_full`
+                    // continues to use the same shared store).
+                    //
+                    // We fail-fast (bail) rather than warn here: if a
+                    // factory hands back a shared `Arc`, the session store
+                    // wiring would silently drop and RBAC / the #78 gate
+                    // would both become no-ops. That's a security-relevant
+                    // silent failure — better to refuse to start than
+                    // serve unauthenticated traffic that the operator
+                    // believed to be gated. (Built-in factories return a
+                    // fresh `Arc::new(handler)` so this never triggers in
+                    // practice; the bail is a guard against external
+                    // factory implementations that misbehave.)
+                    if let Some(ref store) = self.session_manager {
+                        if let Some(h) = Arc::get_mut(&mut handler) {
+                            h.set_session_store_any(Arc::clone(store));
+                        } else {
+                            anyhow::bail!(
+                                "Could not wire session store for model '{}': handler Arc has multiple strong references — refusing to start to avoid a silent auth-bypass",
+                                info.name
+                            );
+                        }
+                    }
+
+                    // Apply the issue #78 require-session flag — but only
+                    // to registrations that opted in via the simple-CRUD
+                    // path. `with_model_full(...)` registrations carry
+                    // their own RBAC story (see PermissionChecker) and the
+                    // flag is intentionally scoped to NOT cover them.
+                    if self.models_require_session && info.require_session_applies {
+                        if let Some(h) = Arc::get_mut(&mut handler) {
+                            h.set_require_session(true);
+                        } else {
+                            anyhow::bail!(
+                                "Could not enable require-session for model '{}': handler Arc has multiple strong references — refusing to start because the operator-requested gate would silently not engage",
                                 info.name
                             );
                         }
@@ -5225,6 +5292,7 @@ impl Default for LithairServer {
             not_found_handler: None,
             route_guards: Vec::new(),
             model_infos: Vec::new(),
+            models_require_session: false,
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: Vec::new(),
             frontend_engines: std::collections::HashMap::new(),

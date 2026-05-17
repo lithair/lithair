@@ -70,6 +70,10 @@ lithair-macros = { version = "0.6", path = "../lithair-macros", optional = true 
 tempfile = "3"
 
 [dev-dependencies]
+# Random free-port picker for integration tests that spawn a real
+# `LithairServer` (e.g. tests/require_session_test.rs). Already used in
+# cucumber-tests under the same name.
+portpicker = "0.1"
 
 [features]
 default = ["macros"]
