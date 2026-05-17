@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-17
+
+### Added
+
+- **`LithairServer::with_models_require_session(bool)`** — new builder method
+  that gates all auto-generated `/api/{model}` endpoints. When set to `true`,
+  any request without a valid active session is rejected with **HTTP 401**.
+  Default is `false` (fully backward-compatible). Closes #78 (consumer-driven
+  request from LensMail).
+
+  ```rust
+  LithairServer::new()
+      .with_sessions(SessionManager::new(store))
+      .with_models_require_session(true)   // ← new
+      .with_model::<Account>("./data/accounts", "/api/accounts")
+      .serve()
+      .await?;
+  ```
+
+  Targets the binary "session required" policy without the ceremony of full
+  RBAC (`with_model_full` + per-field `#[permission]` annotations). The flag
+  intentionally exempts `with_model_full` registrations — they already have
+  RBAC and don't need this. Session lookup handles both `Bearer <token>`
+  headers (case-insensitive) and `session_token=` cookies; `OPTIONS`
+  preflight requests are exempted.
+
+- **`lithair_macros::__private` module** with `#[doc(hidden)] pub use` for
+  `serde_json`, `clap`, `tokio`, `anyhow`. Consumers using `#[derive(DeclarativeModel)]`
+  no longer need to declare these as direct dependencies in their own
+  `Cargo.toml`. Closes #66.
+
+### Fixed
+
+- **`#[http(validate = "non_empty")]` and other field validators are now
+  enforced on POST.** Closes #75. Root cause was a macro parser bug:
+  `parse_http_attributes` walked `tokens.into_iter()` `TokenTree` by
+  `TokenTree`, matching on the `validate` `Ident` alone — `extract_string_value`
+  then returned `None` because the single token had no quotes, so
+  `attrs.validation` stayed empty for every field and the generated
+  `HttpExposable::validate()` body was effectively a no-op. Fixed by
+  rewriting `parse_http_attributes` to use `tokens.to_string() + split(',')`,
+  matching the pattern already used by `parse_firewall_attributes`,
+  `parse_model_http_attributes`, and `parse_server_attributes` in the same
+  file (PR #76). `#[db(unique)]` was unaffected (single-token, no key=value
+  to reassemble) — which is why uniqueness worked while validators didn't.
+  7 behavior tests + 1 token-level regression test added.
+
+- **`with_sessions(...)` + `with_model::<T>(...)` now actually threads the
+  session store into the auto-generated handler.** Pre-existing latent gap:
+  only `with_model_full` propagated the session store via
+  `set_session_store_any`; the plain `with_model` path produced a handler
+  with `session_store: None`. Surfaced and fixed while implementing #78.
+
+- **Session-store downcast accepts both shapes.** Pre-existing
+  `extract_role_from_request` only downcast to `Arc<PersistentSessionStore>`,
+  but `with_sessions(...)` stores `Arc<SessionManager<S>>`. RBAC was
+  silently broken for `with_sessions` users. The new `has_valid_session`
+  helper accepts both shapes (PR #79 bonus fix).
+
+### Documentation
+
+- README: `Distributed consensus` now states it's opt-in via the `cluster`
+  feature; single-node deployments don't pay for it (PR #74).
+- README: `/observe/metrics` reframed as planned — the route is not yet
+  registered, only placeholder utilities exist (PR #74).
+
+### CI / Infrastructure
+
+- `.github/workflows/cidx.yml` regenerated with Node 24-compatible action
+  versions (`actions/checkout@v6`, `actions/setup-go@v6`,
+  `actions/upload-artifact@v7`, `actions/download-artifact@v8`,
+  `go-version: 1.26`). Closes downstream impact of cidx-org/cidx#138.
+  Resolves GitHub's Node 20 deprecation deadline (2026-06-02).
+
 ## [0.6.1] - 2026-05-13
 
 ### Security
