@@ -96,6 +96,12 @@ where
     pub(crate) session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
     /// Optional SSE broadcaster for real-time change notifications
     pub(crate) sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
+    /// When true, every non-OPTIONS request to this model's auto-generated
+    /// CRUD endpoints must carry a valid (non-expired) session in the
+    /// `Authorization: Bearer <session-id>` header — otherwise the handler
+    /// returns HTTP 401. Set via `LithairServerBuilder::with_models_require_session(true)`.
+    /// Defaults to `false` (current behavior preserved).
+    pub(crate) require_session: bool,
 }
 
 impl<T> DeclarativeHttpHandler<T>
@@ -149,6 +155,7 @@ where
             permission_extractor: None,
             session_store: None,
             sse_broadcaster: None,
+            require_session: false,
         };
 
         Ok(handler)
@@ -272,6 +279,67 @@ where
         // Extract role from session
         let role: Option<String> = session.get("role");
         role
+    }
+
+    /// Returns true if the request carries a valid, non-expired session.
+    ///
+    /// Used by the `with_models_require_session(true)` builder switch to gate
+    /// auto-generated `/api/{model}` endpoints with a session-presence check
+    /// (no role, no RBAC). Returns `false` when any of these holds:
+    /// - No session store is configured (e.g. `with_sessions(...)` not called)
+    /// - The session store is neither `PersistentSessionStore` nor
+    ///   `SessionManager<PersistentSessionStore>` (the two shapes Lithair
+    ///   currently stores in `session_manager`)
+    /// - The `Authorization: Bearer <token>` header is missing/malformed
+    /// - The session id is not found in the store
+    /// - The session has expired
+    ///
+    /// The two-shape handling is intentional: `LithairServerBuilder` stores
+    /// `Arc<PersistentSessionStore>` when sessions are configured via
+    /// `with_rbac_config(...)` (lithair-core/src/app/builder.rs:540) but
+    /// `Arc<SessionManager<S>>` when configured via `with_sessions(...)`
+    /// (lithair-core/src/app/builder.rs:256). Both must work.
+    async fn has_valid_session(&self, req: &Req) -> bool {
+        use crate::session::{PersistentSessionStore, SessionManager, SessionStore};
+
+        let Some(session_store_any) = self.session_store.as_ref() else {
+            return false;
+        };
+        let store_any = session_store_any.clone();
+
+        // Extract Bearer token first (fail fast if missing).
+        let Some(auth_header) = req.headers().get(http::header::AUTHORIZATION) else {
+            return false;
+        };
+        let Ok(auth_str) = auth_header.to_str() else {
+            return false;
+        };
+        let Some(token) = auth_str.strip_prefix("Bearer ") else {
+            return false;
+        };
+        let token = token.trim();
+        if token.is_empty() {
+            return false;
+        }
+
+        // Try the two known concrete shapes. `Arc::downcast` consumes the
+        // Arc, so we clone for the second attempt.
+        if let Ok(store) = store_any.clone().downcast::<PersistentSessionStore>() {
+            return matches!(store.get(token).await, Ok(Some(s)) if !s.is_expired());
+        }
+        if let Ok(manager) = store_any.downcast::<SessionManager<PersistentSessionStore>>() {
+            return matches!(manager.get_session(token).await, Ok(Some(s)) if !s.is_expired());
+        }
+        false
+    }
+
+    /// Set whether this handler must reject requests lacking a valid session.
+    ///
+    /// When `true`, every non-OPTIONS request to the auto-generated CRUD
+    /// endpoints returns HTTP 401 unless a valid session is present.
+    /// Default is `false` (current behavior preserved).
+    pub(crate) fn set_require_session(&mut self, require: bool) {
+        self.require_session = require;
     }
 
     /// Return current in-memory storage item count (for debug/diagnostics)
@@ -652,6 +720,23 @@ where
         path_segments: &[&str],
     ) -> Result<Resp, Infallible> {
         let method = req.method();
+
+        // ====================================================================
+        // Session gate (issue #78): if `with_models_require_session(true)` was
+        // set on the builder, every non-OPTIONS request to this model's
+        // auto-generated CRUD endpoints must carry a valid session — otherwise
+        // reject with HTTP 401 before any business logic runs.
+        //
+        // OPTIONS (CORS preflight) is exempt by design: preflight requests do
+        // not carry credentials. Returning 401 on OPTIONS would break browsers
+        // before they ever issue the real request.
+        // ====================================================================
+        if self.require_session && method != Method::OPTIONS && !self.has_valid_session(&req).await
+        {
+            return Ok(
+                self.json_error_response(StatusCode::UNAUTHORIZED, "Authentication required")
+            );
+        }
 
         match (method, path_segments.len()) {
             // OPTIONS - CORS preflight (any path)

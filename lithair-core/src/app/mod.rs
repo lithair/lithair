@@ -200,6 +200,13 @@ pub struct LithairServer {
     not_found_handler: Option<RouteHandler>,
     route_guards: Vec<crate::http::RouteGuardMatcher>,
     model_infos: Vec<ModelRegistrationInfo>,
+    /// Issue #78: when true, every auto-generated `/api/{model}` endpoint
+    /// must carry a valid session, otherwise the request is rejected with
+    /// HTTP 401. Wired from
+    /// `LithairServerBuilder::with_models_require_session(...)` and applied
+    /// uniformly to every model handler in `serve()` after each model's
+    /// factory has produced its handler.
+    models_require_session: bool,
     models: Arc<tokio::sync::RwLock<Vec<ModelRegistration>>>,
 
     // Frontend configurations to load (path_prefix -> static_dir)
@@ -670,6 +677,44 @@ impl LithairServer {
                         } else {
                             log::warn!(
                                 "Could not set SSE broadcaster for model '{}': Arc has multiple strong references",
+                                info.name
+                            );
+                        }
+                    }
+
+                    // Wire the session store into every model handler.
+                    //
+                    // Pre-issue-#78, `with_model(...)` never threaded the
+                    // session store through (only `with_model_full` did), so
+                    // even when sessions were configured the simple-CRUD
+                    // path had no way to look one up. We now plumb it here,
+                    // uniformly, after the factory has produced the handler.
+                    // This makes builder-method ordering irrelevant.
+                    //
+                    // `with_model_full` may have already attached its own
+                    // store via the owned setter; this call overwrites it
+                    // with the builder-level store. That is intentional —
+                    // the builder-level configuration is authoritative
+                    // (any RBAC checker provided via `with_model_full`
+                    // continues to use the same shared store).
+                    if let Some(ref store) = self.session_manager {
+                        if let Some(h) = Arc::get_mut(&mut handler) {
+                            h.set_session_store_any(Arc::clone(store));
+                        } else {
+                            log::warn!(
+                                "Could not wire session store for model '{}': Arc has multiple strong references",
+                                info.name
+                            );
+                        }
+                    }
+
+                    // Apply the issue #78 require-session flag.
+                    if self.models_require_session {
+                        if let Some(h) = Arc::get_mut(&mut handler) {
+                            h.set_require_session(true);
+                        } else {
+                            log::warn!(
+                                "Could not enable require-session for model '{}': Arc has multiple strong references",
                                 info.name
                             );
                         }
@@ -5225,6 +5270,7 @@ impl Default for LithairServer {
             not_found_handler: None,
             route_guards: Vec::new(),
             model_infos: Vec::new(),
+            models_require_session: false,
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: Vec::new(),
             frontend_engines: std::collections::HashMap::new(),

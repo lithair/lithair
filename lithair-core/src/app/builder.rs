@@ -143,6 +143,16 @@ pub struct LithairServerBuilder {
 
     // OpenAPI spec generation
     openapi_enabled: bool,
+
+    // Issue #78: when true, every auto-generated `/api/{model}` endpoint
+    // registered via `with_model(...)` rejects requests without a valid
+    // session with HTTP 401. Defaults to false (current behavior).
+    //
+    // Intentionally does NOT apply to `with_model_full(...)` — that path
+    // already supports RBAC via `PermissionChecker` and has its own
+    // semantics. Consumers using `with_model_full` opt into a richer
+    // authorization model and don't need this flag.
+    models_require_session: bool,
 }
 
 impl LithairServerBuilder {
@@ -175,6 +185,7 @@ impl LithairServerBuilder {
             schema_vote_policy: None,
             openapi_enabled: false,
             sse_enabled: false,
+            models_require_session: false,
         }
     }
 
@@ -202,6 +213,7 @@ impl LithairServerBuilder {
             schema_vote_policy: None,
             openapi_enabled: false,
             sse_enabled: false,
+            models_require_session: false,
         }
     }
 
@@ -254,6 +266,42 @@ impl LithairServerBuilder {
     {
         self.config.sessions.enabled = true;
         self.session_manager = Some(Arc::new(manager));
+        self
+    }
+
+    /// Require a valid session on every auto-generated `/api/{model}` endpoint
+    /// registered via [`Self::with_model`].
+    ///
+    /// When `require == true`, the model handler rejects every non-OPTIONS
+    /// request lacking a valid (non-expired) session in the
+    /// `Authorization: Bearer <session-id>` header with HTTP 401
+    /// `{"error":"Authentication required"}` before any business logic runs.
+    /// OPTIONS preflight requests are exempt by design (CORS preflight does
+    /// not carry credentials).
+    ///
+    /// This is the simple "logged-in or not" gate for the common case. For
+    /// per-role / per-permission gating, use [`Self::with_model_full`] with a
+    /// [`crate::rbac::PermissionChecker`] instead; this flag does not affect
+    /// `with_model_full(...)` registrations.
+    ///
+    /// Default: `false` (current behavior preserved — endpoints stay open).
+    ///
+    /// Must be paired with [`Self::with_sessions`]; without a configured
+    /// session store, every request is treated as having no valid session
+    /// and the gate returns 401 unconditionally.
+    ///
+    /// # Example
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_sessions(session_manager)
+    ///     .with_models_require_session(true)   // gates ALL auto-generated /api/*
+    ///     .with_model::<Account>("./data/accounts", "/api/accounts")
+    ///     .with_model::<Mail>("./data/mails", "/api/mails")
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_models_require_session(mut self, require: bool) -> Self {
+        self.models_require_session = require;
         self
     }
 
@@ -1456,7 +1504,7 @@ impl LithairServerBuilder {
                     handler = handler.with_permission_checker(checker);
                 }
                 if let Some(store) = ss {
-                    handler = handler.set_session_store_any(store);
+                    handler = handler.set_session_store_any_owned(store);
                 }
 
                 Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
@@ -1518,7 +1566,13 @@ impl LithairServerBuilder {
         let data_path_str = data_path.into();
         let base_path_str = base_path.into();
 
-        // Create factory that will create the handler async in serve()
+        // Create factory that will create the handler async in serve().
+        // Session-store wiring and the issue #78 require-session flag are
+        // applied uniformly in `LithairServer::serve()` *after* this factory
+        // runs (see `lithair-core/src/app/mod.rs`). Doing it there — rather
+        // than capturing the builder state at this moment — means the order
+        // of `.with_model::<T>()`, `.with_sessions(...)`, and
+        // `.with_models_require_session(...)` no longer matters.
         let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
             Box::pin(async move {
                 let handler = DeclarativeModelHandler::<T>::new(data_path)
@@ -1579,7 +1633,9 @@ impl LithairServerBuilder {
         let data_path_str = data_path.into();
         let base_path_str = base_path.into();
 
-        // Create factory that will create the handler async in serve()
+        // Session-store and require-session (issue #78) are applied uniformly
+        // in `LithairServer::serve()` — see the corresponding comment in
+        // `with_model` above.
         let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
             Box::pin(async move {
                 let handler = DeclarativeModelHandler::<T>::new(data_path)
@@ -1751,6 +1807,7 @@ impl LithairServerBuilder {
             not_found_handler: self.not_found_handler,
             route_guards: self.route_guards,
             model_infos: self.model_infos,
+            models_require_session: self.models_require_session,
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: self.frontend_configs, // Frontend configs to load in serve()
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()
