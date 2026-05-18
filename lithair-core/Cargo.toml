@@ -74,6 +74,11 @@ tempfile = "3"
 # `LithairServer` (e.g. tests/require_session_test.rs). Already used in
 # cucumber-tests under the same name.
 portpicker = "0.1"
+# Auto-compaction tests (issue #69) use tokio's virtual-time control
+# (`start_paused`, `tokio::time::advance`), which is gated behind the
+# `test-util` feature. The main `tokio = { features = ["full"] }` import
+# does NOT include test-util, so we add it here scoped to tests only.
+tokio = { version = "1", features = ["test-util", "macros", "rt"] }
 
 [features]
 default = ["macros"]

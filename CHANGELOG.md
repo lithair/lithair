@@ -29,6 +29,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the methodology and biases. Custom `ModelHandler` impls can override
   `get_stats` with a cheaper sizing primitive if they have one.
 
+- **Builder-driven auto-compaction of `.raftlog`** (closes #69). New opt-in
+  `LithairServerBuilder` flag that periodically truncates each registered
+  model's event log when its event count crosses a configurable threshold.
+  Motivated by LensMail v2: every full-snapshot mutation (e.g. mark-as-read
+  toggles) appends a full object dump to `.raftlog`, accumulating storage
+  consumers had to manage with their own cron + monitoring loop.
+
+  ```rust
+  use std::time::Duration;
+  LithairServer::new()
+      .with_model::<Mail>("./data/mails", "/api/mails")
+      .with_auto_compaction(10_000, Duration::from_secs(300))
+      .serve()
+      .await?;
+  ```
+
+  Behind the scenes, `serve()` spawns one tokio task per registered model
+  that wraps the existing `EventStore::event_count()` + `truncate_events()`
+  primitives. The compaction APIs in `SnapshotStore` and `EventStore` are
+  unchanged — this is a thin opt-in driver on top. Lifecycle matches the
+  existing background-flusher pattern (`DeclarativeHttpHandler::new`):
+  spawned and forgotten, aborted on runtime shutdown.
+
+  New public API: `engine::AutoCompactionConfig`, constants
+  `DEFAULT_AUTO_COMPACTION_CHECK_INTERVAL`, `DEFAULT_SNAPSHOT_THRESHOLD`
+  (re-exported from `engine::snapshot`), and `ModelHandler::event_store_arc()`
+  trait method (default impl returns `None`; `DeclarativeModelHandler`
+  returns the underlying store). Default is **disabled** — calling
+  `with_auto_compaction(...)` (or `with_auto_compaction_config(...)`) opts
+  in; not calling it preserves current behavior for every existing consumer.
+
+  A threshold of `0` is rejected at builder time —
+  `with_auto_compaction(0, ...)` panics, and `AutoCompactionConfig::new`
+  returns `None`. Custom `ModelHandler` impls that don't back themselves
+  with an `EventStore` are silently skipped (the trait method's `None`
+  default).
+
 ## [0.7.1] - 2026-05-17
 
 ### Fixed
