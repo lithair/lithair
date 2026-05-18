@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-17
+
+### Fixed
+
+- **Double-Arc footgun in `with_models_require_session(true)`** (closes #80).
+  Surfaced by LensMail hours after v0.7.0 published. When a consumer wrote
+  the obvious `SessionManager::new(Arc::new(store))`, the compiler accepted
+  it (because `impl SessionStore for Arc<T>` is a blanket), producing a
+  `SessionManager<Arc<PersistentSessionStore>>` whose stored shape didn't
+  match either `Arc` variant tried by `has_valid_session`. The gate
+  silently rejected 100% of authenticated requests with HTTP 401 — even
+  ones with valid tokens that `/auth/me` accepted. Two-part fix (PR #81):
+
+  - **A — split `SessionManager` constructor.** `new(S)` keeps its
+    by-value semantics; new `from_arc(Arc<S>)` is the explicit "I already
+    have an Arc" path. Same split for `with_config` / `from_arc_with_config`.
+    Consumer code that previously wrote `SessionManager::new(arc_store)`
+    should switch to `SessionManager::from_arc(arc_store)`.
+  - **B — fail-fast at boot.** `LithairServer::serve()` now does a
+    one-time downcast of the registered session store when
+    `models_require_session = true && any simple-CRUD model is registered`.
+    If the shape is unrecognized — or if the flag is on with no store
+    registered at all — `serve()` returns an error with a diagnostic
+    naming the actual `TypeId` and pointing at `from_arc`, instead of
+    silently 401-ing every request.
+
+  Defense-in-depth: A makes the bad shape construction explicit (and
+  the new doc-comments reference #80 directly), B catches anything that
+  still slips through (e.g., a future store type added without updating
+  the downcast).
+
+- **Example `examples/06-auth-sessions` was carrying the buggy pattern.**
+  Switched from `SessionManager::new(arc_store)` to
+  `SessionManager::from_arc(arc_store)` with an explanatory comment.
+  LensMail likely learned the bad pattern from this example — fixing the
+  example removes the pedagogical regression vector.
+
+### Changed (internal, no API change)
+
+- New `pub(crate) RecognizedSessionStore` enum (`lithair-core/src/session/mod.rs`)
+  centralizes the set of session-store shapes the framework recognizes.
+  Used by both the gate's runtime check (`has_valid_session`) and the
+  boot-time fail-fast in `serve()`. Single source of truth — adding a
+  new shape requires one edit, not two. Suggested by CodeRabbit review
+  on #79, applied as a follow-up commit on #81.
+
 ## [0.7.0] - 2026-05-17
 
 ### Added
