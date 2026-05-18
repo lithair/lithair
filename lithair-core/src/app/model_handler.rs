@@ -69,6 +69,54 @@ pub trait ModelHandler: Send + Sync {
     /// Export all data with metadata (for backup/external access)
     async fn export_json(&self) -> serde_json::Value;
 
+    /// Compute per-model storage and memory stats (issue #72).
+    ///
+    /// `data_path` is the on-disk directory passed at registration time.
+    /// The default impl looks for `events.raftlog` under that path when
+    /// reporting `raftlog_size_bytes`; absent file -> `0`.
+    ///
+    /// `approx_ram_bytes` samples up to 16 items, JSON-serializes them,
+    /// averages, multiplies by the live count. See [`ModelStats`] for
+    /// methodology and caveats. Implementors with cheaper sizing primitives
+    /// are encouraged to override.
+    async fn get_stats(&self, data_path: &str) -> ModelStats {
+        let count = self.get_count().await;
+        let approx_ram_bytes = if count == 0 {
+            0
+        } else {
+            let sample = self.get_all_data_json().await;
+            if let Some(arr) = sample.as_array() {
+                let sample_n = arr.len().min(16);
+                if sample_n == 0 {
+                    0
+                } else {
+                    let total: u64 = arr
+                        .iter()
+                        .take(sample_n)
+                        .map(|v| serde_json::to_string(v).map(|s| s.len() as u64).unwrap_or(0))
+                        .sum();
+                    let avg = total / sample_n as u64;
+                    avg.saturating_mul(count as u64)
+                }
+            } else {
+                0
+            }
+        };
+
+        let raftlog_size_bytes = std::fs::metadata(format!("{}/events.raftlog", data_path))
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        ModelStats {
+            model: self.model_name().to_string(),
+            item_count: count,
+            approx_ram_bytes,
+            raftlog_size_bytes,
+            events_since_last_compaction: None,
+            last_compaction_at: None,
+        }
+    }
+
     /// Get model name
     fn model_name(&self) -> &str;
 
