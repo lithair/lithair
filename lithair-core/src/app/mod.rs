@@ -282,6 +282,17 @@ pub struct LithairServer {
 
     // SSE real-time subscriptions broadcaster (shared across all model handlers)
     sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
+
+    // Issue #69: builder-driven auto-compaction config. When `Some`,
+    // `serve()` spawns one tokio task per registered model that
+    // periodically inspects the model's `EventStore::event_count()` and
+    // triggers `EventStore::truncate_events()` once the count crosses
+    // `events_threshold`. The spawned tasks are fire-and-forget — runtime
+    // shutdown aborts them, matching the existing background-flusher
+    // lifecycle in `DeclarativeHttpHandler::new`.
+    //
+    // `None` = feature off (default, no observable behavior change).
+    auto_compaction: Option<crate::engine::AutoCompactionConfig>,
 }
 
 /// A CRUD operation to be submitted through Raft consensus
@@ -824,7 +835,70 @@ impl LithairServer {
             }
         }
         self.model_infos.clear(); // Clear infos, we have the models now
-                                  // Initialize default logger if not already initialized
+
+        // Issue #69: spawn one auto-compaction task per registered model
+        // when the feature is enabled. The task body mirrors the one
+        // covered in `tests/auto_compaction_test.rs::spawn_auto_compaction`
+        // — keep them in sync if either is touched.
+        //
+        // Lifecycle matches the existing background-flusher pattern in
+        // `DeclarativeHttpHandler::new` (line ~180): spawned and forgotten,
+        // runtime shutdown aborts. We deliberately do NOT hold JoinHandles
+        // on `LithairServer` — that would force a shutdown signal we don't
+        // currently have, and it would diverge from the flusher's
+        // lifecycle. If/when graceful shutdown lands, both code paths
+        // should grow JoinHandle tracking together.
+        if let Some(cfg) = self.auto_compaction {
+            let models = self.models.read().await;
+            for reg in models.iter() {
+                let Some(event_store) = reg.handler.event_store_arc() else {
+                    log::debug!(
+                        "Auto-compaction: model '{}' has no EventStore, skipping",
+                        reg.name
+                    );
+                    continue;
+                };
+                let model_name = reg.name.clone();
+                log::info!(
+                    "Auto-compaction enabled for model '{}': threshold={}, interval={:?}",
+                    model_name,
+                    cfg.events_threshold,
+                    cfg.check_interval
+                );
+                tokio::spawn(async move {
+                    let mut ticker = tokio::time::interval(cfg.check_interval);
+                    // Skip the immediate first tick — `tokio::time::interval`
+                    // fires immediately on the first `.tick()` which would
+                    // be a spurious read of an empty just-started store.
+                    ticker.tick().await;
+                    loop {
+                        ticker.tick().await;
+                        let needs_compaction = {
+                            let store = event_store.read().await;
+                            store.event_count() > cfg.events_threshold
+                        };
+                        if !needs_compaction {
+                            continue;
+                        }
+                        log::info!(
+                            "Auto-compaction: model '{}' crossed threshold {}, truncating .raftlog",
+                            model_name,
+                            cfg.events_threshold
+                        );
+                        let mut store = event_store.write().await;
+                        if let Err(e) = store.truncate_events() {
+                            log::warn!(
+                                "Auto-compaction: model '{}' truncate_events failed: {}",
+                                model_name,
+                                e
+                            );
+                        }
+                    }
+                });
+            }
+        }
+
+        // Initialize default logger if not already initialized
         let _ = env_logger::Builder::from_default_env()
             .format_timestamp_millis()
             .format_module_path(false)
@@ -5505,6 +5579,7 @@ impl Default for LithairServer {
             openapi_enabled: false,
             openapi_spec_cache: std::sync::OnceLock::new(),
             sse_broadcaster: None,
+            auto_compaction: None,
         }
     }
 }
