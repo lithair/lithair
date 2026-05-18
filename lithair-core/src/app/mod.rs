@@ -4084,13 +4084,20 @@ impl LithairServer {
                         )))
                         .expect("valid HTTP response"))
                 } else {
+                    // Build the JSON body via serde_json so `name` is properly
+                    // escaped — a naked `format!` would let a model name like
+                    // `x", "y":"z` break out of the error string and produce
+                    // malformed (or worse, attacker-shaped) JSON. See Gemini
+                    // review on PR #83.
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
-                            r#"{{"error":"Model '{}' not found"}}"#,
-                            name
-                        ))))
+                        .body(Full::new(Bytes::from(
+                            serde_json::to_string(&serde_json::json!({
+                                "error": format!("Model '{}' not found", name)
+                            }))
+                            .expect("error response is serializable"),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }

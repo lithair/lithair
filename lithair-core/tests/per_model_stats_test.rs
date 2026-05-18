@@ -188,3 +188,115 @@ async fn non_existent_model_returns_404() {
         "404 body should name the missing model"
     );
 }
+
+/// Regression for Gemini's JSON-injection finding on PR #83: a model name
+/// containing JSON metacharacters (quote, backslash, etc.) must not be able
+/// to break out of the error string. The response must remain valid JSON
+/// regardless of what the path segment looks like.
+///
+/// We exercise two attack shapes:
+/// 1. URL-encoded quotes (`%22`) — what most clients would send. The router
+///    currently passes the segment through without URL-decoding, so the name
+///    `name` sees is `x%22%2C%20%22y%22%3A%22z` (safe-by-accident). The test
+///    just confirms the body is still valid JSON and is exactly one object
+///    with an `error` field.
+/// 2. Raw quotes in the URI (sent via low-level `http`/`hyper` request to
+///    bypass `reqwest`'s URL validation). This is the actual scenario the
+///    serde_json fix defends against — without it, the response body would
+///    parse as `{"error":"Model 'x", "y":"z' not found"}` and an attacker
+///    could inject arbitrary top-level keys.
+#[tokio::test]
+async fn non_existent_model_with_quotes_returns_valid_json() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let account_dir = tmp.path().join("accounts");
+    std::fs::create_dir_all(&account_dir).expect("create account dir");
+
+    let port = portpicker::pick_unused_port().expect("free port");
+    let client = spawn_server(account_dir, port).await;
+
+    // Attack 1: URL-encoded probe. Body must be valid JSON with a single
+    // `error` key — even though the router doesn't decode `%22`, we don't
+    // want the assertion to depend on that detail.
+    let raw_name = r#"x", "y":"z"#;
+    let encoded = urlencoding::encode(raw_name);
+    let resp = client
+        .get(format!("http://127.0.0.1:{}/_admin/data/models/{}/_stats", port, encoded))
+        .send()
+        .await
+        .expect("request sent");
+    assert_eq!(resp.status(), 404, "missing model must 404");
+
+    let body: serde_json::Value = resp.json().await.expect("json must parse");
+    assert!(body.is_object(), "404 body must be a JSON object");
+    let obj = body.as_object().unwrap();
+    assert_eq!(
+        obj.len(),
+        1,
+        "404 body must have exactly one key (error), got: {:?}",
+        obj.keys().collect::<Vec<_>>()
+    );
+    assert!(obj.contains_key("error"), "404 body must have `error` key");
+
+    // Attack 2: raw quotes in the path. Both `reqwest` and `hyper`'s URI
+    // parser reject `"` in a URI — defenders can rely on that for most
+    // clients. But the JSON-injection defense must not depend on clients
+    // doing their job; a custom client / proxy / fuzzer can write raw
+    // bytes onto the wire. We open a TCP socket and speak HTTP/1.1
+    // directly to prove the server's response is still valid JSON.
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream =
+        tokio::net::TcpStream::connect(("127.0.0.1", port)).await.expect("tcp connect");
+    // Note: `\"` in the path bytes is not legal per RFC 3986, but lithair's
+    // hyper-based server accepts it and routes by string-split on `/`.
+    // The whole point of this test is to confirm that even when the parser
+    // is lenient, the response stays well-formed.
+    let raw_request = format!(
+        "GET /_admin/data/models/{}/_stats HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+        raw_name, port
+    );
+    stream.write_all(raw_request.as_bytes()).await.expect("write request");
+    let mut raw_response = Vec::new();
+    stream.read_to_end(&mut raw_response).await.expect("read response");
+    let raw_text = String::from_utf8_lossy(&raw_response).to_string();
+
+    // Split status/headers from body on the first \r\n\r\n.
+    let body_start = raw_text.find("\r\n\r\n").expect("response must have header/body separator");
+    let body_text = &raw_text[body_start + 4..];
+
+    // If the server rejects the raw-quotes URI outright (e.g. with 400),
+    // that's also a valid defense — the JSON-injection vector simply
+    // doesn't reach the format! line. Skip the body assertions in that
+    // case; the URL-encoded path above already exercises the 404.
+    if raw_text.starts_with("HTTP/1.1 404") {
+        let body: serde_json::Value = serde_json::from_str(body_text.trim())
+            .expect("404 body must be valid JSON despite raw quotes in the URI");
+        assert!(body.is_object(), "404 body must be a JSON object");
+        let obj = body.as_object().unwrap();
+        assert_eq!(
+            obj.len(),
+            1,
+            "404 body must have exactly one key — JSON injection would add more. Got: {:?}",
+            body
+        );
+        assert!(obj.contains_key("error"), "404 body must have `error` key");
+        let err = obj["error"].as_str().expect("error is a string");
+        assert!(
+            err.contains(raw_name),
+            "404 body should carry the offending name verbatim inside `error`, got: {}",
+            err
+        );
+        assert!(
+            body.get("y").is_none(),
+            "JSON injection escaped: spurious `y` field present in {}",
+            body
+        );
+    } else {
+        // Server rejected the malformed URI before routing — fine, just
+        // confirm it didn't 200 it.
+        assert!(
+            !raw_text.starts_with("HTTP/1.1 2"),
+            "raw-quotes URI must not yield a 2xx, got: {}",
+            &raw_text[..raw_text.len().min(120)]
+        );
+    }
+}

@@ -103,9 +103,12 @@ pub trait ModelHandler: Send + Sync {
             }
         };
 
-        let raftlog_size_bytes = std::fs::metadata(format!("{}/events.raftlog", data_path))
-            .map(|m| m.len())
-            .unwrap_or(0);
+        // Use `tokio::fs::metadata` so this `async fn` doesn't park the
+        // runtime on a blocking syscall — flagged by Gemini on PR #83.
+        let raftlog_size_bytes =
+            tokio::fs::metadata(std::path::Path::new(data_path).join("events.raftlog"))
+                .await
+                .map_or(0, |m| m.len());
 
         ModelStats {
             model: self.model_name().to_string(),
