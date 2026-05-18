@@ -232,6 +232,24 @@ pub trait ModelHandler: Send + Sync {
     ///
     /// Default impl is a no-op for custom handlers that don't use sessions.
     fn set_session_store_any(&mut self, _store: Arc<dyn std::any::Any + Send + Sync>) {}
+
+    /// Return a shared handle to this model's underlying `EventStore`, when
+    /// one exists (issue #69).
+    ///
+    /// Used by `LithairServer::serve()` to wire the builder-driven
+    /// auto-compaction background task: the task periodically calls
+    /// `event_count()` on the store and triggers `truncate_events()` when the
+    /// count crosses the configured threshold.
+    ///
+    /// Returns `None` for handlers that don't back themselves with an
+    /// `EventStore` (custom in-memory `ModelHandler` impls, future
+    /// non-event-sourced models). When `None`, auto-compaction silently skips
+    /// the model — the feature is opt-in and best-effort by design.
+    fn event_store_arc(
+        &self,
+    ) -> Option<Arc<tokio::sync::RwLock<crate::engine::events::EventStore>>> {
+        None
+    }
 }
 
 /// Wrapper for DeclarativeHttpHandler that implements ModelHandler
@@ -462,5 +480,11 @@ where
 
     fn set_session_store_any(&mut self, store: Arc<dyn std::any::Any + Send + Sync>) {
         self.handler.session_store = Some(store);
+    }
+
+    fn event_store_arc(
+        &self,
+    ) -> Option<Arc<tokio::sync::RwLock<crate::engine::events::EventStore>>> {
+        Some(Arc::clone(self.handler.get_event_store()))
     }
 }
