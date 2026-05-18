@@ -1,5 +1,11 @@
 # 🛡️ Lithair Durability Modes
 
+> **See also:** the "Storage and memory model" section of the top-level
+> [`README.md`](../README.md#storage-and-memory-model) covers a related
+> but distinct concern — *what lives in RAM vs on disk*, memory sizing,
+> and when Lithair is (and isn't) the right tool. This file focuses on
+> the durability semantics of the `.raftlog` (fsync modes, crash safety).
+
 ## TL;DR
 
 **Par défaut, Lithair garantit ZÉRO perte de données** avec `DurabilityMode::MaxDurability`.
