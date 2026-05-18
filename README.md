@@ -144,6 +144,63 @@ No disk I/O per request.
 **Single binary by default** -- Start with one deployable binary and add
 external components only when your constraints truly require them.
 
+## Storage and memory model
+
+Before adopting Lithair for a project with a non-trivial dataset, read
+this section. The storage model is a first-order operational property
+of Lithair and the README is the right place to surface it.
+
+**What lives in RAM.** Every item registered via `with_model::<T>(...)`
+is held in memory, in full, for the lifetime of the server. After
+startup, the framework replays the `.raftlog` (and any latest
+snapshot) and reconstructs the full collection into a lock-free
+concurrent HashMap (SCC2). There is no eviction policy, no LRU, and
+no on-demand reload — if you registered a model, you pay for its
+full size in RAM.
+
+**What lives on disk.** The `.raftlog` event log holds every mutation
+(create / update / delete) in append-only form, plus periodic
+snapshots. Disk is the durability and replay surface, not the query
+surface. Queries always hit RAM.
+
+**Memory sizing.** Rough formula for a single model:
+
+```text
+RAM(T) ≈ item_count × average_serialized_size(T)
+```
+
+For a model with 50 000 items averaging 4 KB each, count on ~200 MB
+of RAM just for that model's collection. Mutation history in the
+`.raftlog` is *additional* disk cost — see the auto-compaction
+follow-up ([#69](https://github.com/lithair/lithair/issues/69)).
+
+**What this is good for.** Datasets that comfortably fit in RAM at
+your target host's size. The single-binary, event-sourced shape lets
+you skip a database and get sub-millisecond queries from the same
+process that serves HTTP. Common comfortable sizes today are tens of
+thousands to a few hundred thousand items per model.
+
+**What this is not good for, yet.** Datasets where you expect cold
+archive growth that can't realistically be held in RAM (multi-year
+audit logs, large mail archives, time-series at scale). Tiered /
+cold storage is tracked in
+[#73](https://github.com/lithair/lithair/issues/73); it is not
+implemented today. If your read path needs to query items that
+won't fit, Lithair is not the right tool yet — reach for a
+traditional database.
+
+**Operational checklist** before deploying:
+
+- Estimate `item_count × average_serialized_size` per model.
+- Set your host's RAM with margin (`2-3 ×` the estimated total, to
+  cover replay spikes, snapshot generation, and Rust allocator
+  overhead).
+- Plan `.raftlog` disk growth — see [#69](https://github.com/lithair/lithair/issues/69)
+  for auto-compaction.
+
+For the durability semantics of the `.raftlog` (fsync mode, crash
+safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
+
 ## Quick Start
 
 See the [Getting Started guide](docs/guides/getting-started.md) for a
