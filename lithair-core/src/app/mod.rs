@@ -43,7 +43,7 @@ mod schema_handlers;
 
 pub use builder::LithairServerBuilder;
 pub use declarative_serve::DeclarativeServe;
-pub use model_handler::{DeclarativeModelHandler, ModelHandler};
+pub use model_handler::{DeclarativeModelHandler, ModelHandler, ModelStats};
 
 // ============================================================================
 // Public route-handler type aliases (issue #59)
@@ -4001,6 +4001,32 @@ impl LithairServer {
                         .header("Content-Type", "application/json")
                         .body(Full::new(Bytes::from(
                             serde_json::to_string_pretty(&response).expect("serializable response"),
+                        )))
+                        .expect("valid HTTP response"))
+                } else {
+                    Ok(hyper::Response::builder()
+                        .status(404)
+                        .header("Content-Type", "application/json")
+                        .body(Full::new(Bytes::from(format!(
+                            r#"{{"error":"Model '{}' not found"}}"#,
+                            name
+                        ))))
+                        .expect("valid HTTP response"))
+                }
+            }
+
+            // GET /_admin/data/models/{name}/_stats - Per-model storage stats (issue #72)
+            (&hyper::Method::GET, ["models", name, "_stats"]) => {
+                let models = self.models.read().await;
+
+                if let Some(model) = models.iter().find(|m| m.name == *name) {
+                    let stats = model.handler.get_stats(&model.data_path).await;
+
+                    Ok(hyper::Response::builder()
+                        .status(200)
+                        .header("Content-Type", "application/json")
+                        .body(Full::new(Bytes::from(
+                            serde_json::to_string_pretty(&stats).expect("serializable response"),
                         )))
                         .expect("valid HTTP response"))
                 } else {
