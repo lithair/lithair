@@ -25,11 +25,12 @@ struct Account {
 
 /// Spin up a server with one model and wait for `/health` to respond.
 async fn spawn_server(account_dir: std::path::PathBuf, port: u16) -> reqwest::Client {
-    let builder = LithairServer::new()
-        .with_host("127.0.0.1")
-        .with_port(port)
-        .with_data_admin()
-        .with_model::<Account>(account_dir.to_string_lossy().to_string(), "/api/accounts");
+    let builder =
+        LithairServer::new()
+            .with_host("127.0.0.1")
+            .with_port(port)
+            .with_data_admin()
+            .with_model::<Account>(account_dir.to_string_lossy().to_string(), "/api/accounts");
 
     tokio::spawn(async move {
         if let Err(e) = builder.serve().await {
@@ -81,7 +82,10 @@ async fn empty_model_returns_zero_counts() {
         "empty model has no RAM cost from items"
     );
     // raftlog file may not exist yet — bytes must be a number though.
-    assert!(body["raftlog_size_bytes"].is_u64(), "raftlog_size_bytes must be present and numeric");
+    assert!(
+        body["raftlog_size_bytes"].is_u64(),
+        "raftlog_size_bytes must be present and numeric"
+    );
     // Compaction fields are gated on issue #69 — currently null.
     assert!(body["events_since_last_compaction"].is_null());
     assert!(body["last_compaction_at"].is_null());
