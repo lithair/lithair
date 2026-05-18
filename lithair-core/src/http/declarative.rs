@@ -222,14 +222,47 @@ where
     }
 
     pub async fn replay_events(&self) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        // Snapshot-first replay (issue #69 follow-up):
+        // If a snapshot was written by a previous `compact()` call, it
+        // captures all storage state up to the moment the log was
+        // truncated. Without loading it first, a restart after compaction
+        // would see no events and reconstruct an empty `HashMap` —
+        // permanent data loss. Load snapshot first, then replay any
+        // events appended after the snapshot.
+        let snapshot_json = {
+            let store = self.event_store.read().await;
+            // `load_snapshot()` returns `Err` on multi-file backends, which
+            // don't support the simple snapshot+truncate path. Treat that
+            // as "no snapshot available" — multi-file users are not on the
+            // auto-compaction code path anyway.
+            store.load_snapshot().ok().flatten()
+        };
+
+        let mut storage = self.storage.write().await;
+        let mut from_snapshot = 0usize;
+        if let Some(json) = snapshot_json {
+            match serde_json::from_str::<std::collections::HashMap<String, T>>(&json) {
+                Ok(snap) => {
+                    from_snapshot = snap.len();
+                    for (k, v) in snap {
+                        storage.insert(k, v);
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Snapshot present but failed to deserialize ({}), falling back to events-only replay",
+                        e
+                    );
+                }
+            }
+        }
+
         let events = {
             let store = self.event_store.read().await;
             store.get_all_events()?
         };
 
         let mut replayed_count = 0;
-        let mut storage = self.storage.write().await;
-
         for event_json in events {
             if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(&event_json) {
                 if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
@@ -240,11 +273,53 @@ where
             }
         }
 
-        if Self::is_verbose() || replayed_count > 0 {
-            log::info!("Replayed {} events into memory", replayed_count);
+        if Self::is_verbose() || replayed_count > 0 || from_snapshot > 0 {
+            log::info!(
+                "Replayed {} events into memory ({} items restored from snapshot)",
+                replayed_count,
+                from_snapshot
+            );
         }
 
         Ok(replayed_count)
+    }
+
+    /// Atomically snapshot the current storage state and truncate the
+    /// event log (issue #69 follow-up — addresses Gemini review on PR #84).
+    ///
+    /// Acquires the storage read lock briefly to serialize state, then
+    /// the event-store write lock to persist the snapshot and truncate.
+    /// After this returns `Ok(())`, the on-disk `.raftlog` is empty but
+    /// the on-disk `.snapshot` file holds the full state — a restart
+    /// reconstructs storage from the snapshot via `replay_events()`.
+    ///
+    /// **Critical**: callers must NEVER call `truncate_events()` directly
+    /// on the underlying `EventStore` without first writing a snapshot —
+    /// doing so causes permanent data loss. This method is the only safe
+    /// compaction primitive at the handler level.
+    pub async fn compact(&self) -> Result<(), String> {
+        // 1. Serialize the current storage map under the storage read lock.
+        let state_json = {
+            let storage = self.storage.read().await;
+            serde_json::to_string(&*storage)
+                .map_err(|e| format!("compact: failed to serialize storage: {}", e))?
+        };
+
+        // 2. Hold the event-store write lock for snapshot+truncate so the
+        //    two operations are atomic from any other event-store caller's
+        //    perspective. Callers that block waiting on the write lock
+        //    will see either "pre-compact" or "post-compact" — never an
+        //    intermediate state where the snapshot exists but the log
+        //    has not yet been truncated (or vice versa, the dangerous
+        //    case fixed here).
+        let mut store = self.event_store.write().await;
+        store
+            .save_snapshot(&state_json)
+            .map_err(|e| format!("compact: save_snapshot failed: {}", e))?;
+        store
+            .truncate_events()
+            .map_err(|e| format!("compact: truncate_events failed: {}", e))?;
+        Ok(())
     }
 
     /// Returns true if consensus is enabled for this handler

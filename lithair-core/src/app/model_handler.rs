@@ -238,7 +238,7 @@ pub trait ModelHandler: Send + Sync {
     ///
     /// Used by `LithairServer::serve()` to wire the builder-driven
     /// auto-compaction background task: the task periodically calls
-    /// `event_count()` on the store and triggers `truncate_events()` when the
+    /// `event_count()` on the store and triggers `compact()` when the
     /// count crosses the configured threshold.
     ///
     /// Returns `None` for handlers that don't back themselves with an
@@ -249,6 +249,24 @@ pub trait ModelHandler: Send + Sync {
         &self,
     ) -> Option<Arc<tokio::sync::RwLock<crate::engine::events::EventStore>>> {
         None
+    }
+
+    /// Atomically snapshot the current model state and truncate the event
+    /// log (issue #69 follow-up — addresses Gemini review on PR #84).
+    ///
+    /// Called by `LithairServer::serve()`'s auto-compaction background
+    /// task when this model's `event_count()` crosses the configured
+    /// threshold. Implementors that back themselves with an `EventStore`
+    /// MUST write a snapshot of the current state before truncating —
+    /// otherwise the events log is wiped and the next restart sees no
+    /// events to replay, causing permanent data loss.
+    ///
+    /// Default impl is a no-op: handlers that don't event-source (custom
+    /// in-memory `ModelHandler` impls) have nothing to compact. The
+    /// auto-compaction background task treats this as "best-effort,
+    /// nothing to do".
+    async fn compact(&self) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -486,5 +504,16 @@ where
         &self,
     ) -> Option<Arc<tokio::sync::RwLock<crate::engine::events::EventStore>>> {
         Some(Arc::clone(self.handler.get_event_store()))
+    }
+
+    async fn compact(&self) -> Result<(), String> {
+        // Delegate to the inner DeclarativeHttpHandler, which knows how to
+        // snapshot its storage HashMap before truncating. See the doc
+        // comment on `DeclarativeHttpHandler::compact` for the atomicity
+        // contract — critically, the snapshot is written BEFORE the
+        // truncate, so a crash mid-compact leaves either the old log
+        // intact or a fresh snapshot + empty log, never a wiped log with
+        // no snapshot (the Gemini-flagged data-loss case).
+        self.handler.compact().await
     }
 }
