@@ -101,7 +101,12 @@ async fn main() -> Result<()> {
 
     // Create Lithair event-sourced session store
     let session_store = Arc::new(PersistentSessionStore::new(args.sessions_dir.clone())?);
-    let _session_manager = SessionManager::new(session_store.clone());
+    // `from_arc` (not `new`) — we already have an `Arc<PersistentSessionStore>`
+    // because the login/logout handlers below need to share it. Calling
+    // `SessionManager::new(session_store.clone())` here would produce a
+    // double-`Arc` shape that the require-session gate cannot recognize
+    // (issue #80).
+    let _session_manager = SessionManager::from_arc(session_store.clone());
 
     // Create session middleware
     let session_config = SessionConfig::hybrid().with_max_age(std::time::Duration::from_secs(3600));

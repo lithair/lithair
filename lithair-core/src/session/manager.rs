@@ -60,18 +60,43 @@ impl SessionManagerConfig {
 ///
 /// Wraps a SessionStore and provides automatic cleanup of expired sessions.
 ///
-/// # Example
+/// # Choosing a constructor
+///
+/// - [`SessionManager::new`] — pass a store **by value**. The manager wraps
+///   it in an `Arc` internally. Use this when nothing else in your code
+///   needs to share the same store.
+///
+/// - [`SessionManager::from_arc`] — pass an already-`Arc`-wrapped store.
+///   Use this when other components (typically your `/auth/login` handler)
+///   need to share a clone of the same `Arc<Store>`.
+///
+/// Picking the wrong one used to silently produce a double-`Arc` shape
+/// that the `with_models_require_session(true)` gate could not recognize,
+/// causing 100% of authenticated requests to 401. Picking [`from_arc`] in
+/// the Arc-already-in-hand case avoids that footgun (issue #80).
+///
+/// # Example — owned store
 ///
 /// ```no_run
 /// use lithair_core::session::{SessionManager, MemorySessionStore};
 ///
 /// # async fn example() -> anyhow::Result<()> {
-/// // Create manager with automatic cleanup
 /// let manager = SessionManager::new(MemorySessionStore::new());
-///
-/// // Use the store
 /// let store = manager.store();
-/// // Cleanup happens automatically in the background
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Example — already-`Arc`'d store (shared with a login handler)
+///
+/// ```no_run
+/// use std::sync::Arc;
+/// use lithair_core::session::{PersistentSessionStore, SessionManager};
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let store = Arc::new(PersistentSessionStore::new("./data/sessions")?);
+/// let _shared_with_login = store.clone();
+/// let manager = SessionManager::from_arc(store);
 /// # Ok(())
 /// # }
 /// ```
@@ -82,15 +107,39 @@ pub struct SessionManager<S: SessionStore> {
 }
 
 impl<S: SessionStore + 'static> SessionManager<S> {
-    /// Create a new session manager with default configuration
+    /// Create a new session manager from an owned store.
+    ///
+    /// The store is wrapped in an `Arc` internally. Use this constructor
+    /// when nothing else in your code needs a direct handle to the store.
+    /// If you already hold an `Arc<S>` (typically because your login
+    /// handler needs to share it), call [`Self::from_arc`] instead —
+    /// passing an `Arc<S>` here would produce a double-`Arc` shape that
+    /// the session gate cannot recognize at runtime (issue #80).
     pub fn new(store: S) -> Self {
         Self::with_config(store, SessionManagerConfig::default())
     }
 
+    /// Create a new session manager from an already-`Arc`-wrapped store.
+    ///
+    /// Use this when the same store needs to be shared with other
+    /// components (e.g. a custom `/auth/login` handler that calls
+    /// `store.set(session)` directly). The resulting manager produces
+    /// the correct (single-`Arc`) internal shape that the
+    /// `with_models_require_session(true)` gate recognizes — see issue
+    /// #80 for the silent-failure mode this exists to prevent.
+    pub fn from_arc(store: Arc<S>) -> Self {
+        Self::from_arc_with_config(store, SessionManagerConfig::default())
+    }
+
     /// Create a new session manager with custom configuration
     pub fn with_config(store: S, config: SessionManagerConfig) -> Self {
-        let store = Arc::new(store);
+        Self::from_arc_with_config(Arc::new(store), config)
+    }
 
+    /// Create a new session manager from an already-`Arc`-wrapped store
+    /// and a custom configuration. The `Arc`-aware twin of
+    /// [`Self::with_config`].
+    pub fn from_arc_with_config(store: Arc<S>, config: SessionManagerConfig) -> Self {
         let cleanup_task = if config.auto_cleanup {
             let cleanup_store = store.clone();
             let interval = config.cleanup_interval;
