@@ -696,14 +696,14 @@ impl LithairServer {
         if self.models_require_session && self.model_infos.iter().any(|i| i.require_session_applies)
         {
             if let Some(ref store_any) = self.session_manager {
-                use crate::session::{PersistentSessionStore, SessionManager as SM};
-
-                let is_known_persistent =
-                    store_any.clone().downcast::<PersistentSessionStore>().is_ok();
-                let is_known_manager =
-                    store_any.clone().downcast::<SM<PersistentSessionStore>>().is_ok();
-
-                if !is_known_persistent && !is_known_manager {
+                // Single source of truth for which shapes the gate
+                // recognizes. Defined in `lithair-core/src/session/mod.rs`
+                // and consumed both here and in
+                // `http/declarative.rs::has_valid_session`. Adding a new
+                // supported shape in one place automatically extends the
+                // other — no more drift between constructor surface and
+                // runtime downcast (the original cause of issue #80).
+                if crate::session::RecognizedSessionStore::recognize(store_any).is_none() {
                     // The stored `Arc<dyn Any>` doesn't carry its concrete
                     // type name as a string. We at least preserve the
                     // `TypeId` so an operator with access to a debug
