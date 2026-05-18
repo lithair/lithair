@@ -14,6 +14,39 @@ type RespBody = BoxBody<Bytes, Infallible>;
 type Req = Request<Incoming>;
 type Resp = Response<RespBody>;
 
+/// Per-model storage and memory statistics (issue #72).
+///
+/// Surfaced through:
+/// - `GET /_admin/data/models/{name}/_stats` — JSON, for ad-hoc debugging
+/// - `GET /metrics` — Prometheus text, with `model="..."` label, for scraping
+///
+/// `approx_ram_bytes` is a **sample-based estimate**, not exact. The handler
+/// JSON-serializes up to 16 items, averages the byte size, and multiplies by
+/// the live item count. Biased upward vs in-memory `T` (JSON is verbose) and
+/// biased downward vs total heap usage (ignores indexes, replication state,
+/// audit trails). Use for order-of-magnitude capacity planning, not billing.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ModelStats {
+    /// Logical name of the model (e.g. `"Mail"`).
+    pub model: String,
+    /// Current number of items held in RAM.
+    pub item_count: usize,
+    /// Approximate RAM cost (see struct docs for methodology).
+    pub approx_ram_bytes: u64,
+    /// Size of the on-disk `events.raftlog` file in bytes. `0` if the file
+    /// isn't found (e.g. memory-only model, or compaction in progress).
+    pub raftlog_size_bytes: u64,
+    /// Events appended since the last snapshot/compaction. Currently always
+    /// `null` — surfacing it is gated on issue #69 (auto-compaction) tracking
+    /// the counter explicitly.
+    // TODO(#72/#69): wire from snapshot store once compaction tracks it.
+    pub events_since_last_compaction: Option<u64>,
+    /// Wall-clock time of the last compaction in RFC 3339. Currently always
+    /// `null` — see `events_since_last_compaction`.
+    // TODO(#72/#69): wire from snapshot store once compaction tracks it.
+    pub last_compaction_at: Option<String>,
+}
+
 /// Type-erased trait for model handlers
 #[async_trait::async_trait]
 pub trait ModelHandler: Send + Sync {
