@@ -848,9 +848,25 @@ impl LithairServer {
         // currently have, and it would diverge from the flusher's
         // lifecycle. If/when graceful shutdown lands, both code paths
         // should grow JoinHandle tracking together.
+        // Initialize default logger BEFORE spawning auto-compaction tasks
+        // (issue #69 follow-up — addresses Gemini review on PR #84).
+        // Previously this `try_init` ran after the spawn loop, so any
+        // `log::info!` / `log::warn!` emitted by the spawned tasks before
+        // this point routed to the fallback (silently dropped under the
+        // default `RUST_LOG` filter).
+        let _ = env_logger::Builder::from_default_env()
+            .format_timestamp_millis()
+            .format_module_path(false)
+            .try_init(); // Use try_init to avoid panic if already initialized
+
         if let Some(cfg) = self.auto_compaction {
             let models = self.models.read().await;
             for reg in models.iter() {
+                // Skip handlers that don't event-source — their `compact()`
+                // is a no-op but we'd still pay the per-tick lock acquire.
+                // The event-store handle is also what we read `event_count()`
+                // from on each tick; without it, no threshold check is
+                // meaningful.
                 let Some(event_store) = reg.handler.event_store_arc() else {
                     log::debug!(
                         "Auto-compaction: model '{}' has no EventStore, skipping",
@@ -858,6 +874,7 @@ impl LithairServer {
                     );
                     continue;
                 };
+                let handler = Arc::clone(&reg.handler);
                 let model_name = reg.name.clone();
                 log::info!(
                     "Auto-compaction enabled for model '{}': threshold={}, interval={:?}",
@@ -867,6 +884,13 @@ impl LithairServer {
                 );
                 tokio::spawn(async move {
                     let mut ticker = tokio::time::interval(cfg.check_interval);
+                    // `MissedTickBehavior::Skip` — if the system is under
+                    // load and several check intervals elapse between
+                    // `.tick()` resolutions, fire once and align to the
+                    // next interval (don't burst-fire a compaction check
+                    // multiple times in a row). Default `Burst` would
+                    // hammer a maintenance task that should be paced.
+                    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                     // Skip the immediate first tick — `tokio::time::interval`
                     // fires immediately on the first `.tick()` which would
                     // be a spurious read of an empty just-started store.
@@ -881,14 +905,20 @@ impl LithairServer {
                             continue;
                         }
                         log::info!(
-                            "Auto-compaction: model '{}' crossed threshold {}, truncating .raftlog",
+                            "Auto-compaction: model '{}' crossed threshold {}, compacting (snapshot + truncate)",
                             model_name,
                             cfg.events_threshold
                         );
-                        let mut store = event_store.write().await;
-                        if let Err(e) = store.truncate_events() {
+                        // Delegate to the handler's `compact()` — it owns
+                        // the snapshot+truncate atomicity guarantee. The
+                        // server-side loop intentionally does NOT touch
+                        // `EventStore::truncate_events()` directly: that
+                        // path caused the data-loss bug Gemini flagged on
+                        // PR #84 (truncate without snapshot = next replay
+                        // sees an empty log = state lost).
+                        if let Err(e) = handler.compact().await {
                             log::warn!(
-                                "Auto-compaction: model '{}' truncate_events failed: {}",
+                                "Auto-compaction: model '{}' compact() failed: {}",
                                 model_name,
                                 e
                             );
@@ -897,12 +927,6 @@ impl LithairServer {
                 });
             }
         }
-
-        // Initialize default logger if not already initialized
-        let _ = env_logger::Builder::from_default_env()
-            .format_timestamp_millis()
-            .format_module_path(false)
-            .try_init(); // Use try_init to avoid panic if already initialized
 
         // Validate configuration
         self.config.validate()?;
