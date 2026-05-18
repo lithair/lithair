@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-compaction data-loss bug** (PR #84 follow-up, Gemini review).
+  The initial #69 implementation called `EventStore::truncate_events()`
+  from the server-side spawn loop without first writing a state
+  snapshot — in an event-sourced system, the events ARE the state, so
+  truncating without a snapshot means the next restart sees an empty
+  log and reconstructs empty storage. Permanent data loss for any model
+  that crossed its threshold. Three changes:
+
+  - New `ModelHandler::compact()` trait method (default: no-op). The
+    `DeclarativeModelHandler` impl delegates to a new
+    `DeclarativeHttpHandler::compact()` that serializes the storage
+    `HashMap` to JSON, writes it via `EventStore::save_snapshot`, then
+    truncates the events log — atomically under the event-store write
+    lock.
+  - `DeclarativeHttpHandler::replay_events()` now loads any persisted
+    snapshot before replaying events, so a restart after compaction
+    reconstructs full state.
+  - The server-side auto-compaction task in `LithairServer::serve()`
+    now calls `handler.compact().await` instead of touching
+    `truncate_events()` directly. `EventStore::truncate_events()`
+    remains public but should never be called without a prior snapshot
+    — the framework no longer does so internally.
+
+  Also addressed in the same review:
+
+  - `env_logger::try_init()` now runs **before** the auto-compaction
+    spawn loop. Previously any `log::info!` emitted by the spawned
+    tasks before the logger was initialized routed to the fallback.
+  - The auto-compaction ticker now uses
+    `MissedTickBehavior::Skip` (was the default `Burst`). Under load,
+    missed check intervals no longer cause a burst of back-to-back
+    compaction checks.
+
+  Regression coverage: `lithair-core/tests/auto_compaction_test.rs`
+  gains `compact_then_reopen_preserves_state` (writes 12 items,
+  compacts, drops the handler, reopens against the same data dir,
+  asserts all 12 items are visible) and
+  `compact_then_append_then_reopen_replays_both` (snapshot + post-
+  snapshot events are both replayed correctly).
+
 ### Added
 
 - **Per-model storage and memory stats** (closes #72). Two new surfaces give
