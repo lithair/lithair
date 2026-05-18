@@ -3902,6 +3902,21 @@ impl LithairServer {
     ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
         use http_body_util::Full;
 
+        // Escape a string for use as a Prometheus label value per the text
+        // exposition format spec (backslash, double quote, newline).
+        fn escape_prom_label(s: &str) -> String {
+            let mut out = String::with_capacity(s.len());
+            for c in s.chars() {
+                match c {
+                    '\\' => out.push_str("\\\\"),
+                    '"' => out.push_str("\\\""),
+                    '\n' => out.push_str("\\n"),
+                    c => out.push(c),
+                }
+            }
+            out
+        }
+
         let models = self.models.read().await;
         let mut lines = Vec::new();
 
@@ -3916,6 +3931,45 @@ impl LithairServer {
         lines.push("# HELP lithair_frontend_engines_total Number of frontend engines".to_string());
         lines.push("# TYPE lithair_frontend_engines_total gauge".to_string());
         lines.push(format!("lithair_frontend_engines_total {}", self.frontend_engines.len()));
+
+        // Per-model storage stats (issue #72). One series per registered model.
+        // approx_ram_bytes is a sample-based estimate — see ModelStats docs.
+        // Compute stats once per model to avoid 3x I/O for raftlog metadata.
+        let mut per_model: Vec<(String, crate::app::ModelStats)> = Vec::with_capacity(models.len());
+        for model in models.iter() {
+            let stats = model.handler.get_stats(&model.data_path).await;
+            per_model.push((escape_prom_label(&model.name), stats));
+        }
+
+        lines.push("# HELP lithair_model_items Number of items held in RAM per model".to_string());
+        lines.push("# TYPE lithair_model_items gauge".to_string());
+        for (label, stats) in &per_model {
+            lines.push(format!("lithair_model_items{{model=\"{}\"}} {}", label, stats.item_count));
+        }
+
+        lines.push(
+            "# HELP lithair_model_ram_bytes Approximate per-model RAM cost in bytes (sampled)"
+                .to_string(),
+        );
+        lines.push("# TYPE lithair_model_ram_bytes gauge".to_string());
+        for (label, stats) in &per_model {
+            lines.push(format!(
+                "lithair_model_ram_bytes{{model=\"{}\"}} {}",
+                label, stats.approx_ram_bytes
+            ));
+        }
+
+        lines.push(
+            "# HELP lithair_model_raftlog_bytes Size of events.raftlog on disk per model"
+                .to_string(),
+        );
+        lines.push("# TYPE lithair_model_raftlog_bytes gauge".to_string());
+        for (label, stats) in &per_model {
+            lines.push(format!(
+                "lithair_model_raftlog_bytes{{model=\"{}\"}} {}",
+                label, stats.raftlog_size_bytes
+            ));
+        }
 
         lines.push(String::new());
 
