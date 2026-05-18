@@ -351,26 +351,24 @@ where
     /// avoids breaking callers (e.g. browser clients with cookie auth) who
     /// already rely on the cookie path elsewhere in the framework.
     async fn has_valid_session(&self, req: &Req) -> bool {
-        use crate::session::{PersistentSessionStore, SessionManager, SessionStore};
+        use crate::session::RecognizedSessionStore;
 
         let Some(session_store_any) = self.session_store.as_ref() else {
             return false;
         };
-        let store_any = session_store_any.clone();
 
         let Some(token) = extract_session_token(req) else {
             return false;
         };
 
-        // Try the two known concrete shapes. `Arc::downcast` consumes the
-        // Arc, so we clone for the second attempt.
-        if let Ok(store) = store_any.clone().downcast::<PersistentSessionStore>() {
-            return matches!(store.get(&token).await, Ok(Some(s)) if !s.is_expired());
-        }
-        if let Ok(manager) = store_any.downcast::<SessionManager<PersistentSessionStore>>() {
-            return matches!(manager.get_session(&token).await, Ok(Some(s)) if !s.is_expired());
-        }
-        false
+        // The recognizer is the single source of truth for which session
+        // store shapes Lithair supports here. The boot-time fail-fast in
+        // `app/mod.rs::serve` uses the same helper, so adding a new shape
+        // automatically benefits both sides (issue #80).
+        let Some(recognized) = RecognizedSessionStore::recognize(session_store_any) else {
+            return false;
+        };
+        recognized.get_live_session(&token).await.is_some()
     }
 
     /// Set whether this handler must reject requests lacking a valid session.

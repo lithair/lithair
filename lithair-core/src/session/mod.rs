@@ -39,6 +39,59 @@ pub use persistent_store::PersistentSessionStore;
 pub use store::{Session, SessionStore};
 
 use chrono::Duration;
+use std::sync::Arc;
+
+/// One of the two session-store shapes Lithair currently stores in the
+/// builder's `Arc<dyn Any>` slot and that both the require-session gate
+/// (`http/declarative.rs::has_valid_session`) and the boot-time validation
+/// (`app/mod.rs::serve`) recognize.
+///
+/// Centralizing the recognized set means the gate and the fail-fast check
+/// share a single source of truth — if a new shape is added, both sides
+/// gain support together rather than drifting (issue #80 was caused by a
+/// drift between the constructor surface and the gate's known shapes).
+pub(crate) enum RecognizedSessionStore {
+    /// A raw `Arc<PersistentSessionStore>` — the shape produced by the
+    /// RBAC builder path (`with_rbac_config(...)`).
+    Persistent(Arc<PersistentSessionStore>),
+    /// An `Arc<SessionManager<PersistentSessionStore>>` — the shape
+    /// produced by `with_sessions(SessionManager::new(store_by_value))`
+    /// or `with_sessions(SessionManager::from_arc(arc_store))`.
+    Manager(Arc<SessionManager<PersistentSessionStore>>),
+}
+
+impl RecognizedSessionStore {
+    /// Attempt to identify the concrete shape of a registered session
+    /// store. Returns `Some` if it matches one of the two shapes the
+    /// framework knows how to look sessions up in; `None` otherwise.
+    ///
+    /// The `Arc::downcast` calls consume the `Arc`, so this clones once
+    /// per attempt — cheap, only happens on misses.
+    pub(crate) fn recognize(store_any: &Arc<dyn std::any::Any + Send + Sync>) -> Option<Self> {
+        if let Ok(s) = store_any.clone().downcast::<PersistentSessionStore>() {
+            return Some(Self::Persistent(s));
+        }
+        if let Ok(m) = store_any.clone().downcast::<SessionManager<PersistentSessionStore>>() {
+            return Some(Self::Manager(m));
+        }
+        None
+    }
+
+    /// Look up a session by id in whichever underlying store this shape
+    /// wraps. Returns the session only if found AND not expired — both
+    /// callers (gate, future audit hooks) need the same liveness check,
+    /// so we centralize it here.
+    pub(crate) async fn get_live_session(&self, id: &str) -> Option<Session> {
+        match self {
+            Self::Persistent(store) => {
+                store.get(id).await.ok().flatten().filter(|s| !s.is_expired())
+            }
+            Self::Manager(manager) => {
+                manager.get_session(id).await.ok().flatten().filter(|s| !s.is_expired())
+            }
+        }
+    }
+}
 
 /// Session configuration
 #[derive(Clone)]

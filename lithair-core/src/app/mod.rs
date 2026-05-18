@@ -672,6 +672,72 @@ impl LithairServer {
             self.validate_schemas().await?;
         }
 
+        // Issue #80 — fail-fast at boot when the operator opted into the
+        // `with_models_require_session(true)` gate but the registered
+        // session manager has a shape the gate can't recognize at request
+        // time (`has_valid_session` in `http/declarative.rs` only handles
+        // `Arc<PersistentSessionStore>` and
+        // `Arc<SessionManager<PersistentSessionStore>>`).
+        //
+        // The classic mis-wire is `SessionManager::new(arc_store)` where
+        // `arc_store: Arc<PersistentSessionStore>` — the generic resolves
+        // to `S = Arc<PersistentSessionStore>` and the stored type
+        // becomes `Arc<SessionManager<Arc<PersistentSessionStore>>>` (a
+        // double-Arc shape the downcast misses). Pre-fix, every request
+        // 401'd silently. Now we refuse to start, point the operator at
+        // the right constructor (`SessionManager::from_arc`), and never
+        // bind the port.
+        //
+        // Only fires when the gate is actually opt-in (`models_require_session`)
+        // AND at least one model registration is opted-in via the
+        // simple-CRUD path. `with_model_full` registrations carry their
+        // own RBAC story and the gate doesn't cover them, so a mismatched
+        // shape doesn't cause a silent auth-bypass for them.
+        if self.models_require_session && self.model_infos.iter().any(|i| i.require_session_applies)
+        {
+            if let Some(ref store_any) = self.session_manager {
+                // Single source of truth for which shapes the gate
+                // recognizes. Defined in `lithair-core/src/session/mod.rs`
+                // and consumed both here and in
+                // `http/declarative.rs::has_valid_session`. Adding a new
+                // supported shape in one place automatically extends the
+                // other — no more drift between constructor surface and
+                // runtime downcast (the original cause of issue #80).
+                if crate::session::RecognizedSessionStore::recognize(store_any).is_none() {
+                    // The stored `Arc<dyn Any>` doesn't carry its concrete
+                    // type name as a string. We at least preserve the
+                    // `TypeId` so an operator with access to a debug
+                    // build can correlate it.
+                    let actual_type_id = (**store_any).type_id();
+                    anyhow::bail!(
+                        "Refusing to start: `with_models_require_session(true)` is set \
+                         but the registered session store has an unrecognized shape \
+                         (TypeId = {:?}). The gate only recognizes \
+                         `Arc<PersistentSessionStore>` and \
+                         `Arc<SessionManager<PersistentSessionStore>>`. This usually \
+                         means `SessionManager::new(arc_store)` was called with an \
+                         already-`Arc`-wrapped store, producing a double-`Arc` shape \
+                         that silently 401s every request. Use \
+                         `SessionManager::from_arc(arc_store)` instead, or pass the \
+                         store by value to `SessionManager::new`. See issue #80.",
+                        actual_type_id
+                    );
+                }
+            } else {
+                // Flag is on but no session store was ever wired. This is
+                // already a noisy 401-on-everything situation
+                // (`has_valid_session` returns false unconditionally),
+                // but pre-issue-#80 we shipped it silently. Failing fast
+                // here matches the operator's intent: they asked for
+                // gating, the framework cannot honor it, refuse to start.
+                anyhow::bail!(
+                    "Refusing to start: `with_models_require_session(true)` is set \
+                     but no session store was registered. Add `.with_sessions(...)` \
+                     before `.serve()`, or remove the require-session flag."
+                );
+            }
+        }
+
         // Create model handlers from factories
         for info in &self.model_infos {
             log::info!("Creating handler for model: {}", info.name);
