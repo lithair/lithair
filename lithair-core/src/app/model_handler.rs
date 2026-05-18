@@ -60,6 +60,24 @@ pub trait ModelHandler: Send + Sync {
     /// Get all items as JSON array
     async fn get_all_data_json(&self) -> serde_json::Value;
 
+    /// Get at most `limit` items as a JSON array, for sampled diagnostics.
+    ///
+    /// The default impl falls back to `get_all_data_json().await` then trims
+    /// to `limit`, which still pays the cost of cloning every item — a real
+    /// liability for large models. Implementors backed by a storage primitive
+    /// that supports bounded iteration MUST override this to avoid that cost
+    /// (see Gemini review on PR #83). The order is unspecified — the result
+    /// is a representative sample, not a stable selection.
+    async fn get_sample_data_json(&self, limit: usize) -> serde_json::Value {
+        let all = self.get_all_data_json().await;
+        match all {
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.into_iter().take(limit).collect())
+            }
+            other => other,
+        }
+    }
+
     /// Get single item by ID as JSON
     async fn get_item_json(&self, id: &str) -> Option<serde_json::Value>;
 
@@ -75,18 +93,32 @@ pub trait ModelHandler: Send + Sync {
     /// The default impl looks for `events.raftlog` under that path when
     /// reporting `raftlog_size_bytes`; absent file -> `0`.
     ///
-    /// `approx_ram_bytes` samples up to 16 items, JSON-serializes them,
-    /// averages, multiplies by the live count. See [`ModelStats`] for
-    /// methodology and caveats. Implementors with cheaper sizing primitives
-    /// are encouraged to override.
+    /// `approx_ram_bytes` samples up to 16 items via `get_sample_data_json`,
+    /// JSON-serializes them, averages, multiplies by the live count. See
+    /// [`ModelStats`] for methodology and caveats. Implementors with cheaper
+    /// sizing primitives are encouraged to override either this method or
+    /// `get_sample_data_json` (whichever is cheaper to specialize).
     async fn get_stats(&self, data_path: &str) -> ModelStats {
+        // Sample size for the RAM estimator — matched on both surfaces (JSON
+        // + Prometheus). Bumping this trades estimate stability for cost; 16
+        // empirically lands within a few percent of the full-scan number on
+        // homogeneous models without paying the full clone tax.
+        const SAMPLE_LIMIT: usize = 16;
+
         let count = self.get_count().await;
+        // Only fetch a bounded sample — Gemini PR #83 review flagged that the
+        // previous impl called `get_all_data_json` and then `.take(16)`, which
+        // still cloned every item. For a model with 50k items × 4 KB each
+        // that's ~200 MB allocated per stats call. `get_sample_data_json`
+        // bounds the fetch at the storage layer when the implementor supports
+        // it; the default fallback still trims after the fact, but the trait
+        // contract pushes implementors toward the cheap path.
         let approx_ram_bytes = if count == 0 {
             0
         } else {
-            let sample = self.get_all_data_json().await;
+            let sample = self.get_sample_data_json(SAMPLE_LIMIT).await;
             if let Some(arr) = sample.as_array() {
-                let sample_n = arr.len().min(16);
+                let sample_n = arr.len().min(SAMPLE_LIMIT);
                 if sample_n == 0 {
                     0
                 } else {
@@ -288,6 +320,16 @@ where
 
     async fn get_all_data_json(&self) -> serde_json::Value {
         let items = self.handler.get_all_items().await;
+        serde_json::to_value(&items).unwrap_or(serde_json::json!([]))
+    }
+
+    async fn get_sample_data_json(&self, limit: usize) -> serde_json::Value {
+        // Short-circuit at the storage layer so a model with 50k items
+        // doesn't allocate 50k clones just for a 16-item RAM estimate
+        // (Gemini PR #83 review). `DeclarativeHttpHandler` exposes a bounded
+        // iterator over the in-memory `HashMap` that takes only `limit`
+        // values under a read lock.
+        let items = self.handler.get_sample_items(limit).await;
         serde_json::to_value(&items).unwrap_or(serde_json::json!([]))
     }
 

@@ -393,6 +393,20 @@ where
         storage.values().cloned().collect()
     }
 
+    /// Return at most `limit` items from storage (cloned).
+    ///
+    /// Used by sampled diagnostics (e.g. `ModelStats::approx_ram_bytes`) to
+    /// avoid cloning every item when only a small sample is needed. Iterates
+    /// the underlying `HashMap` in unspecified order — callers must treat the
+    /// result as a representative sample, not a stable selection.
+    pub async fn get_sample_items(&self, limit: usize) -> Vec<T> {
+        if limit == 0 {
+            return Vec::new();
+        }
+        let storage = self.storage.read().await;
+        storage.values().take(limit).cloned().collect()
+    }
+
     /// Return all items matching a predicate (cloned)
     /// Useful for relational queries like "orders for consumer X"
     pub async fn query<F>(&self, predicate: F) -> Vec<T>
