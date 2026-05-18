@@ -3917,12 +3917,24 @@ impl LithairServer {
             out
         }
 
-        let models = self.models.read().await;
+        // Snapshot the registered models under the read lock, then drop it
+        // before awaiting per-model `get_stats` — otherwise long-running
+        // sampling I/O blocks any writer trying to register a new model
+        // (Gemini PR #83 review). Cloning the Arcs and the small metadata
+        // strings is cheap; holding the lock across `.await` is not.
+        let models_snapshot: Vec<(String, String, Arc<dyn crate::app::ModelHandler>)> = {
+            let models = self.models.read().await;
+            models
+                .iter()
+                .map(|m| (m.name.clone(), m.data_path.clone(), Arc::clone(&m.handler)))
+                .collect()
+        };
+
         let mut lines = Vec::new();
 
         lines.push("# HELP lithair_models_total Number of registered models".to_string());
         lines.push("# TYPE lithair_models_total gauge".to_string());
-        lines.push(format!("lithair_models_total {}", models.len()));
+        lines.push(format!("lithair_models_total {}", models_snapshot.len()));
 
         lines.push("# HELP lithair_custom_routes_total Number of custom routes".to_string());
         lines.push("# TYPE lithair_custom_routes_total gauge".to_string());
@@ -3935,10 +3947,11 @@ impl LithairServer {
         // Per-model storage stats (issue #72). One series per registered model.
         // approx_ram_bytes is a sample-based estimate — see ModelStats docs.
         // Compute stats once per model to avoid 3x I/O for raftlog metadata.
-        let mut per_model: Vec<(String, crate::app::ModelStats)> = Vec::with_capacity(models.len());
-        for model in models.iter() {
-            let stats = model.handler.get_stats(&model.data_path).await;
-            per_model.push((escape_prom_label(&model.name), stats));
+        let mut per_model: Vec<(String, crate::app::ModelStats)> =
+            Vec::with_capacity(models_snapshot.len());
+        for (name, data_path, handler) in models_snapshot {
+            let stats = handler.get_stats(&data_path).await;
+            per_model.push((escape_prom_label(&name), stats));
         }
 
         lines.push("# HELP lithair_model_items Number of items held in RAM per model".to_string());
@@ -4071,10 +4084,20 @@ impl LithairServer {
 
             // GET /_admin/data/models/{name}/_stats - Per-model storage stats (issue #72)
             (&hyper::Method::GET, ["models", name, "_stats"]) => {
-                let models = self.models.read().await;
+                // Resolve the model under the read lock, snapshot the handler
+                // + data_path, then drop the lock before awaiting get_stats.
+                // Same rationale as handle_metrics_request: stats sampling
+                // must not block writers (Gemini PR #83 review).
+                let resolved: Option<(String, Arc<dyn crate::app::ModelHandler>)> = {
+                    let models = self.models.read().await;
+                    models
+                        .iter()
+                        .find(|m| m.name == *name)
+                        .map(|m| (m.data_path.clone(), Arc::clone(&m.handler)))
+                };
 
-                if let Some(model) = models.iter().find(|m| m.name == *name) {
-                    let stats = model.handler.get_stats(&model.data_path).await;
+                if let Some((data_path, handler)) = resolved {
+                    let stats = handler.get_stats(&data_path).await;
 
                     Ok(hyper::Response::builder()
                         .status(200)
