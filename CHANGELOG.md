@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-model storage and memory stats** (closes #72). Two new surfaces give
+  operators a read-only view of each registered model's footprint, motivated
+  by LensMail v2 capacity planning:
+
+  - `GET /_admin/data/models/{name}/_stats` — JSON with `item_count`,
+    `approx_ram_bytes`, `raftlog_size_bytes`, and two compaction fields
+    currently returning `null` (gated on #69 wiring). 404 when the model
+    name doesn't exist. Requires `with_data_admin()` like the sibling
+    `/_admin/data/models/*` endpoints.
+  - `GET /metrics` — extended with three new Prometheus gauges per
+    registered model: `lithair_model_items{model="..."}`,
+    `lithair_model_ram_bytes{model="..."}`,
+    `lithair_model_raftlog_bytes{model="..."}`.
+
+  `approx_ram_bytes` is a sample-based estimate (up to 16 items
+  JSON-serialized, averaged, multiplied by live count) — useful for order-
+  of-magnitude capacity planning, not billing. See `ModelStats` docs for
+  the methodology and biases. Custom `ModelHandler` impls can override
+  `get_stats` with a cheaper sizing primitive if they have one.
+
 ## [0.7.1] - 2026-05-17
 
 ### Fixed
