@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-compaction data-loss bug** (PR #84 follow-up, Gemini review).
+  The initial #69 implementation called `EventStore::truncate_events()`
+  from the server-side spawn loop without first writing a state
+  snapshot — in an event-sourced system, the events ARE the state, so
+  truncating without a snapshot means the next restart sees an empty
+  log and reconstructs empty storage. Permanent data loss for any model
+  that crossed its threshold. Three changes:
+
+  - New `ModelHandler::compact()` trait method (default: no-op). The
+    `DeclarativeModelHandler` impl delegates to a new
+    `DeclarativeHttpHandler::compact()` that serializes the storage
+    `HashMap` to JSON, writes it via `EventStore::save_snapshot`, then
+    truncates the events log — atomically under the event-store write
+    lock.
+  - `DeclarativeHttpHandler::replay_events()` now loads any persisted
+    snapshot before replaying events, so a restart after compaction
+    reconstructs full state.
+  - The server-side auto-compaction task in `LithairServer::serve()`
+    now calls `handler.compact().await` instead of touching
+    `truncate_events()` directly. `EventStore::truncate_events()`
+    remains public but should never be called without a prior snapshot
+    — the framework no longer does so internally.
+
+  Also addressed in the same review:
+
+  - `env_logger::try_init()` now runs **before** the auto-compaction
+    spawn loop. Previously any `log::info!` emitted by the spawned
+    tasks before the logger was initialized routed to the fallback.
+  - The auto-compaction ticker now uses
+    `MissedTickBehavior::Skip` (was the default `Burst`). Under load,
+    missed check intervals no longer cause a burst of back-to-back
+    compaction checks.
+
+  Regression coverage: `lithair-core/tests/auto_compaction_test.rs`
+  gains `compact_then_reopen_preserves_state` (writes 12 items,
+  compacts, drops the handler, reopens against the same data dir,
+  asserts all 12 items are visible) and
+  `compact_then_append_then_reopen_replays_both` (snapshot + post-
+  snapshot events are both replayed correctly).
+
 ### Added
 
 - **Per-model storage and memory stats** (closes #72). Two new surfaces give
@@ -28,6 +70,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of-magnitude capacity planning, not billing. See `ModelStats` docs for
   the methodology and biases. Custom `ModelHandler` impls can override
   `get_stats` with a cheaper sizing primitive if they have one.
+
+- **Builder-driven auto-compaction of `.raftlog`** (closes #69). New opt-in
+  `LithairServerBuilder` flag that periodically truncates each registered
+  model's event log when its event count crosses a configurable threshold.
+  Motivated by LensMail v2: every full-snapshot mutation (e.g. mark-as-read
+  toggles) appends a full object dump to `.raftlog`, accumulating storage
+  consumers had to manage with their own cron + monitoring loop.
+
+  ```rust
+  use std::time::Duration;
+  LithairServer::new()
+      .with_model::<Mail>("./data/mails", "/api/mails")
+      .with_auto_compaction(10_000, Duration::from_secs(300))
+      .serve()
+      .await?;
+  ```
+
+  Behind the scenes, `serve()` spawns one tokio task per registered model
+  that periodically checks the event count and calls the new
+  `ModelHandler::compact()` method. This method is responsible for
+  atomically creating a state snapshot before truncating the event log,
+  preventing data loss. The underlying compaction primitives in
+  `SnapshotStore` and `EventStore` are unchanged — this is a thin opt-in
+  driver on top. Lifecycle matches the existing background-flusher pattern
+  (`DeclarativeHttpHandler::new`): spawned and forgotten, aborted on
+  runtime shutdown.
+
+  New public API: `engine::AutoCompactionConfig`, constants
+  `DEFAULT_AUTO_COMPACTION_CHECK_INTERVAL`, `DEFAULT_SNAPSHOT_THRESHOLD`
+  (re-exported from `engine::snapshot`), and `ModelHandler::event_store_arc()`
+  trait method (default impl returns `None`; `DeclarativeModelHandler`
+  returns the underlying store). Default is **disabled** — calling
+  `with_auto_compaction(...)` (or `with_auto_compaction_config(...)`) opts
+  in; not calling it preserves current behavior for every existing consumer.
+
+  A threshold of `0` is rejected at builder time —
+  `with_auto_compaction(0, ...)` panics, and `AutoCompactionConfig::new`
+  returns `None`. Custom `ModelHandler` impls that don't back themselves
+  with an `EventStore` are silently skipped (the trait method's `None`
+  default).
 
 ## [0.7.1] - 2026-05-17
 

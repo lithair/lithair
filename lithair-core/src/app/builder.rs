@@ -153,6 +153,14 @@ pub struct LithairServerBuilder {
     // semantics. Consumers using `with_model_full` opt into a richer
     // authorization model and don't need this flag.
     models_require_session: bool,
+
+    // Issue #69: opt-in auto-compaction of the `.raftlog` for every
+    // registered model. When `Some`, `LithairServer::serve()` spawns one
+    // tokio task per model that periodically checks the model's event
+    // count and triggers `EventStore::truncate_events()` when the count
+    // crosses `events_threshold`. Default is `None` — feature is off, no
+    // observable change for existing consumers.
+    auto_compaction: Option<crate::engine::AutoCompactionConfig>,
 }
 
 impl LithairServerBuilder {
@@ -186,6 +194,7 @@ impl LithairServerBuilder {
             openapi_enabled: false,
             sse_enabled: false,
             models_require_session: false,
+            auto_compaction: None,
         }
     }
 
@@ -214,6 +223,7 @@ impl LithairServerBuilder {
             openapi_enabled: false,
             sse_enabled: false,
             models_require_session: false,
+            auto_compaction: None,
         }
     }
 
@@ -302,6 +312,59 @@ impl LithairServerBuilder {
     /// ```
     pub fn with_models_require_session(mut self, require: bool) -> Self {
         self.models_require_session = require;
+        self
+    }
+
+    /// Enable builder-driven auto-compaction of every registered model's
+    /// `.raftlog` (issue #69).
+    ///
+    /// `events_threshold` is the event count above which compaction
+    /// (`EventStore::truncate_events`) fires. `check_interval` is how often
+    /// the background task wakes up and inspects each model's event count.
+    ///
+    /// The framework already exposes the underlying primitives
+    /// (`SnapshotStore`, `EventStore::truncate_events`, `event_count`); this
+    /// flag just drives them. Default is **off** — calling this method opts
+    /// in; not calling it preserves the previous behavior.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `events_threshold == 0`. A threshold of zero would trigger
+    /// compaction on every tick, defeating the purpose of having a
+    /// threshold. For callers that prefer error-handling over panic, use
+    /// [`Self::with_auto_compaction_config`] with an explicitly constructed
+    /// [`crate::engine::AutoCompactionConfig`].
+    ///
+    /// # Example
+    /// ```ignore
+    /// use std::time::Duration;
+    /// LithairServer::new()
+    ///     .with_model::<Mail>("./data/mails", "/api/mails")
+    ///     .with_auto_compaction(10_000, Duration::from_secs(300))
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_auto_compaction(
+        mut self,
+        events_threshold: usize,
+        check_interval: std::time::Duration,
+    ) -> Self {
+        let cfg = crate::engine::AutoCompactionConfig::new(events_threshold, check_interval)
+            .expect("with_auto_compaction: events_threshold must be > 0");
+        self.auto_compaction = Some(cfg);
+        self
+    }
+
+    /// Enable builder-driven auto-compaction with an already-validated
+    /// [`crate::engine::AutoCompactionConfig`] (issue #69).
+    ///
+    /// Prefer [`Self::with_auto_compaction`] for the common case; this
+    /// variant exists so callers that construct a config dynamically
+    /// (e.g. from a settings file) can surface validation errors
+    /// themselves and avoid the panic-on-zero behavior of the convenience
+    /// method.
+    pub fn with_auto_compaction_config(mut self, cfg: crate::engine::AutoCompactionConfig) -> Self {
+        self.auto_compaction = Some(cfg);
         self
     }
 
@@ -1926,6 +1989,8 @@ impl LithairServerBuilder {
             } else {
                 None
             },
+            // Issue #69: auto-compaction config (None = feature off).
+            auto_compaction: self.auto_compaction,
         })
     }
 

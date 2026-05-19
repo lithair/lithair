@@ -32,7 +32,10 @@ pub use persistence::{DatabaseStats, FileStorage};
 pub use persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 pub use relations::{AutoJoiner, DataSource, RelationRegistry};
 pub use scc2_engine::{Scc2Engine, Scc2EngineConfig, VersionedEntry};
-pub use snapshot::{RecoveryContext, Snapshot, SnapshotMetadata, SnapshotStats, SnapshotStore};
+pub use snapshot::{
+    AutoCompactionConfig, RecoveryContext, Snapshot, SnapshotMetadata, SnapshotStats,
+    SnapshotStore, DEFAULT_AUTO_COMPACTION_CHECK_INTERVAL, DEFAULT_SNAPSHOT_THRESHOLD,
+};
 pub use state::StateEngine;
 
 /// The core application trait that users must implement

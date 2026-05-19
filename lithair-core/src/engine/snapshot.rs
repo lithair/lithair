@@ -31,6 +31,64 @@ pub const SNAPSHOT_VERSION: u32 = 1;
 /// Default number of events before creating a snapshot
 pub const DEFAULT_SNAPSHOT_THRESHOLD: usize = 10_000;
 
+/// Default interval between auto-compaction checks
+pub const DEFAULT_AUTO_COMPACTION_CHECK_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(300);
+
+/// Configuration for the builder-driven auto-compaction background task
+/// (issue #69).
+///
+/// When wired via [`crate::app::LithairServerBuilder::with_auto_compaction`],
+/// the server spawns one tokio task per registered model that periodically
+/// inspects the model's `EventStore::event_count()` and triggers the
+/// existing snapshot + truncate path (`EventStore::truncate_events`) once
+/// the count crosses `events_threshold`.
+///
+/// This is a thin, opt-in wrapper around primitives that already exist
+/// (`SnapshotStore`, `EventStore::truncate_events`, `event_count`) — the
+/// compaction primitives stay public, the builder just drives them.
+///
+/// Default: disabled (no observable change for existing consumers).
+#[derive(Debug, Clone, Copy)]
+pub struct AutoCompactionConfig {
+    /// Event count above which compaction (truncate of `.raftlog`) is
+    /// triggered on the next check tick. The check is `events > threshold`
+    /// — a threshold of `0` would compact on every tick, which is almost
+    /// certainly unintended; we reject it at builder time.
+    pub events_threshold: usize,
+
+    /// How often the background task wakes up and inspects each model's
+    /// event count. Sub-second intervals are accepted but discouraged for
+    /// long-running servers — the typical value is on the order of minutes.
+    pub check_interval: std::time::Duration,
+}
+
+impl AutoCompactionConfig {
+    /// Sentinel: an `events_threshold` of zero is almost always a mistake
+    /// (it would compact on every tick, defeating the purpose of having a
+    /// threshold). Builders should treat it as a configuration error.
+    pub const MIN_EVENTS_THRESHOLD: usize = 1;
+
+    /// Construct a configuration with explicit values. Returns `None` when
+    /// `events_threshold` is zero — the caller is expected to surface the
+    /// configuration error rather than silently accepting it.
+    pub fn new(events_threshold: usize, check_interval: std::time::Duration) -> Option<Self> {
+        if events_threshold < Self::MIN_EVENTS_THRESHOLD {
+            return None;
+        }
+        Some(Self { events_threshold, check_interval })
+    }
+}
+
+impl Default for AutoCompactionConfig {
+    fn default() -> Self {
+        Self {
+            events_threshold: DEFAULT_SNAPSHOT_THRESHOLD,
+            check_interval: DEFAULT_AUTO_COMPACTION_CHECK_INTERVAL,
+        }
+    }
+}
+
 /// Metadata about a snapshot
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotMetadata {
