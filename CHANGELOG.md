@@ -88,11 +88,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
   Behind the scenes, `serve()` spawns one tokio task per registered model
-  that wraps the existing `EventStore::event_count()` + `truncate_events()`
-  primitives. The compaction APIs in `SnapshotStore` and `EventStore` are
-  unchanged — this is a thin opt-in driver on top. Lifecycle matches the
-  existing background-flusher pattern (`DeclarativeHttpHandler::new`):
-  spawned and forgotten, aborted on runtime shutdown.
+  that periodically checks the event count and calls the new
+  `ModelHandler::compact()` method. This method is responsible for
+  atomically creating a state snapshot before truncating the event log,
+  preventing data loss. The underlying compaction primitives in
+  `SnapshotStore` and `EventStore` are unchanged — this is a thin opt-in
+  driver on top. Lifecycle matches the existing background-flusher pattern
+  (`DeclarativeHttpHandler::new`): spawned and forgotten, aborted on
+  runtime shutdown.
 
   New public API: `engine::AutoCompactionConfig`, constants
   `DEFAULT_AUTO_COMPACTION_CHECK_INTERVAL`, `DEFAULT_SNAPSHOT_THRESHOLD`
