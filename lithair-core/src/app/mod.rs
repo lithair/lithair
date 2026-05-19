@@ -3947,12 +3947,22 @@ impl LithairServer {
         // Per-model storage stats (issue #72). One series per registered model.
         // approx_ram_bytes is a sample-based estimate — see ModelStats docs.
         // Compute stats once per model to avoid 3x I/O for raftlog metadata.
-        let mut per_model: Vec<(String, crate::app::ModelStats)> =
-            Vec::with_capacity(models_snapshot.len());
-        for (name, data_path, handler) in models_snapshot {
-            let stats = handler.get_stats(&data_path).await;
-            per_model.push((escape_prom_label(&name), stats));
-        }
+        //
+        // Stats collection is parallelised via `futures::future::join_all` so
+        // `/metrics` scales with the slowest model, not the sum of all models
+        // (Gemini PR #83 round-3 review). The read lock has already been
+        // dropped above, so the per-model `get_stats` futures are independent
+        // — there's no shared mutable state across them. With N models the
+        // wall-clock cost drops from sum(get_stats_i) to max(get_stats_i),
+        // which matters for operators with many small models scraped by a
+        // tight Prometheus interval.
+        let stats_futures =
+            models_snapshot.into_iter().map(|(name, data_path, handler)| async move {
+                let stats = handler.get_stats(&data_path).await;
+                (escape_prom_label(&name), stats)
+            });
+        let per_model: Vec<(String, crate::app::ModelStats)> =
+            futures::future::join_all(stats_futures).await;
 
         lines.push("# HELP lithair_model_items Number of items held in RAM per model".to_string());
         lines.push("# TYPE lithair_model_items gauge".to_string());
@@ -6150,6 +6160,197 @@ mod tests {
             .expect("PUT /limited");
         assert_eq!(resp.status(), 200);
         assert_eq!(resp.text().await.expect("body"), "read 13 bytes");
+
+        handle.abort();
+    }
+
+    // ------------------------------------------------------------------
+    // Per-model stats parallelism on `/metrics` (Gemini PR #83 round-3).
+    //
+    // Regression test for the sequential `.await` loop that previously
+    // computed each model's stats one after the other. With N models
+    // and a per-model latency of `SLEEP`, the old wall-clock cost was
+    // N * SLEEP. After parallelising via `futures::future::join_all`
+    // the cost should be roughly SLEEP (max, not sum). We bound the
+    // assertion at 2 * SLEEP so a true sequential regression (N=5,
+    // 5 * SLEEP) trips it while CI scheduler jitter stays in the green.
+    // ------------------------------------------------------------------
+
+    /// Test-only `ModelHandler` that sleeps for a configurable duration in
+    /// `get_stats` and returns trivial values elsewhere. Used to prove that
+    /// `handle_metrics_request` collects per-model stats concurrently — only
+    /// `get_stats` is invoked by `/metrics`, so the other trait methods
+    /// stay as minimal stubs that panic if accidentally called (which would
+    /// indicate the test wiring drifted from the metrics endpoint).
+    struct SlowStatsHandler {
+        name: String,
+        sleep: std::time::Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::app::ModelHandler for SlowStatsHandler {
+        async fn handle_request(
+            &self,
+            _req: hyper::Request<hyper::body::Incoming>,
+            _path_segments: &[&str],
+        ) -> Result<
+            hyper::Response<
+                http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>,
+            >,
+            std::convert::Infallible,
+        > {
+            unreachable!("SlowStatsHandler::handle_request must not be called by /metrics");
+        }
+
+        async fn get_all_data_json(&self) -> serde_json::Value {
+            serde_json::Value::Array(vec![])
+        }
+
+        async fn get_item_json(&self, _id: &str) -> Option<serde_json::Value> {
+            None
+        }
+
+        async fn get_count(&self) -> usize {
+            0
+        }
+
+        async fn export_json(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+
+        async fn get_stats(&self, _data_path: &str) -> crate::app::ModelStats {
+            // Deliberate latency. join_all should fire all of these at once,
+            // so total wall-clock time stays ~= `self.sleep`, not N * sleep.
+            tokio::time::sleep(self.sleep).await;
+            crate::app::ModelStats {
+                model: self.name.clone(),
+                item_count: 0,
+                approx_ram_bytes: 0,
+                raftlog_size_bytes: 0,
+                events_since_last_compaction: None,
+                last_compaction_at: None,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            &self.name
+        }
+
+        fn base_path(&self) -> &str {
+            "/test"
+        }
+
+        async fn get_entity_history(&self, _id: &str) -> serde_json::Value {
+            serde_json::Value::Array(vec![])
+        }
+
+        async fn get_entity_event_count(&self, _id: &str) -> usize {
+            0
+        }
+
+        async fn submit_edit_event(
+            &self,
+            _id: &str,
+            _changes: serde_json::Value,
+        ) -> Result<serde_json::Value, String> {
+            Err("not implemented in test handler".to_string())
+        }
+
+        async fn apply_replicated_item_json(
+            &self,
+            _item_json: serde_json::Value,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn apply_replicated_items_json(
+            &self,
+            _items_json: Vec<serde_json::Value>,
+        ) -> Result<usize, String> {
+            Ok(0)
+        }
+
+        async fn apply_replicated_update_json(
+            &self,
+            _id: &str,
+            _item_json: serde_json::Value,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
+        async fn apply_replicated_delete_json(&self, _id: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_collects_per_model_stats_concurrently() {
+        // 5 models × 200 ms sleep. Sequential would take ~1000 ms; parallel
+        // should land near 200 ms. We assert < 400 ms (2× SLEEP) so the test
+        // doesn't false-fail on slow CI runners while still catching a true
+        // sequential regression (which would be ≥5× SLEEP = 1000 ms).
+        const N_MODELS: usize = 5;
+        const SLEEP: std::time::Duration = std::time::Duration::from_millis(200);
+        let upper_bound = SLEEP * 2;
+
+        let server = LithairServer::new().build().expect("build server");
+
+        // Inject N SlowStatsHandler instances directly into the models
+        // registry. `models` is a private field but accessible from this
+        // child test module (same crate, parent `app` module).
+        {
+            let mut models = server.models.write().await;
+            for i in 0..N_MODELS {
+                models.push(ModelRegistration {
+                    name: format!("SlowModel{}", i),
+                    base_path: format!("/test/{}", i),
+                    data_path: "/tmp/lithair-slowmodel-test".to_string(),
+                    handler: Arc::new(SlowStatsHandler {
+                        name: format!("SlowModel{}", i),
+                        sleep: SLEEP,
+                    }),
+                    schema_extractor: None,
+                });
+            }
+        }
+
+        // Round-trip through the real HTTP stack via spawn_for_test rather
+        // than calling `handle_metrics_request` directly — the handler takes
+        // `Request<hyper::body::Incoming>` and building an `Incoming` body
+        // outside hyper's connection state is non-trivial. The HTTP path is
+        // also what production code exercises, so timing it is the right
+        // proxy for the real cost.
+        let (base, handle) = spawn_for_test(server).await;
+
+        let start = std::time::Instant::now();
+        let resp = reqwest::get(format!("{}/metrics", base)).await.expect("GET /metrics succeeded");
+        let elapsed = start.elapsed();
+        assert_eq!(resp.status(), 200, "/metrics should return 200");
+
+        // Body sanity check: each slow model must appear in the output. This
+        // protects against the test silently passing if the loop were
+        // skipped entirely (e.g. early-return on empty models).
+        let body = resp.text().await.expect("read body");
+        for i in 0..N_MODELS {
+            let needle = format!(r#"lithair_model_items{{model="SlowModel{}"}}"#, i);
+            assert!(
+                body.contains(&needle),
+                "metrics body missing per-model series for SlowModel{}: body was {}",
+                i,
+                body
+            );
+        }
+
+        assert!(
+            elapsed < upper_bound,
+            "metrics collection took {:?}, expected < {:?} (sequential regression: \
+             {} models × {:?} = {:?} would exceed this)",
+            elapsed,
+            upper_bound,
+            N_MODELS,
+            SLEEP,
+            SLEEP * N_MODELS as u32
+        );
 
         handle.abort();
     }
