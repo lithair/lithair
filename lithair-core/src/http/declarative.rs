@@ -139,12 +139,20 @@ where
     pub(crate) session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
     /// Optional SSE broadcaster for real-time change notifications
     pub(crate) sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
-    /// When true, every non-OPTIONS request to this model's auto-generated
+    /// When `true`, every non-OPTIONS request to this model's auto-generated
     /// CRUD endpoints must carry a valid (non-expired) session in the
     /// `Authorization: Bearer <session-id>` header — otherwise the handler
     /// returns HTTP 401. Set via `LithairServerBuilder::with_models_require_session(true)`.
     /// Defaults to `false` (current behavior preserved).
-    pub(crate) require_session: bool,
+    ///
+    /// Stored as `AtomicBool` (interior mutability) rather than a plain `bool`
+    /// so the flag can be flipped through a shared `Arc<DeclarativeHttpHandler<T>>`
+    /// — required by [`LithairServerBuilder::with_handler`], which hands the
+    /// caller an Arc to the same handler and then needs to apply the gate at
+    /// `serve()` time after the Arc has been cloned (issue #86). The
+    /// `with_model` path also benefits: no more `Arc::get_mut` dance at
+    /// wiring time.
+    pub(crate) require_session: std::sync::atomic::AtomicBool,
 }
 
 impl<T> DeclarativeHttpHandler<T>
@@ -198,7 +206,7 @@ where
             permission_extractor: None,
             session_store: None,
             sse_broadcaster: None,
-            require_session: false,
+            require_session: std::sync::atomic::AtomicBool::new(false),
         };
 
         Ok(handler)
@@ -451,8 +459,13 @@ where
     /// When `true`, every non-OPTIONS request to the auto-generated CRUD
     /// endpoints returns HTTP 401 unless a valid session is present.
     /// Default is `false` (current behavior preserved).
-    pub(crate) fn set_require_session(&mut self, require: bool) {
-        self.require_session = require;
+    ///
+    /// Takes `&self` (not `&mut self`) so the flag can be flipped through a
+    /// shared `Arc<DeclarativeHttpHandler<T>>` after registration — needed by
+    /// the [`LithairServerBuilder::with_handler`] path, which retains an Arc
+    /// clone for the caller (issue #86).
+    pub(crate) fn set_require_session(&self, require: bool) {
+        self.require_session.store(require, std::sync::atomic::Ordering::Release);
     }
 
     /// Return current in-memory storage item count (for debug/diagnostics)
@@ -858,7 +871,9 @@ where
         // not carry credentials. Returning 401 on OPTIONS would break browsers
         // before they ever issue the real request.
         // ====================================================================
-        if self.require_session && method != Method::OPTIONS && !self.has_valid_session(&req).await
+        if self.require_session.load(std::sync::atomic::Ordering::Acquire)
+            && method != Method::OPTIONS
+            && !self.has_valid_session(&req).await
         {
             return Ok(
                 self.json_error_response(StatusCode::UNAUTHORIZED, "Authentication required")

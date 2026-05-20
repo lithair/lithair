@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`with_handler` now respects `with_models_require_session(true)`** (issue
+  #86, PR A of the #85/#86 pair). Pre-fix, switching a model registration
+  from `with_model::<T>(...)` to `with_handler(handler, base_path)` to gain
+  programmatic access to the handler silently bypassed the session gate
+  even when the operator had explicitly opted into
+  `with_models_require_session(true)`. Net effect was a security regression
+  on the easiest "graduate to programmatic access" path:
+  `GET /api/{model}` without an Authorization header returned 200 with the
+  full collection instead of 401.
+
+  Root cause: `with_handler` registered its CRUD routes via raw
+  `with_route(...)` calls and never went through the `model_infos` pipeline
+  in `LithairServer::serve()` where the `require_session` flag is applied.
+
+  Fix: `with_handler` now records a deferred gate-applier closure with a
+  cloned `Arc<DeclarativeHttpHandler<T>>`. At `serve()` time, after every
+  builder method has run, the closures are invoked and flip the flag
+  through interior mutability. To support this without breaking the Arc
+  semantics that `with_handler`'s callers rely on,
+  `DeclarativeHttpHandler::require_session` was changed from `bool` to
+  `AtomicBool` and `set_require_session` now takes `&self` instead of
+  `&mut self`. This is an internal change — public API is unchanged.
+
+  Note: this fix does NOT auto-wire the builder-level session store onto
+  the externally-constructed handler — that responsibility stays with the
+  caller (call `handler.with_session_store(...)` before passing to
+  `with_handler`). Without a session store, the gate fails closed (every
+  request returns 401), which is the safe direction.
+
+  Regression coverage: `lithair-core/tests/with_handler_session_gate_test.rs`
+  pins the issue body's exact repro (`with_sessions` +
+  `with_models_require_session(true)` + `with_handler` → 401 without auth)
+  plus backward-compat (flag off → 200) and a POST gate test.
+
 ## [0.8.0] - 2026-05-19
 
 ### Fixed
