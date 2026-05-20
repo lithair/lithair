@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`LithairServerBuilder::with_model_ref::<T>(data_path, base_path)`**
+  (issue #85). A new builder method that registers a model for
+  auto-generated CRUD **and** returns the `Arc<DeclarativeHttpHandler<T>>`
+  to the caller, so background workers / OAuth callbacks / scheduled jobs
+  can drive the model programmatically (via `apply_replicated_item`,
+  `apply_replicated_update`, `apply_replicated_delete`) **without** giving
+  up the session gate that `with_models_require_session(true)` provides.
+
+  This is the missing "both at once" path between `with_model::<T>(...)`
+  (gated CRUD, no handle) and `with_handler(arc, ...)` (handle, no
+  auto-wired session store). Unlike `with_handler`, the builder
+  constructs the handler internally, so the builder-level session store
+  is wired onto the handler automatically — positive-path session
+  validation (valid token → 200) works out of the box.
+
+  The method is `async` (because `DeclarativeHttpHandler::new_with_replay`
+  performs event-log replay I/O) and returns a tuple, so the chain
+  breaks at this method:
+
+  ```rust
+  let (builder, mail_handler) = LithairServer::new()
+      .with_sessions(session_manager)
+      .with_models_require_session(true)
+      .with_model_ref::<Mail>("./data/mails", "/api/mails")
+      .await?;
+
+  // mail_handler.apply_replicated_item(...).await — usable anywhere
+  builder.serve().await?;
+  ```
+
+  Motivating use case: LensMail's Gmail OAuth + IMAP sync worker (see
+  issue #85). Pre-#85, there was no API that gave both
+  (1) session-gated auto-CRUD and (2) a programmatic handle for writes.
+
+  Regression coverage: `lithair-core/tests/with_model_ref_test.rs` —
+  4 tests covering programmatic write visibility through gated read,
+  gate fires on unauthenticated read, programmatic writes do not
+  bypass the read-side gate, and backward-compat with the flag off.
+
 ### Fixed
 
 - **`with_handler` now respects `with_models_require_session(true)`** (issue
