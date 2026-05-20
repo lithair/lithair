@@ -192,6 +192,12 @@ pub struct ModelRegistration {
     pub schema_extractor: Option<SchemaSpecExtractor>,
 }
 
+/// Deferred session-gate applier closure. Registered by `with_handler` paths
+/// that bypass the `model_infos` pipeline; invoked at `serve()` time so the
+/// `models_require_session` flag is propagated to externally-constructed
+/// handlers through interior mutability on `DeclarativeHttpHandler`.
+pub(crate) type ExternalHandlerGate = Box<dyn Fn(bool) + Send + Sync>;
+
 /// Lithair multi-model server
 pub struct LithairServer {
     config: LithairConfig,
@@ -215,8 +221,7 @@ pub struct LithairServer {
     /// check, only when `models_require_session` is `true`. Without this, the
     /// `with_handler` path silently bypassed the gate even when the operator
     /// asked for it via `with_models_require_session(true)`.
-    #[allow(clippy::type_complexity)]
-    external_handler_gates: Vec<Box<dyn Fn(bool) + Send + Sync>>,
+    external_handler_gates: Vec<ExternalHandlerGate>,
 
     models: Arc<tokio::sync::RwLock<Vec<ModelRegistration>>>,
 
@@ -869,12 +874,12 @@ impl LithairServer {
         // returns `false` on every request, which combined with the gate
         // means the route returns 401 unconditionally — failing closed
         // is the safe direction here.
+        let gates = std::mem::take(&mut self.external_handler_gates);
         if self.models_require_session {
-            for gate in &self.external_handler_gates {
+            for gate in &gates {
                 gate(true);
             }
         }
-        self.external_handler_gates.clear();
 
         // Issue #69: spawn one auto-compaction task per registered model
         // when the feature is enabled. The task body mirrors the one

@@ -173,8 +173,7 @@ pub struct LithairServerBuilder {
     // The closure signature is `Fn(bool)` where the bool is the value the
     // gate should be flipped to (always `true` in current use; passed
     // explicitly so future toggling paths stay uniform).
-    #[allow(clippy::type_complexity)]
-    external_handler_gates: Vec<Box<dyn Fn(bool) + Send + Sync>>,
+    external_handler_gates: Vec<super::ExternalHandlerGate>,
 
     // Issue #69: opt-in auto-compaction of the `.raftlog` for every
     // registered model. When `Some`, `LithairServer::serve()` spawns one
