@@ -1377,6 +1377,127 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Register a model with automatic CRUD generation **and** return an
+    /// `Arc<DeclarativeHttpHandler<T>>` so the caller can drive the model
+    /// programmatically (background workers, OAuth callbacks, scheduled
+    /// jobs, server-startup seeding) — without giving up the session gate
+    /// that `with_models_require_session(true)` provides.
+    ///
+    /// This is the missing "both at once" path between `with_model::<T>(...)`
+    /// (gated CRUD, no handle) and `with_handler(arc, ...)` (handle, no
+    /// auto-wired session store and historically — pre-#86 — no gate either).
+    /// See issue #85 for the motivating use case (LensMail IMAP sync worker
+    /// and Gmail OAuth callback both needing programmatic write access to
+    /// session-gated models).
+    ///
+    /// The chain breaks at this method (it returns a tuple), but the
+    /// returned builder can be re-bound and continue:
+    ///
+    /// ```ignore
+    /// let (builder, mail_handler) = LithairServer::new()
+    ///     .with_sessions(session_manager)
+    ///     .with_models_require_session(true)
+    ///     .with_model_ref::<Mail>("./data/mails", "/api/mails")
+    ///     .await?;
+    ///
+    /// // mail_handler.apply_replicated_item(...).await — usable anywhere
+    /// // (background sync worker, OAuth callback, scheduled job).
+    ///
+    /// builder
+    ///     .with_route_async(Method::POST, "/admin/import", { /* ... */ })
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    ///
+    /// # Wiring
+    ///
+    /// Unlike `with_handler`, `with_model_ref` constructs the handler
+    /// internally, so it can wire everything uniformly:
+    ///
+    /// - **Session store**: the builder-level session store (set via
+    ///   `with_sessions(...)`) is attached to the handler before the Arc
+    ///   is shared, so positive-path session validation (valid token →
+    ///   200) works out of the box. With `with_handler`, the caller has to
+    ///   wire the store themselves.
+    /// - **Session gate**: `with_models_require_session(true)` engages this
+    ///   handler's `/api/{model}` routes identically to `with_model`. The
+    ///   flag is applied at `serve()` time through the same deferred
+    ///   applier mechanism used by `with_handler` (issue #86), so the
+    ///   order of `.with_model_ref(...)`, `.with_sessions(...)`, and
+    ///   `.with_models_require_session(...)` does not matter.
+    ///
+    /// # Async
+    ///
+    /// `with_model_ref` is `async` because `DeclarativeHttpHandler::new_with_replay`
+    /// performs I/O (replay of the persisted event log to reconstruct
+    /// in-memory state). The fallible `Result` covers event-store I/O
+    /// errors at construction time — the same failures `with_model`'s
+    /// factory hits, but surfaced eagerly at registration rather than
+    /// deferred to `serve()`.
+    ///
+    /// # When to use what
+    ///
+    /// - **`with_model::<T>(...)`** — gated CRUD, no programmatic handle needed.
+    /// - **`with_model_ref::<T>(...)`** — gated CRUD + programmatic handle (this method).
+    /// - **`with_handler(arc, ...)`** — caller fully owns construction
+    ///   (e.g. custom permission extractor, custom session store, sharing
+    ///   the same handler across multiple base paths). The caller is
+    ///   responsible for wiring the session store onto the handler before
+    ///   passing it in.
+    /// - **`with_model_full::<T>(...)`** — RBAC path (separate concern;
+    ///   not covered by `with_models_require_session`).
+    pub async fn with_model_ref<T>(
+        mut self,
+        data_path: impl Into<String>,
+        base_path: impl Into<String>,
+    ) -> Result<(Self, std::sync::Arc<crate::http::DeclarativeHttpHandler<T>>)>
+    where
+        T: Clone
+            + Send
+            + Sync
+            + crate::http::HttpExposable
+            + crate::lifecycle::LifecycleAware
+            + crate::consensus::ReplicatedModel
+            + 'static,
+    {
+        let data_path_str = data_path.into();
+
+        // Construct the handler eagerly (mirrors `with_model`'s factory
+        // body, but runs here rather than deferred to `serve()`). We need
+        // the handle in our caller's hands before `.serve()` is invoked.
+        let mut handler = crate::http::DeclarativeHttpHandler::<T>::new_with_replay(&data_path_str)
+            .await
+            .map_err(|e| anyhow::anyhow!("with_model_ref: failed to create handler: {}", e))?;
+
+        // Wire the builder-level session store onto the handler *before*
+        // wrapping in Arc, so it's attached even after the Arc is cloned
+        // five times into the route closures. This is exactly the wiring
+        // that `LithairServer::serve()` performs for `with_model`
+        // registrations via the `ModelHandler::set_session_store_any`
+        // trait method — but for this path we do it here because we own
+        // the handler's `&mut self` ergonomics at this moment, and once
+        // it's in an Arc we'd need `Arc::get_mut` (which would race with
+        // our caller's returned clone).
+        //
+        // If the builder has no session store registered (e.g. the user
+        // hasn't called `with_sessions(...)` yet, or never will), the
+        // handler simply has `session_store == None`, and the gate (if
+        // ever turned on) will fail closed — same as `with_handler`.
+        if let Some(ref store_any) = self.session_manager {
+            handler.session_store = Some(store_any.clone());
+        }
+
+        let handler_arc = std::sync::Arc::new(handler);
+
+        // Reuse `with_handler` for route registration and the
+        // issue-#86 gate-applier mechanism. This guarantees the
+        // `with_model_ref` path stays gate-correct as long as
+        // `with_handler` does — one code path, one regression surface.
+        self = self.with_handler(handler_arc.clone(), base_path);
+
+        Ok((self, handler_arc))
+    }
+
     /// Add a custom route with an async handler.
     ///
     /// Custom routes are dispatched **before** model routes, so a custom
