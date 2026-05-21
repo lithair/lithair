@@ -154,6 +154,27 @@ pub struct LithairServerBuilder {
     // authorization model and don't need this flag.
     models_require_session: bool,
 
+    // Issue #86: deferred session-gate appliers for models registered via
+    // `with_handler(...)`. That path takes an externally-constructed
+    // `Arc<DeclarativeHttpHandler<T>>` whose `set_require_session` flag we
+    // can only flip *after* the Arc has been shared with the caller
+    // (otherwise we'd break the whole point of `with_handler`, which is
+    // letting the caller keep their own clone). Each closure captures
+    // `Arc::clone(&handler)` from the registration site and applies the
+    // flag through interior mutability at `serve()` time, after all
+    // builder methods have run — so the order of `.with_handler(...)`,
+    // `.with_sessions(...)`, and `.with_models_require_session(...)` no
+    // longer matters.
+    //
+    // Type-erased over `T` so we can store heterogeneous handler types in
+    // one vec; the closure body itself is monomorphic over the registering
+    // call site's `T`.
+    //
+    // The closure signature is `Fn(bool)` where the bool is the value the
+    // gate should be flipped to (always `true` in current use; passed
+    // explicitly so future toggling paths stay uniform).
+    external_handler_gates: Vec<super::ExternalHandlerGate>,
+
     // Issue #69: opt-in auto-compaction of the `.raftlog` for every
     // registered model. When `Some`, `LithairServer::serve()` spawns one
     // tokio task per model that periodically checks the model's event
@@ -194,6 +215,7 @@ impl LithairServerBuilder {
             openapi_enabled: false,
             sse_enabled: false,
             models_require_session: false,
+            external_handler_gates: Vec::new(),
             auto_compaction: None,
         }
     }
@@ -223,6 +245,7 @@ impl LithairServerBuilder {
             openapi_enabled: false,
             sse_enabled: false,
             models_require_session: false,
+            external_handler_gates: Vec::new(),
             auto_compaction: None,
         }
     }
@@ -280,7 +303,8 @@ impl LithairServerBuilder {
     }
 
     /// Require a valid session on every auto-generated `/api/{model}` endpoint
-    /// registered via [`Self::with_model`].
+    /// registered via [`Self::with_model`], [`Self::with_declarative_model`],
+    /// or [`Self::with_handler`].
     ///
     /// When `require == true`, the model handler rejects every non-OPTIONS
     /// request lacking a valid (non-expired) session in the
@@ -293,6 +317,11 @@ impl LithairServerBuilder {
     /// per-role / per-permission gating, use [`Self::with_model_full`] with a
     /// [`crate::rbac::PermissionChecker`] instead; this flag does not affect
     /// `with_model_full(...)` registrations.
+    ///
+    /// **Note** (issue #86): pre-0.8.1, the `with_handler` registration path
+    /// silently bypassed this flag. From 0.8.1 onward, `with_handler`-
+    /// registered routes are gated uniformly with `with_model`-registered
+    /// routes, matching the docstring above.
     ///
     /// Default: `false` (current behavior preserved — endpoints stay open).
     ///
@@ -1090,6 +1119,24 @@ impl LithairServerBuilder {
     /// Unlike `with_model<T>`, this method allows you to keep a reference to the handler
     /// for use in custom routes (e.g., FK queries, JOIN queries).
     ///
+    /// # Session gating
+    ///
+    /// When the builder has `with_models_require_session(true)` set, handlers
+    /// registered here are gated identically to those registered via
+    /// `with_model<T>`: every non-OPTIONS request to the auto-generated
+    /// `/api/{model}` endpoints must carry a valid session, otherwise the
+    /// handler returns HTTP 401. The order of `.with_handler(...)`,
+    /// `.with_sessions(...)`, and `.with_models_require_session(...)` on the
+    /// chain does not matter — the gate is applied at `serve()` time, after
+    /// all builder methods have run (issue #86).
+    ///
+    /// Note: this path does NOT auto-wire the builder-level session store onto
+    /// the externally-constructed handler — that responsibility stays with
+    /// the caller. If you want positive-path session validation (valid token
+    /// → 200) and not just gate-fail (no token → 401), call
+    /// `handler.with_session_store(...)` on your handler before passing it to
+    /// `with_handler`.
+    ///
     /// # Example
     /// ```ignore
     /// use lithair_core::http::DeclarativeHttpHandler;
@@ -1128,6 +1175,25 @@ impl LithairServerBuilder {
     {
         let base_path_str = base_path.into();
         let base_path_normalized = base_path_str.trim_end_matches('/').to_string();
+
+        // Issue #86: register a deferred session-gate applier so that
+        // `with_models_require_session(true)` actually engages this
+        // handler's `/api/{model}` routes. Pre-fix, `with_handler` wired
+        // its CRUD routes via raw `with_route(...)` calls that internally
+        // called `handler.handle_request(...)` — and that path *does*
+        // honor `require_session`, but the flag was never flipped, so
+        // the gate silently never fired. Now we capture an Arc clone here
+        // and let `serve()` flip the flag at startup once all builder
+        // methods have been chained (so order of `with_handler` vs
+        // `with_models_require_session` no longer matters).
+        //
+        // The flag flip goes through `AtomicBool` (interior mutability)
+        // because the caller has already received their own Arc clone
+        // from outside the builder, so `Arc::get_mut` would fail here.
+        let gate_handler = handler.clone();
+        self.external_handler_gates.push(Box::new(move |require| {
+            gate_handler.set_require_session(require);
+        }));
 
         // GET /base_path - List all
         let handler_list = handler.clone();
@@ -1880,6 +1946,7 @@ impl LithairServerBuilder {
             route_guards: self.route_guards,
             model_infos: self.model_infos,
             models_require_session: self.models_require_session,
+            external_handler_gates: self.external_handler_gates,
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: self.frontend_configs, // Frontend configs to load in serve()
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()

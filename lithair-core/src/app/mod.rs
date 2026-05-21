@@ -192,6 +192,12 @@ pub struct ModelRegistration {
     pub schema_extractor: Option<SchemaSpecExtractor>,
 }
 
+/// Deferred session-gate applier closure. Registered by `with_handler` paths
+/// that bypass the `model_infos` pipeline; invoked at `serve()` time so the
+/// `models_require_session` flag is propagated to externally-constructed
+/// handlers through interior mutability on `DeclarativeHttpHandler`.
+pub(crate) type ExternalHandlerGate = Box<dyn Fn(bool) + Send + Sync>;
+
 /// Lithair multi-model server
 pub struct LithairServer {
     config: LithairConfig,
@@ -207,6 +213,16 @@ pub struct LithairServer {
     /// uniformly to every model handler in `serve()` after each model's
     /// factory has produced its handler.
     models_require_session: bool,
+
+    /// Issue #86: deferred session-gate appliers for models registered via
+    /// `LithairServerBuilder::with_handler(...)`. Each closure captures an
+    /// `Arc<DeclarativeHttpHandler<T>>` clone and calls `set_require_session`
+    /// on it. Executed in `serve()` after the boot-time session-store shape
+    /// check, only when `models_require_session` is `true`. Without this, the
+    /// `with_handler` path silently bypassed the gate even when the operator
+    /// asked for it via `with_models_require_session(true)`.
+    external_handler_gates: Vec<ExternalHandlerGate>,
+
     models: Arc<tokio::sync::RwLock<Vec<ModelRegistration>>>,
 
     // Frontend configurations to load (path_prefix -> static_dir)
@@ -835,6 +851,35 @@ impl LithairServer {
             }
         }
         self.model_infos.clear(); // Clear infos, we have the models now
+
+        // Issue #86: apply the session-presence gate to every model
+        // registered via `LithairServerBuilder::with_handler(...)`. Each
+        // closure was pushed at registration time with a captured
+        // `Arc::clone(&handler)`, so flipping the flag here propagates to
+        // every CRUD route closure that was registered through `with_route`
+        // — they all dispatch into `handler.handle_request(...)`, which
+        // reads `require_session` via `AtomicBool::load`.
+        //
+        // Pre-fix, this path silently never gated, so a consumer who
+        // switched from `.with_model::<T>(...)` to `.with_handler(...)`
+        // (to gain a programmatic handle on the handler) lost the gate
+        // without warning. See issue #86 for the original repro.
+        //
+        // Note: we do NOT bail on a missing session store here. The
+        // boot-time fail-fast check above (line ~707) already covers the
+        // mis-wire case for the `with_model` path; for `with_handler`,
+        // the responsibility for wiring the session store onto the
+        // handler currently sits with the caller (they constructed the
+        // handler externally). Without a store, `has_valid_session`
+        // returns `false` on every request, which combined with the gate
+        // means the route returns 401 unconditionally — failing closed
+        // is the safe direction here.
+        let gates = std::mem::take(&mut self.external_handler_gates);
+        if self.models_require_session {
+            for gate in &gates {
+                gate(true);
+            }
+        }
 
         // Issue #69: spawn one auto-compaction task per registered model
         // when the feature is enabled. The task body mirrors the one
@@ -5577,6 +5622,7 @@ impl Default for LithairServer {
             route_guards: Vec::new(),
             model_infos: Vec::new(),
             models_require_session: false,
+            external_handler_gates: Vec::new(),
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: Vec::new(),
             frontend_engines: std::collections::HashMap::new(),
