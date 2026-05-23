@@ -60,6 +60,23 @@ impl SseEventBroadcaster {
         sender
     }
 
+    /// Subscribe to model change events for a given model name.
+    ///
+    /// Returns a `tokio::sync::broadcast::Receiver<ModelChangeEvent>` that
+    /// yields every event broadcast on that channel from the moment of
+    /// subscription. Used by the framework's `/api/{model}/stream` SSE route
+    /// internally, and exposed publicly so consumers (or regression tests —
+    /// see `tests/issue_89_replicated_sse_broadcast_test.rs`) can wire a
+    /// non-HTTP subscriber to the same channel.
+    ///
+    /// Auto-creates the channel on first access, matching the behavior of
+    /// `broadcast(...)`. Channel capacity is 1000 events; slow consumers
+    /// receive `Lagged(n)` errors on `recv()` if they fall behind.
+    pub async fn subscribe(&self, model_name: &str) -> broadcast::Receiver<ModelChangeEvent> {
+        let sender = self.get_channel(model_name).await;
+        sender.subscribe()
+    }
+
     /// Broadcast a model change event
     pub async fn broadcast(&self, model_name: &str, operation: &str, data: serde_json::Value) {
         let sender = self.get_channel(model_name).await;
