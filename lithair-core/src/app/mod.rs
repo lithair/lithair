@@ -198,6 +198,14 @@ pub struct ModelRegistration {
 /// handlers through interior mutability on `DeclarativeHttpHandler`.
 pub(crate) type ExternalHandlerGate = Box<dyn Fn(bool) + Send + Sync>;
 
+/// Deferred SSE-broadcaster wiring closure. Registered by `with_handler` paths
+/// (and therefore by `with_model_ref`, which delegates to `with_handler`) that
+/// bypass the `model_infos` pipeline; invoked at `serve()` time to install the
+/// builder-level SSE broadcaster onto externally-constructed handlers through
+/// `OnceLock` interior mutability on `DeclarativeHttpHandler`. Issue #91.
+pub(crate) type ExternalHandlerSseWiring =
+    Box<dyn Fn(Arc<crate::http::sse::SseEventBroadcaster>) + Send + Sync>;
+
 /// Lithair multi-model server
 pub struct LithairServer {
     config: LithairConfig,
@@ -222,6 +230,17 @@ pub struct LithairServer {
     /// `with_handler` path silently bypassed the gate even when the operator
     /// asked for it via `with_models_require_session(true)`.
     external_handler_gates: Vec<ExternalHandlerGate>,
+
+    /// Issue #91: deferred SSE-broadcaster wirings for models registered via
+    /// `LithairServerBuilder::with_handler(...)` (including `with_model_ref`,
+    /// which delegates to it). Each closure captures an
+    /// `Arc<DeclarativeHttpHandler<T>>` clone and calls
+    /// `set_sse_broadcaster_shared` on it. Executed in `serve()` only when a
+    /// builder-level broadcaster is configured (i.e. the user called
+    /// `.with_sse(true)`). Without this, the `with_handler` path silently
+    /// started with no broadcaster wired, so `apply_replicated_*` broadcasts
+    /// from issue #89 became no-ops and `/api/{model}/stream` returned 404.
+    external_handler_sse_wirings: Vec<ExternalHandlerSseWiring>,
 
     models: Arc<tokio::sync::RwLock<Vec<ModelRegistration>>>,
 
@@ -770,16 +789,14 @@ impl LithairServer {
             log::info!("Creating handler for model: {}", info.name);
             match (info.factory)(info.data_path.clone()).await {
                 Ok(mut handler) => {
-                    // Wire SSE broadcaster into each model handler
+                    // Wire SSE broadcaster into each model handler. Works
+                    // through `&self` since #91 — `DeclarativeHttpHandler`
+                    // stores the broadcaster in a `OnceLock` and the trait
+                    // method takes `&self`. The previous `Arc::get_mut`
+                    // dance + warn-on-shared-Arc is no longer needed; any
+                    // shared Arc still receives the broadcaster cleanly.
                     if let Some(ref broadcaster) = self.sse_broadcaster {
-                        if let Some(h) = Arc::get_mut(&mut handler) {
-                            h.set_sse_broadcaster(Arc::clone(broadcaster));
-                        } else {
-                            log::warn!(
-                                "Could not set SSE broadcaster for model '{}': Arc has multiple strong references",
-                                info.name
-                            );
-                        }
+                        handler.set_sse_broadcaster(Arc::clone(broadcaster));
                     }
 
                     // Wire the session store into every model handler.
@@ -878,6 +895,27 @@ impl LithairServer {
         if self.models_require_session {
             for gate in &gates {
                 gate(true);
+            }
+        }
+
+        // Issue #91: install the builder-level SSE broadcaster onto every
+        // handler registered via `with_handler(...)` (including via
+        // `with_model_ref`, which delegates to it). Mirrors the wiring loop
+        // above for the factory `with_model` path at line ~774 — same
+        // production semantics (one broadcaster per server, shared across
+        // all model handlers), different installation surface (interior
+        // mutability via `OnceLock` instead of `Arc::get_mut`, because
+        // `with_handler` consumers already hold an Arc clone).
+        //
+        // The closure is only invoked when the builder has a broadcaster,
+        // i.e. when `.with_sse(true)` was called on the builder. Without
+        // a broadcaster, every wiring is a no-op and the handlers stay
+        // with their default empty `OnceLock` — backward-compat for every
+        // `with_handler` consumer who never opted into SSE.
+        let sse_wirings = std::mem::take(&mut self.external_handler_sse_wirings);
+        if let Some(ref broadcaster) = self.sse_broadcaster {
+            for wire in &sse_wirings {
+                wire(Arc::clone(broadcaster));
             }
         }
 
@@ -5623,6 +5661,7 @@ impl Default for LithairServer {
             model_infos: Vec::new(),
             models_require_session: false,
             external_handler_gates: Vec::new(),
+            external_handler_sse_wirings: Vec::new(),
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: Vec::new(),
             frontend_engines: std::collections::HashMap::new(),
