@@ -789,16 +789,14 @@ impl LithairServer {
             log::info!("Creating handler for model: {}", info.name);
             match (info.factory)(info.data_path.clone()).await {
                 Ok(mut handler) => {
-                    // Wire SSE broadcaster into each model handler
+                    // Wire SSE broadcaster into each model handler. Works
+                    // through `&self` since #91 — `DeclarativeHttpHandler`
+                    // stores the broadcaster in a `OnceLock` and the trait
+                    // method takes `&self`. The previous `Arc::get_mut`
+                    // dance + warn-on-shared-Arc is no longer needed; any
+                    // shared Arc still receives the broadcaster cleanly.
                     if let Some(ref broadcaster) = self.sse_broadcaster {
-                        if let Some(h) = Arc::get_mut(&mut handler) {
-                            h.set_sse_broadcaster(Arc::clone(broadcaster));
-                        } else {
-                            log::warn!(
-                                "Could not set SSE broadcaster for model '{}': Arc has multiple strong references",
-                                info.name
-                            );
-                        }
+                        handler.set_sse_broadcaster(Arc::clone(broadcaster));
                     }
 
                     // Wire the session store into every model handler.

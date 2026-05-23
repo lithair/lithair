@@ -210,7 +210,7 @@ pub trait ModelHandler: Send + Sync {
     }
 
     /// Set the SSE broadcaster for real-time change notifications (no-op by default)
-    fn set_sse_broadcaster(&mut self, _broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {}
+    fn set_sse_broadcaster(&self, _broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {}
 
     /// Enable or disable the session-presence gate for this model's
     /// auto-generated `/api/{model}` endpoints (issue #78).
@@ -488,7 +488,7 @@ where
         self.cached_schema_spec.clone()
     }
 
-    fn set_sse_broadcaster(&mut self, broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {
+    fn set_sse_broadcaster(&self, broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {
         // OnceLock semantics — first call wins. Subsequent calls silently no-op,
         // matching the production lifecycle (one broadcaster per server,
         // installed at `serve()` time, never replaced). See issue #91.
