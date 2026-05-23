@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`apply_replicated_item` / `apply_replicated_update` / `apply_replicated_delete`
+  now broadcast SSE events** (issue #89). Pre-fix, the three programmatic /
+  replicated apply methods on `DeclarativeHttpHandler<T>` updated storage
+  and the event store but never called `broadcast_sse(...)` — so a
+  subscriber on `/api/{model}/stream` only saw the initial `connected`
+  event plus heartbeats, never the actual change events when writes came
+  from the `with_model_ref` handle (added in v0.9.0) or from the cluster
+  replication path. The methods now emit `"create"`, `"update"`, and
+  `"delete"` respectively — the same operation names the HTTP CRUD path
+  uses (`handle_create`, `handle_put`, `handle_delete`) so consumers can't
+  tell write origin apart from the stream. The idempotent no-op branch
+  in `apply_replicated_delete` (key not present) does NOT broadcast.
+
+  Regression test: `lithair-core/tests/issue_89_replicated_sse_broadcast_test.rs`.
+
+  Behavior is additive; no breaking API changes. Surfaced by the LensMail v2 IMAP
+  sync worker which writes mails through `apply_replicated_item` from a
+  background task and expected `/api/mails/stream` subscribers to see the
+  inserts in real time.
+
+### Added
+
+- **`SseEventBroadcaster::subscribe(model_name)`** — public method
+  returning a `tokio::sync::broadcast::Receiver<ModelChangeEvent>` for a
+  given model channel. Used internally by the `/api/{model}/stream` SSE
+  route and exposed publicly so consumers (and tests) can wire non-HTTP
+  subscribers to the same channel. Channel capacity matches the
+  existing route (1000 events; slow consumers receive `Lagged(n)` on
+  `recv()`).
+
 ## [0.9.0] - 2026-05-21
 
 ### Added

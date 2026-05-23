@@ -554,6 +554,12 @@ where
             );
         }
 
+        // Issue #89: broadcast SSE event so subscribers on `/api/{model}/stream`
+        // see programmatic / replicated inserts, not just HTTP POSTs. Same
+        // operation name (`"create"`) as `handle_create` — from a consumer's
+        // perspective, an insert is an insert regardless of origin.
+        self.broadcast_sse("create", &item).await;
+
         if Self::is_verbose() {
             log::debug!("Replicated item {} applied to follower", actual_key);
         }
@@ -610,6 +616,13 @@ where
             );
         }
 
+        // Issue #89: broadcast SSE event for replicated UPDATEs. We emit
+        // `"update"` (matching `handle_put`, the PUT-style HTTP update),
+        // not `"patched"` (which `handle_patch` uses for partial updates).
+        // The replicated path is a full-record overwrite, so PUT-semantics
+        // is the right mapping.
+        self.broadcast_sse("update", &item).await;
+
         if Self::is_verbose() {
             log::debug!("Replicated UPDATE for {} applied", id);
         }
@@ -644,6 +657,14 @@ where
                     e
                 );
             }
+
+            // Issue #89: broadcast SSE event for replicated DELETEs, carrying
+            // the removed item's payload (matches `handle_delete`). Subscribers
+            // get the full record one last time so they can react before
+            // dropping it from their local view. We only broadcast on the
+            // existed-and-removed branch — the no-op idempotent branch below
+            // should not look like activity to subscribers.
+            self.broadcast_sse("delete", &item).await;
 
             if Self::is_verbose() {
                 log::debug!("Replicated DELETE for {} applied", id);
