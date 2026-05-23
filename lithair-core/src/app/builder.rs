@@ -175,6 +175,15 @@ pub struct LithairServerBuilder {
     // explicitly so future toggling paths stay uniform).
     external_handler_gates: Vec<super::ExternalHandlerGate>,
 
+    // Issue #91: same shape as `external_handler_gates`, but for installing
+    // the builder-level SSE broadcaster onto handlers registered via
+    // `with_handler(...)` (and therefore `with_model_ref`). Each closure
+    // takes the `Arc<SseEventBroadcaster>` and invokes
+    // `set_sse_broadcaster_shared` on the captured handler Arc. Applied at
+    // `serve()` time only when a builder-level broadcaster exists (i.e. the
+    // user called `.with_sse(true)`).
+    external_handler_sse_wirings: Vec<super::ExternalHandlerSseWiring>,
+
     // Issue #69: opt-in auto-compaction of the `.raftlog` for every
     // registered model. When `Some`, `LithairServer::serve()` spawns one
     // tokio task per model that periodically checks the model's event
@@ -216,6 +225,7 @@ impl LithairServerBuilder {
             sse_enabled: false,
             models_require_session: false,
             external_handler_gates: Vec::new(),
+            external_handler_sse_wirings: Vec::new(),
             auto_compaction: None,
         }
     }
@@ -246,6 +256,7 @@ impl LithairServerBuilder {
             sse_enabled: false,
             models_require_session: false,
             external_handler_gates: Vec::new(),
+            external_handler_sse_wirings: Vec::new(),
             auto_compaction: None,
         }
     }
@@ -1195,6 +1206,49 @@ impl LithairServerBuilder {
             gate_handler.set_require_session(require);
         }));
 
+        // Issue #91: register a deferred SSE-broadcaster wiring closure so
+        // `LithairServer::serve()` can install the builder-level broadcaster
+        // onto this handler. Pre-fix, the broadcaster was only attached on
+        // the `with_model` factory path (`app/mod.rs:776` via
+        // `Arc::get_mut` + `ModelHandler::set_sse_broadcaster`). Handlers
+        // registered through `with_handler` (and therefore through
+        // `with_model_ref`, which delegates to `with_handler`) started with
+        // an empty `sse_broadcaster` `OnceLock` regardless of whether
+        // `.with_sse(true)` was called — so `apply_replicated_*` broadcasts
+        // from issue #89 became no-ops, and `GET /api/{model}/stream`
+        // returned 404 ("SSE not enabled") even when SSE was enabled on
+        // the server.
+        //
+        // The install goes through `OnceLock::set` (interior mutability,
+        // same shape as the `AtomicBool` for `require_session`) so it
+        // works through a shared `Arc<DeclarativeHttpHandler<T>>` — which
+        // is exactly the state we're in here, since the caller already
+        // holds an Arc clone.
+        //
+        // The closure is only invoked at `serve()` time if the builder
+        // has an SSE broadcaster (`with_sse(true)` was called). Backward-
+        // compat for existing `with_handler` consumers who never enable
+        // SSE: no wiring fires, the handler stays at `OnceLock::new()`,
+        // behavior is byte-for-byte identical to v0.9.1.
+        //
+        // Note: the `/api/{model}/stream` HTTP route does NOT need a
+        // separate route registration. The wildcard `GET {base_path}/*`
+        // route below already forwards to `handle_request`, which
+        // dispatches `(GET, segments=["stream"])` to `handle_sse_stream`
+        // (`declarative.rs:918`). Once the broadcaster is wired,
+        // `handle_sse_stream` switches from a 404 ("SSE not enabled") to
+        // the streaming response. Verified by the end-to-end test in
+        // `tests/issue_91_with_handler_sse_e2e_test.rs`.
+        let sse_handler = handler.clone();
+        self.external_handler_sse_wirings.push(Box::new(move |broadcaster| {
+            // Idempotent — if a broadcaster was somehow already installed
+            // (e.g. the caller used `with_sse_broadcaster` before passing
+            // the handler in), the `OnceLock` keeps the first one and
+            // this call is a silent no-op. That's the right semantics:
+            // one broadcaster per handler, lifetime-of-process.
+            let _ = sse_handler.set_sse_broadcaster_shared(broadcaster);
+        }));
+
         // GET /base_path - List all
         let handler_list = handler.clone();
         let path_list = base_path_normalized.clone();
@@ -2068,6 +2122,7 @@ impl LithairServerBuilder {
             model_infos: self.model_infos,
             models_require_session: self.models_require_session,
             external_handler_gates: self.external_handler_gates,
+            external_handler_sse_wirings: self.external_handler_sse_wirings,
             models: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             frontend_configs: self.frontend_configs, // Frontend configs to load in serve()
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()

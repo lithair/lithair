@@ -13,7 +13,7 @@ use hyper::{Method, Request, Response, StatusCode};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json;
 use std::convert::Infallible;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::consensus::ReplicatedModel;
 #[cfg(feature = "cluster")]
@@ -137,8 +137,22 @@ where
     #[allow(clippy::type_complexity)]
     permission_extractor: Option<Arc<dyn Fn(&Req) -> Vec<String> + Send + Sync>>,
     pub(crate) session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
-    /// Optional SSE broadcaster for real-time change notifications
-    pub(crate) sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
+    /// Optional SSE broadcaster for real-time change notifications.
+    ///
+    /// Stored as `OnceLock<Arc<...>>` (interior mutability) rather than a plain
+    /// `Option<Arc<...>>` so the broadcaster can be installed through a shared
+    /// `Arc<DeclarativeHttpHandler<T>>` — required by
+    /// [`LithairServerBuilder::with_handler`] (and therefore `with_model_ref`,
+    /// which delegates to it), which hands the caller an Arc to the same handler
+    /// and then needs to wire the broadcaster at `serve()` time after the Arc
+    /// has been cloned (issue #91). The `with_model` factory path also benefits:
+    /// no more `Arc::get_mut` dance at wiring time.
+    ///
+    /// The broadcaster is set at most once — the first installer wins. Subsequent
+    /// `set_sse_broadcaster_shared` / `set_sse_broadcaster` calls silently no-op,
+    /// which matches the production lifecycle (one broadcaster per server,
+    /// installed at `serve()` time, never replaced).
+    pub(crate) sse_broadcaster: OnceLock<Arc<crate::http::sse::SseEventBroadcaster>>,
     /// When `true`, every non-OPTIONS request to this model's auto-generated
     /// CRUD endpoints must carry a valid (non-expired) session in the
     /// `Authorization: Bearer <session-id>` header — otherwise the handler
@@ -205,7 +219,7 @@ where
             permission_checker: None,
             permission_extractor: None,
             session_store: None,
-            sse_broadcaster: None,
+            sse_broadcaster: OnceLock::new(),
             require_session: std::sync::atomic::AtomicBool::new(false),
         };
 
@@ -367,13 +381,49 @@ where
         self
     }
 
-    /// Set the SSE broadcaster for real-time change notifications
+    /// Set the SSE broadcaster for real-time change notifications.
+    ///
+    /// Idempotent: only the first call wins (subsequent calls silently no-op),
+    /// matching the production lifecycle where a server has exactly one
+    /// broadcaster, installed at `serve()` time.
     pub fn with_sse_broadcaster(
-        mut self,
+        self,
         broadcaster: Arc<crate::http::sse::SseEventBroadcaster>,
     ) -> Self {
-        self.sse_broadcaster = Some(broadcaster);
+        let _ = self.sse_broadcaster.set(broadcaster);
         self
+    }
+
+    /// Install the SSE broadcaster through a shared `Arc<Self>` — used by
+    /// `LithairServer::serve()` to wire the builder-level broadcaster onto
+    /// handlers registered via `with_handler` (issue #91), where the caller
+    /// already holds an Arc clone so `Arc::get_mut` would race.
+    ///
+    /// Idempotent: if a broadcaster is already installed, the call silently
+    /// no-ops. Returns `true` if this call performed the install, `false` if
+    /// a broadcaster was already present.
+    pub(crate) fn set_sse_broadcaster_shared(
+        &self,
+        broadcaster: Arc<crate::http::sse::SseEventBroadcaster>,
+    ) -> bool {
+        self.sse_broadcaster.set(broadcaster).is_ok()
+    }
+
+    /// Read-only handle on the installed SSE broadcaster (if any).
+    ///
+    /// Returns `None` until the broadcaster has been wired — either at
+    /// construction (`with_sse_broadcaster`) or at `serve()` time through
+    /// the issue #91 deferred wiring for `with_handler`-registered models.
+    /// Returns `Some(&Arc<...>)` once installed, for the rest of the handler's
+    /// lifetime (the broadcaster slot is one-shot via `OnceLock`).
+    ///
+    /// Useful for callers holding a programmatic handle on the model (via
+    /// `with_model_ref` or `with_handler`) that want to subscribe to the
+    /// same per-model channel the framework's `/api/{model}/stream` route
+    /// reads from — e.g. an in-process worker that needs the same event
+    /// stream without going through HTTP.
+    pub fn sse_broadcaster(&self) -> Option<&Arc<crate::http::sse::SseEventBroadcaster>> {
+        self.sse_broadcaster.get()
     }
 
     /// Mutably set the permission extractor in-place
@@ -1073,7 +1123,7 @@ where
 
     /// GET /api/{model}/stream - SSE real-time change subscription
     async fn handle_sse_stream(&self) -> Result<Resp, Infallible> {
-        match &self.sse_broadcaster {
+        match self.sse_broadcaster.get() {
             Some(broadcaster) => {
                 let model_name = T::http_base_path();
                 Ok(broadcaster.create_sse_response(model_name).await)
@@ -1088,7 +1138,7 @@ where
 
     /// Broadcast an SSE event if the broadcaster is configured
     async fn broadcast_sse(&self, operation: &str, item: &T) {
-        if let Some(ref broadcaster) = self.sse_broadcaster {
+        if let Some(broadcaster) = self.sse_broadcaster.get() {
             if let Ok(data) = serde_json::to_value(item) {
                 broadcaster.broadcast(T::http_base_path(), operation, data).await;
             }

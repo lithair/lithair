@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`LithairServerBuilder::with_handler` now wires the builder-level SSE
+  broadcaster onto the externally-constructed handler at `serve()` time**
+  (issue #91). Pre-fix, only the `with_model` factory path called
+  `set_sse_broadcaster` (`app/mod.rs:776`); handlers registered through
+  `with_handler` started with no broadcaster regardless of whether
+  `.with_sse(true)` was called on the builder. Net effect on the v0.9.0
+  ergonomic path: the issue #89 fix (`apply_replicated_*` broadcasts) was
+  a no-op for `with_model_ref`-registered models, and `GET /api/{model}/stream`
+  returned `404 SSE not enabled`. The wiring now uses the same deferred-
+  applier mechanism as the issue #86 session gate
+  (`external_handler_sse_wirings`), so registration ordering between
+  `with_handler` / `with_sse` is irrelevant. Same opt-in semantics:
+  consumers who never call `.with_sse(true)` see byte-for-byte identical
+  behavior to v0.9.1 — no broadcaster wired, `/stream` still 404s.
+
+  Because `with_model_ref` delegates to `with_handler`, this also closes
+  the LensMail Phase 4 gap end-to-end on the v0.9.0 documented path:
+
+  ```rust
+  let (builder, mail_handler) = LithairServer::new()
+      .with_sse(true)
+      .with_sessions(sm)
+      .with_models_require_session(true)
+      .with_model_ref::<Mail>("./data/mails", "/api/mails")
+      .await?;
+  // mail_handler.apply_replicated_item(...) now broadcasts on
+  // /api/mails/stream as expected.
+  ```
+
+  Regression tests:
+  `lithair-core/tests/issue_91_with_handler_sse_wiring_test.rs` — covers
+  the wiring for `with_handler`, the same path via `with_model_ref`,
+  the HTTP `/stream` route surface (no longer 404), and a backward-compat
+  guard for SSE-off.
+
+- **`DeclarativeHttpHandler::sse_broadcaster()`** — read-only accessor
+  returning the installed `Arc<SseEventBroadcaster>` if any (`None` until
+  wired). Useful for in-process consumers holding a programmatic handle
+  (via `with_model_ref` or `with_handler`) that want to subscribe to the
+  same per-model channel the framework's `/api/{model}/stream` route reads
+  from, without going through HTTP.
+
+### Changed
+
+- **`DeclarativeHttpHandler<T>::sse_broadcaster` field** is now
+  `OnceLock<Arc<SseEventBroadcaster>>` instead of
+  `Option<Arc<SseEventBroadcaster>>` (issue #91 — interior mutability).
+  Field is `pub(crate)`; only crate-internal call sites observe the type
+  change. `with_sse_broadcaster(self, ...)` keeps the same public
+  signature (returns `Self`) — only the internal storage primitive
+  differs. First-call-wins semantics: subsequent installs silently no-op,
+  matching the production lifecycle (one broadcaster per server,
+  installed at `serve()` time, never replaced).
+
 ## [0.9.1] - 2026-05-23
 
 ### Fixed

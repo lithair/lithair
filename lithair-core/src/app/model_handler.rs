@@ -489,7 +489,10 @@ where
     }
 
     fn set_sse_broadcaster(&mut self, broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {
-        self.handler.sse_broadcaster = Some(broadcaster);
+        // OnceLock semantics — first call wins. Subsequent calls silently no-op,
+        // matching the production lifecycle (one broadcaster per server,
+        // installed at `serve()` time, never replaced). See issue #91.
+        let _ = self.handler.sse_broadcaster.set(broadcaster);
     }
 
     fn set_require_session(&mut self, require: bool) {
