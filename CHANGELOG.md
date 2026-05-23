@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Regression test: `lithair-core/tests/issue_89_replicated_sse_broadcast_test.rs`.
 
-  Behavior is additive; no API change. Surfaced by the LensMail v2 IMAP
+  Behavior is additive; no breaking API changes. Surfaced by the LensMail v2 IMAP
   sync worker which writes mails through `apply_replicated_item` from a
   background task and expected `/api/mails/stream` subscribers to see the
   inserts in real time.

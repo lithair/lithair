@@ -70,15 +70,14 @@ struct Mail {
 /// (`app/mod.rs:776`). Returns the handler (so the test can call
 /// `apply_replicated_*` on it) and the broadcaster (so the test can
 /// subscribe to the per-model channel directly).
-async fn build_handler_with_broadcaster(
-) -> (Arc<DeclarativeHttpHandler<Mail>>, Arc<lithair_core::http::SseEventBroadcaster>) {
+async fn build_handler_with_broadcaster() -> (
+    Arc<DeclarativeHttpHandler<Mail>>,
+    Arc<lithair_core::http::SseEventBroadcaster>,
+    tempfile::TempDir,
+) {
     let tmp = tempfile::tempdir().expect("tmpdir");
     let data_path = tmp.path().join("mails").to_string_lossy().to_string();
     std::fs::create_dir_all(&data_path).expect("create data dir");
-    // Keep the tmpdir alive for the lifetime of the test by leaking it —
-    // the test process exits cleanly, and we don't need cleanup pressure on
-    // an in-memory regression test.
-    std::mem::forget(tmp);
 
     let broadcaster = create_broadcaster();
     let handler = DeclarativeHttpHandler::<Mail>::new_with_replay(&data_path)
@@ -86,14 +85,17 @@ async fn build_handler_with_broadcaster(
         .expect("handler")
         .with_sse_broadcaster(Arc::clone(&broadcaster));
 
-    (Arc::new(handler), broadcaster)
+    // Return the tmpdir so each test binds it in scope — automatic cleanup
+    // on test exit. Previously we leaked via `std::mem::forget` which
+    // prevented cleanup pressure but suppressed normal Drop.
+    (Arc::new(handler), broadcaster, tmp)
 }
 
 /// `apply_replicated_item` broadcasts a `"create"` SSE event whose `data`
 /// payload is the inserted item, on the model's per-base-path channel.
 #[tokio::test]
 async fn issue_89_replicated_item_broadcasts_create() {
-    let (handler, broadcaster) = build_handler_with_broadcaster().await;
+    let (handler, broadcaster, _tmp) = build_handler_with_broadcaster().await;
 
     // Subscribe BEFORE the write — `broadcast::Sender` only delivers events
     // emitted after subscription.
@@ -117,7 +119,7 @@ async fn issue_89_replicated_item_broadcasts_create() {
 /// not `"patched"`) with the new item payload.
 #[tokio::test]
 async fn issue_89_replicated_update_broadcasts_update() {
-    let (handler, broadcaster) = build_handler_with_broadcaster().await;
+    let (handler, broadcaster, _tmp) = build_handler_with_broadcaster().await;
 
     // Seed: insert first so the update path doesn't fall through to
     // `apply_replicated_item` (see `declarative.rs:593` — UPDATE on a
@@ -153,7 +155,7 @@ async fn issue_89_replicated_update_broadcasts_update() {
 /// pre-removal item payload when the key existed.
 #[tokio::test]
 async fn issue_89_replicated_delete_broadcasts_delete() {
-    let (handler, broadcaster) = build_handler_with_broadcaster().await;
+    let (handler, broadcaster, _tmp) = build_handler_with_broadcaster().await;
 
     handler
         .apply_replicated_item(Mail { id: "m1".to_string(), subject: "goodbye".to_string() })
@@ -184,7 +186,7 @@ async fn issue_89_replicated_delete_broadcasts_delete() {
 /// phantom delete events for keys that were never there.
 #[tokio::test]
 async fn issue_89_replicated_delete_missing_key_does_not_broadcast() {
-    let (handler, broadcaster) = build_handler_with_broadcaster().await;
+    let (handler, broadcaster, _tmp) = build_handler_with_broadcaster().await;
 
     let mut rx = broadcaster.subscribe(Mail::http_base_path()).await;
 
