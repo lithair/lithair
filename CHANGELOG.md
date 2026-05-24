@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **SSE-over-HTTP now streams incrementally instead of buffering** (issue #93).
+  The route dispatch infrastructure (`app/builder.rs` `with_handler` routes and
+  `app/mod.rs` `handle_model_request`) previously converted every handler's
+  `BoxBody` response into `Full<Bytes>` via `body.collect().await`, which
+  fully buffered the response before sending it to hyper. For infinite SSE
+  streams, this meant a JS `EventSource` subscriber on `/api/{model}/stream`
+  received zero events until the connection closed. The `RouteResponse` type
+  has been migrated from `Response<Full<Bytes>>` to
+  `Response<BoxBody<Bytes, Infallible>>`, and the `body.collect()` calls have
+  been removed. The SSE handler's `StreamBody` now passes through to hyper
+  directly, delivering each event incrementally. Non-SSE consumers see
+  identical behavior (their `Full<Bytes>` bodies are boxed transparently).
+
 ## [0.10.0] - 2026-05-23
 
 ### Added

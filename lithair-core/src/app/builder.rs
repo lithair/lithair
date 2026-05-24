@@ -672,12 +672,16 @@ impl LithairServerBuilder {
                     .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
 
                 match handle_rbac_login(req, session_store, &users, duration, mfa_clone).await {
-                    Ok(resp) => Ok(resp),
+                    Ok(resp) => {
+                        use http_body_util::BodyExt;
+                        let (parts, body) = resp.into_parts();
+                        Ok(hyper::Response::from_parts(parts, body.boxed()))
+                    }
                     Err(e) => {
                         log::error!("Login error: {}", e);
                         Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from(format!(
+                            .body(super::boxed_full(bytes::Bytes::from(format!(
                                 "Internal error: {}",
                                 e
                             ))))
@@ -699,12 +703,16 @@ impl LithairServerBuilder {
                     .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
 
                 match handle_rbac_logout(req, session_store).await {
-                    Ok(resp) => Ok(resp),
+                    Ok(resp) => {
+                        use http_body_util::BodyExt;
+                        let (parts, body) = resp.into_parts();
+                        Ok(hyper::Response::from_parts(parts, body.boxed()))
+                    }
                     Err(e) => {
                         log::error!("Logout error: {}", e);
                         Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from(format!(
+                            .body(super::boxed_full(bytes::Bytes::from(format!(
                                 "Internal error: {}",
                                 e
                             ))))
@@ -722,7 +730,6 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 use crate::session::SessionStore;
                 use bytes::Bytes;
-                use http_body_util::Full;
 
                 // Use shared session store
                 let session_store: Arc<PersistentSessionStore> = store_clone
@@ -756,7 +763,7 @@ impl LithairServerBuilder {
                 Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(r#"{{"valid":{}}}"#, is_valid))))
+                    .body(super::boxed_full(Bytes::from(format!(r#"{{"valid":{}}}"#, is_valid))))
                     .unwrap())
             })
         });
@@ -1258,18 +1265,12 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 let segments: Vec<&str> = Vec::new();
                 match h.handle_request(req, &segments).await {
-                    Ok(resp) => {
-                        // Convert BoxBody to Full<Bytes>
-                        use http_body_util::BodyExt;
-                        let (parts, body) = resp.into_parts();
-                        let bytes = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                        Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
-                    }
+                    Ok(resp) => Ok(resp),
                     Err(_infallible) => {
                         log::error!("Handler error for GET {}", bp);
                         Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from("Internal error")))
+                            .body(super::boxed_full(bytes::Bytes::from("Internal error")))
                             .unwrap())
                     }
                 }
@@ -1285,24 +1286,19 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 let segments: Vec<&str> = Vec::new();
                 match h.handle_request(req, &segments).await {
-                    Ok(resp) => {
-                        use http_body_util::BodyExt;
-                        let (parts, body) = resp.into_parts();
-                        let bytes = body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                        Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
-                    }
+                    Ok(resp) => Ok(resp),
                     Err(_infallible) => {
                         log::error!("Handler error for POST {}", bp);
                         Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(http_body_util::Full::new(bytes::Bytes::from("Internal error")))
+                            .body(super::boxed_full(bytes::Bytes::from("Internal error")))
                             .unwrap())
                     }
                 }
             })
         });
 
-        // GET /base_path/* - Get single
+        // GET /base_path/* - Get single (also handles /stream for SSE)
         let handler_get = handler.clone();
         let base_for_get = base_path_normalized.clone();
         self =
@@ -1321,20 +1317,12 @@ impl LithairServerBuilder {
                         .collect();
 
                     match h.handle_request(req, &segments).await {
-                        Ok(resp) => {
-                            use http_body_util::BodyExt;
-                            let (parts, body) = resp.into_parts();
-                            let bytes =
-                                body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                            Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
-                        }
+                        Ok(resp) => Ok(resp),
                         Err(_infallible) => {
                             log::error!("Handler error for GET {}/*", bp);
                             Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(http_body_util::Full::new(bytes::Bytes::from(
-                                    "Internal error",
-                                )))
+                                .body(super::boxed_full(bytes::Bytes::from("Internal error")))
                                 .unwrap())
                         }
                     }
@@ -1359,20 +1347,12 @@ impl LithairServerBuilder {
                         .collect();
 
                     match h.handle_request(req, &segments).await {
-                        Ok(resp) => {
-                            use http_body_util::BodyExt;
-                            let (parts, body) = resp.into_parts();
-                            let bytes =
-                                body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                            Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
-                        }
+                        Ok(resp) => Ok(resp),
                         Err(_infallible) => {
                             log::error!("Handler error for PUT {}/*", bp);
                             Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(http_body_util::Full::new(bytes::Bytes::from(
-                                    "Internal error",
-                                )))
+                                .body(super::boxed_full(bytes::Bytes::from("Internal error")))
                                 .unwrap())
                         }
                     }
@@ -1399,20 +1379,12 @@ impl LithairServerBuilder {
                         .collect();
 
                     match h.handle_request(req, &segments).await {
-                        Ok(resp) => {
-                            use http_body_util::BodyExt;
-                            let (parts, body) = resp.into_parts();
-                            let bytes =
-                                body.collect().await.map(|c| c.to_bytes()).unwrap_or_default();
-                            Ok(hyper::Response::from_parts(parts, http_body_util::Full::new(bytes)))
-                        }
+                        Ok(resp) => Ok(resp),
                         Err(_infallible) => {
                             log::error!("Handler error for DELETE {}/*", bp);
                             Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(http_body_util::Full::new(bytes::Bytes::from(
-                                    "Internal error",
-                                )))
+                                .body(super::boxed_full(bytes::Bytes::from("Internal error")))
                                 .unwrap())
                         }
                     }

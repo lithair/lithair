@@ -17,21 +17,18 @@
 //!
 //! # Response shapes
 //!
-//! * `GET /health` → `200 {"status":"healthy"}`.
-//! * `GET /ready`  → `200 {"status":"ready","version":"<crate version>"}`.
+//! * `GET /health` -> `200 {"status":"healthy"}`.
+//! * `GET /ready`  -> `200 {"status":"ready","version":"<crate version>"}`.
 //!   `version` is surfaced unconditionally because `LithairServer` has
 //!   no readiness configuration knob and leaving it out would make the
 //!   endpoint silent.
-//! * `GET /info`   → `200 <JSON document>` — server name, version,
+//! * `GET /info`   -> `200 <JSON document>` -- server name, version,
 //!   list of well-known endpoints, registered model base paths, and a
 //!   UTC timestamp.
 
-use bytes::Bytes;
 use http::StatusCode;
-use http_body_util::Full;
-use hyper::Response;
 
-use crate::app::response;
+use crate::app::{response, RouteResponse};
 
 /// Path constant for the health endpoint.
 pub(crate) const HEALTH_PATH: &str = "/health";
@@ -46,7 +43,7 @@ pub(crate) const INFO_PATH: &str = "/info";
 ///
 /// Always returns `200 {"status":"healthy"}`. Stable shape;
 /// monitoring tooling can scrape it without parsing.
-pub(crate) fn serve_health() -> Response<Full<Bytes>> {
+pub(crate) fn serve_health() -> RouteResponse {
     response::json(StatusCode::OK, r#"{"status":"healthy"}"#)
 }
 
@@ -54,10 +51,10 @@ pub(crate) fn serve_health() -> Response<Full<Bytes>> {
 ///
 /// Returns `200` with `{"status":"ready","version":"<crate version>"}`.
 /// `LithairServer` has no opt-in readiness configuration today, so the
-/// fields are intentionally minimal — extending this shape later
+/// fields are intentionally minimal -- extending this shape later
 /// (consensus state, custom fields, etc.) is additive and won't break
 /// existing clients.
-pub(crate) fn serve_ready() -> Response<Full<Bytes>> {
+pub(crate) fn serve_ready() -> RouteResponse {
     // Use `serde_json::json!` so any string field is escaped correctly
     // even if it contains characters that would break a hand-rolled
     // `format!` template (quotes, backslashes, control chars).
@@ -72,14 +69,14 @@ pub(crate) fn serve_ready() -> Response<Full<Bytes>> {
 /// Build the default response for `GET /info`.
 ///
 /// `model_base_paths` is the list of currently registered model
-/// base paths (e.g. `["/api/users", "/api/orders"]`) — empty when no
+/// base paths (e.g. `["/api/users", "/api/orders"]`) -- empty when no
 /// models are wired. The output is a JSON document describing the
 /// server, the well-known endpoints it serves, and the registered
 /// models, so operators can curl `/info` and confirm what's wired.
-pub(crate) fn serve_info(model_base_paths: &[String]) -> Response<Full<Bytes>> {
+pub(crate) fn serve_info(model_base_paths: &[String]) -> RouteResponse {
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
 
-    // `serde_json::json!` handles all the escaping for us — model base
+    // `serde_json::json!` handles all the escaping for us -- model base
     // paths are user-supplied so this is the safe construction path.
     let body = serde_json::json!({
         "server": "Lithair Server",
@@ -102,7 +99,7 @@ mod tests {
     use super::*;
     use http_body_util::BodyExt;
 
-    async fn body_to_string(resp: Response<Full<Bytes>>) -> String {
+    async fn body_to_string(resp: RouteResponse) -> String {
         let bytes = resp.into_body().collect().await.expect("collect body").to_bytes();
         String::from_utf8(bytes.to_vec()).expect("utf8 body")
     }
