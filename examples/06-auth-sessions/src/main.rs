@@ -18,7 +18,7 @@ use bytes::Bytes;
 use chrono::Duration;
 use clap::Parser;
 use http::{Method, Request, Response, StatusCode};
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full};
 use lithair_core::app::LithairServer;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
 use lithair_core::session::{
@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Failed to collect body"))?
                     .to_bytes();
 
-                Ok(Response::from_parts(parts, Full::new(bytes)))
+                Ok(Response::from_parts(parts, Full::new(bytes).boxed()))
             })
         })
 
@@ -225,7 +225,7 @@ async fn login(
     mut req: Request<hyper::body::Incoming>,
     _session_middleware: Arc<SessionMiddleware<PersistentSessionStore>>,
     session_store: Arc<PersistentSessionStore>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     use http_body_util::BodyExt;
 
     // Parse request body
@@ -275,7 +275,7 @@ async fn login(
 async fn logout(
     req: Request<hyper::body::Incoming>,
     session_middleware: Arc<SessionMiddleware<PersistentSessionStore>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     // Extract session
     let session = match session_middleware.extract_session(&req).await? {
         Some(s) => s,
@@ -307,10 +307,13 @@ async fn logout(
 }
 
 /// Helper to create JSON response
-fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Full<Bytes>> {
+fn json_response(
+    status: StatusCode,
+    body: serde_json::Value,
+) -> Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>> {
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(body.to_string())))
+        .body(Full::new(Bytes::from(body.to_string())).boxed())
         .unwrap()
 }

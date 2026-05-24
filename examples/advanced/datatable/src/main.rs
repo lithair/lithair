@@ -14,7 +14,7 @@ use bytes::Bytes;
 use clap::Parser;
 use futures::future;
 use http::{Method, Response, StatusCode};
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full};
 use lithair_core::app::LithairServer;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
 use lithair_core::http::DeclarativeHttpHandler;
@@ -663,7 +663,7 @@ async fn main() -> Result<()> {
                 let bytes = body.collect().await
                     .map_err(|_| anyhow::anyhow!("Failed to collect body"))?
                     .to_bytes();
-                Ok(Response::from_parts(parts, Full::new(bytes)))
+                Ok(Response::from_parts(parts, Full::new(bytes).boxed()))
             })
         })
 
@@ -681,7 +681,7 @@ async fn main() -> Result<()> {
 async fn seed_products(
     req: http::Request<hyper::body::Incoming>,
     handler: Arc<DeclarativeHttpHandler<Product>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     let count = parse_count(&req, 100);
     let start = Instant::now();
     let mut rng = rand::rngs::StdRng::from_entropy();
@@ -705,7 +705,7 @@ async fn seed_products(
 async fn seed_consumers(
     req: http::Request<hyper::body::Incoming>,
     handler: Arc<DeclarativeHttpHandler<Consumer>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     let count = parse_count(&req, 50);
     let start = Instant::now();
     let mut rng = rand::rngs::StdRng::from_entropy();
@@ -731,7 +731,7 @@ async fn seed_orders(
     handler: Arc<DeclarativeHttpHandler<Order>>,
     product_handler: Arc<DeclarativeHttpHandler<Product>>,
     consumer_handler: Arc<DeclarativeHttpHandler<Consumer>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     let count = parse_count(&req, 50);
     let start = Instant::now();
     let mut rng = rand::rngs::StdRng::from_entropy();
@@ -775,7 +775,7 @@ async fn seed_orders(
 async fn get_consumer_orders(
     req: http::Request<hyper::body::Incoming>,
     handler: Arc<DeclarativeHttpHandler<Order>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     // Extract consumer_id from path: /api/consumers/{id}/orders
     let path = req.uri().path();
     let parts: Vec<&str> = path.split('/').collect();
@@ -798,7 +798,7 @@ async fn get_order_expanded(
     order_handler: Arc<DeclarativeHttpHandler<Order>>,
     consumer_handler: Arc<DeclarativeHttpHandler<Consumer>>,
     product_handler: Arc<DeclarativeHttpHandler<Product>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     // Extract order_id from path: /api/orders/{id}/expanded
     let path = req.uri().path();
     let parts: Vec<&str> = path.split('/').collect();
@@ -812,13 +812,16 @@ async fn get_order_expanded(
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .header("Access-Control-Allow-Origin", "*")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "Order not found",
-                        "order_id": order_id
-                    })
-                    .to_string(),
-                )))
+                .body(
+                    Full::new(Bytes::from(
+                        serde_json::json!({
+                            "error": "Order not found",
+                            "order_id": order_id
+                        })
+                        .to_string(),
+                    ))
+                    .boxed(),
+                )
                 .unwrap())
         }
     };
@@ -848,7 +851,7 @@ async fn handle_stats(
     ph: Arc<DeclarativeHttpHandler<Product>>,
     ch: Arc<DeclarativeHttpHandler<Consumer>>,
     oh: Arc<DeclarativeHttpHandler<Order>>,
-) -> Result<Response<Full<Bytes>>> {
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     json_response(&serde_json::json!({
         "tables": {
             "products": ph.storage_count().await,
@@ -882,11 +885,13 @@ fn throughput(count: usize, duration: std::time::Duration) -> u64 {
     (count as u64 * 1000).checked_div(ms).unwrap_or(count as u64)
 }
 
-fn json_response(value: &serde_json::Value) -> Result<Response<Full<Bytes>>> {
+fn json_response(
+    value: &serde_json::Value,
+) -> Result<Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>>> {
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .header("Access-Control-Allow-Origin", "*")
-        .body(Full::new(Bytes::from(value.to_string())))
+        .body(Full::new(Bytes::from(value.to_string())).boxed())
         .unwrap())
 }

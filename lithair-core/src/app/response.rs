@@ -19,6 +19,7 @@
 use super::RouteResponse;
 use bytes::Bytes;
 use http::StatusCode;
+use http_body_util::BodyExt;
 use http_body_util::Full;
 use hyper::Response;
 use serde::Serialize;
@@ -35,7 +36,7 @@ pub fn json(status: StatusCode, body: impl Into<String>) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(body.into())))
+        .body(Full::new(Bytes::from(body.into())).boxed())
         .expect("valid HTTP response")
 }
 
@@ -70,7 +71,7 @@ pub fn json_value(status: StatusCode, body: &Value) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(bytes)))
+        .body(Full::new(Bytes::from(bytes)).boxed())
         .expect("valid HTTP response")
 }
 
@@ -105,7 +106,7 @@ pub fn json_serialize<T: Serialize + ?Sized>(
     Ok(Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(bytes)))
+        .body(Full::new(Bytes::from(bytes)).boxed())
         .expect("valid HTTP response"))
 }
 
@@ -114,7 +115,7 @@ pub fn text(status: StatusCode, body: impl Into<String>) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "text/plain; charset=utf-8")
-        .body(Full::new(Bytes::from(body.into())))
+        .body(Full::new(Bytes::from(body.into())).boxed())
         .expect("valid HTTP response")
 }
 
@@ -123,7 +124,7 @@ pub fn html(status: StatusCode, body: impl Into<String>) -> RouteResponse {
     Response::builder()
         .status(status)
         .header("Content-Type", "text/html; charset=utf-8")
-        .body(Full::new(Bytes::from(body.into())))
+        .body(Full::new(Bytes::from(body.into())).boxed())
         .expect("valid HTTP response")
 }
 
@@ -132,7 +133,7 @@ pub fn redirect(location: &str) -> RouteResponse {
     Response::builder()
         .status(StatusCode::FOUND)
         .header("Location", location)
-        .body(Full::new(Bytes::new()))
+        .body(Full::new(Bytes::new()).boxed())
         .expect("valid HTTP response")
 }
 
@@ -140,7 +141,7 @@ pub fn redirect(location: &str) -> RouteResponse {
 pub fn empty(status: StatusCode) -> RouteResponse {
     Response::builder()
         .status(status)
-        .body(Full::new(Bytes::new()))
+        .body(Full::new(Bytes::new()).boxed())
         .expect("valid HTTP response")
 }
 
@@ -217,7 +218,7 @@ impl ResponseBuilder {
     /// `&'static [u8]`, `String`, `&'static str`, …) so static-asset and
     /// dynamic-payload callers share the same shape.
     pub fn body(self, body: impl Into<Bytes>) -> RouteResponse {
-        self.inner.body(Full::new(body.into())).expect("valid HTTP response")
+        self.inner.body(Full::new(body.into()).boxed()).expect("valid HTTP response")
     }
 
     /// Terminate the chain with a [`serde_json::Value`] body, setting
@@ -235,7 +236,7 @@ impl ResponseBuilder {
         let bytes = serde_json::to_vec(value).expect("serde_json::Value always serializes");
         self.inner
             .header("content-type", "application/json")
-            .body(Full::new(Bytes::from(bytes)))
+            .body(Full::new(Bytes::from(bytes)).boxed())
             .expect("valid HTTP response")
     }
 }

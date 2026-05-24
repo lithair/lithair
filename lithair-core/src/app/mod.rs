@@ -73,11 +73,31 @@ pub type RouteRequest = hyper::Request<hyper::body::Incoming>;
 /// in [`response`] (`json`, `json_value`, `json_serialize`, `text`, `html`,
 /// `redirect`, `empty`).
 ///
-/// This is a type alias for `hyper::Response<http_body_util::Full<bytes::Bytes>>`
-/// — no wrapping, no overhead. The alias exists so consumers can type their
-/// handlers and return values without depending on `hyper`, `http-body-util`,
-/// or `bytes` directly.
-pub type RouteResponse = hyper::Response<http_body_util::Full<bytes::Bytes>>;
+/// This is a type alias for
+/// `hyper::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>>`.
+/// The `BoxBody` wrapper allows handlers to return either buffered
+/// (`Full<Bytes>`) or streaming (`StreamBody`) response bodies. This is
+/// critical for SSE endpoints (`/api/{model}/stream`) where the body must
+/// be sent incrementally as events arrive (issue #93).
+///
+/// The alias exists so consumers can type their handlers and return values
+/// without depending on `hyper`, `http-body-util`, or `bytes` directly.
+pub type RouteResponse =
+    hyper::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>>;
+
+/// Convenience constructor: wrap a buffered payload in `BoxBody` for use as
+/// a [`RouteResponse`] body.
+///
+/// This is the `RouteResponse`-level equivalent of `Full::new(data.into()).boxed()`
+/// — a one-liner that keeps call sites readable after the body type migration
+/// from `Full<Bytes>` to `BoxBody<Bytes, Infallible>` (issue #93).
+#[inline]
+fn boxed_full(
+    data: impl Into<bytes::Bytes>,
+) -> http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible> {
+    use http_body_util::BodyExt;
+    http_body_util::Full::new(data.into()).boxed()
+}
 
 /// HTTP method re-exported from the `http` crate.
 ///
@@ -1925,7 +1945,7 @@ impl LithairServer {
                                             hyper::Response::builder()
                                                 .status(parts.status)
                                                 .header("Content-Type", "application/json")
-                                                .body(http_body_util::Full::new(body_bytes))
+                                                .body(boxed_full(body_bytes))
                                                 .expect("valid HTTP response"),
                                             tls_active,
                                         ),
@@ -1940,11 +1960,9 @@ impl LithairServer {
                                                 .status(429)
                                                 .header("Content-Type", "application/json")
                                                 .header("Retry-After", "60")
-                                                .body(http_body_util::Full::new(
-                                                    bytes::Bytes::from(
-                                                        r#"{"error":"Rate limit exceeded"}"#,
-                                                    ),
-                                                ))
+                                                .body(boxed_full(bytes::Bytes::from(
+                                                    r#"{"error":"Rate limit exceeded"}"#,
+                                                )))
                                                 .expect("valid HTTP response"),
                                             tls_active,
                                         ));
@@ -1959,11 +1977,9 @@ impl LithairServer {
                                                 hyper::Response::builder()
                                                     .status(413)
                                                     .header("Content-Type", "application/json")
-                                                    .body(http_body_util::Full::new(
-                                                        bytes::Bytes::from(
-                                                            r#"{"error":"Request body too large"}"#,
-                                                        ),
-                                                    ))
+                                                    .body(boxed_full(bytes::Bytes::from(
+                                                        r#"{"error":"Request body too large"}"#,
+                                                    )))
                                                     .expect("valid HTTP response"),
                                                 tls_active,
                                             ));
@@ -1981,11 +1997,9 @@ impl LithairServer {
                                             hyper::Response::builder()
                                                 .status(500)
                                                 .header("Content-Type", "application/json")
-                                                .body(http_body_util::Full::new(
-                                                    bytes::Bytes::from(
-                                                        r#"{"error":"Internal server error"}"#,
-                                                    ),
-                                                ))
+                                                .body(boxed_full(bytes::Bytes::from(
+                                                    r#"{"error":"Internal server error"}"#,
+                                                )))
                                                 .expect("valid HTTP response"),
                                             tls_active,
                                         ))
@@ -2026,10 +2040,7 @@ impl LithairServer {
     /// Add security headers to a response.
     /// Uses `entry().or_insert()` so handlers that explicitly set a header are not overridden.
     /// When `tls_active` is true, adds HSTS header.
-    fn add_security_headers(
-        resp: hyper::Response<http_body_util::Full<bytes::Bytes>>,
-        tls_active: bool,
-    ) -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
+    fn add_security_headers(resp: RouteResponse, tls_active: bool) -> RouteResponse {
         let (mut parts, body) = resp.into_parts();
         let h = &mut parts.headers;
         h.entry("x-content-type-options")
@@ -2063,13 +2074,12 @@ impl LithairServer {
     /// `handle_migrate_operation` differ in body shape, headers
     /// (`X-Raft-Leader`), and the path/query forwarded in `Location`, so
     /// folding them would change wire behavior. They remain inlined.
-    fn leader_port_unknown_503() -> hyper::Response<http_body_util::Full<bytes::Bytes>> {
-        use http_body_util::Full;
+    fn leader_port_unknown_503() -> RouteResponse {
         hyper::Response::builder()
             .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
             .header("Content-Type", "application/json")
             .header("Retry-After", "1")
-            .body(Full::new(Bytes::from(
+            .body(boxed_full(Bytes::from(
                 r#"{"error":"Leader port not yet discovered, retry after heartbeat"}"#,
             )))
             .expect("valid HTTP response")
@@ -2137,9 +2147,8 @@ impl LithairServer {
     async fn handle_request(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
+    ) -> Result<RouteResponse> {
         use bytes::Bytes;
-        use http_body_util::Full;
 
         let method = req.method().clone();
         let path = req.uri().path().to_string();
@@ -2185,7 +2194,7 @@ impl LithairServer {
                             .status(hyper::StatusCode::MOVED_PERMANENTLY)
                             .header(hyper::header::LOCATION, loc_hv)
                             .header("Content-Type", "text/plain; charset=utf-8")
-                            .body(Full::new(Bytes::from_static(b"Moved Permanently")))
+                            .body(boxed_full(Bytes::from_static(b"Moved Permanently")))
                             .expect("static body + valid status never fails"));
                     }
                     Err(e) => {
@@ -2197,7 +2206,7 @@ impl LithairServer {
                         return Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "text/plain; charset=utf-8")
-                            .body(Full::new(Bytes::from_static(b"Internal Server Error")))
+                            .body(boxed_full(Bytes::from_static(b"Internal Server Error")))
                             .expect("static body + valid status never fails"));
                     }
                 }
@@ -2232,7 +2241,7 @@ impl LithairServer {
                     return Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::UNAUTHORIZED)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
+                        .body(boxed_full(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
                         .expect("valid HTTP response"));
                 }
 
@@ -2267,7 +2276,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
                     .expect("valid HTTP response"));
             }
 
@@ -2280,7 +2289,7 @@ impl LithairServer {
                     return Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::UNAUTHORIZED)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
+                        .body(boxed_full(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
                         .expect("valid HTTP response"));
                 }
 
@@ -2294,7 +2303,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(response.to_string())))
+                    .body(boxed_full(Bytes::from(response.to_string())))
                     .expect("valid HTTP response"));
             }
 
@@ -2322,7 +2331,7 @@ impl LithairServer {
                     .status(hyper::StatusCode::TEMPORARY_REDIRECT)
                     .header(hyper::header::LOCATION, redirect_url.clone())
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(boxed_full(Bytes::from(format!(
                         r#"{{"message":"Redirected to leader","leader_url":"{}"}}"#,
                         redirect_url
                     ))))
@@ -2447,14 +2456,17 @@ impl LithairServer {
                     }
                     Ok(crate::http::GuardResult::Deny(response)) => {
                         log::debug!("Guard denied request");
-                        return Ok(response);
+                        // Convert Full<Bytes> to BoxBody<Bytes, Infallible>
+                        use http_body_util::BodyExt;
+                        let (parts, body) = response.into_parts();
+                        return Ok(hyper::Response::from_parts(parts, body.boxed()));
                     }
                     Err(e) => {
                         log::error!("Guard check failed: {}", e);
                         return Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(r#"{"error":"Internal server error"}"#)))
+                            .body(boxed_full(Bytes::from(r#"{"error":"Internal server error"}"#)))
                             .expect("valid HTTP response"));
                     }
                 }
@@ -2483,7 +2495,7 @@ impl LithairServer {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(status.to_string())))
+                .body(boxed_full(Bytes::from(status.to_string())))
                 .expect("valid HTTP response"));
         }
 
@@ -2512,7 +2524,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .header("Access-Control-Allow-Origin", "*")
-                .body(Full::new(Bytes::from(spec.to_string())))
+                .body(boxed_full(Bytes::from(spec.to_string())))
                 .expect("valid HTTP response"));
         }
 
@@ -2533,7 +2545,7 @@ impl LithairServer {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "text/html; charset=utf-8")
-                .body(Full::new(Bytes::from(html)))
+                .body(boxed_full(Bytes::from(html)))
                 .expect("valid HTTP response"));
         }
 
@@ -2658,7 +2670,7 @@ impl LithairServer {
                                 .header("Content-Type", asset.mime_type)
                                 .header("Content-Length", content_length)
                                 .header("Cache-Control", "public, max-age=31536000, immutable")
-                                .body(Full::new(body_bytes))
+                                .body(boxed_full(body_bytes))
                                 .expect("valid HTTP response"));
                         }
                     }
@@ -2688,17 +2700,8 @@ impl LithairServer {
 
                             // Call frontend server (returns BoxBody, Infallible error)
                             let Ok(response) = frontend_server.handle_request(modified_req).await;
-                            // Convert BoxBody to Full<Bytes>
-                            use http_body_util::BodyExt;
-                            let (parts, body) = response.into_parts();
-                            let bytes = body
-                                .collect()
-                                .await
-                                .map_err(|e| anyhow::anyhow!("failed to collect body: {}", e))?
-                                .to_bytes();
-                            let full_response =
-                                hyper::Response::from_parts(parts, Full::new(bytes));
-                            return Ok(full_response);
+                            // Pass BoxBody through directly (no collection needed)
+                            return Ok(response);
                         }
                         // Break after first prefix match to avoid consuming req multiple times
                         break;
@@ -2716,7 +2719,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(404)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(r#"{"error":"Not found"}"#)))
+            .body(boxed_full(Bytes::from(r#"{"error":"Not found"}"#)))
             .expect("valid HTTP response"))
     }
 
@@ -2724,9 +2727,7 @@ impl LithairServer {
     async fn handle_admin_request(
         &self,
         _req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    ) -> Result<RouteResponse> {
         let models = self.models.read().await;
         let model_names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
         let custom_route_paths: Vec<String> =
@@ -2760,7 +2761,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(200)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(body)))
+            .body(boxed_full(Bytes::from(body)))
             .expect("valid HTTP response"))
     }
 
@@ -2770,8 +2771,8 @@ impl LithairServer {
     async fn handle_internal_replicate(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::{BodyExt, Full};
+    ) -> Result<RouteResponse> {
+        use http_body_util::BodyExt;
 
         // Parse body
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
@@ -2780,7 +2781,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -2791,7 +2792,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
                     )))
                     .expect("valid HTTP response"));
@@ -2833,7 +2834,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+                                .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
                                 .expect("valid HTTP response"));
                         }
                         Err(e) => {
@@ -2841,7 +2842,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(
+                                .body(boxed_full(Bytes::from(
                                     serde_json::json!({"error": e.to_string()}).to_string(),
                                 )))
                                 .expect("valid HTTP response"));
@@ -2858,7 +2859,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+                                .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
                                 .expect("valid HTTP response"));
                         }
                         Err(e) => {
@@ -2866,7 +2867,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(
+                                .body(boxed_full(Bytes::from(
                                     serde_json::json!({"error": e.to_string()}).to_string(),
                                 )))
                                 .expect("valid HTTP response"));
@@ -2881,7 +2882,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::OK)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+                                .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
                                 .expect("valid HTTP response"));
                         }
                         Err(e) => {
@@ -2889,7 +2890,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(
+                                .body(boxed_full(Bytes::from(
                                     serde_json::json!({"error": e.to_string()}).to_string(),
                                 )))
                                 .expect("valid HTTP response"));
@@ -2905,7 +2906,7 @@ impl LithairServer {
                     return Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::BAD_REQUEST)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             r#"{"error":"Missing 'data' or 'operation' field"}"#,
                         )))
                         .expect("valid HTTP response"));
@@ -2918,7 +2919,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+                        .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
                         .expect("valid HTTP response"))
                 }
                 Err(e) => {
@@ -2926,7 +2927,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::json!({"error": e.to_string()}).to_string(),
                         )))
                         .expect("valid HTTP response"))
@@ -2936,7 +2937,7 @@ impl LithairServer {
             Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
                 .expect("valid HTTP response"))
         }
     }
@@ -2947,8 +2948,8 @@ impl LithairServer {
     async fn handle_internal_replicate_bulk(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::{BodyExt, Full};
+    ) -> Result<RouteResponse> {
+        use http_body_util::BodyExt;
 
         // Parse body
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
@@ -2957,7 +2958,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -2968,7 +2969,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
                     )))
                     .expect("valid HTTP response"));
@@ -2985,7 +2986,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Missing or invalid 'items' field"}"#)))
+                    .body(boxed_full(Bytes::from(
+                        r#"{"error":"Missing or invalid 'items' field"}"#,
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -3015,7 +3018,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"status":"ok","count":{}}}"#,
                             count
                         ))))
@@ -3026,7 +3029,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::json!({"error": e.to_string()}).to_string(),
                         )))
                         .expect("valid HTTP response"))
@@ -3036,7 +3039,7 @@ impl LithairServer {
             Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
                 .expect("valid HTTP response"))
         }
     }
@@ -3047,8 +3050,8 @@ impl LithairServer {
     async fn handle_internal_replicate_update(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::{BodyExt, Full};
+    ) -> Result<RouteResponse> {
+        use http_body_util::BodyExt;
 
         // Parse body
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
@@ -3057,7 +3060,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3068,7 +3071,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
                     )))
                     .expect("valid HTTP response"));
@@ -3084,7 +3087,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3095,7 +3098,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Missing 'data' field"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'data' field"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3118,7 +3121,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(r#"{"status":"ok"}"#)))
+                        .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
                         .expect("valid HTTP response"))
                 }
                 Err(e) => {
@@ -3126,7 +3129,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::json!({"error": e.to_string()}).to_string(),
                         )))
                         .expect("valid HTTP response"))
@@ -3136,7 +3139,7 @@ impl LithairServer {
             Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
                 .expect("valid HTTP response"))
         }
     }
@@ -3147,8 +3150,8 @@ impl LithairServer {
     async fn handle_internal_replicate_delete(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::{BodyExt, Full};
+    ) -> Result<RouteResponse> {
+        use http_body_util::BodyExt;
 
         // Parse body
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
@@ -3157,7 +3160,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid body"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3168,7 +3171,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
                     )))
                     .expect("valid HTTP response"));
@@ -3184,7 +3187,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3212,7 +3215,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::OK)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"status":"ok","deleted":{}}}"#,
                             deleted
                         ))))
@@ -3223,7 +3226,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::json!({"error": e.to_string()}).to_string(),
                         )))
                         .expect("valid HTTP response"))
@@ -3233,7 +3236,7 @@ impl LithairServer {
             Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"No model handler found"}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
                 .expect("valid HTTP response"))
         }
     }
@@ -3250,9 +3253,8 @@ impl LithairServer {
     async fn handle_raft_append_entries(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
+    ) -> Result<RouteResponse> {
         use http_body_util::BodyExt;
-        use http_body_util::Full;
 
         // Parse request body
         let (_parts, body) = req.into_parts();
@@ -3265,7 +3267,7 @@ impl LithairServer {
                     return Ok(hyper::Response::builder()
                         .status(hyper::StatusCode::BAD_REQUEST)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"error":"Invalid request: {}"}}"#,
                             e
                         ))))
@@ -3280,7 +3282,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Consensus log not initialized"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Consensus log not initialized"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3300,7 +3302,7 @@ impl LithairServer {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
+                .body(boxed_full(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
                 .expect("valid HTTP response"));
         }
 
@@ -3393,7 +3395,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
+            .body(boxed_full(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
             .expect("valid HTTP response"))
     }
 
@@ -3404,9 +3406,7 @@ impl LithairServer {
     async fn handle_get_snapshot(
         &self,
         _req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    ) -> Result<RouteResponse> {
         // Check if snapshot manager is available
         let snapshot_manager = match &self.snapshot_manager {
             Some(mgr) => mgr,
@@ -3414,7 +3414,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Snapshot manager not initialized"}"#)))
+                    .body(boxed_full(Bytes::from(
+                        r#"{"error":"Snapshot manager not initialized"}"#,
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -3427,7 +3429,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"No snapshot available"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"No snapshot available"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3443,7 +3445,7 @@ impl LithairServer {
                     .header("X-Snapshot-Index", meta.last_included_index.to_string())
                     .header("X-Snapshot-Checksum", meta.checksum.to_string())
                     .header("X-Snapshot-Size", meta.size_bytes.to_string())
-                    .body(Full::new(Bytes::from(bytes)))
+                    .body(boxed_full(Bytes::from(bytes)))
                     .expect("valid HTTP response"))
             }
             Err(e) => {
@@ -3451,7 +3453,7 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(boxed_full(Bytes::from(format!(
                         r#"{{"error":"Failed to read snapshot: {}"}}"#,
                         e
                     ))))
@@ -3467,8 +3469,8 @@ impl LithairServer {
     async fn handle_install_snapshot(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::{BodyExt, Full};
+    ) -> Result<RouteResponse> {
+        use http_body_util::BodyExt;
 
         // Check if snapshot manager is available
         let snapshot_manager = match &self.snapshot_manager {
@@ -3477,7 +3479,9 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Snapshot manager not initialized"}"#)))
+                    .body(boxed_full(Bytes::from(
+                        r#"{"error":"Snapshot manager not initialized"}"#,
+                    )))
                     .expect("valid HTTP response"));
             }
         };
@@ -3514,7 +3518,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(boxed_full(Bytes::from(format!(
                         r#"{{"error":"Failed to read body: {}"}}"#,
                         e
                     ))))
@@ -3574,7 +3578,9 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
+                    .body(boxed_full(Bytes::from(
+                        serde_json::to_vec(&response).unwrap_or_default(),
+                    )))
                     .expect("valid HTTP response"))
             }
             Err(e) => {
@@ -3588,7 +3594,9 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
+                    .body(boxed_full(Bytes::from(
+                        serde_json::to_vec(&response).unwrap_or_default(),
+                    )))
                     .expect("valid HTTP response"))
             }
         }
@@ -3601,11 +3609,7 @@ impl LithairServer {
     /// - Last replicated index
     /// - Latency statistics
     /// - Pending entry counts
-    async fn handle_cluster_health(
-        &self,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    async fn handle_cluster_health(&self) -> Result<RouteResponse> {
         let mut health_data = serde_json::json!({
             "status": "ok",
             "node_id": self.node_id,
@@ -3684,7 +3688,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(boxed_full(Bytes::from(
                 serde_json::to_string_pretty(&health_data).unwrap_or_default(),
             )))
             .expect("valid HTTP response"))
@@ -3696,11 +3700,7 @@ impl LithairServer {
     /// - Leader side: snapshots created, send attempts/successes/failures
     /// - Follower side: snapshots received, snapshots applied
     /// - Indices and timestamps for debugging
-    async fn handle_resync_stats(
-        &self,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    async fn handle_resync_stats(&self) -> Result<RouteResponse> {
         let stats_json = self.resync_stats.to_json();
 
         let response_data = serde_json::json!({
@@ -3712,7 +3712,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(boxed_full(Bytes::from(
                 serde_json::to_string_pretty(&response_data).unwrap_or_default(),
             )))
             .expect("valid HTTP response"))
@@ -3728,18 +3728,14 @@ impl LithairServer {
     /// - last_latency_ms: last replication latency
     /// - pending_count: pending batched entries
     /// - consecutive_failures: failure counter
-    async fn handle_sync_status(
-        &self,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    async fn handle_sync_status(&self) -> Result<RouteResponse> {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
         if !is_leader {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::to_string_pretty(&serde_json::json!({
+                .body(boxed_full(Bytes::from(serde_json::to_string_pretty(&serde_json::json!({
                     "node_id": self.node_id,
                     "is_leader": false,
                     "message": "This node is not the leader. Sync status is only available on the leader."
@@ -3785,7 +3781,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(hyper::StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(boxed_full(Bytes::from(
                 serde_json::to_string_pretty(&response_data).unwrap_or_default(),
             )))
             .expect("valid HTTP response"))
@@ -3801,16 +3797,14 @@ impl LithairServer {
     async fn handle_force_resync(
         &self,
         req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    ) -> Result<RouteResponse> {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
         if !is_leader {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"This node is not the leader. Force resync must be called on the leader."}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"This node is not the leader. Force resync must be called on the leader."}"#)))
                 .expect("valid HTTP response"));
         }
 
@@ -3831,7 +3825,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Missing 'target' query parameter. Use /_raft/force-resync?target=127.0.0.1:8081"}"#)))
+                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'target' query parameter. Use /_raft/force-resync?target=127.0.0.1:8081"}"#)))
                     .expect("valid HTTP response"));
             }
         };
@@ -3849,7 +3843,7 @@ impl LithairServer {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(format!(
+                .body(boxed_full(Bytes::from(format!(
                     r#"{{"error":"Follower '{}' not found in cluster"}}"#,
                     target
                 ))))
@@ -3885,7 +3879,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(status)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(boxed_full(Bytes::from(
                 serde_json::to_string_pretty(&serde_json::json!({
                     "target": target,
                     "success": status == hyper::StatusCode::OK,
@@ -3904,8 +3898,8 @@ impl LithairServer {
     async fn handle_migrate_operation(
         &self,
         mut req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::{BodyExt, Full};
+    ) -> Result<RouteResponse> {
+        use http_body_util::BodyExt;
 
         // Only leader can accept migration operations
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(true);
@@ -3918,7 +3912,7 @@ impl LithairServer {
                 .status(hyper::StatusCode::TEMPORARY_REDIRECT)
                 .header("Content-Type", "application/json")
                 .header("Location", format!("http://127.0.0.1:{}/_raft/migrate", leader_port))
-                .body(Full::new(Bytes::from(
+                .body(boxed_full(Bytes::from(
                     serde_json::json!({
                         "error": "Not leader",
                         "leader_port": leader_port
@@ -3942,7 +3936,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({
                             "error": format!("Invalid operation: {}", e)
                         })
@@ -3965,7 +3959,7 @@ impl LithairServer {
             return Ok(hyper::Response::builder()
                 .status(hyper::StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
+                .body(boxed_full(Bytes::from(
                     serde_json::json!({
                         "error": "Only migration operations are allowed on this endpoint"
                     })
@@ -4014,7 +4008,7 @@ impl LithairServer {
                         Ok(result) => Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::OK)
                             .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(
+                            .body(boxed_full(Bytes::from(
                                 serde_json::json!({
                                     "success": true,
                                     "commit_index": new_commit,
@@ -4026,7 +4020,7 @@ impl LithairServer {
                         Err(e) => Ok(hyper::Response::builder()
                             .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(
+                            .body(boxed_full(Bytes::from(
                                 serde_json::json!({
                                     "error": format!("Migration apply failed: {}", e),
                                     "commit_index": new_commit
@@ -4039,7 +4033,7 @@ impl LithairServer {
                 Err(e) => Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({
                             "error": format!("Replication failed: {}", e)
                         })
@@ -4054,7 +4048,7 @@ impl LithairServer {
                 Ok(result) => Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::OK)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({
                             "success": true,
                             "result": result
@@ -4065,7 +4059,7 @@ impl LithairServer {
                 Err(e) => Ok(hyper::Response::builder()
                     .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::json!({
                             "error": format!("Migration failed: {}", e)
                         })
@@ -4080,9 +4074,7 @@ impl LithairServer {
     async fn handle_metrics_request(
         &self,
         _req: hyper::Request<hyper::body::Incoming>,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    ) -> Result<RouteResponse> {
         // Escape a string for use as a Prometheus label value per the text
         // exposition format spec (backslash, double quote, newline).
         fn escape_prom_label(s: &str) -> String {
@@ -4180,7 +4172,7 @@ impl LithairServer {
         Ok(hyper::Response::builder()
             .status(200)
             .header("Content-Type", "text/plain; version=0.0.4")
-            .body(Full::new(Bytes::from(lines.join("\n"))))
+            .body(boxed_full(Bytes::from(lines.join("\n"))))
             .expect("valid HTTP response"))
     }
 
@@ -4197,9 +4189,8 @@ impl LithairServer {
         _req: hyper::Request<hyper::body::Incoming>,
         path: &str,
         method: &hyper::Method,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
+    ) -> Result<RouteResponse> {
         use bytes::Bytes;
-        use http_body_util::Full;
 
         // Parse the path: /_admin/data/{resource}[/{name}][/{action}]
         let path_parts: Vec<&str> = path
@@ -4233,7 +4224,7 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(200)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::to_string_pretty(&response).expect("serializable response"),
                     )))
                     .expect("valid HTTP response"))
@@ -4257,7 +4248,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(200)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::to_string_pretty(&response).expect("serializable response"),
                         )))
                         .expect("valid HTTP response"))
@@ -4265,7 +4256,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
@@ -4293,7 +4284,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(200)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::to_string_pretty(&stats).expect("serializable response"),
                         )))
                         .expect("valid HTTP response"))
@@ -4306,7 +4297,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::to_string(&serde_json::json!({
                                 "error": format!("Model '{}' not found", name)
                             }))
@@ -4330,7 +4321,7 @@ impl LithairServer {
                             "Content-Disposition",
                             format!("attachment; filename=\"{}_export.json\"", name),
                         )
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::to_string_pretty(&export).expect("serializable response"),
                         )))
                         .expect("valid HTTP response"))
@@ -4338,7 +4329,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
@@ -4356,7 +4347,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(200)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(boxed_full(Bytes::from(
                             serde_json::to_string_pretty(&history).expect("serializable response"),
                         )))
                         .expect("valid HTTP response"))
@@ -4364,7 +4355,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
@@ -4386,7 +4377,9 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(400)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(r#"{"error":"Invalid request body"}"#)))
+                                .body(boxed_full(Bytes::from(
+                                    r#"{"error":"Invalid request body"}"#,
+                                )))
                                 .expect("valid HTTP response"));
                         }
                     };
@@ -4397,7 +4390,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(400)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(r#"{"error":"Invalid JSON"}"#)))
+                                .body(boxed_full(Bytes::from(r#"{"error":"Invalid JSON"}"#)))
                                 .expect("valid HTTP response"));
                         }
                     };
@@ -4415,7 +4408,7 @@ impl LithairServer {
                             Ok(hyper::Response::builder()
                                 .status(200)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(
+                                .body(boxed_full(Bytes::from(
                                     serde_json::to_string_pretty(&response)
                                         .expect("serializable response"),
                                 )))
@@ -4424,7 +4417,7 @@ impl LithairServer {
                         Err(e) => Ok(hyper::Response::builder()
                             .status(400)
                             .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(
+                            .body(boxed_full(Bytes::from(
                                 serde_json::json!({"error": e.to_string()}).to_string(),
                             )))
                             .expect("valid HTTP response")),
@@ -4433,7 +4426,7 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"error":"Model '{}' not found"}}"#,
                             name
                         ))))
@@ -4527,7 +4520,7 @@ impl LithairServer {
                 Ok(hyper::Response::builder()
                     .status(200)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::to_string_pretty(&response).expect("serializable response"),
                     )))
                     .expect("valid HTTP response"))
@@ -4554,7 +4547,7 @@ impl LithairServer {
                     .status(200)
                     .header("Content-Type", "application/json")
                     .header("Content-Disposition", "attachment; filename=\"lithair_backup.json\"")
-                    .body(Full::new(Bytes::from(
+                    .body(boxed_full(Bytes::from(
                         serde_json::to_string_pretty(&backup).expect("serializable response"),
                     )))
                     .expect("valid HTTP response"))
@@ -4564,7 +4557,7 @@ impl LithairServer {
             _ => Ok(hyper::Response::builder()
                 .status(404)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"Unknown data admin endpoint"}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"Unknown data admin endpoint"}"#)))
                 .expect("valid HTTP response")),
         }
     }
@@ -4572,17 +4565,14 @@ impl LithairServer {
     /// Handle embedded data admin UI request (serves the dashboard HTML)
     /// Only available when the `admin-ui` feature is enabled
     #[cfg(feature = "admin-ui")]
-    async fn handle_data_admin_ui_request(
-        &self,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
+    async fn handle_data_admin_ui_request(&self) -> Result<RouteResponse> {
         use bytes::Bytes;
-        use http_body_util::Full;
 
         Ok(hyper::Response::builder()
             .status(200)
             .header("Content-Type", "text/html; charset=utf-8")
             .header("Cache-Control", "no-cache")
-            .body(Full::new(Bytes::from(crate::admin_ui::DASHBOARD_HTML)))
+            .body(boxed_full(Bytes::from(crate::admin_ui::DASHBOARD_HTML)))
             .expect("valid HTTP response"))
     }
 
@@ -4599,9 +4589,7 @@ impl LithairServer {
         &self,
         req: hyper::Request<hyper::body::Incoming>,
         model: &ModelRegistration,
-    ) -> Result<hyper::Response<http_body_util::Full<bytes::Bytes>>> {
-        use http_body_util::Full;
-
+    ) -> Result<RouteResponse> {
         // Extract path segments after base_path (clone path first to avoid borrow issues)
         let path = req.uri().path().to_string();
         let method = req.method().clone();
@@ -4654,7 +4642,7 @@ impl LithairServer {
                         .status(307) // Temporary Redirect
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
                         .header("X-Raft-Leader", format!("{}", leader_port))
-                        .body(Full::new(Bytes::from(serde_json::json!({"error": "Not leader", "leader_port": leader_port}).to_string())))
+                        .body(boxed_full(Bytes::from(serde_json::json!({"error": "Not leader", "leader_port": leader_port}).to_string())))
                         .expect("valid HTTP response"));
                     }
                 }
@@ -4833,7 +4821,7 @@ impl LithairServer {
                     log::error!("WAL write failed: {}", e);
                     return Ok(hyper::Response::builder()
                         .status(503)
-                        .body(Full::new(Bytes::from(format!(
+                        .body(boxed_full(Bytes::from(format!(
                             r#"{{"error":"WAL write failed: {}"}}"#,
                             e
                         ))))
@@ -4921,7 +4909,7 @@ impl LithairServer {
                                 // Return error - something is seriously wrong if commit takes this long
                                 return Ok(hyper::Response::builder()
                                 .status(503)
-                                .body(Full::new(Bytes::from(format!(
+                                .body(boxed_full(Bytes::from(format!(
                                     r#"{{"error":"Commit ordering timeout: entry {} waiting for {}"}}"#,
                                     entry_index, expected_prior
                                 ))))
@@ -4964,14 +4952,14 @@ impl LithairServer {
                                     .status(if is_create { 201 } else { 200 })
                                     .header("Content-Type", "application/json")
                                     .header("X-Raft-Index", entry_index.to_string())
-                                    .body(Full::new(Bytes::from(response_body)))
+                                    .body(boxed_full(Bytes::from(response_body)))
                                     .expect("valid HTTP response"));
                             }
                             Err(e) => {
                                 log::error!("Failed to apply operation: {}", e);
                                 return Ok(hyper::Response::builder()
                                     .status(500)
-                                    .body(Full::new(Bytes::from(format!(
+                                    .body(boxed_full(Bytes::from(format!(
                                         r#"{{"error":"Apply failed: {}"}}"#,
                                         e
                                     ))))
@@ -4983,7 +4971,7 @@ impl LithairServer {
                         log::error!("Failed to replicate: {}", e);
                         return Ok(hyper::Response::builder()
                         .status(503) // Service Unavailable
-                        .body(Full::new(Bytes::from(serde_json::json!({"error": format!("Replication failed: {}", e)}).to_string())))
+                        .body(boxed_full(Bytes::from(serde_json::json!({"error": format!("Replication failed: {}", e)}).to_string())))
                         .expect("valid HTTP response"));
                     }
                 }
@@ -4994,15 +4982,15 @@ impl LithairServer {
         // No cluster or read operation - delegate directly to model handler
         match model.handler.handle_request(req, &segments).await {
             Ok(resp) => {
-                use http_body_util::BodyExt;
-
-                let (parts, body) = resp.into_parts();
-                let body_bytes = body.collect().await?.to_bytes();
-                Ok(hyper::Response::from_parts(parts, Full::new(body_bytes)))
+                // Pass BoxBody through directly — no collection.
+                // This is critical for SSE streams (issue #93): collecting
+                // the body would buffer the entire infinite stream before
+                // sending anything to the client.
+                Ok(resp)
             }
             Err(_) => Ok(hyper::Response::builder()
                 .status(500)
-                .body(Full::new(Bytes::from(r#"{"error":"Internal error"}"#)))
+                .body(boxed_full(Bytes::from(r#"{"error":"Internal error"}"#)))
                 .expect("valid HTTP response")),
         }
     }
@@ -5752,7 +5740,7 @@ mod tests {
                                 Ok(resp) => Ok::<_, std::convert::Infallible>(resp),
                                 Err(_) => Ok(hyper::Response::builder()
                                     .status(500)
-                                    .body(http_body_util::Full::new(bytes::Bytes::from(
+                                    .body(boxed_full(bytes::Bytes::from(
                                         r#"{"error":"handler error"}"#,
                                     )))
                                     .expect("valid HTTP response")),
@@ -5831,9 +5819,7 @@ mod tests {
                     Ok(hyper::Response::builder()
                         .status(418)
                         .header("Content-Type", "application/json")
-                        .body(http_body_util::Full::new(bytes::Bytes::from(
-                            r#"{"status":"i-am-a-teapot"}"#,
-                        )))
+                        .body(boxed_full(bytes::Bytes::from(r#"{"status":"i-am-a-teapot"}"#)))
                         .expect("valid HTTP response"))
                 })
             })

@@ -8,8 +8,8 @@ use super::LithairServer;
 use crate::schema::{PendingSchemaChange, SchemaChangeStatus, SchemaSyncMessage, VoteStrategy};
 use anyhow::Result;
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::{Request, Response, StatusCode};
+use http_body_util::BodyExt;
+use hyper::{Request, StatusCode};
 
 impl LithairServer {
     // =========================================================================
@@ -24,7 +24,7 @@ impl LithairServer {
     pub(crate) async fn handle_schema_propose(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         use http_body_util::BodyExt;
 
         // Parse the request body
@@ -32,10 +32,10 @@ impl LithairServer {
         let pending_change: PendingSchemaChange = match serde_json::from_slice(&body) {
             Ok(c) => c,
             Err(e) => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(super::boxed_full(Bytes::from(format!(
                         r#"{{"error":"Invalid schema change: {}"}}"#,
                         e
                     ))))
@@ -116,10 +116,10 @@ impl LithairServer {
             }
         };
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
             .unwrap())
     }
 
@@ -129,7 +129,7 @@ impl LithairServer {
     pub(crate) async fn handle_schema_vote(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         use http_body_util::BodyExt;
 
         #[derive(serde::Deserialize)]
@@ -144,10 +144,10 @@ impl LithairServer {
         let vote: VoteRequest = match serde_json::from_slice(&body) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(super::boxed_full(Bytes::from(format!(
                         r#"{{"error":"Invalid vote request: {}"}}"#,
                         e
                     ))))
@@ -164,17 +164,17 @@ impl LithairServer {
 
         match change_status {
             None => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Schema change not found"}"#)))
+                    .body(super::boxed_full(Bytes::from(r#"{"error":"Schema change not found"}"#)))
                     .unwrap());
             }
             Some(status) if status != SchemaChangeStatus::Pending => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::CONFLICT)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(super::boxed_full(Bytes::from(format!(
                         r#"{{"error":"Change is no longer pending (status: {:?})"}}"#,
                         status
                     ))))
@@ -187,10 +187,10 @@ impl LithairServer {
         let pending = match state.pending_changes.get_mut(&vote.change_id) {
             Some(p) => p,
             None => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(super::boxed_full(Bytes::from(
                         r#"{"error":"Schema change disappeared unexpectedly"}"#,
                     )))
                     .unwrap());
@@ -238,10 +238,10 @@ impl LithairServer {
             "rejections": rejections_count,
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
             .unwrap())
     }
 
@@ -252,7 +252,7 @@ impl LithairServer {
     pub(crate) async fn handle_schema_current(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         // Optional: filter by model name from query string
         let model_name: Option<String> = req.uri().query().and_then(|q| {
             // Simple query parsing: model=SomeName
@@ -277,17 +277,17 @@ impl LithairServer {
                 pending_changes: pending,
             };
 
-            Ok(Response::builder()
+            Ok(hyper::Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+                .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
                 .unwrap())
         } else {
             // Return full state for sync
-            Ok(Response::builder()
+            Ok(hyper::Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::to_string(&*state)?)))
+                .body(super::boxed_full(Bytes::from(serde_json::to_string(&*state)?)))
                 .unwrap())
         }
     }
@@ -297,7 +297,7 @@ impl LithairServer {
     // =========================================================================
 
     /// GET /_admin/schema - List all current schemas
-    pub(crate) async fn handle_admin_schema_list(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_list(&self) -> Result<super::RouteResponse> {
         let state = self.schema_sync_state.read().await;
 
         let schemas: Vec<_> = state
@@ -323,15 +323,15 @@ impl LithairServer {
             }
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
     /// GET /_admin/schema/pending - List pending schema changes
-    pub(crate) async fn handle_admin_schema_pending(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_pending(&self) -> Result<super::RouteResponse> {
         let state = self.schema_sync_state.read().await;
 
         let pending: Vec<_> = state
@@ -365,10 +365,10 @@ impl LithairServer {
             "count": pending.len(),
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -377,17 +377,17 @@ impl LithairServer {
         &self,
         req: Request<hyper::body::Incoming>,
         path: &str,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         // Extract change_id from path
         let change_id_str = path.strip_prefix("/_admin/schema/approve/").unwrap_or_default();
 
         let change_id: uuid::Uuid = match change_id_str.parse() {
             Ok(id) => id,
             Err(_) => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
+                    .body(super::boxed_full(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
                     .unwrap());
             }
         };
@@ -404,17 +404,17 @@ impl LithairServer {
 
         match change_status {
             None => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Schema change not found"}"#)))
+                    .body(super::boxed_full(Bytes::from(r#"{"error":"Schema change not found"}"#)))
                     .unwrap());
             }
             Some(status) if status != SchemaChangeStatus::Pending => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::CONFLICT)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(super::boxed_full(Bytes::from(format!(
                         r#"{{"error":"Change is no longer pending (status: {:?})"}}"#,
                         status
                     ))))
@@ -427,10 +427,10 @@ impl LithairServer {
         let pending = match state.pending_changes.get_mut(&change_id) {
             Some(p) => p,
             None => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
+                    .body(super::boxed_full(Bytes::from(
                         r#"{"error":"Schema change disappeared unexpectedly"}"#,
                     )))
                     .unwrap());
@@ -483,10 +483,10 @@ impl LithairServer {
                 "message": "Schema change approved, applied, and persisted"
             });
 
-            return Ok(Response::builder()
+            return Ok(hyper::Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+                .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
                 .unwrap());
         }
 
@@ -497,10 +497,10 @@ impl LithairServer {
             "message": "Approval recorded, waiting for more approvals"
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
             .unwrap())
     }
 
@@ -509,7 +509,7 @@ impl LithairServer {
         &self,
         req: Request<hyper::body::Incoming>,
         path: &str,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         use http_body_util::BodyExt;
 
         // Extract change_id from path
@@ -518,10 +518,10 @@ impl LithairServer {
         let change_id: uuid::Uuid = match change_id_str.parse() {
             Ok(id) => id,
             Err(_) => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
+                    .body(super::boxed_full(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
                     .unwrap());
             }
         };
@@ -539,10 +539,10 @@ impl LithairServer {
 
         if let Some(pending) = state.pending_changes.get_mut(&change_id) {
             if pending.status != SchemaChangeStatus::Pending {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::CONFLICT)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(format!(
+                    .body(super::boxed_full(Bytes::from(format!(
                         r#"{{"error":"Change is no longer pending (status: {:?})"}}"#,
                         pending.status
                     ))))
@@ -564,16 +564,16 @@ impl LithairServer {
                 "reason": reject_body.reason,
             });
 
-            Ok(Response::builder()
+            Ok(hyper::Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+                .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
                 .unwrap())
         } else {
-            Ok(Response::builder()
+            Ok(hyper::Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"Schema change not found"}"#)))
+                .body(super::boxed_full(Bytes::from(r#"{"error":"Schema change not found"}"#)))
                 .unwrap())
         }
     }
@@ -606,14 +606,14 @@ impl LithairServer {
     ///
     /// Requests current schemas from the leader and updates local state.
     /// Useful for new nodes joining or recovering from desync.
-    pub(crate) async fn handle_admin_schema_sync(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_sync(&self) -> Result<super::RouteResponse> {
         let is_cluster = !self.cluster_peers.is_empty();
 
         if !is_cluster {
-            return Ok(Response::builder()
+            return Ok(hyper::Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
+                .body(super::boxed_full(Bytes::from(
                     r#"{"error":"Not in cluster mode - sync not applicable"}"#,
                 )))
                 .unwrap());
@@ -646,10 +646,10 @@ impl LithairServer {
             "note": "Full leader sync implementation pending"
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -657,7 +657,7 @@ impl LithairServer {
     ///
     /// Shows differences between current model specs and stored schemas.
     /// Useful for pre-deployment validation.
-    pub(crate) async fn handle_admin_schema_diff(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_diff(&self) -> Result<super::RouteResponse> {
         use crate::schema::{load_schema_spec, SchemaChangeDetector};
         use std::path::Path;
 
@@ -730,17 +730,17 @@ impl LithairServer {
                 .as_millis(),
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
     /// GET /_admin/schema/history - View schema change history
     ///
     /// Returns the history of applied schema changes for audit purposes.
-    pub(crate) async fn handle_admin_schema_history(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_history(&self) -> Result<super::RouteResponse> {
         let state = self.schema_sync_state.read().await;
 
         let history: Vec<_> = state
@@ -768,10 +768,10 @@ impl LithairServer {
             "count": history.len(),
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -781,7 +781,7 @@ impl LithairServer {
     /// migrations after manually updating schema files.
     ///
     /// Returns the validation results including any detected changes.
-    pub(crate) async fn handle_admin_schema_revalidate(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_revalidate(&self) -> Result<super::RouteResponse> {
         use crate::config::SchemaMigrationMode;
         use crate::schema::{
             load_schema_spec, save_schema_spec, AppliedSchemaChange, SchemaChangeDetector,
@@ -801,10 +801,10 @@ impl LithairServer {
                     "reason": "Schema migrations are locked",
                     "locked": true,
                 });
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::LOCKED)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+                    .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
                     .unwrap());
             }
         }
@@ -909,10 +909,10 @@ impl LithairServer {
             "models": results,
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -924,7 +924,7 @@ impl LithairServer {
         &self,
         _req: Request<hyper::body::Incoming>,
         path: &str,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         use crate::schema::save_schema_spec;
         use std::path::Path;
 
@@ -934,10 +934,10 @@ impl LithairServer {
         let change_id: uuid::Uuid = match change_id_str.parse() {
             Ok(id) => id,
             Err(_) => {
-                return Ok(Response::builder()
+                return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
+                    .body(super::boxed_full(Bytes::from(r#"{"error":"Invalid change_id format"}"#)))
                     .unwrap());
             }
         };
@@ -961,10 +961,10 @@ impl LithairServer {
                         // Save the previous schema
                         let base_path = Path::new(&self.config.storage.data_dir);
                         if let Err(e) = save_schema_spec(&previous_spec, base_path) {
-                            return Ok(Response::builder()
+                            return Ok(hyper::Response::builder()
                                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(Full::new(Bytes::from(format!(
+                                .body(super::boxed_full(Bytes::from(format!(
                                     r#"{{"error":"Failed to save rollback schema: {}"}}"#,
                                     e
                                 ))))
@@ -988,25 +988,25 @@ impl LithairServer {
                             "message": "Schema rolled back successfully. Restart nodes with matching code version.",
                         });
 
-                        Ok(Response::builder()
+                        Ok(hyper::Response::builder()
                             .status(StatusCode::OK)
                             .header("Content-Type", "application/json")
-                            .body(Full::new(Bytes::from(serde_json::to_string(&response)?)))
+                            .body(super::boxed_full(Bytes::from(serde_json::to_string(&response)?)))
                             .unwrap())
                     }
-                    None => Ok(Response::builder()
+                    None => Ok(hyper::Response::builder()
                         .status(StatusCode::UNPROCESSABLE_ENTITY)
                         .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
+                        .body(super::boxed_full(Bytes::from(
                             r#"{"error":"Previous schema not available for rollback"}"#,
                         )))
                         .unwrap()),
                 }
             }
-            None => Ok(Response::builder()
+            None => Ok(hyper::Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"Change not found in history"}"#)))
+                .body(super::boxed_full(Bytes::from(r#"{"error":"Change not found in history"}"#)))
                 .unwrap()),
         }
     }
@@ -1019,7 +1019,7 @@ impl LithairServer {
     ///
     /// Returns whether schema migrations are currently locked or unlocked,
     /// along with timeout information if applicable.
-    pub(crate) async fn handle_admin_schema_lock_status(&self) -> Result<Response<Full<Bytes>>> {
+    pub(crate) async fn handle_admin_schema_lock_status(&self) -> Result<super::RouteResponse> {
         let state = self.schema_sync_state.read().await;
         let lock = &state.lock_status;
 
@@ -1035,10 +1035,10 @@ impl LithairServer {
             "auto_relock_at": lock.unlock_expires_at,
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -1053,7 +1053,7 @@ impl LithairServer {
     pub(crate) async fn handle_admin_schema_lock(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         // Parse optional body
         let body_bytes = req.collect().await?.to_bytes();
         let reason: Option<String> = if body_bytes.is_empty() {
@@ -1084,10 +1084,10 @@ impl LithairServer {
             "message": "Schema migrations are now locked. All changes will be rejected.",
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 
@@ -1106,7 +1106,7 @@ impl LithairServer {
     pub(crate) async fn handle_admin_schema_unlock(
         &self,
         req: Request<hyper::body::Incoming>,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> Result<super::RouteResponse> {
         // Parse optional body
         let body_bytes = req.collect().await?.to_bytes();
 
@@ -1149,10 +1149,10 @@ impl LithairServer {
                 auto_relock_msg.unwrap_or_default()),
         });
 
-        Ok(Response::builder()
+        Ok(hyper::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(serde_json::to_string_pretty(&response)?)))
+            .body(super::boxed_full(Bytes::from(serde_json::to_string_pretty(&response)?)))
             .unwrap())
     }
 }
