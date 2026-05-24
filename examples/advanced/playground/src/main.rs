@@ -36,7 +36,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use clap::Parser;
 use http::{Method, Response, StatusCode};
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full};
 use lithair_core::app::LithairServer;
 use lithair_core::cluster::ClusterArgs;
 use lithair_core::frontend::{FrontendEngine, FrontendServer};
@@ -46,12 +46,15 @@ use crate::models::{AuditLog, Order, PlaygroundItem};
 use crate::playground_api::PlaygroundState;
 use crate::sse_events::SseEventBroadcaster;
 
-fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Full<Bytes>> {
+fn json_response(
+    status: StatusCode,
+    body: serde_json::Value,
+) -> Response<http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>> {
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
         .header("Access-Control-Allow-Origin", "*")
-        .body(Full::new(Bytes::from(body.to_string())))
+        .body(Full::new(Bytes::from(body.to_string())).boxed())
         .unwrap()
 }
 
@@ -281,7 +284,7 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Failed to collect body"))?
                     .to_bytes();
 
-                Ok(Response::from_parts(parts, Full::new(bytes)))
+                Ok(Response::from_parts(parts, Full::new(bytes).boxed()))
             })
         });
 
