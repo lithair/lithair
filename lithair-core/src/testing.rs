@@ -34,7 +34,7 @@
 use crate::consensus::ReplicatedModel;
 use crate::http::declarative::DeclarativeHttpHandler;
 use crate::http::HttpExposable;
-use crate::lifecycle::LifecycleAware;
+use crate::lifecycle::{LifecycleAware, RetentionAware};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Test wrapper around [`DeclarativeHttpHandler`] with automatic temp directory management.
@@ -44,7 +44,7 @@ use serde::{de::DeserializeOwned, Serialize};
 /// without needing to construct HTTP requests.
 pub struct TestHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel,
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware,
 {
     handler: DeclarativeHttpHandler<T>,
     _temp_dir: tempfile::TempDir,
@@ -52,7 +52,7 @@ where
 
 impl<T> TestHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel + Serialize + DeserializeOwned,
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + Serialize + DeserializeOwned,
 {
     /// Create a new test handler with a temporary event store directory.
     pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {

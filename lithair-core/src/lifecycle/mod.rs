@@ -25,6 +25,9 @@ pub struct FieldPolicy {
     pub version_limit: u32,
     /// Field is computed from other fields (not stored in events)
     pub computed: bool,
+    /// Field stays in memory even when its parent item is evicted by retention policy
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 /// Lifecycle strategies for common patterns
@@ -32,90 +35,53 @@ impl FieldPolicy {
     /// Immutable field - never changes after creation
     pub fn immutable() -> Self {
         Self {
-            retention_limit: 0, // no history needed
-            unique: false,
-            indexed: false,
-            snapshot_only: true, // immutable fields only need snapshots
-            fk: false,
+            snapshot_only: true,
             immutable: true,
-            audited: false,
-            version_limit: 0,
-            computed: false,
+            ..Default::default()
         }
     }
 
     /// Audited field - full history preserved
     pub fn audited() -> Self {
         Self {
-            retention_limit: u32::MAX, // unlimited retention for full history
-            unique: false,
-            indexed: true, // audited fields should be indexed for queries
-            snapshot_only: false,
-            fk: false,
-            immutable: false,
+            retention_limit: u32::MAX,
+            indexed: true,
             audited: true,
-            version_limit: 0,
-            computed: false,
+            ..Default::default()
         }
     }
 
     /// Versioned field - keep limited history
     pub fn versioned() -> Self {
         Self {
-            retention_limit: 0,
-            unique: false,
-            indexed: false,
-            snapshot_only: false,
-            fk: false,
-            immutable: false,
-            audited: false,
             version_limit: 5,
-            computed: false,
+            ..Default::default()
         }
     }
 
     /// Foreign key field
     pub fn foreign_key() -> Self {
         Self {
-            retention_limit: 0,
-            unique: false,
-            indexed: true, // FKs should be indexed
-            snapshot_only: false,
+            indexed: true,
             fk: true,
-            immutable: false,
-            audited: false,
-            version_limit: 0,
-            computed: false,
+            ..Default::default()
         }
     }
 
     /// Unique field
     pub fn unique() -> Self {
         Self {
-            retention_limit: 0,
             unique: true,
-            indexed: true, // Unique fields should be indexed
-            snapshot_only: false,
-            fk: false,
-            immutable: false,
-            audited: false,
-            version_limit: 0,
-            computed: false,
+            indexed: true,
+            ..Default::default()
         }
     }
 
     /// Snapshot-only field
     pub fn snapshot_only() -> Self {
         Self {
-            retention_limit: 0,
-            unique: false,
-            indexed: false,
             snapshot_only: true,
-            fk: false,
-            immutable: false,
-            audited: false,
-            version_limit: 0,
-            computed: false,
+            ..Default::default()
         }
     }
 
@@ -125,27 +91,15 @@ impl FieldPolicy {
             retention_limit: retention,
             unique: true,
             indexed: true,
-            snapshot_only: false,
-            fk: false,
-            immutable: false,
-            audited: false,
-            version_limit: 0,
-            computed: false,
+            ..Default::default()
         }
     }
 
     /// Computed field - no storage needed
     pub fn computed() -> Self {
         Self {
-            retention_limit: 0,
-            unique: false,
-            indexed: false,
-            snapshot_only: false,
-            fk: false,
-            immutable: false,
-            audited: false,
-            version_limit: 0,
             computed: true,
+            ..Default::default()
         }
     }
 }
@@ -187,6 +141,34 @@ pub trait LifecycleAware {
         self.lifecycle_policy_for_field(field_name)
             .map(|policy| policy.computed)
             .unwrap_or(false)
+    }
+
+    /// Check if a field is pinned (stays in memory after item eviction)
+    fn is_field_pinned(&self, field_name: &str) -> bool {
+        self.lifecycle_policy_for_field(field_name)
+            .map(|policy| policy.pinned)
+            .unwrap_or(false)
+    }
+}
+
+/// Model-level retention configuration
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RetentionConfig {
+    /// Maximum number of items to keep fully in memory (None = unlimited, current behavior)
+    pub memory_count: Option<usize>,
+}
+
+/// Trait for models with retention policies — controls memory/disk tiering
+pub trait RetentionAware {
+    /// Get the model-level retention configuration
+    fn retention_config() -> RetentionConfig;
+
+    /// Get the list of field names that are pinned (stay in memory after eviction)
+    fn pinned_fields() -> Vec<&'static str>;
+
+    /// Whether this model has a retention limit (false = everything in memory)
+    fn has_retention_limit() -> bool {
+        Self::retention_config().memory_count.is_some()
     }
 }
 

@@ -1,5 +1,7 @@
 use crate::engine::events::EventStore;
+use crate::engine::retention::RetentionLayer;
 use crate::engine::{AsyncWriter, Event, WriteEvent};
+use crate::lifecycle::RetentionConfig;
 use crate::model::ModelSpec;
 use crate::model_inspect::Inspectable;
 use scc::HashMap as SccHashMap;
@@ -48,6 +50,7 @@ pub struct Scc2Engine<S> {
     async_writer: Arc<AsyncWriter>,
     config: Scc2EngineConfig,
     stats: Arc<Scc2EngineStats>,
+    retention: Option<RetentionLayer>,
 }
 
 #[derive(Debug, Default)]
@@ -74,7 +77,138 @@ where
             async_writer: Arc::new(async_writer),
             config,
             stats: Arc::new(Scc2EngineStats::default()),
+            retention: None,
         })
+    }
+
+    /// Enable retention policy on this engine.
+    /// Once enabled, the engine evicts oldest items beyond the memory limit,
+    /// keeping only pinned fields in a warm map for fast listing.
+    pub fn enable_retention(
+        &mut self,
+        config: RetentionConfig,
+        pinned_field_names: Vec<String>,
+    ) {
+        if config.memory_count.is_some() {
+            self.retention = Some(RetentionLayer::new(config, pinned_field_names));
+        }
+    }
+
+    /// Check if retention is active on this engine.
+    pub fn has_retention(&self) -> bool {
+        self.retention.as_ref().map_or(false, |r| r.is_active())
+    }
+
+    /// Get the retention layer (if active).
+    pub fn retention_layer(&self) -> Option<&RetentionLayer> {
+        self.retention.as_ref()
+    }
+
+    /// After a write to the hot map, check if we need to evict.
+    fn maybe_evict(&self, inserted_key: &str) {
+        let retention = match &self.retention {
+            Some(r) if r.is_active() => r,
+            _ => return,
+        };
+
+        let hot_count = self.state_map.len();
+        let eviction = retention.track_insert(inserted_key, hot_count);
+
+        if let Some(evict_key) = eviction.evict_key {
+            if let Some(scc::hash_map::Entry::Occupied(o)) =
+                self.state_map.try_entry(evict_key.clone())
+            {
+                let entry = o.get();
+                retention.evict_to_warm(
+                    &evict_key,
+                    &entry.data,
+                    entry.version,
+                    entry.last_updated,
+                );
+                let _ = o.remove();
+
+                if self.config.verbose_logging {
+                    log::debug!("SCC2 retention: evicted '{}' to warm map", evict_key);
+                }
+            }
+        }
+    }
+
+    /// Read a full item, checking warm map + event store replay if evicted.
+    /// Returns None if the key doesn't exist anywhere.
+    pub fn read_or_load<R, F, E>(&self, key: &str, f: F) -> Option<R>
+    where
+        F: Fn(&S) -> R,
+        E: Event<State = S> + DeserializeOwned,
+    {
+        // Try hot map first
+        if let Some(result) = self.read(key, &f) {
+            return Some(result);
+        }
+
+        // If retention is active, check warm map and replay from event store
+        let retention = self.retention.as_ref()?;
+        if !retention.is_evicted(key) {
+            return None;
+        }
+
+        // Replay events for this specific aggregate to reconstruct full state
+        let events = {
+            let store = self.event_store.read().expect("event store lock poisoned");
+            store.get_all_events().ok()?
+        };
+
+        let mut state = S::default();
+        for event_json in events {
+            if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&event_json) {
+                let aggregate_id =
+                    envelope.get("aggregate_id").and_then(|v| v.as_str()).unwrap_or("global");
+                if aggregate_id != key {
+                    continue;
+                }
+                let payload_str =
+                    if let Some(p) = envelope.get("payload").and_then(|v| v.as_str()) {
+                        p.to_string()
+                    } else {
+                        event_json.clone()
+                    };
+                if let Ok(event) = serde_json::from_str::<E>(&payload_str) {
+                    event.apply(&mut state);
+                }
+            }
+        }
+
+        Some(f(&state))
+    }
+
+    /// List all items: hot (full) + warm (pinned fields only).
+    /// Returns JSON values — hot items serialized fully, warm items as pinned-only.
+    pub fn list_all_with_warm(&self) -> Vec<(String, serde_json::Value)> {
+        let mut result = Vec::new();
+
+        // Hot items (full data)
+        self.state_map.retain_sync(|key, entry| {
+            if let Ok(val) = serde_json::to_value(&entry.data) {
+                result.push((key.clone(), val));
+            }
+            true
+        });
+
+        // Warm items (pinned fields only)
+        if let Some(retention) = &self.retention {
+            for (key, warm_entry) in retention.all_warm_entries() {
+                result.push((key, warm_entry.pinned_data));
+            }
+        }
+
+        result
+    }
+
+    /// Total item count (hot + warm).
+    pub fn total_count(&self) -> usize {
+        let hot = self.state_map.len();
+        let warm = self.retention.as_ref().map_or(0, |r| r.warm_count());
+        hot + warm
     }
 
     pub fn replay_events<E>(&self) -> Result<(), crate::Error>
@@ -147,10 +281,15 @@ where
     where
         F: FnOnce(&mut S) -> R,
     {
-        // Use try_entry for update. Assuming Option return based on error message.
+        // If the key is in the warm map (evicted), promote it back to hot
+        if let Some(retention) = &self.retention {
+            if retention.is_evicted(key) {
+                retention.promote_from_warm(key);
+            }
+        }
+
         match (*self.state_map).try_entry(key.to_string()) {
             Some(entry) => {
-                // If Option
                 match entry {
                     scc::hash_map::Entry::Occupied(mut o) => {
                         let v: &mut VersionedEntry<S> = o.get_mut();
@@ -170,6 +309,7 @@ where
                         }
 
                         self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                        self.maybe_evict(key);
                         Some(result)
                     }
                     scc::hash_map::Entry::Vacant(v) => {
@@ -190,11 +330,12 @@ where
 
                         v.insert_entry(entry);
                         self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                        self.maybe_evict(key);
                         Some(result)
                     }
                 }
             }
-            None => None, // If Option
+            None => None,
         }
     }
 
@@ -454,6 +595,9 @@ where
             (*self.state_map).try_entry(key.to_string())
         {
             let _ = o.remove();
+        }
+        if let Some(retention) = &self.retention {
+            retention.remove(key);
         }
     }
 

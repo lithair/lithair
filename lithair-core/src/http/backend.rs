@@ -142,6 +142,7 @@ where
     T: crate::http::HttpExposable
         + crate::lifecycle::LifecycleAware
         + crate::consensus::ReplicatedModel
+        + crate::lifecycle::RetentionAware
         + Send
         + Sync,
 {

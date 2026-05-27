@@ -2,7 +2,7 @@
 
 use crate::consensus::ReplicatedModel;
 use crate::http::{DeclarativeHttpHandler, HttpExposable};
-use crate::lifecycle::LifecycleAware;
+use crate::lifecycle::{LifecycleAware, RetentionAware};
 use bytes::Bytes;
 use http_body_util::combinators::BoxBody;
 use hyper::body::Incoming;
@@ -273,7 +273,7 @@ pub trait ModelHandler: Send + Sync {
 /// Wrapper for DeclarativeHttpHandler that implements ModelHandler
 pub struct DeclarativeModelHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel,
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware,
 {
     handler: DeclarativeHttpHandler<T>,
     model_name: String,
@@ -283,7 +283,7 @@ where
 
 impl<T> DeclarativeModelHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel,
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware,
 {
     pub async fn new(data_path: String) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let handler = DeclarativeHttpHandler::<T>::new_with_replay(&data_path).await?;
@@ -346,6 +346,7 @@ where
     T: HttpExposable
         + LifecycleAware
         + ReplicatedModel
+        + RetentionAware
         + serde::Serialize
         + serde::de::DeserializeOwned
         + 'static,

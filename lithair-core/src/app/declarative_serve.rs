@@ -15,7 +15,7 @@ use std::pin::Pin;
 use crate::app::LithairServer;
 use crate::consensus::ReplicatedModel;
 use crate::http::HttpExposable;
-use crate::lifecycle::LifecycleAware;
+use crate::lifecycle::{LifecycleAware, RetentionAware};
 use crate::schema::HasSchemaSpec;
 
 /// Extension trait that provides `MyModel::serve_on_port(8080).await?`.
@@ -29,7 +29,7 @@ use crate::schema::HasSchemaSpec;
 /// pre-0.2.0 `DeclarativeServer`-based bodies; the trait surface itself is
 /// unchanged.
 pub trait DeclarativeServe:
-    HttpExposable + LifecycleAware + ReplicatedModel + HasSchemaSpec + Send + Sync + 'static
+    HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + HasSchemaSpec + Send + Sync + 'static
 {
     /// Serve this model on the given port with an auto-generated EventStore path.
     ///
@@ -81,7 +81,7 @@ pub trait DeclarativeServe:
 
 // Auto-implement for every type that satisfies the bounds.
 impl<T> DeclarativeServe for T where
-    T: HttpExposable + LifecycleAware + ReplicatedModel + HasSchemaSpec + Send + Sync + 'static
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + HasSchemaSpec + Send + Sync + 'static
 {
 }
 

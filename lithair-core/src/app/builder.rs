@@ -1194,6 +1194,7 @@ impl LithairServerBuilder {
             + crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         let base_path_str = base_path.into();
@@ -1489,6 +1490,7 @@ impl LithairServerBuilder {
             + crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         let data_path_str = data_path.into();
@@ -1757,6 +1759,7 @@ impl LithairServerBuilder {
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo};
@@ -1842,6 +1845,7 @@ impl LithairServerBuilder {
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo};
@@ -1911,6 +1915,7 @@ impl LithairServerBuilder {
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + crate::schema::HasSchemaSpec
             + 'static,
     {
