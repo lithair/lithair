@@ -861,11 +861,7 @@ where
                 // risk that duplicates pass when the original is evicted.
                 if policy.pinned {
                     if let Some(retention) = &self.retention {
-                        let val_str = match new_val {
-                            serde_json::Value::String(s) => s.clone(),
-                            other => other.to_string(),
-                        };
-                        let matches = retention.warm_keys_with_field_value(field_name, &val_str);
+                        let matches = retention.warm_keys_with_field_value(field_name, new_val);
                         for warm_id in matches {
                             if exclude_id == Some(warm_id.as_str()) {
                                 continue;

@@ -29,9 +29,16 @@ impl OrderState {
         Self { queue: VecDeque::new(), set: HashSet::new() }
     }
 
+    fn contains(&self, key: &str) -> bool {
+        self.set.contains(key)
+    }
+
     fn push_back(&mut self, key: String) {
-        if self.set.insert(key.clone()) {
-            self.queue.push_back(key);
+        // Avoid cloning when the key is already tracked — common case on
+        // update (same id pushed twice).
+        if !self.set.contains(&key) {
+            self.queue.push_back(key.clone());
+            self.set.insert(key);
         }
     }
 
@@ -42,8 +49,9 @@ impl OrderState {
     }
 
     fn push_front(&mut self, key: String) {
-        if self.set.insert(key.clone()) {
-            self.queue.push_front(key);
+        if !self.set.contains(&key) {
+            self.queue.push_front(key.clone());
+            self.set.insert(key);
         }
     }
 
@@ -103,7 +111,9 @@ impl RetentionLayer {
     pub fn track_insert(&self, key: &str, hot_count: usize) -> EvictionResult {
         let mut order = self.order_state.lock().expect("order_state lock poisoned");
 
-        order.push_back(key.to_string());
+        if !order.contains(key) {
+            order.push_back(key.to_string());
+        }
 
         let limit = match self.config.memory_count {
             Some(n) => n,
@@ -156,7 +166,9 @@ impl RetentionLayer {
             let _ = o.remove();
         }
         let mut order = self.order_state.lock().expect("order_state lock poisoned");
-        order.push_back(key.to_string());
+        if !order.contains(key) {
+            order.push_back(key.to_string());
+        }
     }
 
     /// Remove a key entirely (deletion).
@@ -195,15 +207,15 @@ impl RetentionLayer {
     /// Find warm entry keys whose pinned `field` equals `value`.
     /// Used by uniqueness validation to detect duplicates among evicted items.
     /// Only works for pinned fields; non-pinned fields aren't stored in warm entries.
-    pub fn warm_keys_with_field_value(&self, field: &str, value: &str) -> Vec<String> {
+    pub fn warm_keys_with_field_value(
+        &self,
+        field: &str,
+        value: &serde_json::Value,
+    ) -> Vec<String> {
         let mut result = Vec::new();
         self.warm_map.retain_sync(|key, entry| {
             if let Some(field_value) = entry.pinned_data.get(field) {
-                let matches = match field_value {
-                    serde_json::Value::String(s) => s == value,
-                    other => other.to_string().as_str() == value,
-                };
-                if matches {
+                if field_value == value {
                     result.push(key.clone());
                 }
             }
@@ -345,16 +357,16 @@ mod tests {
         layer.evict_to_warm("k2", &e2, 2, 200);
         layer.evict_to_warm("k3", &e3, 3, 300);
 
-        let matches = layer.warm_keys_with_field_value("from", "a@x");
+        let matches = layer.warm_keys_with_field_value("from", &serde_json::json!("a@x"));
         assert_eq!(matches.len(), 2);
         assert!(matches.contains(&"k1".to_string()));
         assert!(matches.contains(&"k3".to_string()));
 
-        let no_match = layer.warm_keys_with_field_value("from", "nobody@x");
+        let no_match = layer.warm_keys_with_field_value("from", &serde_json::json!("nobody@x"));
         assert!(no_match.is_empty());
 
         // Non-pinned field "body" isn't stored in warm — should return empty.
-        let body_search = layer.warm_keys_with_field_value("body", "b1");
+        let body_search = layer.warm_keys_with_field_value("body", &serde_json::json!("b1"));
         assert!(body_search.is_empty());
     }
 
