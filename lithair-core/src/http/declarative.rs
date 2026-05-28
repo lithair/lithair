@@ -19,7 +19,8 @@ use crate::consensus::ReplicatedModel;
 #[cfg(feature = "cluster")]
 use crate::consensus::{ConsensusConfig, DeclarativeConsensus};
 use crate::engine::events::{EventEnvelope, EventStore};
-use crate::lifecycle::LifecycleAware;
+use crate::engine::retention::RetentionLayer;
+use crate::lifecycle::{LifecycleAware, RetentionAware};
 
 type RespBody = BoxBody<Bytes, Infallible>;
 type Req = Request<Incoming>;
@@ -125,10 +126,11 @@ pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 's
 /// HTTP handler for DeclarativeModel CRUD operations
 pub struct DeclarativeHttpHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel,
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware,
 {
     event_store: Arc<tokio::sync::RwLock<EventStore>>,
     storage: Arc<tokio::sync::RwLock<std::collections::HashMap<String, T>>>,
+    retention: Option<RetentionLayer>,
     #[cfg(feature = "cluster")]
     consensus: Option<Arc<tokio::sync::RwLock<DeclarativeConsensus<T>>>>,
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
@@ -171,7 +173,7 @@ where
 
 impl<T> DeclarativeHttpHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel,
+    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware,
 {
     #[inline]
     fn is_verbose() -> bool {
@@ -211,9 +213,18 @@ where
             }
         });
 
+        let retention_config = T::retention_config();
+        let retention = if retention_config.memory_count.is_some() {
+            let pinned = T::pinned_fields().iter().map(|s| s.to_string()).collect();
+            Some(RetentionLayer::new(retention_config, pinned))
+        } else {
+            None
+        };
+
         let handler = Self {
             event_store,
             storage: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            retention,
             #[cfg(feature = "cluster")]
             consensus: None,
             permission_checker: None,
@@ -289,18 +300,29 @@ where
             if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(&event_json) {
                 if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
                     let key = item.get_primary_key();
-                    storage.insert(key, item);
+                    Self::insert_with_retention(&mut storage, self.retention.as_ref(), key, item);
                     replayed_count += 1;
                 }
             }
         }
 
+        let warm_count = self.retention.as_ref().map_or(0, |r| r.warm_count());
         if Self::is_verbose() || replayed_count > 0 || from_snapshot > 0 {
-            log::info!(
-                "Replayed {} events into memory ({} items restored from snapshot)",
-                replayed_count,
-                from_snapshot
-            );
+            if warm_count > 0 {
+                log::info!(
+                    "Replayed {} events ({} in memory, {} evicted to warm, {} from snapshot)",
+                    replayed_count,
+                    storage.len(),
+                    warm_count,
+                    from_snapshot
+                );
+            } else {
+                log::info!(
+                    "Replayed {} events into memory ({} items restored from snapshot)",
+                    replayed_count,
+                    from_snapshot
+                );
+            }
         }
 
         Ok(replayed_count)
@@ -518,6 +540,52 @@ where
         self.require_session.store(require, std::sync::atomic::Ordering::Release);
     }
 
+    /// Insert an item into storage, applying retention eviction if configured.
+    /// Must be called with the storage lock already held.
+    fn insert_with_retention(
+        storage: &mut std::collections::HashMap<String, T>,
+        retention: Option<&RetentionLayer>,
+        key: String,
+        item: T,
+    ) {
+        storage.insert(key.clone(), item);
+
+        if let Some(retention) = retention {
+            let eviction = retention.track_insert(&key, storage.len());
+            if let Some(evict_key) = eviction.evict_key {
+                if let Some(evicted_item) = storage.remove(&evict_key) {
+                    retention.evict_to_warm(&evict_key, &evicted_item, 0, 0);
+                }
+            }
+        }
+    }
+
+    /// Load an evicted item by replaying its events from the event store.
+    async fn load_evicted_item(&self, key: &str) -> Option<T> {
+        let events = {
+            let store = self.event_store.read().await;
+            store.get_all_events().ok()?
+        };
+
+        for event_json in events.iter().rev() {
+            if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
+                if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
+                    if item.get_primary_key() == key {
+                        return Some(item);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Total item count: hot (in-memory) + warm (evicted pinned-only).
+    pub async fn total_item_count(&self) -> usize {
+        let storage = self.storage.read().await;
+        let warm = self.retention.as_ref().map_or(0, |r| r.warm_count());
+        storage.len() + warm
+    }
+
     /// Return current in-memory storage item count (for debug/diagnostics)
     pub async fn storage_count(&self) -> usize {
         let storage = self.storage.read().await;
@@ -555,22 +623,34 @@ where
         storage.values().filter(|item| predicate(*item)).cloned().collect()
     }
 
-    /// Get a single item by ID (cloned)
+    /// Get a single item by ID (cloned).
+    /// Checks hot storage first, then loads from event store if evicted.
     pub async fn get_by_id(&self, id: &str) -> Option<T> {
-        let storage = self.storage.read().await;
-        storage.get(id).cloned()
+        {
+            let storage = self.storage.read().await;
+            if let Some(item) = storage.get(id) {
+                return Some(item.clone());
+            }
+        }
+        if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+            return self.load_evicted_item(id).await;
+        }
+        None
     }
 
     /// Replace local in-memory storage with authoritative items from leader (no persistence writes)
     pub async fn reconcile_replace_all(&self, items: Vec<T>) {
         let mut storage = self.storage.write().await;
         storage.clear();
+        if let Some(retention) = &self.retention {
+            retention.clear();
+        }
         for item in items.into_iter() {
             let actual_key = serde_json::to_value(&item)
                 .ok()
                 .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
                 .unwrap_or_else(|| item.get_primary_key());
-            storage.insert(actual_key, item);
+            Self::insert_with_retention(&mut storage, self.retention.as_ref(), actual_key, item);
         }
         if Self::is_verbose() {
             log::debug!(
@@ -588,10 +668,14 @@ where
             .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
             .unwrap_or_else(|| item.get_primary_key());
 
-        // Insert into storage FIRST (this is the critical operation)
         {
             let mut storage = self.storage.write().await;
-            storage.insert(actual_key.clone(), item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                actual_key.clone(),
+                item.clone(),
+            );
         }
 
         // Persist to event store (best-effort - don't fail the operation)
@@ -632,18 +716,18 @@ where
     /// Apply a replicated UPDATE from leader (for followers to receive UPDATE replication)
     /// This updates storage AND persists to event store
     pub async fn apply_replicated_update(&self, id: &str, item: T) -> Result<(), String> {
-        // Check if item exists
+        // Check if item exists (hot storage or evicted to warm map)
         {
             let storage = self.storage.read().await;
-            let has_key = storage.contains_key(id);
+            let has_key = storage.contains_key(id)
+                || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
             log::debug!(
-                "APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}",
+                "APPLY UPDATE: id={}, exists={}, storage_len={}",
                 id,
                 has_key,
                 storage.len()
             );
             if !has_key {
-                // If item doesn't exist, treat as create (eventual consistency)
                 drop(storage);
                 log::debug!("APPLY UPDATE: item doesn't exist, creating instead");
                 return self.apply_replicated_item(item).await;
@@ -653,7 +737,12 @@ where
         // Update in storage
         {
             let mut storage = self.storage.write().await;
-            storage.insert(id.to_string(), item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                id.to_string(),
+                item.clone(),
+            );
         }
 
         // Persist to event store (best-effort - don't fail the operation)
@@ -696,6 +785,11 @@ where
             );
             storage.remove(id)
         };
+
+        // Clean up warm map entry (if any) so evicted items don't linger
+        if let Some(retention) = &self.retention {
+            retention.remove(id);
+        }
 
         if let Some(item) = removed_item {
             // Persist deletion to event store (best-effort - don't fail the operation)
@@ -869,7 +963,7 @@ where
 
     /// GET /api/{model}/count - Return item count only (lightweight read)
     async fn handle_count(&self) -> Result<Resp, Infallible> {
-        let count = self.storage_count().await as u64;
+        let count = self.total_item_count().await as u64;
         let body = serde_json::json!({"count": count}).to_string();
         Ok(Response::builder()
             .status(StatusCode::OK)
@@ -1054,14 +1148,22 @@ where
         let query_str = req.uri().query().unwrap_or("");
         let params = parse_query_params(query_str);
 
-        // Clone readable items while holding the lock, then release before expensive transforms
+        // Collect hot items (full data) + warm items (pinned fields only)
         let json_items: Vec<serde_json::Value> = {
             let storage = self.storage.read().await;
-            storage
+            let mut items: Vec<serde_json::Value> = storage
                 .values()
                 .filter(|item| item.can_read(&user_perms))
                 .filter_map(|item| serde_json::to_value(item).ok())
-                .collect()
+                .collect();
+
+            if let Some(retention) = &self.retention {
+                for (_key, warm_entry) in retention.all_warm_entries() {
+                    items.push(warm_entry.pinned_data);
+                }
+            }
+
+            items
         };
 
         let mut json_items = json_items;
@@ -1273,7 +1375,12 @@ where
 
                         {
                             let mut storage = self.storage.write().await;
-                            storage.insert(actual_key.clone(), item.clone());
+                            Self::insert_with_retention(
+                                &mut storage,
+                                self.retention.as_ref(),
+                                actual_key.clone(),
+                                item.clone(),
+                            );
                             log::debug!("DEBUG: Storage now has {} items", storage.len());
                         }
 
@@ -1297,7 +1404,12 @@ where
                 // Local-only mode (no replication)
                 {
                     let mut storage = self.storage.write().await;
-                    storage.insert(primary_key.clone(), item.clone());
+                    Self::insert_with_retention(
+                        &mut storage,
+                        self.retention.as_ref(),
+                        primary_key.clone(),
+                        item.clone(),
+                    );
                 }
 
                 if (self.persist_to_event_store("Created", &item).await).is_err() {
@@ -1309,17 +1421,19 @@ where
         }
         #[cfg(not(feature = "cluster"))]
         {
-            // Local-only mode (no replication)
             {
                 let mut storage = self.storage.write().await;
-                storage.insert(primary_key.clone(), item.clone());
+                Self::insert_with_retention(
+                    &mut storage,
+                    self.retention.as_ref(),
+                    primary_key.clone(),
+                    item.clone(),
+                );
             }
 
             if (self.persist_to_event_store("Created", &item).await).is_err() {
                 return Ok(self.internal_error_response());
             }
-
-            log::debug!("Local: Item {} stored locally only", primary_key);
         }
 
         self.broadcast_sse("create", &item).await;
@@ -1403,7 +1517,12 @@ where
                                     .unwrap_or_else(|| primary_key.clone());
                                 {
                                     let mut storage = self.storage.write().await;
-                                    storage.insert(actual_key, item.clone());
+                                    Self::insert_with_retention(
+                                        &mut storage,
+                                        self.retention.as_ref(),
+                                        actual_key,
+                                        item.clone(),
+                                    );
                                 }
                                 if (self.persist_to_event_store("Created", &item).await).is_err() {
                                     return Ok(self.internal_error_response());
@@ -1421,7 +1540,12 @@ where
                         // Consensus disabled -> local path
                         {
                             let mut storage = self.storage.write().await;
-                            storage.insert(primary_key.clone(), item.clone());
+                            Self::insert_with_retention(
+                                &mut storage,
+                                self.retention.as_ref(),
+                                primary_key.clone(),
+                                item.clone(),
+                            );
                         }
                         if (self.persist_to_event_store("Created", &item).await).is_err() {
                             return Ok(self.internal_error_response());
@@ -1432,7 +1556,12 @@ where
                     // No consensus configured -> local path
                     {
                         let mut storage = self.storage.write().await;
-                        storage.insert(primary_key.clone(), item.clone());
+                        Self::insert_with_retention(
+                            &mut storage,
+                            self.retention.as_ref(),
+                            primary_key.clone(),
+                            item.clone(),
+                        );
                     }
                     if (self.persist_to_event_store("Created", &item).await).is_err() {
                         return Ok(self.internal_error_response());
@@ -1446,7 +1575,12 @@ where
                 let _ = disable_consensus; // suppress unused warning
                 {
                     let mut storage = self.storage.write().await;
-                    storage.insert(primary_key.clone(), item.clone());
+                    Self::insert_with_retention(
+                        &mut storage,
+                        self.retention.as_ref(),
+                        primary_key.clone(),
+                        item.clone(),
+                    );
                 }
                 if (self.persist_to_event_store("Created", &item).await).is_err() {
                     return Ok(self.internal_error_response());
@@ -1467,14 +1601,13 @@ where
 
     /// GET /api/{model}/{id} - Get item by ID (declarative read filtering)
     async fn handle_get(&self, id: &str, req: &Req) -> Result<Resp, Infallible> {
-        // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
             self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
-        let storage = self.storage.read().await;
-
-        match storage.get(id) {
-            Some(item) => {
+        // Try hot storage first
+        {
+            let storage = self.storage.read().await;
+            if let Some(item) = storage.get(id) {
                 if !item.can_read(&user_perms) {
                     return Ok(Response::builder()
                         .status(StatusCode::FORBIDDEN)
@@ -1482,17 +1615,39 @@ where
                         .body(body_from(r#"{"error":"Insufficient permissions"}"#))
                         .unwrap());
                 }
-                match serde_json::to_string(item) {
+                return match serde_json::to_string(item) {
                     Ok(json) => Ok(Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "application/json")
                         .body(body_from(json))
                         .unwrap()),
                     Err(_) => Ok(self.internal_error_response()),
-                }
+                };
             }
-            None => Ok(self.not_found_response()),
         }
+
+        // If evicted, load from event store on demand
+        if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+            if let Some(item) = self.load_evicted_item(id).await {
+                if !item.can_read(&user_perms) {
+                    return Ok(Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .header("content-type", "application/json")
+                        .body(body_from(r#"{"error":"Insufficient permissions"}"#))
+                        .unwrap());
+                }
+                return match serde_json::to_string(&item) {
+                    Ok(json) => Ok(Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "application/json")
+                        .body(body_from(json))
+                        .unwrap()),
+                    Err(_) => Ok(self.internal_error_response()),
+                };
+            }
+        }
+
+        Ok(self.not_found_response())
     }
 
     /// PUT /api/{model}/{id} - Update item
@@ -1608,10 +1763,17 @@ where
                     Ok(_) => {
                         // Apply to local storage after successful consensus
                         let mut storage = self.storage.write().await;
-                        if !storage.contains_key(id) {
+                        let exists = storage.contains_key(id)
+                            || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
+                        if !exists {
                             return Ok(self.not_found_response());
                         }
-                        storage.insert(id.to_string(), updated_item.clone());
+                        Self::insert_with_retention(
+                            &mut storage,
+                            self.retention.as_ref(),
+                            id.to_string(),
+                            updated_item.clone(),
+                        );
                     }
                     Err(e) => {
                         return Ok(self.json_error_response(
@@ -1623,20 +1785,34 @@ where
             } else {
                 // No consensus - update storage directly (single-node mode)
                 let mut storage = self.storage.write().await;
-                if !storage.contains_key(id) {
+                let exists = storage.contains_key(id)
+                    || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
+                if !exists {
                     return Ok(self.not_found_response());
                 }
-                storage.insert(id.to_string(), updated_item.clone());
+                Self::insert_with_retention(
+                    &mut storage,
+                    self.retention.as_ref(),
+                    id.to_string(),
+                    updated_item.clone(),
+                );
             }
         }
         #[cfg(not(feature = "cluster"))]
         {
             // No consensus - update storage directly (single-node mode)
             let mut storage = self.storage.write().await;
-            if !storage.contains_key(id) {
+            let exists = storage.contains_key(id)
+                || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
+            if !exists {
                 return Ok(self.not_found_response());
             }
-            storage.insert(id.to_string(), updated_item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                id.to_string(),
+                updated_item.clone(),
+            );
         }
 
         // Persist to EventStore
@@ -1754,15 +1930,28 @@ where
                 log::debug!("Raft: Proposing DELETE operation for item {}", id);
                 match consensus_arc.read().await.propose_delete(id.to_string()).await {
                     Ok(_) => {
-                        // Apply to local storage after successful consensus
                         let removed_item = {
                             let mut storage = self.storage.write().await;
                             storage.remove(id)
                         };
 
+                        let removed_item = match removed_item {
+                            Some(item) => Some(item),
+                            None => {
+                                if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+                                    self.load_evicted_item(id).await
+                                } else {
+                                    None
+                                }
+                            }
+                        };
+
+                        if let Some(retention) = &self.retention {
+                            retention.remove(id);
+                        }
+
                         match removed_item {
                             Some(item) => {
-                                // Persist deletion to EventStore
                                 if (self.persist_to_event_store("Deleted", &item).await).is_err() {
                                     return Ok(self.internal_error_response());
                                 }
@@ -1792,9 +1981,25 @@ where
             storage.remove(id)
         };
 
+        // If not in hot storage but evicted, reload from event store before deleting
+        let removed_item = match removed_item {
+            Some(item) => Some(item),
+            None => {
+                if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+                    self.load_evicted_item(id).await
+                } else {
+                    None
+                }
+            }
+        };
+
+        // Clean up warm map entry (if any)
+        if let Some(retention) = &self.retention {
+            retention.remove(id);
+        }
+
         match removed_item {
             Some(item) => {
-                // Persist deletion to EventStore
                 if (self.persist_to_event_store("Deleted", &item).await).is_err() {
                     return Ok(self.internal_error_response());
                 }
@@ -2003,7 +2208,12 @@ where
         // Update in-memory storage
         {
             let mut storage = self.storage.write().await;
-            storage.insert(id.to_string(), item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                id.to_string(),
+                item.clone(),
+            );
         }
 
         // Persist as AdminEdit event (different from regular Updated)

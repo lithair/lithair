@@ -75,6 +75,8 @@ pub struct FieldConstraints {
     pub versioned: u32,
     pub retention: usize,
     pub snapshot_only: bool,
+    #[serde(default)]
+    pub pinned: bool,
     pub validation_rules: Vec<String>,
     pub permissions: FieldPermissions,
     /// Default value for migration (from #[db(default = X)])
@@ -677,6 +679,7 @@ mod persistence_tests {
                 versioned: 0,
                 retention: 0,
                 snapshot_only: false,
+                pinned: false,
                 validation_rules: vec![],
                 permissions: FieldPermissions {
                     read_permission: Some("Public".to_string()),
@@ -700,6 +703,7 @@ mod persistence_tests {
                 versioned: 0,
                 retention: 0,
                 snapshot_only: false,
+                pinned: false,
                 validation_rules: vec!["min_length:1".to_string()],
                 permissions: FieldPermissions {
                     read_permission: Some("Public".to_string()),

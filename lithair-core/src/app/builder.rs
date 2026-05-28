@@ -829,7 +829,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_status(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA status error: {}", e))
             })
         });
@@ -843,7 +846,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_setup(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA setup error: {}", e))
             })
         });
@@ -857,7 +863,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_enable(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA enable error: {}", e))
             })
         });
@@ -871,7 +880,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_disable(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
             })
         });
@@ -885,7 +897,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_verify(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA verify error: {}", e))
             })
         });
@@ -1194,6 +1209,7 @@ impl LithairServerBuilder {
             + crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         let base_path_str = base_path.into();
@@ -1489,6 +1505,7 @@ impl LithairServerBuilder {
             + crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         let data_path_str = data_path.into();
@@ -1757,6 +1774,7 @@ impl LithairServerBuilder {
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo};
@@ -1842,6 +1860,7 @@ impl LithairServerBuilder {
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + 'static,
     {
         use crate::app::{DeclarativeModelHandler, ModelRegistrationInfo};
@@ -1911,6 +1930,7 @@ impl LithairServerBuilder {
         T: crate::http::HttpExposable
             + crate::lifecycle::LifecycleAware
             + crate::consensus::ReplicatedModel
+            + crate::lifecycle::RetentionAware
             + crate::schema::HasSchemaSpec
             + 'static,
     {

@@ -6,7 +6,7 @@
 use crate::consensus::ReplicatedModel;
 use crate::http::declarative::HttpExposable;
 use crate::http::{not_found_response, DeclarativeHttpHandler, Req, Resp};
-use crate::lifecycle::LifecycleAware;
+use crate::lifecycle::{LifecycleAware, RetentionAware};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -36,7 +36,14 @@ trait ApiHandlerWrapper: Send + Sync {
 /// Implementation for any DeclarativeHttpHandler type wrapped in Arc
 impl<T> ApiHandlerWrapper for Arc<DeclarativeHttpHandler<T>>
 where
-    T: Clone + Send + Sync + HttpExposable + LifecycleAware + ReplicatedModel + 'static,
+    T: Clone
+        + Send
+        + Sync
+        + HttpExposable
+        + LifecycleAware
+        + ReplicatedModel
+        + RetentionAware
+        + 'static,
 {
     fn handle_request<'a>(
         &'a self,
@@ -67,7 +74,14 @@ impl ApiRouter {
     /// ```
     pub fn register<T>(&mut self, path_prefix: &str, handler: Arc<DeclarativeHttpHandler<T>>)
     where
-        T: Clone + Send + Sync + HttpExposable + LifecycleAware + ReplicatedModel + 'static,
+        T: Clone
+            + Send
+            + Sync
+            + HttpExposable
+            + LifecycleAware
+            + ReplicatedModel
+            + RetentionAware
+            + 'static,
     {
         log::info!("Registering API handler: {} -> DeclarativeHttpHandler", path_prefix);
         self.handlers.insert(path_prefix.to_string(), Box::new(handler));

@@ -18,6 +18,7 @@ pub mod multi_file_store;
 pub mod persistence;
 pub mod persistence_optimized;
 pub mod relations;
+pub mod retention;
 pub mod scc2_engine;
 pub mod snapshot;
 pub mod state;

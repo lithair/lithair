@@ -67,6 +67,7 @@ struct FieldAttributes {
     versioned: u32,
     retention: usize,
     snapshot_only: bool,
+    pinned: bool,
 
     // HTTP attributes
     expose: bool,
@@ -232,6 +233,36 @@ fn parse_server_attributes(input: &DeriveInput) -> ServerAttributes {
     server_attrs
 }
 
+/// Model-level retention configuration from #[retention(memory = N)]
+#[derive(Debug, Default, Clone)]
+struct ModelRetentionConfig {
+    memory_count: Option<usize>,
+}
+
+/// Parse struct-level #[retention(memory = N)] attribute
+fn parse_model_retention(input: &DeriveInput) -> ModelRetentionConfig {
+    let mut config = ModelRetentionConfig::default();
+    for attr in &input.attrs {
+        if attr.path().is_ident("retention") {
+            if let Meta::List(meta_list) = &attr.meta {
+                let nested_str = meta_list.tokens.to_string();
+                for token in nested_str.split(',') {
+                    let token = token.trim();
+                    if token.starts_with("memory") {
+                        if let Some(eq_pos) = token.find('=') {
+                            let val = token[eq_pos + 1..].trim();
+                            if let Ok(n) = val.parse::<usize>() {
+                                config.memory_count = Some(n);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    config
+}
+
 /// Parse struct-level #[schema(version = N)] attribute.
 /// Defaults to 1 if not specified.
 fn parse_schema_version(input: &DeriveInput) -> u32 {
@@ -266,6 +297,7 @@ fn parse_field_attributes(field: &Field) -> FieldAttributes {
     for attr in &field.attrs {
         if let Some(ident) = attr.path().get_ident() {
             match ident.to_string().as_str() {
+                "pinned" => attrs.pinned = true,
                 "db" => parse_db_attributes(&mut attrs, attr),
                 "lifecycle" => parse_lifecycle_attributes(&mut attrs, attr),
                 "http" => parse_http_attributes(&mut attrs, attr),
@@ -727,6 +759,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     // Parse firewall and http attributes
     let fw_attrs = parse_firewall_attributes(&input);
     let schema_version = parse_schema_version(&input);
+    let retention_config = parse_model_retention(&input);
     let http_model_attrs = parse_model_http_attributes(&input);
 
     // Use #[http(base_path = "custom")] if specified, otherwise auto-generate
@@ -968,6 +1001,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         let audited = attrs.audited;
         let versioned = attrs.versioned;
         let snapshot_only = attrs.snapshot_only;
+        let pinned = attrs.pinned;
         let expose = attrs.expose;
         let owner_field = attrs.owner_field;
 
@@ -1037,6 +1071,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                 versioned: #versioned,
                 retention: #retention,
                 snapshot_only: #snapshot_only,
+                pinned: #pinned,
                 expose: #expose,
                 validation: vec![#(#validation_tokens),*],
                 serialization: #serialization,
@@ -1088,6 +1123,17 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         .map(|s| syn::LitStr::new(s.as_str(), Span::call_site()))
         .collect();
 
+    // Collect pinned fields for RetentionAware
+    let pinned_fields: Vec<String> = field_specs
+        .iter()
+        .filter(|(_, attrs)| attrs.pinned)
+        .map(|(name, _)| name.clone())
+        .collect();
+    let pinned_field_lits: Vec<syn::LitStr> = pinned_fields
+        .iter()
+        .map(|s| syn::LitStr::new(s.as_str(), Span::call_site()))
+        .collect();
+
     // Determine primary key field name (from #[db(primary_key)] or default to "id")
     let primary_key_field_name: String = field_specs
         .iter()
@@ -1115,6 +1161,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                     audited: attrs.audited,
                     computed: false,
                     version_limit: attrs.versioned,
+                    pinned: attrs.pinned,
                 })
             }
 
@@ -1140,6 +1187,25 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         }
     };
 
+    // Generate RetentionAware implementation
+    let retention_memory_count = match retention_config.memory_count {
+        Some(n) => quote! { Some(#n) },
+        None => quote! { None },
+    };
+    let retention_impl = quote! {
+        impl lithair_core::lifecycle::RetentionAware for #name {
+            fn retention_config() -> lithair_core::lifecycle::RetentionConfig {
+                lithair_core::lifecycle::RetentionConfig {
+                    memory_count: #retention_memory_count,
+                }
+            }
+
+            fn pinned_fields() -> Vec<&'static str> {
+                vec![#(#pinned_field_lits),*]
+            }
+        }
+    };
+
     let expanded = quote! {
         // Generate model-specific types to avoid conflicts between different DeclarativeModel structs
         #[derive(Debug, Clone, Default)]
@@ -1154,6 +1220,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             pub versioned: u32,
             pub retention: usize,
             pub snapshot_only: bool,
+            pub pinned: bool,
             pub expose: bool,
             pub validation: Vec<String>,
             pub serialization: Option<String>,
@@ -1230,6 +1297,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                         versioned: attrs.versioned,
                         retention: attrs.retention,
                         snapshot_only: attrs.snapshot_only,
+                        pinned: attrs.pinned,
                         validation_rules: attrs.validation.clone(),
                         permissions: FieldPermissions {
                             read_permission: attrs.read_permission.clone(),
@@ -1319,6 +1387,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         }
 
         #lifecycle_impl
+
+        #retention_impl
 
         // Auto-generate ReplicatedModel implementation if any fields have #[persistence(replicate)]
         impl lithair_core::consensus::ReplicatedModel for #name {
