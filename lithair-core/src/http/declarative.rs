@@ -188,7 +188,16 @@ where
     /// Returns `None` if the var is unset, empty, or non-numeric.
     fn env_memory_retention_override() -> Option<usize> {
         let model = std::any::type_name::<T>().rsplit("::").next()?;
-        let key = format!("LT_{}_MEMORY_RETENTION", model.to_uppercase());
+        // Sanitize: drop generics, lifetimes, and any other characters that
+        // would produce an invalid shell env-var name. Keeps ASCII letters,
+        // digits, and underscores. `Foo<Bar>` → `FOOBAR`,
+        // `Box<dyn Trait>` → `BOXDYNTRAIT`, etc.
+        let sanitized: String =
+            model.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if sanitized.is_empty() {
+            return None;
+        }
+        let key = format!("LT_{}_MEMORY_RETENTION", sanitized.to_uppercase());
         std::env::var(&key).ok()?.parse::<usize>().ok()
     }
     pub fn new(event_store_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
@@ -585,30 +594,40 @@ where
         };
 
         // Reverse scan: latest event wins (most recent state for this id).
-        // Cheap filter on the envelope's aggregate_id BEFORE deserializing the
-        // full payload — issue #97 perf. Avoids parsing T on every event,
-        // which dominates wall time when payloads are large (mail bodies,
-        // markdown content). Falls back to full parse + primary-key match
-        // if aggregate_id is missing (e.g. legacy events written before the
-        // envelope started recording aggregate_id).
+        // Two-pass deserialization for perf: first parse only the
+        // `aggregate_id` (borrowed, zero-alloc) and skip any mismatched
+        // event WITHOUT touching the (potentially large) `payload` field.
+        // Only when aggregate_id matches do we re-parse the full envelope
+        // and the payload as T. Legacy events without `aggregate_id`
+        // fall back to the old full-parse + primary-key check.
+        #[derive(serde::Deserialize)]
+        struct AggregateIdProbe<'a> {
+            #[serde(borrow, default)]
+            aggregate_id: Option<&'a str>,
+        }
+
         for event_json in events.iter().rev() {
-            let envelope: EventEnvelope = match serde_json::from_str(event_json) {
-                Ok(e) => e,
+            let probe: AggregateIdProbe<'_> = match serde_json::from_str(event_json) {
+                Ok(p) => p,
                 Err(_) => continue,
             };
 
-            match envelope.aggregate_id.as_deref() {
+            match probe.aggregate_id {
                 Some(id) if id == key => {
-                    if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
-                        return Some(item);
+                    if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
+                        if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
+                            return Some(item);
+                        }
                     }
                 }
-                Some(_) => continue, // mismatched aggregate, skip without parsing T
+                Some(_) => continue, // mismatched aggregate, payload not parsed
                 None => {
                     // Legacy fallback: aggregate_id missing, must inspect payload
-                    if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
-                        if item.get_primary_key() == key {
-                            return Some(item);
+                    if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
+                        if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
+                            if item.get_primary_key() == key {
+                                return Some(item);
+                            }
                         }
                     }
                 }

@@ -35,7 +35,13 @@ async fn given_temp_data_dir(_world: &mut LithairWorld) {}
 #[given(expr = "a model with retention limit of {int}")]
 async fn given_retention_limit(world: &mut LithairWorld, limit: usize) {
     // Set env override BEFORE creating the handler — new() reads it once.
-    std::env::set_var("LT_RETENTIONTESTEMAIL_MEMORY_RETENTION", limit.to_string());
+    // `set_var` is marked unsafe from Rust 1.80+ because env mutation is
+    // racy in multi-threaded contexts; cucumber here runs scenarios
+    // serially (max_concurrent_scenarios = 1), so we control the
+    // race. Wrap to satisfy newer toolchains.
+    unsafe {
+        std::env::set_var("LT_RETENTIONTESTEMAIL_MEMORY_RETENTION", limit.to_string());
+    }
 
     // Fresh temp dir for the event store, kept alive in the world for replay tests.
     let temp_dir = tempfile::tempdir().expect("create temp dir");
@@ -163,6 +169,10 @@ async fn then_all_accessible(world: &mut LithairWorld, count: usize) {
     let handler = handler_slot(world).clone().expect("handler not initialized");
     let total = handler.total_item_count().await;
     assert_eq!(total, count, "expected {} items total (hot+warm), found {}", count, total);
+
+    if count == 0 {
+        return;
+    }
 
     // Spot-check: first, middle, last should all resolve via get_by_id.
     for idx in [0, count / 2, count - 1] {
