@@ -52,7 +52,12 @@ where
 
 impl<T> TestHandler<T>
 where
-    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + Serialize + DeserializeOwned,
+    T: HttpExposable
+        + LifecycleAware
+        + ReplicatedModel
+        + RetentionAware
+        + Serialize
+        + DeserializeOwned,
 {
     /// Create a new test handler with a temporary event store directory.
     pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {

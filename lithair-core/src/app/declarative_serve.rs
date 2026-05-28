@@ -29,7 +29,14 @@ use crate::schema::HasSchemaSpec;
 /// pre-0.2.0 `DeclarativeServer`-based bodies; the trait surface itself is
 /// unchanged.
 pub trait DeclarativeServe:
-    HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + HasSchemaSpec + Send + Sync + 'static
+    HttpExposable
+    + LifecycleAware
+    + ReplicatedModel
+    + RetentionAware
+    + HasSchemaSpec
+    + Send
+    + Sync
+    + 'static
 {
     /// Serve this model on the given port with an auto-generated EventStore path.
     ///
@@ -81,7 +88,14 @@ pub trait DeclarativeServe:
 
 // Auto-implement for every type that satisfies the bounds.
 impl<T> DeclarativeServe for T where
-    T: HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + HasSchemaSpec + Send + Sync + 'static
+    T: HttpExposable
+        + LifecycleAware
+        + ReplicatedModel
+        + RetentionAware
+        + HasSchemaSpec
+        + Send
+        + Sync
+        + 'static
 {
 }
 

@@ -36,7 +36,14 @@ trait ApiHandlerWrapper: Send + Sync {
 /// Implementation for any DeclarativeHttpHandler type wrapped in Arc
 impl<T> ApiHandlerWrapper for Arc<DeclarativeHttpHandler<T>>
 where
-    T: Clone + Send + Sync + HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + 'static,
+    T: Clone
+        + Send
+        + Sync
+        + HttpExposable
+        + LifecycleAware
+        + ReplicatedModel
+        + RetentionAware
+        + 'static,
 {
     fn handle_request<'a>(
         &'a self,
@@ -67,7 +74,14 @@ impl ApiRouter {
     /// ```
     pub fn register<T>(&mut self, path_prefix: &str, handler: Arc<DeclarativeHttpHandler<T>>)
     where
-        T: Clone + Send + Sync + HttpExposable + LifecycleAware + ReplicatedModel + RetentionAware + 'static,
+        T: Clone
+            + Send
+            + Sync
+            + HttpExposable
+            + LifecycleAware
+            + ReplicatedModel
+            + RetentionAware
+            + 'static,
     {
         log::info!("Registering API handler: {} -> DeclarativeHttpHandler", path_prefix);
         self.handlers.insert(path_prefix.to_string(), Box::new(handler));

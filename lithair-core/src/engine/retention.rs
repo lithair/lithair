@@ -213,10 +213,7 @@ mod tests {
 
     #[test]
     fn extract_pinned_fields_only() {
-        let layer = RetentionLayer::new(
-            make_config(1),
-            vec!["from".into(), "subject".into()],
-        );
+        let layer = RetentionLayer::new(make_config(1), vec!["from".into(), "subject".into()]);
         let email = TestEmail {
             from: "alice@test.com".into(),
             subject: "Hello".into(),
@@ -232,10 +229,7 @@ mod tests {
 
     #[test]
     fn evict_and_read_warm() {
-        let layer = RetentionLayer::new(
-            make_config(1),
-            vec!["from".into(), "subject".into()],
-        );
+        let layer = RetentionLayer::new(make_config(1), vec!["from".into(), "subject".into()]);
         let email = TestEmail {
             from: "bob@test.com".into(),
             subject: "Test".into(),

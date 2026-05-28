@@ -829,7 +829,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_status(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA status error: {}", e))
             })
         });
@@ -843,7 +846,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_setup(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA setup error: {}", e))
             })
         });
@@ -857,7 +863,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_enable(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA enable error: {}", e))
             })
         });
@@ -871,7 +880,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_disable(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
             })
         });
@@ -885,7 +897,10 @@ impl LithairServerBuilder {
             Box::pin(async move {
                 handlers::handle_mfa_verify(storage, config, req)
                     .await
-                    .map(|resp| { use http_body_util::BodyExt; resp.map(|b| b.boxed()) })
+                    .map(|resp| {
+                        use http_body_util::BodyExt;
+                        resp.map(|b| b.boxed())
+                    })
                     .map_err(|e| anyhow::anyhow!("MFA verify error: {}", e))
             })
         });

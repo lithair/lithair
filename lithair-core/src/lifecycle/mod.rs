@@ -34,73 +34,42 @@ pub struct FieldPolicy {
 impl FieldPolicy {
     /// Immutable field - never changes after creation
     pub fn immutable() -> Self {
-        Self {
-            snapshot_only: true,
-            immutable: true,
-            ..Default::default()
-        }
+        Self { snapshot_only: true, immutable: true, ..Default::default() }
     }
 
     /// Audited field - full history preserved
     pub fn audited() -> Self {
-        Self {
-            retention_limit: u32::MAX,
-            indexed: true,
-            audited: true,
-            ..Default::default()
-        }
+        Self { retention_limit: u32::MAX, indexed: true, audited: true, ..Default::default() }
     }
 
     /// Versioned field - keep limited history
     pub fn versioned() -> Self {
-        Self {
-            version_limit: 5,
-            ..Default::default()
-        }
+        Self { version_limit: 5, ..Default::default() }
     }
 
     /// Foreign key field
     pub fn foreign_key() -> Self {
-        Self {
-            indexed: true,
-            fk: true,
-            ..Default::default()
-        }
+        Self { indexed: true, fk: true, ..Default::default() }
     }
 
     /// Unique field
     pub fn unique() -> Self {
-        Self {
-            unique: true,
-            indexed: true,
-            ..Default::default()
-        }
+        Self { unique: true, indexed: true, ..Default::default() }
     }
 
     /// Snapshot-only field
     pub fn snapshot_only() -> Self {
-        Self {
-            snapshot_only: true,
-            ..Default::default()
-        }
+        Self { snapshot_only: true, ..Default::default() }
     }
 
     /// Unique field with versioning
     pub fn unique_versioned(retention: u32) -> Self {
-        Self {
-            retention_limit: retention,
-            unique: true,
-            indexed: true,
-            ..Default::default()
-        }
+        Self { retention_limit: retention, unique: true, indexed: true, ..Default::default() }
     }
 
     /// Computed field - no storage needed
     pub fn computed() -> Self {
-        Self {
-            computed: true,
-            ..Default::default()
-        }
+        Self { computed: true, ..Default::default() }
     }
 }
 

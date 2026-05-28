@@ -84,11 +84,7 @@ where
     /// Enable retention policy on this engine.
     /// Once enabled, the engine evicts oldest items beyond the memory limit,
     /// keeping only pinned fields in a warm map for fast listing.
-    pub fn enable_retention(
-        &mut self,
-        config: RetentionConfig,
-        pinned_field_names: Vec<String>,
-    ) {
+    pub fn enable_retention(&mut self, config: RetentionConfig, pinned_field_names: Vec<String>) {
         if config.memory_count.is_some() {
             self.retention = Some(RetentionLayer::new(config, pinned_field_names));
         }
@@ -96,7 +92,7 @@ where
 
     /// Check if retention is active on this engine.
     pub fn has_retention(&self) -> bool {
-        self.retention.as_ref().map_or(false, |r| r.is_active())
+        self.retention.as_ref().is_some_and(|r| r.is_active())
     }
 
     /// Get the retention layer (if active).
@@ -119,12 +115,7 @@ where
                 self.state_map.try_entry(evict_key.clone())
             {
                 let entry = o.get();
-                retention.evict_to_warm(
-                    &evict_key,
-                    &entry.data,
-                    entry.version,
-                    entry.last_updated,
-                );
+                retention.evict_to_warm(&evict_key, &entry.data, entry.version, entry.last_updated);
                 let _ = o.remove();
 
                 if self.config.verbose_logging {
@@ -167,12 +158,12 @@ where
                 if aggregate_id != key {
                     continue;
                 }
-                let payload_str =
-                    if let Some(p) = envelope.get("payload").and_then(|v| v.as_str()) {
-                        p.to_string()
-                    } else {
-                        event_json.clone()
-                    };
+                let payload_str = if let Some(p) = envelope.get("payload").and_then(|v| v.as_str())
+                {
+                    p.to_string()
+                } else {
+                    event_json.clone()
+                };
                 if let Ok(event) = serde_json::from_str::<E>(&payload_str) {
                     event.apply(&mut state);
                     found = true;
@@ -295,52 +286,49 @@ where
         }
 
         match (*self.state_map).try_entry(key.to_string()) {
-            Some(entry) => {
-                match entry {
-                    scc::hash_map::Entry::Occupied(mut o) => {
-                        let v: &mut VersionedEntry<S> = o.get_mut();
+            Some(entry) => match entry {
+                scc::hash_map::Entry::Occupied(mut o) => {
+                    let v: &mut VersionedEntry<S> = o.get_mut();
 
-                        let old_values =
-                            if self.has_indexes() { Some(v.data.clone()) } else { None };
+                    let old_values = if self.has_indexes() { Some(v.data.clone()) } else { None };
 
-                        let result = f(&mut v.data);
-                        v.version += 1;
-                        v.last_updated = std::time::SystemTime::now()
+                    let result = f(&mut v.data);
+                    v.version += 1;
+                    v.last_updated = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    if let Some(old) = old_values {
+                        self.update_indexes(key, &old, &v.data);
+                    }
+
+                    self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                    self.maybe_evict(key);
+                    Some(result)
+                }
+                scc::hash_map::Entry::Vacant(v) => {
+                    let mut state = S::default();
+                    let result = f(&mut state);
+                    let entry = VersionedEntry {
+                        version: 1,
+                        last_updated: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
-                            .as_secs();
+                            .as_secs(),
+                        data: state.clone(),
+                    };
 
-                        if let Some(old) = old_values {
-                            self.update_indexes(key, &old, &v.data);
-                        }
-
-                        self.stats.writes.fetch_add(1, Ordering::Relaxed);
-                        self.maybe_evict(key);
-                        Some(result)
+                    if self.has_indexes() {
+                        self.add_to_index(key, &state);
                     }
-                    scc::hash_map::Entry::Vacant(v) => {
-                        let mut state = S::default();
-                        let result = f(&mut state);
-                        let entry = VersionedEntry {
-                            version: 1,
-                            last_updated: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
-                            data: state.clone(),
-                        };
 
-                        if self.has_indexes() {
-                            self.add_to_index(key, &state);
-                        }
-
-                        v.insert_entry(entry);
-                        self.stats.writes.fetch_add(1, Ordering::Relaxed);
-                        self.maybe_evict(key);
-                        Some(result)
-                    }
+                    v.insert_entry(entry);
+                    self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                    self.maybe_evict(key);
+                    Some(result)
                 }
-            }
+            },
             None => None,
         }
     }

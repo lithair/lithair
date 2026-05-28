@@ -300,12 +300,7 @@ where
             if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(&event_json) {
                 if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
                     let key = item.get_primary_key();
-                    Self::insert_with_retention(
-                        &mut storage,
-                        self.retention.as_ref(),
-                        key,
-                        item,
-                    );
+                    Self::insert_with_retention(&mut storage, self.retention.as_ref(), key, item);
                     replayed_count += 1;
                 }
             }
@@ -637,7 +632,7 @@ where
                 return Some(item.clone());
             }
         }
-        if self.retention.as_ref().map_or(false, |r| r.is_evicted(id)) {
+        if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
             return self.load_evicted_item(id).await;
         }
         None
@@ -675,7 +670,12 @@ where
 
         {
             let mut storage = self.storage.write().await;
-            Self::insert_with_retention(&mut storage, self.retention.as_ref(), actual_key.clone(), item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                actual_key.clone(),
+                item.clone(),
+            );
         }
 
         // Persist to event store (best-effort - don't fail the operation)
@@ -720,7 +720,7 @@ where
         {
             let storage = self.storage.read().await;
             let has_key = storage.contains_key(id)
-                || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+                || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
             log::debug!(
                 "APPLY UPDATE: id={}, exists={}, storage_len={}",
                 id,
@@ -737,7 +737,12 @@ where
         // Update in storage
         {
             let mut storage = self.storage.write().await;
-            Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                id.to_string(),
+                item.clone(),
+            );
         }
 
         // Persist to event store (best-effort - don't fail the operation)
@@ -1370,7 +1375,12 @@ where
 
                         {
                             let mut storage = self.storage.write().await;
-                            Self::insert_with_retention(&mut storage, self.retention.as_ref(), actual_key.clone(), item.clone());
+                            Self::insert_with_retention(
+                                &mut storage,
+                                self.retention.as_ref(),
+                                actual_key.clone(),
+                                item.clone(),
+                            );
                             log::debug!("DEBUG: Storage now has {} items", storage.len());
                         }
 
@@ -1394,7 +1404,12 @@ where
                 // Local-only mode (no replication)
                 {
                     let mut storage = self.storage.write().await;
-                    Self::insert_with_retention(&mut storage, self.retention.as_ref(), primary_key.clone(), item.clone());
+                    Self::insert_with_retention(
+                        &mut storage,
+                        self.retention.as_ref(),
+                        primary_key.clone(),
+                        item.clone(),
+                    );
                 }
 
                 if (self.persist_to_event_store("Created", &item).await).is_err() {
@@ -1408,7 +1423,12 @@ where
         {
             {
                 let mut storage = self.storage.write().await;
-                Self::insert_with_retention(&mut storage, self.retention.as_ref(), primary_key.clone(), item.clone());
+                Self::insert_with_retention(
+                    &mut storage,
+                    self.retention.as_ref(),
+                    primary_key.clone(),
+                    item.clone(),
+                );
             }
 
             if (self.persist_to_event_store("Created", &item).await).is_err() {
@@ -1497,7 +1517,12 @@ where
                                     .unwrap_or_else(|| primary_key.clone());
                                 {
                                     let mut storage = self.storage.write().await;
-                                    Self::insert_with_retention(&mut storage, self.retention.as_ref(), actual_key, item.clone());
+                                    Self::insert_with_retention(
+                                        &mut storage,
+                                        self.retention.as_ref(),
+                                        actual_key,
+                                        item.clone(),
+                                    );
                                 }
                                 if (self.persist_to_event_store("Created", &item).await).is_err() {
                                     return Ok(self.internal_error_response());
@@ -1515,7 +1540,12 @@ where
                         // Consensus disabled -> local path
                         {
                             let mut storage = self.storage.write().await;
-                            Self::insert_with_retention(&mut storage, self.retention.as_ref(), primary_key.clone(), item.clone());
+                            Self::insert_with_retention(
+                                &mut storage,
+                                self.retention.as_ref(),
+                                primary_key.clone(),
+                                item.clone(),
+                            );
                         }
                         if (self.persist_to_event_store("Created", &item).await).is_err() {
                             return Ok(self.internal_error_response());
@@ -1526,7 +1556,12 @@ where
                     // No consensus configured -> local path
                     {
                         let mut storage = self.storage.write().await;
-                        Self::insert_with_retention(&mut storage, self.retention.as_ref(), primary_key.clone(), item.clone());
+                        Self::insert_with_retention(
+                            &mut storage,
+                            self.retention.as_ref(),
+                            primary_key.clone(),
+                            item.clone(),
+                        );
                     }
                     if (self.persist_to_event_store("Created", &item).await).is_err() {
                         return Ok(self.internal_error_response());
@@ -1540,7 +1575,12 @@ where
                 let _ = disable_consensus; // suppress unused warning
                 {
                     let mut storage = self.storage.write().await;
-                    Self::insert_with_retention(&mut storage, self.retention.as_ref(), primary_key.clone(), item.clone());
+                    Self::insert_with_retention(
+                        &mut storage,
+                        self.retention.as_ref(),
+                        primary_key.clone(),
+                        item.clone(),
+                    );
                 }
                 if (self.persist_to_event_store("Created", &item).await).is_err() {
                     return Ok(self.internal_error_response());
@@ -1587,7 +1627,7 @@ where
         }
 
         // If evicted, load from event store on demand
-        if self.retention.as_ref().map_or(false, |r| r.is_evicted(id)) {
+        if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
             if let Some(item) = self.load_evicted_item(id).await {
                 if !item.can_read(&user_perms) {
                     return Ok(Response::builder()
@@ -1724,11 +1764,16 @@ where
                         // Apply to local storage after successful consensus
                         let mut storage = self.storage.write().await;
                         let exists = storage.contains_key(id)
-                            || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+                            || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
                         if !exists {
                             return Ok(self.not_found_response());
                         }
-                        Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), updated_item.clone());
+                        Self::insert_with_retention(
+                            &mut storage,
+                            self.retention.as_ref(),
+                            id.to_string(),
+                            updated_item.clone(),
+                        );
                     }
                     Err(e) => {
                         return Ok(self.json_error_response(
@@ -1741,11 +1786,16 @@ where
                 // No consensus - update storage directly (single-node mode)
                 let mut storage = self.storage.write().await;
                 let exists = storage.contains_key(id)
-                    || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+                    || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
                 if !exists {
                     return Ok(self.not_found_response());
                 }
-                Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), updated_item.clone());
+                Self::insert_with_retention(
+                    &mut storage,
+                    self.retention.as_ref(),
+                    id.to_string(),
+                    updated_item.clone(),
+                );
             }
         }
         #[cfg(not(feature = "cluster"))]
@@ -1753,11 +1803,16 @@ where
             // No consensus - update storage directly (single-node mode)
             let mut storage = self.storage.write().await;
             let exists = storage.contains_key(id)
-                || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+                || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
             if !exists {
                 return Ok(self.not_found_response());
             }
-            Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), updated_item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                id.to_string(),
+                updated_item.clone(),
+            );
         }
 
         // Persist to EventStore
@@ -1883,7 +1938,7 @@ where
                         let removed_item = match removed_item {
                             Some(item) => Some(item),
                             None => {
-                                if self.retention.as_ref().map_or(false, |r| r.is_evicted(id)) {
+                                if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
                                     self.load_evicted_item(id).await
                                 } else {
                                     None
@@ -1930,7 +1985,7 @@ where
         let removed_item = match removed_item {
             Some(item) => Some(item),
             None => {
-                if self.retention.as_ref().map_or(false, |r| r.is_evicted(id)) {
+                if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
                     self.load_evicted_item(id).await
                 } else {
                     None
@@ -2153,7 +2208,12 @@ where
         // Update in-memory storage
         {
             let mut storage = self.storage.write().await;
-            Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), item.clone());
+            Self::insert_with_retention(
+                &mut storage,
+                self.retention.as_ref(),
+                id.to_string(),
+                item.clone(),
+            );
         }
 
         // Persist as AdminEdit event (different from regular Updated)
