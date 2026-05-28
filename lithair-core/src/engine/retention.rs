@@ -62,6 +62,13 @@ impl RetentionLayer {
         };
 
         if hot_count > limit {
+            // limit == 0: nothing should stay in hot; evict the just-inserted key.
+            if limit == 0 {
+                if let Some(pos) = order.iter().position(|k| k == key) {
+                    order.remove(pos);
+                }
+                return EvictionResult { evict_key: Some(key.to_string()) };
+            }
             if let Some(oldest) = order.pop_front() {
                 if oldest == key {
                     let next = order.pop_front();
@@ -73,6 +80,14 @@ impl RetentionLayer {
         }
 
         EvictionResult { evict_key: None }
+    }
+
+    /// Clear all warm entries and reset the eviction queue.
+    /// Used during full state replacement (e.g., follower reconcile from leader).
+    pub fn clear(&self) {
+        self.warm_map.retain_sync(|_, _| false);
+        let mut order = self.insertion_order.lock().expect("insertion_order lock poisoned");
+        order.clear();
     }
 
     /// Move an item from hot to warm: extract pinned fields and store as JSON.
@@ -253,5 +268,29 @@ mod tests {
         assert!(!layer.is_active());
         let result = layer.track_insert("anything", 999999);
         assert!(result.evict_key.is_none());
+    }
+
+    #[test]
+    fn limit_zero_evicts_inserted_key() {
+        let layer = RetentionLayer::new(make_config(0), vec!["from".into()]);
+        let result = layer.track_insert("k1", 1);
+        assert_eq!(result.evict_key, Some("k1".to_string()));
+    }
+
+    #[test]
+    fn clear_empties_warm_and_order() {
+        let layer = RetentionLayer::new(make_config(1), vec!["from".into()]);
+        let email = TestEmail { from: "x".into(), subject: "y".into(), body: "z".into() };
+        layer.evict_to_warm("k1", &email, 1, 100);
+        layer.evict_to_warm("k2", &email, 2, 200);
+        layer.track_insert("k3", 1);
+        assert!(layer.is_evicted("k1"));
+        assert!(layer.is_evicted("k2"));
+
+        layer.clear();
+
+        assert!(!layer.is_evicted("k1"));
+        assert!(!layer.is_evicted("k2"));
+        assert_eq!(layer.warm_count(), 0);
     }
 }

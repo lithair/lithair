@@ -159,6 +159,7 @@ where
         };
 
         let mut state = S::default();
+        let mut found = false;
         for event_json in events {
             if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&event_json) {
                 let aggregate_id =
@@ -174,11 +175,16 @@ where
                     };
                 if let Ok(event) = serde_json::from_str::<E>(&payload_str) {
                     event.apply(&mut state);
+                    found = true;
                 }
             }
         }
 
-        Some(f(&state))
+        if found {
+            Some(f(&state))
+        } else {
+            None
+        }
     }
 
     /// List all items: hot (full) + warm (pinned fields only).
@@ -387,6 +393,7 @@ where
         }
 
         self.stats.writes.fetch_add(1, Ordering::Relaxed);
+        self.maybe_evict(&key);
 
         if persist && self.config.auto_persist_writes {
             let event_json = event.to_json();
@@ -609,6 +616,9 @@ where
     pub fn clear_sync(&self) {
         (*self.state_map).retain_sync(|_, _| false);
         (*self.indexes).retain_sync(|_, _| false);
+        if let Some(retention) = &self.retention {
+            retention.clear();
+        }
     }
 
     pub async fn clear(&self) {

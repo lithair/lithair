@@ -647,10 +647,9 @@ where
     pub async fn reconcile_replace_all(&self, items: Vec<T>) {
         let mut storage = self.storage.write().await;
         storage.clear();
-        // TODO: RetentionLayer does not expose a clear() method yet; for now
-        // we rely on the full replace populating the warm map from scratch via
-        // insert_with_retention. If a clear() is added later, call it here
-        // before re-inserting to avoid stale warm entries.
+        if let Some(retention) = &self.retention {
+            retention.clear();
+        }
         for item in items.into_iter() {
             let actual_key = serde_json::to_value(&item)
                 .ok()
@@ -717,18 +716,18 @@ where
     /// Apply a replicated UPDATE from leader (for followers to receive UPDATE replication)
     /// This updates storage AND persists to event store
     pub async fn apply_replicated_update(&self, id: &str, item: T) -> Result<(), String> {
-        // Check if item exists
+        // Check if item exists (hot storage or evicted to warm map)
         {
             let storage = self.storage.read().await;
-            let has_key = storage.contains_key(id);
+            let has_key = storage.contains_key(id)
+                || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
             log::debug!(
-                "APPLY UPDATE: id={}, exists_in_storage={}, storage_len={}",
+                "APPLY UPDATE: id={}, exists={}, storage_len={}",
                 id,
                 has_key,
                 storage.len()
             );
             if !has_key {
-                // If item doesn't exist, treat as create (eventual consistency)
                 drop(storage);
                 log::debug!("APPLY UPDATE: item doesn't exist, creating instead");
                 return self.apply_replicated_item(item).await;
@@ -1724,7 +1723,9 @@ where
                     Ok(_) => {
                         // Apply to local storage after successful consensus
                         let mut storage = self.storage.write().await;
-                        if !storage.contains_key(id) {
+                        let exists = storage.contains_key(id)
+                            || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+                        if !exists {
                             return Ok(self.not_found_response());
                         }
                         Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), updated_item.clone());
@@ -1739,7 +1740,9 @@ where
             } else {
                 // No consensus - update storage directly (single-node mode)
                 let mut storage = self.storage.write().await;
-                if !storage.contains_key(id) {
+                let exists = storage.contains_key(id)
+                    || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+                if !exists {
                     return Ok(self.not_found_response());
                 }
                 Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), updated_item.clone());
@@ -1749,7 +1752,9 @@ where
         {
             // No consensus - update storage directly (single-node mode)
             let mut storage = self.storage.write().await;
-            if !storage.contains_key(id) {
+            let exists = storage.contains_key(id)
+                || self.retention.as_ref().map_or(false, |r| r.is_evicted(id));
+            if !exists {
                 return Ok(self.not_found_response());
             }
             Self::insert_with_retention(&mut storage, self.retention.as_ref(), id.to_string(), updated_item.clone());
@@ -1870,20 +1875,28 @@ where
                 log::debug!("Raft: Proposing DELETE operation for item {}", id);
                 match consensus_arc.read().await.propose_delete(id.to_string()).await {
                     Ok(_) => {
-                        // Apply to local storage after successful consensus
                         let removed_item = {
                             let mut storage = self.storage.write().await;
                             storage.remove(id)
                         };
 
-                        // Clean up warm map entry (if any)
+                        let removed_item = match removed_item {
+                            Some(item) => Some(item),
+                            None => {
+                                if self.retention.as_ref().map_or(false, |r| r.is_evicted(id)) {
+                                    self.load_evicted_item(id).await
+                                } else {
+                                    None
+                                }
+                            }
+                        };
+
                         if let Some(retention) = &self.retention {
                             retention.remove(id);
                         }
 
                         match removed_item {
                             Some(item) => {
-                                // Persist deletion to EventStore
                                 if (self.persist_to_event_store("Deleted", &item).await).is_err() {
                                     return Ok(self.internal_error_response());
                                 }
@@ -1913,6 +1926,18 @@ where
             storage.remove(id)
         };
 
+        // If not in hot storage but evicted, reload from event store before deleting
+        let removed_item = match removed_item {
+            Some(item) => Some(item),
+            None => {
+                if self.retention.as_ref().map_or(false, |r| r.is_evicted(id)) {
+                    self.load_evicted_item(id).await
+                } else {
+                    None
+                }
+            }
+        };
+
         // Clean up warm map entry (if any)
         if let Some(retention) = &self.retention {
             retention.remove(id);
@@ -1920,7 +1945,6 @@ where
 
         match removed_item {
             Some(item) => {
-                // Persist deletion to EventStore
                 if (self.persist_to_event_store("Deleted", &item).await).is_err() {
                     return Ok(self.internal_error_response());
                 }
