@@ -854,6 +854,29 @@ where
                         }
                     }
                 }
+
+                // Also scan evicted (warm) records for pinned + unique fields.
+                // Non-pinned unique fields can't be checked against warm entries
+                // because warm only stores pinned data; for those we accept the
+                // risk that duplicates pass when the original is evicted.
+                if policy.pinned {
+                    if let Some(retention) = &self.retention {
+                        let val_str = match new_val {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        let matches = retention.warm_keys_with_field_value(field_name, &val_str);
+                        for warm_id in matches {
+                            if exclude_id == Some(warm_id.as_str()) {
+                                continue;
+                            }
+                            return Err(format!(
+                                "'{}' must be unique: value {} already exists",
+                                field_name, new_val
+                            ));
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -1148,7 +1171,18 @@ where
         let query_str = req.uri().query().unwrap_or("");
         let params = parse_query_params(query_str);
 
-        // Collect hot items (full data) + warm items (pinned fields only)
+        // Collect hot items (full data) + warm items (pinned fields only).
+        //
+        // Warm entries are pre-serialized pinned-field JSON, so `can_read()`
+        // can't run against them (we don't hold a `T` value). To avoid leaking
+        // pinned fields from records the caller isn't authorized to read, we
+        // skip warm entries when any permission-based filtering is configured.
+        // This is conservative but safe; a future enhancement could either
+        // partially deserialize the warm JSON back to `T` or attach a
+        // model-declared `#[pinned(public)]` flag.
+        let permission_filtering_active =
+            self.permission_extractor.is_some() || self.permission_checker.is_some();
+
         let json_items: Vec<serde_json::Value> = {
             let storage = self.storage.read().await;
             let mut items: Vec<serde_json::Value> = storage
@@ -1158,8 +1192,10 @@ where
                 .collect();
 
             if let Some(retention) = &self.retention {
-                for (_key, warm_entry) in retention.all_warm_entries() {
-                    items.push(warm_entry.pinned_data);
+                if !permission_filtering_active {
+                    for (_key, warm_entry) in retention.all_warm_entries() {
+                        items.push(warm_entry.pinned_data);
+                    }
                 }
             }
 

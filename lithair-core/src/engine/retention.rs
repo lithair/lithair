@@ -1,7 +1,7 @@
 use crate::lifecycle::RetentionConfig;
 use scc::HashMap as SccHashMap;
 use serde::Serialize;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Mutex;
 
 /// Tracks evicted items' pinned field data and insertion order for FIFO eviction.
@@ -13,7 +13,52 @@ pub struct RetentionLayer {
     config: RetentionConfig,
     pinned_field_names: Vec<String>,
     warm_map: SccHashMap<String, WarmEntry>,
-    insertion_order: Mutex<VecDeque<String>>,
+    /// FIFO queue of inserted keys + HashSet sidecar for O(1) membership checks.
+    /// Both structures are kept in sync under the same mutex. The HashSet avoids
+    /// O(N) linear scans on `track_insert`/`promote_from_warm` (issue #98).
+    order_state: Mutex<OrderState>,
+}
+
+struct OrderState {
+    queue: VecDeque<String>,
+    set: HashSet<String>,
+}
+
+impl OrderState {
+    fn new() -> Self {
+        Self { queue: VecDeque::new(), set: HashSet::new() }
+    }
+
+    fn push_back(&mut self, key: String) {
+        if self.set.insert(key.clone()) {
+            self.queue.push_back(key);
+        }
+    }
+
+    fn pop_front(&mut self) -> Option<String> {
+        let key = self.queue.pop_front()?;
+        self.set.remove(&key);
+        Some(key)
+    }
+
+    fn push_front(&mut self, key: String) {
+        if self.set.insert(key.clone()) {
+            self.queue.push_front(key);
+        }
+    }
+
+    fn remove(&mut self, key: &str) {
+        if self.set.remove(key) {
+            if let Some(pos) = self.queue.iter().position(|k| k == key) {
+                self.queue.remove(pos);
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.queue.clear();
+        self.set.clear();
+    }
 }
 
 /// Lightweight representation of an evicted item — only pinned fields + metadata.
@@ -35,7 +80,7 @@ impl RetentionLayer {
             config,
             pinned_field_names,
             warm_map: SccHashMap::new(),
-            insertion_order: Mutex::new(VecDeque::new()),
+            order_state: Mutex::new(OrderState::new()),
         }
     }
 
@@ -47,14 +92,18 @@ impl RetentionLayer {
         self.config.memory_count.is_some()
     }
 
+    /// Names of fields marked `#[pinned]` on the model. Used by uniqueness
+    /// checks to know which fields can be safely scanned from warm entries.
+    pub fn pinned_field_names(&self) -> &[String] {
+        &self.pinned_field_names
+    }
+
     /// Record that a key was inserted/updated in the hot map.
     /// Returns the key to evict if the hot map now exceeds capacity.
     pub fn track_insert(&self, key: &str, hot_count: usize) -> EvictionResult {
-        let mut order = self.insertion_order.lock().expect("insertion_order lock poisoned");
+        let mut order = self.order_state.lock().expect("order_state lock poisoned");
 
-        if !order.contains(&key.to_string()) {
-            order.push_back(key.to_string());
-        }
+        order.push_back(key.to_string());
 
         let limit = match self.config.memory_count {
             Some(n) => n,
@@ -64,9 +113,7 @@ impl RetentionLayer {
         if hot_count > limit {
             // limit == 0: nothing should stay in hot; evict the just-inserted key.
             if limit == 0 {
-                if let Some(pos) = order.iter().position(|k| k == key) {
-                    order.remove(pos);
-                }
+                order.remove(key);
                 return EvictionResult { evict_key: Some(key.to_string()) };
             }
             if let Some(oldest) = order.pop_front() {
@@ -86,7 +133,7 @@ impl RetentionLayer {
     /// Used during full state replacement (e.g., follower reconcile from leader).
     pub fn clear(&self) {
         self.warm_map.retain_sync(|_, _| false);
-        let mut order = self.insertion_order.lock().expect("insertion_order lock poisoned");
+        let mut order = self.order_state.lock().expect("order_state lock poisoned");
         order.clear();
     }
 
@@ -108,10 +155,8 @@ impl RetentionLayer {
         if let Some(scc::hash_map::Entry::Occupied(o)) = self.warm_map.try_entry(key.to_string()) {
             let _ = o.remove();
         }
-        let mut order = self.insertion_order.lock().expect("insertion_order lock poisoned");
-        if !order.contains(&key.to_string()) {
-            order.push_back(key.to_string());
-        }
+        let mut order = self.order_state.lock().expect("order_state lock poisoned");
+        order.push_back(key.to_string());
     }
 
     /// Remove a key entirely (deletion).
@@ -119,10 +164,8 @@ impl RetentionLayer {
         if let Some(scc::hash_map::Entry::Occupied(o)) = self.warm_map.try_entry(key.to_string()) {
             let _ = o.remove();
         }
-        let mut order = self.insertion_order.lock().expect("insertion_order lock poisoned");
-        if let Some(pos) = order.iter().position(|k| k == key) {
-            order.remove(pos);
-        }
+        let mut order = self.order_state.lock().expect("order_state lock poisoned");
+        order.remove(key);
     }
 
     /// Read pinned data for an evicted item (for listing/filtering).
@@ -144,6 +187,26 @@ impl RetentionLayer {
         let mut result = Vec::new();
         self.warm_map.retain_sync(|key, entry| {
             result.push((key.clone(), entry.clone()));
+            true
+        });
+        result
+    }
+
+    /// Find warm entry keys whose pinned `field` equals `value`.
+    /// Used by uniqueness validation to detect duplicates among evicted items.
+    /// Only works for pinned fields; non-pinned fields aren't stored in warm entries.
+    pub fn warm_keys_with_field_value(&self, field: &str, value: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        self.warm_map.retain_sync(|key, entry| {
+            if let Some(field_value) = entry.pinned_data.get(field) {
+                let matches = match field_value {
+                    serde_json::Value::String(s) => s == value,
+                    other => other.to_string().as_str() == value,
+                };
+                if matches {
+                    result.push(key.clone());
+                }
+            }
             true
         });
         result
@@ -269,6 +332,30 @@ mod tests {
         let layer = RetentionLayer::new(make_config(0), vec!["from".into()]);
         let result = layer.track_insert("k1", 1);
         assert_eq!(result.evict_key, Some("k1".to_string()));
+    }
+
+    #[test]
+    fn warm_keys_with_field_value_finds_match() {
+        let layer = RetentionLayer::new(make_config(1), vec!["from".into(), "subject".into()]);
+        let e1 = TestEmail { from: "a@x".into(), subject: "Hi".into(), body: "b1".into() };
+        let e2 = TestEmail { from: "b@x".into(), subject: "Hi".into(), body: "b2".into() };
+        let e3 = TestEmail { from: "a@x".into(), subject: "Bye".into(), body: "b3".into() };
+
+        layer.evict_to_warm("k1", &e1, 1, 100);
+        layer.evict_to_warm("k2", &e2, 2, 200);
+        layer.evict_to_warm("k3", &e3, 3, 300);
+
+        let matches = layer.warm_keys_with_field_value("from", "a@x");
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&"k1".to_string()));
+        assert!(matches.contains(&"k3".to_string()));
+
+        let no_match = layer.warm_keys_with_field_value("from", "nobody@x");
+        assert!(no_match.is_empty());
+
+        // Non-pinned field "body" isn't stored in warm — should return empty.
+        let body_search = layer.warm_keys_with_field_value("body", "b1");
+        assert!(body_search.is_empty());
     }
 
     #[test]

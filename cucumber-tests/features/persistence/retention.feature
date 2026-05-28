@@ -195,28 +195,9 @@ Feature: Retention and Pinned Fields
     Then 200 items should be fully in memory
     And 100 items should be evicted
 
-  @core @retention @config
-  Scenario: Retention configurable by duration
-    Given a model with retention configured as "memory = 30d"
-    And items have been created over a span of 60 days
-    When the retention policy is evaluated
-    Then items older than 30 days should be evicted
-    And items within 30 days should be fully in memory
-
-  @core @retention @config
-  Scenario: Retention configurable by memory budget
-    Given a model with retention configured as "max_mb = 50"
-    When I create items until projected memory exceeds 50MB
-    Then items should be evicted oldest-first
-    And projected memory should stay under 50MB
-
-  @core @retention @config
-  Scenario: Runtime override via environment variable
-    Given a model with retention limit of 100
-    And the environment variable "LT_EMAIL_MEMORY_RETENTION" is set to "50"
-    When the engine is initialized
-    Then the effective retention limit should be 50
-    And environment config should take precedence over annotation
+  # Additional retention modes (duration-based, memory-budget, env override)
+  # are tracked in retention_deferred.feature and issue #97 — not yet
+  # implemented by the parser/runtime.
 
   # ==================== EDGE CASES ====================
 
