@@ -186,7 +186,7 @@ where
     /// Looks up `LT_<MODEL_UPPER>_MEMORY_RETENTION` where `MODEL_UPPER` is the
     /// last segment of the type name uppercased (e.g. `Email` → `LT_EMAIL_MEMORY_RETENTION`).
     /// Returns `None` if the var is unset, empty, or non-numeric.
-    fn env_memory_retention_override() -> Option<usize> {
+    fn model_env_prefix() -> Option<String> {
         let model = std::any::type_name::<T>().rsplit("::").next()?;
         // Sanitize: drop generics, lifetimes, and any other characters that
         // would produce an invalid shell env-var name. Keeps ASCII letters,
@@ -195,10 +195,52 @@ where
         let sanitized: String =
             model.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
         if sanitized.is_empty() {
+            None
+        } else {
+            Some(format!("LT_{}", sanitized.to_uppercase()))
+        }
+    }
+
+    fn env_memory_retention_override() -> Option<usize> {
+        let prefix = Self::model_env_prefix()?;
+        std::env::var(format!("{}_MEMORY_RETENTION", prefix))
+            .ok()?
+            .parse::<usize>()
+            .ok()
+    }
+
+    /// Parse a duration env value: bare integer = seconds, or string with
+    /// suffix s/m/h/d/w/y (e.g. `30d`, `12h`, `45m`).
+    fn parse_duration_env(s: &str) -> Option<u64> {
+        let s = s.trim();
+        if s.is_empty() {
             return None;
         }
-        let key = format!("LT_{}_MEMORY_RETENTION", sanitized.to_uppercase());
-        std::env::var(&key).ok()?.parse::<usize>().ok()
+        let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+        let (num, suffix) = s.split_at(split);
+        let n: u64 = num.parse().ok()?;
+        let mult: u64 = match suffix.trim() {
+            "" | "s" => 1,
+            "m" => 60,
+            "h" => 3600,
+            "d" => 86400,
+            "w" => 7 * 86400,
+            "y" => 365 * 86400,
+            _ => return None,
+        };
+        n.checked_mul(mult)
+    }
+
+    fn env_memory_duration_override() -> Option<u64> {
+        let prefix = Self::model_env_prefix()?;
+        let raw = std::env::var(format!("{}_MEMORY_DURATION", prefix)).ok()?;
+        Self::parse_duration_env(&raw)
+    }
+
+    fn env_memory_max_mb_override() -> Option<usize> {
+        let prefix = Self::model_env_prefix()?;
+        let mb: usize = std::env::var(format!("{}_MEMORY_MAX_MB", prefix)).ok()?.parse().ok()?;
+        mb.checked_mul(1024 * 1024)
     }
     pub fn new(event_store_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Initialize EventStore with batching configuration
@@ -232,13 +274,20 @@ where
             }
         });
 
-        // Effective retention config = annotation, overridable by env var
-        // `LT_<MODEL>_MEMORY_RETENTION=<count>`. The override wins even if the
-        // model has no `#[retention]` annotation (None → Some(N)), letting
-        // operators enable retention at deploy time without recompiling.
+        // Effective retention config = annotation, overridable by env vars.
+        // Each dimension (count, duration, budget) is independently
+        // overridable; env wins even when the annotation didn't set that
+        // dimension. Lets operators tune retention at deploy time without
+        // recompiling.
         let mut retention_config = T::retention_config();
         if let Some(override_count) = Self::env_memory_retention_override() {
             retention_config.memory_count = Some(override_count);
+        }
+        if let Some(override_dur) = Self::env_memory_duration_override() {
+            retention_config.memory_duration_secs = Some(override_dur);
+        }
+        if let Some(override_bytes) = Self::env_memory_max_mb_override() {
+            retention_config.memory_budget_bytes = Some(override_bytes);
         }
         let retention = if retention_config.memory_count.is_some() {
             let pinned = T::pinned_fields().iter().map(|s| s.to_string()).collect();
@@ -568,19 +617,31 @@ where
 
     /// Insert an item into storage, applying retention eviction if configured.
     /// Must be called with the storage lock already held.
+    ///
+    /// May evict multiple items in a single call when budget mode needs to
+    /// drop several small old items to fit a new larger one.
     fn insert_with_retention(
         storage: &mut std::collections::HashMap<String, T>,
         retention: Option<&RetentionLayer>,
         key: String,
         item: T,
     ) {
+        // Compute size + timestamp BEFORE storing so we can hand both to
+        // `track_insert`. Size = serialized JSON byte count (cheap and
+        // works for any Serialize type).
+        let size_bytes = serde_json::to_vec(&item).map(|v| v.len()).unwrap_or(0);
+        let last_updated = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
         storage.insert(key.clone(), item);
 
         if let Some(retention) = retention {
-            let eviction = retention.track_insert(&key, storage.len());
-            if let Some(evict_key) = eviction.evict_key {
+            let to_evict = retention.track_insert(&key, last_updated, size_bytes);
+            for evict_key in to_evict {
                 if let Some(evicted_item) = storage.remove(&evict_key) {
-                    retention.evict_to_warm(&evict_key, &evicted_item, 0, 0);
+                    retention.evict_to_warm(&evict_key, &evicted_item, 0, last_updated);
                 }
             }
         }

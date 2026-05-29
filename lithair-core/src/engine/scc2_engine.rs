@@ -100,17 +100,34 @@ where
         self.retention.as_ref()
     }
 
-    /// After a write to the hot map, check if we need to evict.
+    /// After a write to the hot map, check if we need to evict. May evict
+    /// multiple keys in a single call (budget mode can drop several small
+    /// old items to make room for a new large one).
     fn maybe_evict(&self, inserted_key: &str) {
         let retention = match &self.retention {
             Some(r) if r.is_active() => r,
             _ => return,
         };
 
-        let hot_count = self.state_map.len();
-        let eviction = retention.track_insert(inserted_key, hot_count);
+        // Compute size + timestamp of the just-inserted item. Size = serialized
+        // JSON byte count (cheap and works for any Serialize type, even if
+        // not perfectly accurate vs RAM cost).
+        let (inserted_last_updated, inserted_size) = self
+            .state_map
+            .try_entry(inserted_key.to_string())
+            .and_then(|e| match e {
+                scc::hash_map::Entry::Occupied(o) => {
+                    let entry = o.get();
+                    let size = serde_json::to_vec(&entry.data).map(|v| v.len()).unwrap_or(0);
+                    Some((entry.last_updated, size))
+                }
+                _ => None,
+            })
+            .unwrap_or((0, 0));
 
-        if let Some(evict_key) = eviction.evict_key {
+        let to_evict = retention.track_insert(inserted_key, inserted_last_updated, inserted_size);
+
+        for evict_key in to_evict {
             if let Some(scc::hash_map::Entry::Occupied(o)) =
                 self.state_map.try_entry(evict_key.clone())
             {

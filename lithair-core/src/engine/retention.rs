@@ -4,61 +4,76 @@ use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Mutex;
 
-/// Tracks evicted items' pinned field data and insertion order for FIFO eviction.
+/// Tracks evicted items' pinned field data, hot-storage insertion order,
+/// per-item timestamps + sizes for the count / duration / budget eviction
+/// modes (issue #97).
 ///
-/// The hot map (Scc2Engine.state_map) holds the last N fully-projected items.
-/// The warm map here holds lightweight pinned-field JSON for evicted items,
-/// enabling fast listing and filtering without loading full data from disk.
+/// The hot map (caller's `HashMap<String, T>` or `Scc2Engine.state_map`)
+/// holds fully-projected items. The warm map here holds lightweight
+/// pinned-field JSON for evicted items, enabling fast listing without
+/// loading full data from disk.
 pub struct RetentionLayer {
     config: RetentionConfig,
     pinned_field_names: Vec<String>,
     warm_map: SccHashMap<String, WarmEntry>,
-    /// FIFO queue of inserted keys + HashSet sidecar for O(1) membership checks.
-    /// Both structures are kept in sync under the same mutex. The HashSet avoids
-    /// O(N) linear scans on `track_insert`/`promote_from_warm` (issue #98).
+    /// FIFO queue of `OrderEntry { key, last_updated, size_bytes }` +
+    /// HashSet sidecar for O(1) membership checks + running `total_bytes`.
+    /// All three are kept in sync under the same mutex.
     order_state: Mutex<OrderState>,
 }
 
+struct OrderEntry {
+    key: String,
+    /// UNIX seconds — used by duration-based eviction.
+    last_updated: u64,
+    /// Serialized hot-storage cost of this item — used by budget-based eviction.
+    size_bytes: usize,
+}
+
 struct OrderState {
-    queue: VecDeque<String>,
+    queue: VecDeque<OrderEntry>,
     set: HashSet<String>,
+    total_bytes: usize,
 }
 
 impl OrderState {
     fn new() -> Self {
-        Self { queue: VecDeque::new(), set: HashSet::new() }
+        Self { queue: VecDeque::new(), set: HashSet::new(), total_bytes: 0 }
     }
 
-    fn contains(&self, key: &str) -> bool {
-        self.set.contains(key)
-    }
-
-    fn push_back(&mut self, key: String) {
-        // Avoid cloning when the key is already tracked — common case on
-        // update (same id pushed twice).
-        if !self.set.contains(&key) {
-            self.queue.push_back(key.clone());
-            self.set.insert(key);
+    /// Move (or insert) `key` to the back of the queue with the given
+    /// `last_updated` and `size_bytes`. If the key was already present,
+    /// the old entry is removed first and its size subtracted from the
+    /// running total — semantically "most recent insert wins".
+    fn touch(&mut self, key: String, last_updated: u64, size_bytes: usize) {
+        if self.set.contains(&key) {
+            if let Some(pos) = self.queue.iter().position(|e| e.key == key) {
+                let old = self.queue.remove(pos).expect("position just found");
+                self.total_bytes = self.total_bytes.saturating_sub(old.size_bytes);
+            }
+        } else {
+            self.set.insert(key.clone());
         }
+        self.total_bytes = self.total_bytes.saturating_add(size_bytes);
+        self.queue.push_back(OrderEntry { key, last_updated, size_bytes });
     }
 
-    fn pop_front(&mut self) -> Option<String> {
-        let key = self.queue.pop_front()?;
-        self.set.remove(&key);
-        Some(key)
+    fn pop_front(&mut self) -> Option<OrderEntry> {
+        let entry = self.queue.pop_front()?;
+        self.set.remove(&entry.key);
+        self.total_bytes = self.total_bytes.saturating_sub(entry.size_bytes);
+        Some(entry)
     }
 
-    fn push_front(&mut self, key: String) {
-        if !self.set.contains(&key) {
-            self.queue.push_front(key.clone());
-            self.set.insert(key);
-        }
+    fn peek_front(&self) -> Option<&OrderEntry> {
+        self.queue.front()
     }
 
     fn remove(&mut self, key: &str) {
         if self.set.remove(key) {
-            if let Some(pos) = self.queue.iter().position(|k| k == key) {
-                self.queue.remove(pos);
+            if let Some(pos) = self.queue.iter().position(|e| e.key == key) {
+                let entry = self.queue.remove(pos).expect("position just found");
+                self.total_bytes = self.total_bytes.saturating_sub(entry.size_bytes);
             }
         }
     }
@@ -66,6 +81,7 @@ impl OrderState {
     fn clear(&mut self) {
         self.queue.clear();
         self.set.clear();
+        self.total_bytes = 0;
     }
 }
 
@@ -75,11 +91,6 @@ pub struct WarmEntry {
     pub pinned_data: serde_json::Value,
     pub version: u64,
     pub last_updated: u64,
-}
-
-/// Result of an eviction check: either no eviction needed, or one item to evict.
-pub struct EvictionResult {
-    pub evict_key: Option<String>,
 }
 
 impl RetentionLayer {
@@ -98,6 +109,8 @@ impl RetentionLayer {
 
     pub fn is_active(&self) -> bool {
         self.config.memory_count.is_some()
+            || self.config.memory_duration_secs.is_some()
+            || self.config.memory_budget_bytes.is_some()
     }
 
     /// Names of fields marked `#[pinned]` on the model. Used by uniqueness
@@ -106,37 +119,51 @@ impl RetentionLayer {
         &self.pinned_field_names
     }
 
-    /// Record that a key was inserted/updated in the hot map.
-    /// Returns the key to evict if the hot map now exceeds capacity.
-    pub fn track_insert(&self, key: &str, hot_count: usize) -> EvictionResult {
+    /// Record that a key was inserted/updated in the hot map. Returns the
+    /// list of keys to evict — possibly empty, possibly several (when
+    /// budget mode needs to drop many small old items at once).
+    ///
+    /// `last_updated` and `size_bytes` describe the JUST-inserted item.
+    /// Duration eviction uses `last_updated` as the "now" reference clock
+    /// (since the caller computes it from `SystemTime::now()` in production,
+    /// and tests can pass a controlled value).
+    pub fn track_insert(&self, key: &str, last_updated: u64, size_bytes: usize) -> Vec<String> {
         let mut order = self.order_state.lock().expect("order_state lock poisoned");
 
-        if !order.contains(key) {
-            order.push_back(key.to_string());
-        }
+        order.touch(key.to_string(), last_updated, size_bytes);
 
-        let limit = match self.config.memory_count {
-            Some(n) => n,
-            None => return EvictionResult { evict_key: None },
-        };
+        let mut to_evict = Vec::new();
 
-        if hot_count > limit {
-            // limit == 0: nothing should stay in hot; evict the just-inserted key.
-            if limit == 0 {
-                order.remove(key);
-                return EvictionResult { evict_key: Some(key.to_string()) };
+        // Evict in a loop: budget mode may require dropping several small
+        // old items before the budget is back under the cap.
+        while self.needs_eviction(&order, last_updated) {
+            match order.pop_front() {
+                Some(entry) => to_evict.push(entry.key),
+                None => break,
             }
-            if let Some(oldest) = order.pop_front() {
-                if oldest == key {
-                    let next = order.pop_front();
-                    order.push_front(oldest);
-                    return EvictionResult { evict_key: next };
+        }
+        to_evict
+    }
+
+    fn needs_eviction(&self, order: &OrderState, now: u64) -> bool {
+        if let Some(limit) = self.config.memory_count {
+            if order.queue.len() > limit {
+                return true;
+            }
+        }
+        if let Some(budget) = self.config.memory_budget_bytes {
+            if order.total_bytes > budget {
+                return true;
+            }
+        }
+        if let Some(dur) = self.config.memory_duration_secs {
+            if let Some(oldest) = order.peek_front() {
+                if now.saturating_sub(oldest.last_updated) > dur {
+                    return true;
                 }
-                return EvictionResult { evict_key: Some(oldest) };
             }
         }
-
-        EvictionResult { evict_key: None }
+        false
     }
 
     /// Clear all warm entries and reset the eviction queue.
@@ -161,13 +188,12 @@ impl RetentionLayer {
     }
 
     /// Promote an item back from warm to hot (e.g., on update of evicted item).
+    /// The caller is expected to immediately follow with `track_insert` so
+    /// the order_state stays consistent — this method only clears the warm
+    /// entry, it does not re-add to the order queue.
     pub fn promote_from_warm(&self, key: &str) {
         if let Some(scc::hash_map::Entry::Occupied(o)) = self.warm_map.try_entry(key.to_string()) {
             let _ = o.remove();
-        }
-        let mut order = self.order_state.lock().expect("order_state lock poisoned");
-        if !order.contains(key) {
-            order.push_back(key.to_string());
         }
     }
 
@@ -267,23 +293,43 @@ mod tests {
     }
 
     fn make_config(limit: usize) -> RetentionConfig {
-        RetentionConfig { memory_count: Some(limit) }
+        RetentionConfig {
+            memory_count: Some(limit),
+            memory_duration_secs: None,
+            memory_budget_bytes: None,
+        }
+    }
+
+    fn make_duration_config(duration_secs: u64) -> RetentionConfig {
+        RetentionConfig {
+            memory_count: None,
+            memory_duration_secs: Some(duration_secs),
+            memory_budget_bytes: None,
+        }
+    }
+
+    fn make_budget_config(budget_bytes: usize) -> RetentionConfig {
+        RetentionConfig {
+            memory_count: None,
+            memory_duration_secs: None,
+            memory_budget_bytes: Some(budget_bytes),
+        }
     }
 
     #[test]
     fn no_eviction_below_limit() {
         let layer = RetentionLayer::new(make_config(5), vec!["from".into()]);
-        let result = layer.track_insert("a", 3);
-        assert!(result.evict_key.is_none());
+        let result = layer.track_insert("a", 0, 10);
+        assert!(result.is_empty());
     }
 
     #[test]
     fn eviction_when_over_limit() {
         let layer = RetentionLayer::new(make_config(2), vec!["from".into()]);
-        layer.track_insert("a", 1);
-        layer.track_insert("b", 2);
-        let result = layer.track_insert("c", 3);
-        assert_eq!(result.evict_key, Some("a".to_string()));
+        layer.track_insert("a", 1, 10);
+        layer.track_insert("b", 2, 10);
+        let result = layer.track_insert("c", 3, 10);
+        assert_eq!(result, vec!["a".to_string()]);
     }
 
     #[test]
@@ -335,15 +381,59 @@ mod tests {
     fn no_retention_means_inactive() {
         let layer = RetentionLayer::new(RetentionConfig::default(), vec![]);
         assert!(!layer.is_active());
-        let result = layer.track_insert("anything", 999999);
-        assert!(result.evict_key.is_none());
+        let result = layer.track_insert("anything", 0, 10);
+        assert!(result.is_empty());
     }
 
     #[test]
     fn limit_zero_evicts_inserted_key() {
         let layer = RetentionLayer::new(make_config(0), vec!["from".into()]);
-        let result = layer.track_insert("k1", 1);
-        assert_eq!(result.evict_key, Some("k1".to_string()));
+        let result = layer.track_insert("k1", 1, 10);
+        assert_eq!(result, vec!["k1".to_string()]);
+    }
+
+    #[test]
+    fn duration_evicts_when_older_than_cutoff() {
+        // 30s retention; first insert at t=100, second at t=200 — first should evict.
+        let layer = RetentionLayer::new(make_duration_config(30), vec!["from".into()]);
+        let result = layer.track_insert("old", 100, 10);
+        assert!(result.is_empty(), "no eviction on initial insert");
+
+        let result = layer.track_insert("new", 200, 10);
+        assert_eq!(result, vec!["old".to_string()], "old item past duration cutoff");
+    }
+
+    #[test]
+    fn duration_keeps_recent_items() {
+        // 30s retention; both inserts within window — no eviction.
+        let layer = RetentionLayer::new(make_duration_config(30), vec!["from".into()]);
+        layer.track_insert("a", 100, 10);
+        let result = layer.track_insert("b", 110, 10);
+        assert!(result.is_empty(), "both inserts within duration window");
+    }
+
+    #[test]
+    fn budget_evicts_oldest_until_under_cap() {
+        // 100B budget; each insert is 40B. Third insert triggers eviction of first.
+        let layer = RetentionLayer::new(make_budget_config(100), vec!["from".into()]);
+        assert!(layer.track_insert("a", 1, 40).is_empty());
+        assert!(layer.track_insert("b", 2, 40).is_empty()); // total 80, ok
+        let result = layer.track_insert("c", 3, 40); // total would be 120 > 100
+        assert_eq!(result, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn budget_evicts_multiple_when_oversized_item_lands() {
+        // 100B budget; small items 10B each, then one 95B item.
+        // Total before big = 30B. After insert: 30 + 95 = 125 > 100.
+        // Evict a → 115, evict b → 105, evict c → 95 ≤ 100 → stop.
+        // Result: 3 small items evicted in one call.
+        let layer = RetentionLayer::new(make_budget_config(100), vec!["from".into()]);
+        layer.track_insert("a", 1, 10);
+        layer.track_insert("b", 2, 10);
+        layer.track_insert("c", 3, 10);
+        let result = layer.track_insert("big", 4, 95);
+        assert_eq!(result, vec!["a", "b", "c"], "multiple keys evicted in one call");
     }
 
     #[test]
@@ -376,7 +466,7 @@ mod tests {
         let email = TestEmail { from: "x".into(), subject: "y".into(), body: "z".into() };
         layer.evict_to_warm("k1", &email, 1, 100);
         layer.evict_to_warm("k2", &email, 2, 200);
-        layer.track_insert("k3", 1);
+        layer.track_insert("k3", 1, 10);
         assert!(layer.is_evicted("k1"));
         assert!(layer.is_evicted("k2"));
 

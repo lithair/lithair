@@ -120,11 +120,24 @@ pub trait LifecycleAware {
     }
 }
 
-/// Model-level retention configuration
+/// Model-level retention configuration.
+///
+/// Three independent dimensions are supported. Any subset may be set; the
+/// engine evicts the oldest item as soon as ANY of the configured limits is
+/// exceeded.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RetentionConfig {
-    /// Maximum number of items to keep fully in memory (None = unlimited, current behavior)
+    /// `#[retention(memory = N)]` — keep at most N items fully in memory.
     pub memory_count: Option<usize>,
+    /// `#[retention(memory = "30d")]` — evict items whose `last_updated`
+    /// (UNIX seconds) is older than `now - memory_duration_secs`.
+    #[serde(default)]
+    pub memory_duration_secs: Option<u64>,
+    /// `#[retention(max_mb = 512)]` — evict oldest items when total
+    /// serialized hot-storage size exceeds this many BYTES (NOT megabytes;
+    /// the macro converts MB → bytes at codegen time).
+    #[serde(default)]
+    pub memory_budget_bytes: Option<usize>,
 }
 
 /// Trait for models with retention policies — controls memory/disk tiering
@@ -135,9 +148,12 @@ pub trait RetentionAware {
     /// Get the list of field names that are pinned (stay in memory after eviction)
     fn pinned_fields() -> Vec<&'static str>;
 
-    /// Whether this model has a retention limit (false = everything in memory)
+    /// Whether this model has ANY retention limit configured.
     fn has_retention_limit() -> bool {
-        Self::retention_config().memory_count.is_some()
+        let cfg = Self::retention_config();
+        cfg.memory_count.is_some()
+            || cfg.memory_duration_secs.is_some()
+            || cfg.memory_budget_bytes.is_some()
     }
 }
 

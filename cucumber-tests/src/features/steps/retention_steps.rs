@@ -32,6 +32,16 @@ fn handler_slot(
 #[given("the engine uses a temporary data directory")]
 async fn given_temp_data_dir(_world: &mut LithairWorld) {}
 
+/// Env-override scenario: same setup as `given_retention_limit` but the
+/// phrasing in the feature file makes it clear the limit comes from the
+/// env var, not from a Gherkin parameter. Used to test that the env
+/// override (added in PR #100, extended in this PR) actually wins over
+/// the model's static `#[retention(memory = 999999)]` annotation.
+#[given(expr = "a fresh handler with env retention limit {int}")]
+async fn given_env_limit(world: &mut LithairWorld, limit: usize) {
+    given_retention_limit(world, limit).await;
+}
+
 #[given(expr = "a model with retention limit of {int}")]
 async fn given_retention_limit(world: &mut LithairWorld, limit: usize) {
     // Set env override BEFORE creating the handler — new() reads it once.
