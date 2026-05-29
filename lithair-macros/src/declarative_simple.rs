@@ -233,13 +233,54 @@ fn parse_server_attributes(input: &DeriveInput) -> ServerAttributes {
     server_attrs
 }
 
-/// Model-level retention configuration from #[retention(memory = N)]
+/// Model-level retention configuration from `#[retention(...)]` annotations.
+///
+/// Three independent dimensions are supported; any subset may be set. The
+/// engine evicts the oldest item as soon as ANY of the configured limits is
+/// exceeded.
 #[derive(Debug, Default, Clone)]
 struct ModelRetentionConfig {
+    /// `#[retention(memory = N)]` — keep at most N items fully in memory.
     memory_count: Option<usize>,
+    /// `#[retention(memory = "30d")]` — evict items whose `last_updated`
+    /// timestamp is older than this many seconds. Suffixes: s, m, h, d, w, y.
+    memory_duration_secs: Option<u64>,
+    /// `#[retention(max_mb = 512)]` — evict oldest items when total serialized
+    /// hot-storage size exceeds this many MEGAbytes. Converted to bytes at codegen.
+    memory_budget_bytes: Option<usize>,
 }
 
-/// Parse struct-level #[retention(memory = N)] attribute
+/// Parse a duration literal like `"30d"`, `"12h"`, `"1y"`, `"45m"`, `"600s"`,
+/// `"2w"`. Returns total seconds. Bare digits are treated as seconds.
+fn parse_duration_literal(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // Find the split point between digits and suffix.
+    let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+    let (num_part, suffix) = s.split_at(split);
+    let n: u64 = num_part.parse().ok()?;
+    let mult: u64 = match suffix.trim() {
+        "" | "s" => 1,
+        "m" => 60,
+        "h" => 3600,
+        "d" => 86400,
+        "w" => 7 * 86400,
+        "y" => 365 * 86400,
+        _ => return None,
+    };
+    n.checked_mul(mult)
+}
+
+/// Parse struct-level `#[retention(...)]` attribute.
+///
+/// Accepts:
+/// - `memory = N` (integer literal) — count mode
+/// - `memory = "30d"` (string literal) — duration mode (s/m/h/d/w/y suffixes)
+/// - `max_mb = N` (integer literal) — memory budget in megabytes
+///
+/// Multiple keys may be combined: `#[retention(memory = 1000, max_mb = 512)]`.
 fn parse_model_retention(input: &DeriveInput) -> ModelRetentionConfig {
     let mut config = ModelRetentionConfig::default();
     for attr in &input.attrs {
@@ -248,11 +289,24 @@ fn parse_model_retention(input: &DeriveInput) -> ModelRetentionConfig {
                 let nested_str = meta_list.tokens.to_string();
                 for token in nested_str.split(',') {
                     let token = token.trim();
-                    if token.starts_with("memory") {
-                        if let Some(eq_pos) = token.find('=') {
-                            let val = token[eq_pos + 1..].trim();
-                            if let Ok(n) = val.parse::<usize>() {
+                    if let Some(rest) = token.strip_prefix("memory") {
+                        if let Some(eq_pos) = rest.find('=') {
+                            let val = rest[eq_pos + 1..].trim();
+                            // String literal → duration mode.
+                            if let Some(unquoted) = extract_string_value(val) {
+                                if let Some(secs) = parse_duration_literal(&unquoted) {
+                                    config.memory_duration_secs = Some(secs);
+                                }
+                            } else if let Ok(n) = val.parse::<usize>() {
+                                // Bare integer → count mode.
                                 config.memory_count = Some(n);
+                            }
+                        }
+                    } else if let Some(rest) = token.strip_prefix("max_mb") {
+                        if let Some(eq_pos) = rest.find('=') {
+                            let val = rest[eq_pos + 1..].trim();
+                            if let Ok(mb) = val.parse::<usize>() {
+                                config.memory_budget_bytes = mb.checked_mul(1024 * 1024);
                             }
                         }
                     }
@@ -1192,11 +1246,21 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         Some(n) => quote! { Some(#n) },
         None => quote! { None },
     };
+    let retention_memory_duration = match retention_config.memory_duration_secs {
+        Some(n) => quote! { Some(#n) },
+        None => quote! { None },
+    };
+    let retention_memory_budget = match retention_config.memory_budget_bytes {
+        Some(n) => quote! { Some(#n) },
+        None => quote! { None },
+    };
     let retention_impl = quote! {
         impl lithair_core::lifecycle::RetentionAware for #name {
             fn retention_config() -> lithair_core::lifecycle::RetentionConfig {
                 lithair_core::lifecycle::RetentionConfig {
                     memory_count: #retention_memory_count,
+                    memory_duration_secs: #retention_memory_duration,
+                    memory_budget_bytes: #retention_memory_budget,
                 }
             }
 

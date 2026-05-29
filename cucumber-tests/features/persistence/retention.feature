@@ -195,9 +195,14 @@ Feature: Retention and Pinned Fields
     Then 200 items should be fully in memory
     And 100 items should be evicted
 
-  # Additional retention modes (duration-based, memory-budget, env override)
-  # are tracked in retention_deferred.feature and issue #97 — not yet
-  # implemented by the parser/runtime.
+  @core @retention @config @env
+  Scenario: Environment variable overrides annotation retention
+    # The default RetentionTestEmail annotation declares memory = 999999.
+    # Env var must take precedence and cap memory at 3.
+    Given a fresh handler with env retention limit 3
+    When I create 5 items sequentially
+    Then only the 3 most recent items should be fully in memory
+    And the 2 oldest items should be evicted from full memory
 
   # ==================== EDGE CASES ====================
 

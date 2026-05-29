@@ -100,17 +100,47 @@ where
         self.retention.as_ref()
     }
 
-    /// After a write to the hot map, check if we need to evict.
+    /// After a write to the hot map, check if we need to evict. May evict
+    /// multiple keys in a single call (budget mode can drop several small
+    /// old items to make room for a new large one).
     fn maybe_evict(&self, inserted_key: &str) {
         let retention = match &self.retention {
             Some(r) if r.is_active() => r,
             _ => return,
         };
 
-        let hot_count = self.state_map.len();
-        let eviction = retention.track_insert(inserted_key, hot_count);
+        // Compute size + timestamp of the just-inserted item. Size = serialized
+        // JSON byte count via a zero-alloc counting writer (no temporary Vec).
+        struct ByteCounter(usize);
+        impl std::io::Write for ByteCounter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0 += buf.len();
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
 
-        if let Some(evict_key) = eviction.evict_key {
+        let (inserted_last_updated, inserted_size) = self
+            .state_map
+            .try_entry(inserted_key.to_string())
+            .and_then(|e| match e {
+                scc::hash_map::Entry::Occupied(o) => {
+                    let entry = o.get();
+                    let mut counter = ByteCounter(0);
+                    let size = serde_json::to_writer(&mut counter, &entry.data)
+                        .map(|_| counter.0)
+                        .unwrap_or(0);
+                    Some((entry.last_updated, size))
+                }
+                _ => None,
+            })
+            .unwrap_or((0, 0));
+
+        let to_evict = retention.track_insert(inserted_key, inserted_last_updated, inserted_size);
+
+        for evict_key in to_evict {
             if let Some(scc::hash_map::Entry::Occupied(o)) =
                 self.state_map.try_entry(evict_key.clone())
             {
@@ -278,12 +308,14 @@ where
     where
         F: FnOnce(&mut S) -> R,
     {
-        // If the key is in the warm map (evicted), promote it back to hot
-        if let Some(retention) = &self.retention {
-            if retention.is_evicted(key) {
-                retention.promote_from_warm(key);
-            }
-        }
+        // Note on retention/warm desync (PR #101 review, coderabbit critical):
+        // promote_from_warm only clears the warm entry; it does NOT register
+        // the key in order_state. If we called it BEFORE try_entry and
+        // try_entry then failed, the warm entry would be gone but the key
+        // would not appear in either map — silent data loss. Defer the call
+        // until AFTER a successful hot insert/update so the warm clear and
+        // the subsequent track_insert (inside maybe_evict) are atomic from
+        // the caller's perspective.
 
         match (*self.state_map).try_entry(key.to_string()) {
             Some(entry) => match entry {
@@ -304,6 +336,11 @@ where
                     }
 
                     self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                    if let Some(retention) = &self.retention {
+                        if retention.is_evicted(key) {
+                            retention.promote_from_warm(key);
+                        }
+                    }
                     self.maybe_evict(key);
                     Some(result)
                 }
@@ -325,6 +362,11 @@ where
 
                     v.insert_entry(entry);
                     self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                    if let Some(retention) = &self.retention {
+                        if retention.is_evicted(key) {
+                            retention.promote_from_warm(key);
+                        }
+                    }
                     self.maybe_evict(key);
                     Some(result)
                 }
