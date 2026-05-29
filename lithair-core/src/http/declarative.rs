@@ -181,6 +181,25 @@ where
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
     }
+
+    /// Read the model-specific retention override from environment.
+    /// Looks up `LT_<MODEL_UPPER>_MEMORY_RETENTION` where `MODEL_UPPER` is the
+    /// last segment of the type name uppercased (e.g. `Email` → `LT_EMAIL_MEMORY_RETENTION`).
+    /// Returns `None` if the var is unset, empty, or non-numeric.
+    fn env_memory_retention_override() -> Option<usize> {
+        let model = std::any::type_name::<T>().rsplit("::").next()?;
+        // Sanitize: drop generics, lifetimes, and any other characters that
+        // would produce an invalid shell env-var name. Keeps ASCII letters,
+        // digits, and underscores. `Foo<Bar>` → `FOOBAR`,
+        // `Box<dyn Trait>` → `BOXDYNTRAIT`, etc.
+        let sanitized: String =
+            model.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if sanitized.is_empty() {
+            return None;
+        }
+        let key = format!("LT_{}_MEMORY_RETENTION", sanitized.to_uppercase());
+        std::env::var(&key).ok()?.parse::<usize>().ok()
+    }
     pub fn new(event_store_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Initialize EventStore with batching configuration
         let mut event_store = EventStore::new(event_store_path)?;
@@ -213,7 +232,14 @@ where
             }
         });
 
-        let retention_config = T::retention_config();
+        // Effective retention config = annotation, overridable by env var
+        // `LT_<MODEL>_MEMORY_RETENTION=<count>`. The override wins even if the
+        // model has no `#[retention]` annotation (None → Some(N)), letting
+        // operators enable retention at deploy time without recompiling.
+        let mut retention_config = T::retention_config();
+        if let Some(override_count) = Self::env_memory_retention_override() {
+            retention_config.memory_count = Some(override_count);
+        }
         let retention = if retention_config.memory_count.is_some() {
             let pinned = T::pinned_fields().iter().map(|s| s.to_string()).collect();
             Some(RetentionLayer::new(retention_config, pinned))
@@ -567,11 +593,42 @@ where
             store.get_all_events().ok()?
         };
 
+        // Reverse scan: latest event wins (most recent state for this id).
+        // Two-pass deserialization for perf: first parse only the
+        // `aggregate_id` (borrowed, zero-alloc) and skip any mismatched
+        // event WITHOUT touching the (potentially large) `payload` field.
+        // Only when aggregate_id matches do we re-parse the full envelope
+        // and the payload as T. Legacy events without `aggregate_id`
+        // fall back to the old full-parse + primary-key check.
+        #[derive(serde::Deserialize)]
+        struct AggregateIdProbe<'a> {
+            #[serde(borrow, default)]
+            aggregate_id: Option<&'a str>,
+        }
+
         for event_json in events.iter().rev() {
-            if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
-                if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
-                    if item.get_primary_key() == key {
-                        return Some(item);
+            let probe: AggregateIdProbe<'_> = match serde_json::from_str(event_json) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+
+            match probe.aggregate_id {
+                Some(id) if id == key => {
+                    if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
+                        if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
+                            return Some(item);
+                        }
+                    }
+                }
+                Some(_) => continue, // mismatched aggregate, payload not parsed
+                None => {
+                    // Legacy fallback: aggregate_id missing, must inspect payload
+                    if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
+                        if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
+                            if item.get_primary_key() == key {
+                                return Some(item);
+                            }
+                        }
                     }
                 }
             }

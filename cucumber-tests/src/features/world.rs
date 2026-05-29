@@ -103,6 +103,22 @@ pub struct TestArticle {
     pub content: String,
 }
 
+/// Model used by retention BDD scenarios (`retention_steps.rs`, issue #97).
+/// Carries a huge static `#[retention]` limit; each scenario tightens it
+/// via the `LT_RETENTIONTESTEMAIL_MEMORY_RETENTION` env override.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, lithair_core::DeclarativeModel)]
+#[retention(memory = 999999)]
+pub struct RetentionTestEmail {
+    #[db(primary_key)]
+    #[pinned]
+    pub id: String,
+    #[pinned]
+    pub from: String,
+    #[pinned]
+    pub subject: String,
+    pub body: String,
+}
+
 impl lithair_core::model_inspect::Inspectable for TestArticle {
     fn get_field_value(&self, field_name: &str) -> Option<serde_json::Value> {
         match field_name {
@@ -380,6 +396,14 @@ pub struct LithairWorld {
     pub parallel_handles: Option<Vec<tokio::task::JoinHandle<()>>>,
     // MultiFileEventStore for multi-file tests
     pub multi_file_store: Arc<Mutex<Option<lithair_core::engine::MultiFileEventStore>>>,
+    // Retention BDD test state (issue #97). Single handler per scenario; the
+    // temp dir is kept alive in the world so its path survives across the
+    // restart step that drops + recreates the handler.
+    pub retention_handler:
+        Option<Arc<lithair_core::http::DeclarativeHttpHandler<RetentionTestEmail>>>,
+    pub retention_temp_dir: Arc<Mutex<Option<tempfile::TempDir>>>,
+    pub retention_path: Arc<Mutex<Option<String>>>,
+    pub retention_last_item: Arc<Mutex<Option<RetentionTestEmail>>>,
 }
 
 impl std::fmt::Debug for LithairWorld {
@@ -434,6 +458,10 @@ impl Default for LithairWorld {
             corruption_detected: false,
             parallel_handles: None,
             multi_file_store: Arc::new(Mutex::new(None)),
+            retention_handler: None,
+            retention_temp_dir: Arc::new(Mutex::new(None)),
+            retention_path: Arc::new(Mutex::new(None)),
+            retention_last_item: Arc::new(Mutex::new(None)),
         }
     }
 }
