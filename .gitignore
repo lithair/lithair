@@ -45,8 +45,14 @@ package-lock.json
 Thumbs.db
 
 # AI/tool caches
-.serena/memories/
-.serena/cache/
+# .serena/ is Serena MCP's runtime state — project.yml gets rewritten with
+# updated boilerplate on every connection, and memories/cache hold local-only
+# data. Ignore the contents (not the directory itself) so a shared
+# `.serena/project.shared.yml` can be tracked alongside the ignored
+# auto-generated `project.yml`.
+.serena/*
+!.serena/project.shared.yml
+.cidx/
 
 # Configuration (keep .example files)
 config.toml
