@@ -1834,8 +1834,8 @@ impl LithairServerBuilder {
     ///
     /// # Example
     /// ```ignore
-    /// use lithair_core::prelude::*;
-    /// use lithair_macros::DeclarativeModel;
+    /// use lithair_core::app::LithairServer;
+    /// use lithair_core::DeclarativeModel;
     /// use serde::{Serialize, Deserialize};
     ///
     /// #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]

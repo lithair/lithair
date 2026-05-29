@@ -13,7 +13,9 @@ lithair-core = "0.1"  # includes macros
 ```
 
 ```rust
-use lithair_core::prelude::*;
+use lithair_core::app::LithairServer;
+use lithair_core::DeclarativeModel;
+use serde::{Serialize, Deserialize};
 
 #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
 struct Product {

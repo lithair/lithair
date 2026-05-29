@@ -22,6 +22,15 @@
 
 ---
 
+# Features
+
+- [Live updates over SSE](features/sse.md)
+- [Host-header routing](features/vhost.md)
+- [Sessions and authentication](features/sessions.md)
+- [Memory/disk retention](features/retention.md)
+
+---
+
 # Tutorials
 
 - [E-commerce](guides/ecommerce-tutorial.md)

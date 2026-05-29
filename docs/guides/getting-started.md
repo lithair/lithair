@@ -45,7 +45,8 @@ anyhow = "1.0"
 Edit `src/main.rs`:
 
 ```rust
-use lithair_core::prelude::*;
+use lithair_core::app::LithairServer;
+use lithair_core::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 
 #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
@@ -110,8 +111,10 @@ You wrote **zero** lines for any of this infrastructure!
 ## Add Sessions and Authentication
 
 ```rust
-use lithair_core::prelude::*;
+use lithair_core::app::LithairServer;
+use lithair_core::DeclarativeModel;
 use lithair_core::session::{SessionManager, PersistentSessionStore};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[tokio::main]
