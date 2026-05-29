@@ -110,15 +110,28 @@ where
         };
 
         // Compute size + timestamp of the just-inserted item. Size = serialized
-        // JSON byte count (cheap and works for any Serialize type, even if
-        // not perfectly accurate vs RAM cost).
+        // JSON byte count via a zero-alloc counting writer (no temporary Vec).
+        struct ByteCounter(usize);
+        impl std::io::Write for ByteCounter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0 += buf.len();
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
         let (inserted_last_updated, inserted_size) = self
             .state_map
             .try_entry(inserted_key.to_string())
             .and_then(|e| match e {
                 scc::hash_map::Entry::Occupied(o) => {
                     let entry = o.get();
-                    let size = serde_json::to_vec(&entry.data).map(|v| v.len()).unwrap_or(0);
+                    let mut counter = ByteCounter(0);
+                    let size = serde_json::to_writer(&mut counter, &entry.data)
+                        .map(|_| counter.0)
+                        .unwrap_or(0);
                     Some((entry.last_updated, size))
                 }
                 _ => None,
@@ -295,12 +308,14 @@ where
     where
         F: FnOnce(&mut S) -> R,
     {
-        // If the key is in the warm map (evicted), promote it back to hot
-        if let Some(retention) = &self.retention {
-            if retention.is_evicted(key) {
-                retention.promote_from_warm(key);
-            }
-        }
+        // Note on retention/warm desync (PR #101 review, coderabbit critical):
+        // promote_from_warm only clears the warm entry; it does NOT register
+        // the key in order_state. If we called it BEFORE try_entry and
+        // try_entry then failed, the warm entry would be gone but the key
+        // would not appear in either map — silent data loss. Defer the call
+        // until AFTER a successful hot insert/update so the warm clear and
+        // the subsequent track_insert (inside maybe_evict) are atomic from
+        // the caller's perspective.
 
         match (*self.state_map).try_entry(key.to_string()) {
             Some(entry) => match entry {
@@ -321,6 +336,11 @@ where
                     }
 
                     self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                    if let Some(retention) = &self.retention {
+                        if retention.is_evicted(key) {
+                            retention.promote_from_warm(key);
+                        }
+                    }
                     self.maybe_evict(key);
                     Some(result)
                 }
@@ -342,6 +362,11 @@ where
 
                     v.insert_entry(entry);
                     self.stats.writes.fetch_add(1, Ordering::Relaxed);
+                    if let Some(retention) = &self.retention {
+                        if retention.is_evicted(key) {
+                            retention.promote_from_warm(key);
+                        }
+                    }
                     self.maybe_evict(key);
                     Some(result)
                 }
