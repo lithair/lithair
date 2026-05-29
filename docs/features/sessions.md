@@ -5,45 +5,41 @@ storage, dual cookie + Bearer-token authentication, and optional per-model
 gating that requires a valid session before any auto-generated `/api/{model}`
 route will respond.
 
-## Quick path: defaults
+## Wiring sessions
 
-For most apps, `.with_auth()` activates a sensible default stack (session
-store under the configured data directory, cookie-based session id, Bearer
-token support).
-
-```rust
-use lithair_core::app::LithairServer;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    LithairServer::new()
-        .with_auth()
-        .with_model::<Article>("./data/articles", "/api/articles")
-        .serve()
-        .await
-}
-```
-
-## Programmatic path: explicit control
-
-When you need to share the session store with other components (or wire it
-up before the server starts), build a `SessionManager` yourself and hand it
-to the builder via `SessionManager::from_arc(...)` (introduced in v0.7.1 to
-avoid a double-`Arc` footgun — see CHANGELOG).
+Build a session store, wrap it in a `SessionManager`, and hand it to the
+builder via `.with_sessions(...)`. Use `SessionManager::from_arc(...)`
+(introduced in v0.7.1 to avoid a double-`Arc` footgun — see CHANGELOG) when
+you already hold an `Arc` to the store, so the store can be shared with other
+components.
 
 ```rust
 use lithair_core::app::LithairServer;
 use lithair_core::session::{PersistentSessionStore, SessionManager};
+use lithair_core::DeclarativeModel;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-let store = Arc::new(PersistentSessionStore::new("./data/sessions").await?);
-let manager = SessionManager::from_arc(store);
+#[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
+struct Article {
+    #[http(expose)]
+    id: String,
+    #[http(expose)]
+    title: String,
+}
 
-LithairServer::new()
-    .with_sessions(manager)
-    .with_model::<Article>("./data/articles", "/api/articles")
-    .serve()
-    .await
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // PersistentSessionStore::new is synchronous and takes a PathBuf.
+    let store = Arc::new(PersistentSessionStore::new("./data/sessions".into())?);
+    let manager = SessionManager::from_arc(store);
+
+    LithairServer::new()
+        .with_sessions(manager)
+        .with_model::<Article>("./data/articles", "/api/articles")
+        .serve()
+        .await
+}
 ```
 
 ## Per-model gating
@@ -55,7 +51,7 @@ session on every `/api/{model}` request, call
 ```rust
 LithairServer::new()
     .with_sessions(manager)
-    .with_models_require_session(true)  // 401 without auth
+    .with_models_require_session(true)  // 401 without a valid session
     .with_model::<Article>("./data/articles", "/api/articles")
     .serve()
     .await
@@ -73,7 +69,7 @@ subsequent requests, and the server resolves it against the session store on
 each request.
 
 ```http
-POST /auth/login                                # → returns session id
+POST /auth/login                                # -> returns session id
 GET  /api/articles                              # cookie carried by browser
 GET  /api/articles  Authorization: Bearer <id>  # token carried by SPA / CLI
 ```
