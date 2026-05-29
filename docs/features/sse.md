@@ -19,8 +19,11 @@ use serde::{Serialize, Deserialize};
 
 #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
 struct Article {
+    #[http(expose)]
     id: String,
+    #[http(expose)]
     title: String,
+    #[http(expose)]
     body: String,
 }
 
