@@ -15,7 +15,8 @@ anyhow = "1.0"
 ```
 
 ```rust
-use lithair_core::prelude::*;
+use lithair_core::app::LithairServer;
+use lithair_core::DeclarativeModel;
 use serde::{Serialize, Deserialize};
 
 #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]

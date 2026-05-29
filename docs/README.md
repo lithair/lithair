@@ -94,11 +94,19 @@ All examples are in the `examples/` folder:
 | Example                   | Description                                     |
 | ------------------------- | ----------------------------------------------- |
 | `01-hello-world`          | Minimal LithairServer setup                     |
+| `02-static-site`          | Compiled frontend served from memory            |
+| `03-rest-api`             | REST API from a single model                    |
 | `04-blog`                 | Blog example with frontend, sessions, and RBAC  |
+| `05-ecommerce`            | E-commerce workflow                             |
 | `06-auth-sessions`        | Sessions and authentication flows               |
+| `07-auth-rbac-mfa`        | RBAC plus MFA patterns                          |
+| `08-schema-migration`     | Schema evolution and migration patterns         |
 | `09-replication`          | Multi-node replication and load-testing scripts |
+| `10-blog-distributed`     | Multi-node blog with consensus                  |
+| `11-frontend-integrations`| Astro / SPA integration patterns                |
 | `advanced/http-firewall`  | Firewall smoke/demo scripts                     |
 | `advanced/http-hardening` | HTTP hardening smoke/demo scripts               |
+| `advanced/datatable`      | Data tables with filtering                      |
 
 ```bash
 # Run an example

@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-29
+
+### Added
+
+- **`#[retention(memory = N)]` and `#[pinned]` annotations for memory/disk
+  tiering** (issues #96, #97, #98). Lithair is memory-first but not
+  memory-only. The new declarative annotations let a model declare how many
+  items stay fully projected in RAM and which fields survive eviction:
+
+  ```rust
+  #[derive(DeclarativeModel)]
+  #[retention(memory = 1000)]      // keep last 1000 items fully in memory
+  pub struct Email {
+      #[pinned] pub from: String,   // always in RAM, even after eviction
+      #[pinned] pub subject: String,
+      pub body: String,             // evicted with the rest; reloaded on demand
+  }
+  ```
+
+  Three retention dimensions are supported and can be combined:
+
+  - `memory = N` — count-based: cap on items fully in memory
+  - `memory = "30d"` — duration-based: evict items older than the cutoff
+    (s/m/h/d/w/y suffixes)
+  - `max_mb = 512` — budget-based: evict oldest until total serialized
+    hot-storage size ≤ budget
+
+  Evicted items keep their pinned fields in a lightweight warm map for
+  fast listing and filtering; non-pinned fields are reloaded from the event
+  store on demand via reverse-scan with `aggregate_id` short-circuit (no
+  full payload deserialization for mismatched events). The system stays
+  100% event-sourced — no external DB, no separate CRUD paradigm.
+
+- **Runtime retention overrides via environment variables**. Each
+  dimension can be tuned at deploy time without recompiling:
+
+  - `LT_<MODEL>_MEMORY_RETENTION=<count>`
+  - `LT_<MODEL>_MEMORY_DURATION=<duration>` (e.g. `30d`)
+  - `LT_<MODEL>_MEMORY_MAX_MB=<megabytes>`
+
+  Model name is the last segment of `std::any::type_name::<T>()`,
+  sanitized to alphanumeric + underscore and uppercased.
+
+- **`/metrics` endpoint** for Prometheus-compatible monitoring, exposing
+  per-model storage stats (item count, `.raftlog` size, snapshot size).
+
+- **BDD coverage for the retention system**. New
+  `cucumber-tests/features/persistence/retention.feature` with 22 core
+  scenarios + step definitions in `cucumber-tests/src/features/steps/retention_steps.rs`.
+  Three prioritized scenarios pass end-to-end via direct
+  `DeclarativeHttpHandler` invocation (eviction-on-overflow, on-demand load
+  from event store, env override wins over annotation).
+
+### Fixed
+
+- **Update of an evicted item no longer duplicates it** (PR #101 review,
+  Gemini critical). When a PUT/PATCH/replication targets an item currently
+  in the warm map, the warm entry is now cleared BEFORE the hot insert,
+  preserving the exactly-one-place invariant. Previously the item briefly
+  existed in both maps and `handle_list` emitted it twice.
+
+- **`Scc2Engine::update_entry_volatile` no longer desyncs warm/hot under
+  contention** (PR #101 review, CodeRabbit critical). `promote_from_warm`
+  was called before `try_entry`, so a failed acquisition cleared the warm
+  entry without registering anything in the hot map — silent data loss.
+  The call now happens inside the success branches, paired with
+  `maybe_evict`'s `track_insert` so the warm clear and hot registration
+  are atomic from the caller's perspective.
+
+- **`limit = 0` retention now correctly evicts the inserted item**
+  (PR #96 review, CodeRabbit major). The previous `oldest == key`
+  short-circuit kept exactly one item even at zero capacity.
+
+- **Macro now declares `retention` and `pinned` as derive helper
+  attributes** (PR #99 macro regression test). Without this, the
+  compiler silently ignored both attributes on user models — the
+  generated `RetentionAware::retention_config()` returned defaults
+  regardless of what the user wrote.
+
+### Changed
+
+- `lithair-macros` bumped to 0.12 (helper-attribute declaration fix
+  requires recompilation of every model deriving `DeclarativeModel`).
+
 ## [0.11.0] - 2026-05-24
 
 ### Fixed

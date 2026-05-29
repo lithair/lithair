@@ -8,7 +8,8 @@ enable the features you want -- REST API, authentication, permissions,
 replication, frontend serving -- and keep the result coherent.
 
 ```rust
-use lithair_core::prelude::*;
+use lithair_core::app::LithairServer;
+use lithair_core::DeclarativeModel;
 use serde::{Serialize, Deserialize};
 
 #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
@@ -55,7 +56,7 @@ and the framework generates the rest.
 
 ```toml
 [dependencies]
-lithair-core = "0.1"
+lithair-core = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 ```
@@ -102,6 +103,13 @@ node deployments don't pay for it.
 **HTTP server** -- Built on Hyper. Includes firewall with IP filtering and
 rate limiting, gzip compression, and CORS.
 
+**Live updates over SSE** -- Each registered model exposes a
+`GET /api/{model}/stream` endpoint that streams creates, updates,
+and deletes to subscribed clients as Server-Sent Events. Writes
+made through the REST API, the programmatic handler, or
+replicated from peers all broadcast on the same channel. Opt-in
+via `.with_sse(true)`.
+
 **Host-header routing** -- A single binary can serve multiple hostnames, each
 with its own frontend. Models and custom routes remain host-agnostic in this
 first iteration. Background and rationale:
@@ -129,8 +137,9 @@ LithairServer::new()
 ```
 
 **Built-in operations** -- Every Lithair server comes with `/health`, `/ready`,
-and `/info` endpoints out of the box. A `/observe/metrics` endpoint for
-Prometheus-compatible monitoring is planned.
+`/info`, and `/metrics` endpoints out of the box. The `/metrics` endpoint
+exposes Prometheus-compatible gauges, including per-model storage stats
+(item count, .raftlog size, snapshot size).
 
 **Admin interface** -- Optional data admin API (`/_admin/data/*`) lets you
 browse models, export data, inspect event history, and trigger backups. Schema
@@ -171,8 +180,9 @@ RAM(T) ≈ item_count × average_serialized_size(T)
 
 For a model with 50 000 items averaging 4 KB each, count on ~200 MB
 of RAM just for that model's collection. Mutation history in the
-`.raftlog` is *additional* disk cost — see the auto-compaction
-follow-up ([#69](https://github.com/lithair/lithair/issues/69)).
+`.raftlog` is *additional* disk cost — `.raftlog` auto-compaction
+is built in (since v0.8.0): configure with `with_auto_compaction(threshold, interval)`
+to bound disk growth.
 
 **What this is good for.** Datasets that comfortably fit in RAM at
 your target host's size. The single-binary, event-sourced shape lets
@@ -180,14 +190,27 @@ you skip a database and get sub-millisecond queries from the same
 process that serves HTTP. Common comfortable sizes today are tens of
 thousands to a few hundred thousand items per model.
 
-**What this is not good for, yet.** Datasets where you expect cold
-archive growth that can't realistically be held in RAM (multi-year
-audit logs, large mail archives, time-series at scale). Tiered /
-cold storage is tracked in
-[#73](https://github.com/lithair/lithair/issues/73); it is not
-implemented today. If your read path needs to query items that
-won't fit, Lithair is not the right tool yet — reach for a
-traditional database.
+**Memory/disk tiering (v0.12+).** Datasets where you expect cold
+archive growth that can't fit in RAM (multi-year audit logs, large
+mail archives) are now addressable via the `#[retention]` +
+`#[pinned]` annotations. Declare how many items stay fully in
+memory (or for how long, or under what byte budget) and which
+fields survive eviction:
+
+```rust
+#[derive(DeclarativeModel)]
+#[retention(memory = 1000)]      // or memory = "30d" or max_mb = 512
+pub struct Email {
+    #[pinned] pub from: String,   // always in RAM
+    #[pinned] pub subject: String,
+    pub body: String,             // reloaded from event store on demand
+}
+```
+
+The event store remains the source of truth — evicted items are
+reloaded by replaying their events when accessed. Listing/filtering
+on pinned fields stays instant. Use this for the cold tail; the
+hot working set should still fit in RAM comfortably.
 
 **Operational checklist** before deploying:
 
@@ -195,8 +218,8 @@ traditional database.
 - Set your host's RAM with margin (`2-3 ×` the estimated total, to
   cover replay spikes, snapshot generation, and Rust allocator
   overhead).
-- Plan `.raftlog` disk growth — see [#69](https://github.com/lithair/lithair/issues/69)
-  for auto-compaction.
+- Plan `.raftlog` disk growth — enable `with_auto_compaction(threshold, interval)`
+  if mutations are frequent.
 
 For the durability semantics of the `.raftlog` (fsync mode, crash
 safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
@@ -215,6 +238,8 @@ walkthrough including sessions, RBAC, and the builder API.
 | [`06-auth-sessions`](examples/06-auth-sessions/)       | Sessions and authentication           |
 | [`07-auth-rbac-mfa`](examples/07-auth-rbac-mfa/)       | RBAC and MFA patterns                 |
 | [`09-replication`](examples/09-replication/)           | Multi-node replication                |
+| [`10-blog-distributed`](examples/10-blog-distributed/) | Multi-node blog with consensus       |
+| [`11-frontend-integrations`](examples/11-frontend-integrations/) | Astro / SPA integration patterns     |
 | [`05-ecommerce`](examples/05-ecommerce/)               | E-commerce workflow                   |
 | [`08-schema-migration`](examples/08-schema-migration/) | Schema evolution patterns             |
 | [`advanced/datatable`](examples/advanced/datatable/)   | Data tables with filtering            |
@@ -266,9 +291,10 @@ cidx run build     # workspace release build
 cidx run ci        # full pipeline
 ```
 
-CI mirrors the same phases via `.github/workflows/cidx.yml` (pinned to cidx
-v1.7.0). It runs alongside the existing `ci.yml` and `ci-fast.yml` workflows
-during the integration cycle.
+CI mirrors the same phases via `.github/workflows/cidx.yml`, which installs
+the latest cidx release at workflow build time (`go install
+github.com/cidx-org/cidx/cmd/cidx@latest`). It runs alongside the existing
+`ci.yml` and `ci-fast.yml` workflows during the integration cycle.
 
 ## License
 

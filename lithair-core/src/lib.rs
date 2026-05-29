@@ -17,17 +17,21 @@
 //!
 //! # Quick Start
 //!
-//! Add `lithair-core` to your `Cargo.toml` (includes derive macros by default):
+//! Add `lithair-core` to your `Cargo.toml` (derive macros are re-exported, so
+//! you do not need a separate `lithair-macros` dependency):
 //!
 //! ```toml,ignore
 //! [dependencies]
-//! lithair-core = "0.1"
+//! lithair-core = "0.12"
+//! serde = { version = "1.0", features = ["derive"] }
+//! tokio = { version = "1", features = ["full"] }
 //! ```
 //!
 //! Then define your model and start the server:
 //!
 //! ```rust,ignore
-//! use lithair_core::prelude::*;
+//! use lithair_core::app::LithairServer;
+//! use lithair_core::DeclarativeModel;
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
