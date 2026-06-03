@@ -15,8 +15,9 @@ green.
   `task help` to see the full menu.
 - **CI parity tool**: [cidx](https://github.com/cidx-org/cidx) runs the same
   containerized phases (rustfmt, clippy, cargo-audit, gitleaks, trivy,
-  workspace test/build) that GitHub Actions runs. See `.github/workflows/cidx.yml`
-  for the pinned version.
+  workspace test/build) that GitHub Actions runs. See
+  [`.github/workflows/cidx.yml`](./.github/workflows/cidx.yml) for the CI
+  configuration.
 
 ## Pre-commit validation (mandatory)
 
@@ -110,8 +111,8 @@ Unit and integration tests live next to the code they cover and run under
 
 ### BDD suite
 
-End-to-end behavioral tests live in `cucumber-tests/features/`. Each
-sub-directory is a suite that maps to a `task bdd:*` target:
+End-to-end behavioral tests live in [`cucumber-tests/features/`](./cucumber-tests/features/).
+Each sub-directory is a suite that maps to a `task bdd:*` target:
 
 ```bash
 task bdd:setup        # install Cucumber dependencies (first run)
@@ -124,8 +125,8 @@ task bdd:distribution # cluster replication
 ```
 
 New runtime behavior should come with a `.feature` scenario in the relevant
-suite. See `cucumber-tests/features/persistence/retention.feature` for the
-current style.
+suite. See [`cucumber-tests/features/persistence/retention.feature`](./cucumber-tests/features/persistence/retention.feature)
+for the current style.
 
 ## Questions and bug reports
 
@@ -143,11 +144,10 @@ without a response, a polite ping on the PR is welcome.
 
 ## Code style and conventions
 
-`CLAUDE.md` at the repo root documents the project's Rust conventions
-(`if let` over `unwrap`, `Default` where reasonable, HTTP type aliases,
-logging via the `log` crate, `LT_` env-var prefix, etc.). The same
-conventions apply to human contributors — clippy with `-D warnings` enforces
-most of them automatically.
+[`CLAUDE.md`](./CLAUDE.md) at the repo root documents the project's Rust
+conventions (`if let` over `unwrap`, `Default` where reasonable, HTTP type
+aliases, etc.). The same conventions apply to human contributors — clippy
+with `-D warnings` enforces most of them automatically.
 
 ## Code of conduct
 
