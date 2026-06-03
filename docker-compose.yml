@@ -12,7 +12,7 @@
 #
 # Expected flow:
 #   docker compose up -d
-#   curl -fsS http://localhost:8080/health   # → {"status":"healthy", ...}
+#   curl -fsS http://localhost:8080/health   # → {"status":"healthy"}
 #   curl -fsS http://localhost:8080/info     # → server build/runtime info
 #   docker compose logs -f lithair           # tail server logs
 #   docker compose down                       # stop (lithair-data is preserved)

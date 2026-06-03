@@ -50,10 +50,14 @@ Thumbs.db
 .env
 config.toml
 
-# Deployment artifacts that should not be copied into the image
+# Deployment artifacts and docs that should not be copied into the image.
+# Excluding markdown keeps doc edits from invalidating the Docker build cache
+# (no crate pulls .md in at compile time via include_str!, so this is safe).
 docker-compose.yml
 Dockerfile
 .dockerignore
+docs/
+*.md
 
 # NOTE: Cargo.lock is intentionally NOT ignored. It is gitignored at the
 # repo level, but the working tree copy is the source of truth for
