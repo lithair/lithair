@@ -2,28 +2,23 @@
 #
 # What this does:
 #   - Builds the local Dockerfile (defaults to the `hello-world` example).
-#   - Persists the event store at ./data on the host so events survive
-#     container restarts.
-#   - Runs the container in `network_mode: host` so the example, which binds
-#     to 127.0.0.1 inside the container, is reachable on the host loopback.
-#     See the "Host bind caveat" section in
-#     docs/operations/deployment-docker.md for the full rationale and the
-#     alternative bridge-network configuration shown below.
+#   - Persists the event store in the named volume `lithair-data` so events
+#     survive container restarts.
+#   - Uses standard bridge networking with a `8080:8080` port mapping. The
+#     container binds 0.0.0.0 (via HOST=0.0.0.0 below) so the published port
+#     is reachable from the host. Binding all interfaces is safe here: it is
+#     scoped to the container's isolated network namespace, not the host.
+#     This works identically on Linux, macOS, and Windows/Docker Desktop.
 #
 # Expected flow:
 #   docker compose up -d
 #   curl -fsS http://localhost:8080/health   # → {"status":"healthy", ...}
 #   curl -fsS http://localhost:8080/info     # → server build/runtime info
 #   docker compose logs -f lithair           # tail server logs
-#   docker compose down                       # stop (data/ is preserved)
+#   docker compose down                       # stop (lithair-data is preserved)
 #
 # Override the example baked into the image:
 #   LITHAIR_EXAMPLE=blog docker compose build
-#
-# Host volume permissions:
-#   The container runs as UID 1000. The ./data directory on the host must be
-#   writable by that UID. On a default Linux desktop the first user account
-#   is already UID 1000; otherwise run `sudo chown -R 1000:1000 ./data`.
 
 services:
   lithair:
@@ -38,21 +33,26 @@ services:
     container_name: lithair
     restart: unless-stopped
 
-    # The bundled examples bind to 127.0.0.1. Host networking makes that
-    # address the host's loopback, so `curl localhost:8080` from the host
-    # works without modification. If you build an example that binds to
-    # 0.0.0.0 (e.g. examples/07-auth-rbac-mfa with `--host 0.0.0.0`), drop
-    # `network_mode: host` and use the `ports:` block below instead.
-    network_mode: host
-    # ports:
-    #   - "8080:8080"
+    # Bridge networking: publish the container's port to the host.
+    ports:
+      - "8080:8080"
 
     volumes:
-      - ./data:/app/data
+      # Named volume, initialized with the image mountpoint's ownership
+      # (lithair:lithair, UID 1000), so it avoids the root-owned bind-mount
+      # permission gotcha. Inspect its on-disk path with:
+      #   docker volume inspect lithair-data
+      - lithair-data:/app/data
+      # Bind-mount alternative for host-visible data. Caveat: the host
+      # directory must be writable by UID 1000 (the container user), e.g.
+      #   mkdir -p ./data && sudo chown -R 1000:1000 ./data
+      # - ./data:/app/data
 
     environment:
-      # Default port the example reads on startup. Change if you need to run
-      # multiple Lithair containers on the same host with host networking.
+      # The hello-world example reads HOST/PORT from the env. Inside the
+      # container's isolated namespace, binding 0.0.0.0 is safe and lets the
+      # bridge port mapping reach the listener.
+      HOST: "0.0.0.0"
       PORT: "8080"
       # Optional: bias logs toward structured output for container log
       # aggregators. See docs/reference/env-vars.md for the full list.
@@ -80,14 +80,18 @@ services:
   #   image: prom/prometheus:latest
   #   container_name: lithair-prometheus
   #   restart: unless-stopped
-  #   network_mode: host
+  #   ports:
+  #     - "9090:9090"
   #   # prometheus.yml example (write this file next to compose):
   #   #   global:
   #   #     scrape_interval: 15s
   #   #   scrape_configs:
   #   #     - job_name: lithair
   #   #       static_configs:
-  #   #         - targets: ['127.0.0.1:8080']
+  #   #         - targets: ['lithair:8080']
   #   #       metrics_path: /metrics
   #   volumes:
   #     - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+volumes:
+  lithair-data:

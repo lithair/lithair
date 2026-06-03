@@ -5,8 +5,9 @@ Production-grade Docker artifacts ship at the repo root:
 - [`Dockerfile`](../../Dockerfile) — multi-stage build, `rust:1.95.0-slim-bookworm`
   builder, `debian:bookworm-slim` runtime, non-root `lithair` user (UID 1000),
   healthcheck on `/health`.
-- [`docker-compose.yml`](../../docker-compose.yml) — single-node example with
-  a `./data` volume for event-store persistence.
+- [`docker-compose.yml`](../../docker-compose.yml) — single-node example using
+  bridge networking and a named `lithair-data` volume for event-store
+  persistence.
 - [`.dockerignore`](../../.dockerignore) — keeps build context lean while
   preserving `Cargo.lock` for reproducible builds.
 
@@ -21,16 +22,28 @@ docker compose up -d
 curl -fsS http://localhost:8080/health     # → {"status":"healthy", ...}
 curl -fsS http://localhost:8080/info       # → build/runtime info
 docker compose logs -f lithair             # tail server logs
-docker compose down                         # stop (data/ persists)
+docker compose down                         # stop (lithair-data persists)
 ```
 
-The image runs as UID 1000. Make sure `./data` on the host is writable by
-that UID before the first `up`:
+The compose file uses bridge networking with an `8080:8080` port mapping and
+sets `HOST=0.0.0.0` so the containerized server binds all interfaces and the
+published port is reachable from the host. This is cross-platform (Linux,
+macOS, Windows/Docker Desktop). The named `lithair-data` volume is created
+with the correct ownership automatically, so no host `chown` is needed.
 
-```bash
-mkdir -p ./data
-sudo chown -R 1000:1000 ./data   # only needed if your host user is not UID 1000
-```
+## Configurable binding (HOST / PORT)
+
+The `hello-world` example reads its listen address from two env vars:
+
+| Var    | Default     | Notes                                         |
+|--------|-------------|-----------------------------------------------|
+| `HOST` | `127.0.0.1` | Set `0.0.0.0` to bind all interfaces.         |
+| `PORT` | `8080`      | TCP port to listen on.                        |
+
+For local runs the defaults bind loopback only. The compose file overrides
+`HOST=0.0.0.0` (and `PORT=8080`) in its `environment:` block so the bridge
+port mapping works. Binding `0.0.0.0` is safe inside a container: it is
+scoped to the container's isolated network namespace, not the host.
 
 ## Building with a different example
 
@@ -65,8 +78,16 @@ the in-memory state. Losing this directory means losing the database.
 └── raft/                 # cluster-mode WAL + Raft log (cluster examples only)
 ```
 
-The compose file mounts `./data:/app/data`. Treat that host directory like
-you would any database storage:
+The compose file mounts the named volume `lithair-data` at `/app/data`. It is
+created with the image mountpoint's ownership (`lithair:lithair`, UID 1000),
+so it sidesteps the root-owned bind-mount permission problem. Find its
+on-disk location with:
+
+```bash
+docker volume inspect lithair-data
+```
+
+Treat that volume like you would any database storage:
 
 - **Back it up** before upgrades. See `docs/operations/backup-restore.md`
   (TODO: doc to land in a follow-up PR per issue #106).
@@ -76,27 +97,18 @@ you would any database storage:
 - **Snapshot it on a schedule** if you don't already snapshot the host
   filesystem.
 
-## Host bind caveat
+**Bind-mount alternative.** If you want the data visible on the host
+filesystem, swap the named volume for a bind mount (`./data:/app/data`, the
+commented line in `docker-compose.yml`). Caveat: the host directory must be
+writable by UID 1000, e.g. `mkdir -p ./data && sudo chown -R 1000:1000
+./data`.
 
-The bundled examples call `.with_host("127.0.0.1")` in their `main.rs`,
-which binds the listener to the container's loopback interface. With the
-default Docker bridge network and a `8080:8080` port mapping, that
-listener is unreachable from the host — the kernel can't route a host
-packet to a container's loopback.
+## Other examples
 
-The compose file works around this by using `network_mode: host`. The
-container shares the host's network namespace, so 127.0.0.1 inside the
-container *is* the host's loopback. `curl http://localhost:8080/health`
-from the host then works as expected.
-
-**Alternative**: rebuild with an example that binds to `0.0.0.0` (e.g.
-`examples/07-auth-rbac-mfa` accepts `--host 0.0.0.0` via CLI flag), drop
-`network_mode: host`, and use the commented `ports:` block in
-`docker-compose.yml`. This is the right shape for multi-host production
-deployments where host networking is undesirable.
-
-A future change to make `LT_HOST` override the builder's `with_host()` is
-tracked alongside the broader operational hardening work (issue #106).
+Only `hello-world` currently reads `HOST` from the env; the other bundled
+examples still hardcode `127.0.0.1` in their `main.rs`. The `HOST`/`PORT`
+pattern shown in `examples/01-hello-world` is the recommended approach — any
+example can adopt it the same way to work cleanly under bridge networking.
 
 ## Resource sizing
 
@@ -113,13 +125,15 @@ PR per issue #106). Until then, the rough baseline:
 
 ## Common gotchas
 
-**Permission denied writing to `/app/data`.** The container user is UID
-1000. If the host `./data` is owned by root (e.g. created by a prior
-docker run as root), `chown -R 1000:1000 ./data` fixes it.
+**Permission denied writing to `/app/data`.** Only happens with the
+bind-mount alternative: the container user is UID 1000, so a root-owned host
+`./data` needs `chown -R 1000:1000 ./data`. The default named volume avoids
+this.
 
-**`curl: (7) Failed to connect`** from the host with a bridge network.
-You're hitting the localhost-bind issue above. Either keep
-`network_mode: host`, or rebuild with a 0.0.0.0-binding example.
+**`curl: (7) Failed to connect`** from the host. Confirm the container is
+binding `0.0.0.0` — the compose file sets `HOST=0.0.0.0`. If you run the
+container directly, pass `-e HOST=0.0.0.0`; the example defaults to
+`127.0.0.1`, which a bridge port mapping cannot reach.
 
 **`cargo build` fails with `error: failed to download` in CI.** The
 Dockerfile uses `--locked`. If `Cargo.lock` was not copied into the build
