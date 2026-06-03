@@ -53,7 +53,7 @@ branches and squash-merged PRs.
 
 ### Branch naming
 
-```
+```text
 feat/<short-description>      # new features
 fix/<short-description>       # bug fixes
 chore/<short-description>     # maintenance, deps, CI
@@ -93,7 +93,7 @@ gh pr merge --squash --delete-branch
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 feat: add native TLS termination
 fix: correct session expiry calculation
 chore: bump tokio to 1.36
