@@ -1,0 +1,60 @@
+# Build artifacts — must be rebuilt inside the image
+target/
+
+# Git metadata is not needed at build time
+.git/
+.github/
+
+# AI/tool runtime state (mirrors .gitignore)
+.serena/
+.cidx/
+.playwright-mcp/
+.claude/
+
+# Runtime data and test fixtures — never bake into an image
+data/
+test_data/
+backups/
+events.raftlog
+state.raftsnap
+events.raftidx
+meta.raftmeta
+.admin-path
+
+# Logs
+logs/
+*.log
+*.pid
+
+# Test output
+test-results/
+robot-venv/
+benchmark_*.md
+benchmark_results/
+
+# Node.js
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Local env / config
+.env
+config.toml
+
+# Deployment artifacts that should not be copied into the image
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# NOTE: Cargo.lock is intentionally NOT ignored. It is gitignored at the
+# repo level, but the working tree copy is the source of truth for
+# reproducible Docker builds (`cargo build --locked`).
