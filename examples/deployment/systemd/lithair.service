@@ -1,0 +1,59 @@
+# Lithair systemd unit — run the binary directly on a Linux host (no container).
+#
+# Install steps live in docs/operations/deployment-systemd-k8s.md. In short:
+#   1. Build the binary and copy it to /usr/local/bin/lithair.
+#   2. Create the `lithair` system user/group and /var/lib/lithair (the event
+#      store directory).
+#   3. Copy this file to /etc/systemd/system/lithair.service.
+#   4. systemctl daemon-reload && systemctl enable --now lithair
+#
+# Logs go to the journal: `journalctl -u lithair -f`.
+
+[Unit]
+Description=Lithair memory-first web server
+Documentation=https://github.com/lithair/lithair
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/lithair
+
+# Dedicated non-root service account. Create it with:
+#   useradd --system --home-dir /var/lib/lithair --shell /usr/sbin/nologin lithair
+User=lithair
+Group=lithair
+
+# Event store lives here; the engine appends events and snapshots under this
+# directory and replays them on startup. This must survive restarts — back it
+# up like any database (see deployment-systemd-k8s.md).
+WorkingDirectory=/var/lib/lithair
+
+# Listen address. Bind 0.0.0.0 so the host (and a fronting reverse proxy) can
+# reach it; restrict to 127.0.0.1 if a local proxy terminates traffic.
+Environment="HOST=0.0.0.0" "PORT=8080"
+# Per-model retention overrides use the form LT_<MODEL>_MEMORY_RETENTION, where
+# <MODEL> is the uppercased final segment of the model type name. Examples:
+#   Environment="LT_EMAIL_MEMORY_RETENTION=2000"
+#   Environment="LT_EMAIL_MEMORY_DURATION=30d"
+#   Environment="LT_EMAIL_MEMORY_MAX_MB=256"
+# See docs/features/retention.md for the full set.
+
+Restart=on-failure
+RestartSec=5
+
+# Connection headroom: each client connection consumes file descriptors.
+LimitNOFILE=65536
+
+# ───── Hardening ────────────────────────────────────────────────────────────
+# Drop privileges and lock down the filesystem. ProtectSystem=strict makes the
+# entire filesystem read-only except paths listed in ReadWritePaths, so the
+# event store directory is explicitly re-opened for writes.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/lithair
+
+[Install]
+WantedBy=multi-user.target
