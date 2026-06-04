@@ -1,0 +1,97 @@
+# Lithair single-node compose file.
+#
+# What this does:
+#   - Builds the local Dockerfile (defaults to the `hello-world` example).
+#   - Persists the event store in the named volume `lithair-data` so events
+#     survive container restarts.
+#   - Uses standard bridge networking with a `8080:8080` port mapping. The
+#     container binds 0.0.0.0 (via HOST=0.0.0.0 below) so the published port
+#     is reachable from the host. Binding all interfaces is safe here: it is
+#     scoped to the container's isolated network namespace, not the host.
+#     This works identically on Linux, macOS, and Windows/Docker Desktop.
+#
+# Expected flow:
+#   docker compose up -d
+#   curl -fsS http://localhost:8080/health   # → {"status":"healthy"}
+#   curl -fsS http://localhost:8080/info     # → server build/runtime info
+#   docker compose logs -f lithair           # tail server logs
+#   docker compose down                       # stop (lithair-data is preserved)
+#
+# Override the example baked into the image:
+#   LITHAIR_EXAMPLE=blog docker compose build
+
+services:
+  lithair:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Match the Dockerfile default; override via:
+        #   LITHAIR_EXAMPLE=blog docker compose build
+        LITHAIR_EXAMPLE: ${LITHAIR_EXAMPLE:-hello-world}
+    image: lithair:local
+    container_name: lithair
+    restart: unless-stopped
+
+    # Bridge networking: publish the container's port to the host.
+    ports:
+      - "8080:8080"
+
+    volumes:
+      # Named volume, initialized with the image mountpoint's ownership
+      # (lithair:lithair, UID 1000), so it avoids the root-owned bind-mount
+      # permission gotcha. Inspect its on-disk path with:
+      #   docker volume inspect lithair-data
+      - lithair-data:/app/data
+      # Bind-mount alternative for host-visible data. Caveat: the host
+      # directory must be writable by UID 1000 (the container user), e.g.
+      #   mkdir -p ./data && sudo chown -R 1000:1000 ./data
+      # - ./data:/app/data
+
+    environment:
+      # The hello-world example reads HOST/PORT from the env. Inside the
+      # container's isolated namespace, binding 0.0.0.0 is safe and lets the
+      # bridge port mapping reach the listener.
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      # Optional: bias logs toward structured output for container log
+      # aggregators. See docs/reference/env-vars.md for the full list.
+      RUST_LOG: "info"
+
+    healthcheck:
+      # Overrides the image-baked HEALTHCHECK to keep the same probe under
+      # compose's own scheduler — handy for `docker compose ps` status.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Optional Prometheus sidecar.
+  #
+  # Lithair exposes /metrics by default when `.with_metrics(true)` is set on
+  # the builder (the hello-world example does this). Uncomment this service
+  # and the `prometheus.yml` mount to scrape it from a local Prometheus
+  # instance. This is a self-contained example, not a full observability
+  # stack — wire to your real Prometheus in production.
+  #
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: lithair-prometheus
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9090:9090"
+  #   # prometheus.yml example (write this file next to compose):
+  #   #   global:
+  #   #     scrape_interval: 15s
+  #   #   scrape_configs:
+  #   #     - job_name: lithair
+  #   #       static_configs:
+  #   #         - targets: ['lithair:8080']
+  #   #       metrics_path: /metrics
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+volumes:
+  lithair-data:
