@@ -36,17 +36,17 @@ Swap `hello-world` for any workspace example crate (e.g. `blog`, `rest-api`).
 Only `hello-world` currently reads `HOST`/`PORT` from the env — see
 [deployment-docker.md](deployment-docker.md#other-examples).
 
-### 2. Create the service user and data directory
+### 2. Create the service user
 
 ```bash
 sudo useradd --system --home-dir /var/lib/lithair \
   --shell /usr/sbin/nologin lithair
-sudo mkdir -p /var/lib/lithair
-sudo chown lithair:lithair /var/lib/lithair
 ```
 
-The event store lives in `/var/lib/lithair`. Losing it means losing the
-database — back it up like any database storage.
+The unit's `StateDirectory=lithair` makes systemd create and own
+`/var/lib/lithair` automatically on first start (no manual mkdir/chown).
+The event store lives there. Losing it means losing the database — back it
+up like any database storage.
 
 ### 3. Install and start the unit
 
@@ -84,9 +84,9 @@ See [retention.md](../features/retention.md) for the full set. Run
 
 The unit applies `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`,
 and `PrivateTmp`. Because `ProtectSystem=strict` makes the whole filesystem
-read-only, `ReadWritePaths=/var/lib/lithair` re-opens the event store directory
-for writes. If you move the data directory, update both `WorkingDirectory` and
-`ReadWritePaths`.
+read-only, `StateDirectory=lithair` keeps the event store directory writable
+(and creates/chowns it). If you move the data directory, update both
+`WorkingDirectory` and `StateDirectory`.
 
 ## Kubernetes
 

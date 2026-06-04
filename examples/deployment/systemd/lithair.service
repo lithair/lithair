@@ -2,8 +2,8 @@
 #
 # Install steps live in docs/operations/deployment-systemd-k8s.md. In short:
 #   1. Build the binary and copy it to /usr/local/bin/lithair.
-#   2. Create the `lithair` system user/group and /var/lib/lithair (the event
-#      store directory).
+#   2. Create the `lithair` system user/group. systemd creates and owns the
+#      /var/lib/lithair event store directory automatically via StateDirectory.
 #   3. Copy this file to /etc/systemd/system/lithair.service.
 #   4. systemctl daemon-reload && systemctl enable --now lithair
 #
@@ -27,6 +27,11 @@ Group=lithair
 # Event store lives here; the engine appends events and snapshots under this
 # directory and replays them on startup. This must survive restarts — back it
 # up like any database (see deployment-systemd-k8s.md).
+#
+# StateDirectory makes systemd create /var/lib/lithair on start, chown it to
+# User/Group (lithair:lithair) at mode 0750, and keep it writable under
+# ProtectSystem=strict — so no manual mkdir/chown or ReadWritePaths is needed.
+StateDirectory=lithair
 WorkingDirectory=/var/lib/lithair
 
 # Listen address. Bind 0.0.0.0 so the host (and a fronting reverse proxy) can
@@ -47,13 +52,12 @@ LimitNOFILE=65536
 
 # ───── Hardening ────────────────────────────────────────────────────────────
 # Drop privileges and lock down the filesystem. ProtectSystem=strict makes the
-# entire filesystem read-only except paths listed in ReadWritePaths, so the
-# event store directory is explicitly re-opened for writes.
+# entire filesystem read-only; StateDirectory=lithair (above) keeps the event
+# store directory writable, so no explicit ReadWritePaths is required.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/lithair
 
 [Install]
 WantedBy=multi-user.target
