@@ -61,7 +61,7 @@ sudo systemctl enable --now lithair
 
 ```bash
 systemctl status lithair
-curl -fsS http://localhost:8080/health    # → {"status":"healthy", ...}
+curl -fsS http://localhost:8080/health    # → {"status":"healthy"}
 curl -fsS http://localhost:8080/ready     # → {"status":"ready", ...}
 journalctl -u lithair -f                   # tail logs
 ```
@@ -122,7 +122,7 @@ Then edit `image:` in `examples/deployment/k8s/deployment.yaml`.
 ```bash
 kubectl rollout status deploy/lithair
 kubectl port-forward svc/lithair 8080:8080 &
-curl -fsS http://localhost:8080/health     # → {"status":"healthy", ...}
+curl -fsS http://localhost:8080/health     # → {"status":"healthy"}
 ```
 
 The Service is `ClusterIP` (in-cluster only). Expose it externally with your
