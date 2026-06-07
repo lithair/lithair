@@ -79,9 +79,9 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
           # Starter values. Tune against the capacity model — per-model RAM/disk
-          # estimates land in docs/operations/capacity-planning.md (TODO per
-          # issue #106). Lithair holds working state in memory, so RAM scales
-          # with live item count * average item size.
+          # estimates are in docs/operations/capacity-planning.md. Lithair holds
+          # working state in memory, so RAM scales with live item count *
+          # average item size.
           resources:
             requests:
               cpu: 100m

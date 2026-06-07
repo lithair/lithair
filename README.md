@@ -221,6 +221,9 @@ hot working set should still fit in RAM comfortably.
 - Plan `.raftlog` disk growth — enable `with_auto_compaction(threshold, interval)`
   if mutations are frequent.
 
+For full RAM/disk/CPU sizing — including the retention-bounded RAM
+model and disk compaction — see
+[`docs/operations/capacity-planning.md`](docs/operations/capacity-planning.md).
 For the durability semantics of the `.raftlog` (fsync mode, crash
 safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
 

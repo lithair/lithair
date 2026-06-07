@@ -142,4 +142,4 @@ commented pod scrape annotations shown in
 
 The PVC requests 5Gi (`ReadWriteOnce`). The event log is append-only, so size
 for lifetime write volume, not the live working set. See the capacity model in
-`docs/operations/capacity-planning.md` (TODO per issue #106).
+[`docs/operations/capacity-planning.md`](capacity-planning.md).
