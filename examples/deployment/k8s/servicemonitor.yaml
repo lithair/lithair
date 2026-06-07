@@ -1,0 +1,31 @@
+# Prometheus Operator ServiceMonitor — scrapes Lithair's /metrics endpoint.
+#
+# REQUIRES the Prometheus Operator CRDs (monitoring.coreos.com/v1). If they are
+# not installed, `kubectl apply` of this file fails with "no matches for kind
+# ServiceMonitor". In that case, skip this file and instead add Prometheus
+# scrape annotations to the pod template in deployment.yaml so a plain
+# Prometheus (kubernetes_sd_configs pod role) discovers it:
+#
+#   # under spec.template.metadata in deployment.yaml:
+#   annotations:
+#     prometheus.io/scrape: "true"
+#     prometheus.io/path: "/metrics"
+#     prometheus.io/port: "8080"
+#
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lithair
+  labels:
+    app: lithair
+    # Match this to your Prometheus Operator's serviceMonitorSelector, e.g.
+    # `release: kube-prometheus-stack` for the common Helm install.
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: lithair
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

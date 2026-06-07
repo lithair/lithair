@@ -1,0 +1,21 @@
+# Lithair Service — ClusterIP, in-cluster access only.
+#
+# Expose externally with an Ingress or a LoadBalancer Service of your choosing;
+# this keeps the base manifest free of cloud-specific assumptions. Test it
+# locally with:
+#   kubectl port-forward svc/lithair 8080:8080
+apiVersion: v1
+kind: Service
+metadata:
+  name: lithair
+  labels:
+    app: lithair
+spec:
+  type: ClusterIP
+  selector:
+    app: lithair
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

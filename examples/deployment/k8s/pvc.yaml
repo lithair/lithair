@@ -1,0 +1,21 @@
+# Lithair event-store PersistentVolumeClaim.
+#
+# ReadWriteOnce: the event store tolerates a single writer, which also matches
+# the single-replica Deployment (Recreate strategy). 5Gi is a modest starting
+# size — real sizing depends on lifetime write volume, since the event log is
+# append-only. See the capacity model in docs/operations/capacity-planning.md
+# (TODO per issue #106) before sizing for production.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lithair-data
+  labels:
+    app: lithair
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: ""   # uncomment + set to pin a specific StorageClass;
+  #                        # otherwise the cluster default is used.

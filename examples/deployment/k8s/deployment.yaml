@@ -1,0 +1,103 @@
+# Lithair Deployment.
+#
+# Single replica by design. Lithair's single-node mode is the production-stable
+# path today; cluster mode is not yet production-ready (see issue #104). Do NOT
+# bump `replicas` above 1 — multiple replicas would each run an independent
+# event store and silently diverge. Scale vertically (CPU/RAM) instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lithair
+  labels:
+    app: lithair
+spec:
+  replicas: 1
+  strategy:
+    # Recreate (not RollingUpdate): the PVC is ReadWriteOnce and the event store
+    # tolerates a single writer only, so the old pod must release the volume
+    # before the new one mounts it.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: lithair
+  template:
+    metadata:
+      labels:
+        app: lithair
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: lithair
+          # Placeholder image — no official image is published yet. Build and
+          # push your own from the repo Dockerfile, then pin it here BY DIGEST
+          # (not a mutable tag) for reproducible rollouts:
+          #   docker build -t ghcr.io/youorg/lithair:0.12.0 .
+          #   docker push ghcr.io/youorg/lithair:0.12.0
+          #   # then reference the immutable digest kubectl/crane reports:
+          #   image: ghcr.io/youorg/lithair@sha256:<digest>
+          image: ghcr.io/lithair/lithair:0.12.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8080"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            # Generous boot window: event-store replay scales with log size.
+            # 30 * 10s = up to 5 minutes before the pod is declared failed.
+            periodSeconds: 10
+            failureThreshold: 30
+          # No initialDelaySeconds on liveness/readiness: the startupProbe gates
+          # them until the app is up, so they only run once boot has completed.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Starter values. Tune against the capacity model — per-model RAM/disk
+          # estimates land in docs/operations/capacity-planning.md (TODO per
+          # issue #106). Lithair holds working state in memory, so RAM scales
+          # with live item count * average item size.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              # No cpu limit: a CFS quota throttles the Tokio multi-threaded
+              # runtime and causes latency spikes even when the node has spare
+              # CPU. requests.cpu gives the scheduling guarantee; let it burst.
+              # memory IS limited — over-budget memory is OOM-killed, not
+              # throttled, so the limit is a real safety bound.
+              memory: 512Mi
+          volumeMounts:
+            # Event store. Mount path matches the Dockerfile's /app/data.
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lithair-data
