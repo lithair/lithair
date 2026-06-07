@@ -73,24 +73,26 @@ items in a single insert to get back under cap (`track_insert` loops).
 So the bounded RAM estimate becomes:
 
 ```text
-RAM_bounded(T) ≈ (hot_item_count   × avg_full_size(T))
-               + (total_item_count × avg_pinned_size(T))
+RAM_bounded(T) ≈ (hot_item_count                      × avg_full_size(T))
+               + ((total_item_count - hot_item_count) × avg_pinned_size(T))
                + index_overhead
 ```
 
 The first term is the hot working set (fully projected items). The
-second is the warm tail — only pinned fields survive eviction. Listing
-and filtering on pinned fields stays in RAM; reading a non-pinned field
-of an evicted item replays its events from disk.
+second is the warm tail — only pinned fields survive eviction, and only
+for items NOT in the hot set (a hot item is removed from the warm map
+when it is promoted back, so the two never overlap). Listing and
+filtering on pinned fields stays in RAM; reading a non-pinned field of
+an evicted item replays its events from disk.
 
 **Worked example.** 1 000 000 items, `#[retention(memory = 10000)]`,
 pinned fields averaging ~200 B, full items averaging 4 KB:
 
 ```text
-hot:  10 000    × 4 KB   ≈  40 MB
-warm: 1 000 000 × 200 B  ≈ 200 MB
+hot:   10 000   × 4 KB   ≈  40 MB
+warm: 990 000   × 200 B  ≈ 198 MB   (total - hot = 1 000 000 - 10 000)
                           ─────────
-                          ≈ 240 MB
+                          ≈ 238 MB
 ```
 
 Without retention the same dataset would need ~4 GB
