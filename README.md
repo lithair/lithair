@@ -163,9 +163,11 @@ of Lithair and the README is the right place to surface it.
 is held in memory, in full, for the lifetime of the server. After
 startup, the framework replays the `.raftlog` (and any latest
 snapshot) and reconstructs the full collection into a lock-free
-concurrent HashMap (SCC2). There is no eviction policy, no LRU, and
-no on-demand reload — if you registered a model, you pay for its
-full size in RAM.
+concurrent HashMap (SCC2). By default — without `#[retention]` — there
+is no eviction, no LRU, and no on-demand reload: if you registered a
+model, you pay for its full size in RAM. The *Memory/disk tiering*
+subsection below covers how `#[retention]` bounds this for large
+datasets.
 
 **What lives on disk.** The `.raftlog` event log holds every mutation
 (create / update / delete) in append-only form, plus periodic
@@ -221,6 +223,9 @@ hot working set should still fit in RAM comfortably.
 - Plan `.raftlog` disk growth — enable `with_auto_compaction(threshold, interval)`
   if mutations are frequent.
 
+For full RAM/disk/CPU sizing — including the retention-bounded RAM
+model and disk compaction — see
+[`docs/operations/capacity-planning.md`](docs/operations/capacity-planning.md).
 For the durability semantics of the `.raftlog` (fsync mode, crash
 safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
 

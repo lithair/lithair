@@ -113,8 +113,8 @@ example can adopt it the same way to work cleanly under bridge networking.
 ## Resource sizing
 
 For per-model RAM/disk/CPU estimates, see
-`docs/operations/capacity-planning.md` (TODO: doc to land in a follow-up
-PR per issue #106). Until then, the rough baseline:
+[`docs/operations/capacity-planning.md`](capacity-planning.md). Rough
+baseline:
 
 - Idle hello-world: ~15 MiB RSS, negligible CPU.
 - Each declarative model with N items at S bytes average uses roughly
