@@ -692,8 +692,34 @@ impl LithairServer {
         Ok(())
     }
 
-    /// Start the server
-    pub async fn serve(mut self) -> Result<()> {
+    /// Start the server, running until `accept()` errors.
+    ///
+    /// Thin delegate over [`serve_with_graceful_shutdown`] using a
+    /// `std::future::pending()` shutdown future, which never resolves — so the
+    /// accept loop runs forever, byte-for-byte identical to the historical
+    /// behavior. Existing callers are unaffected.
+    ///
+    /// [`serve_with_graceful_shutdown`]: Self::serve_with_graceful_shutdown
+    pub async fn serve(self) -> Result<()> {
+        self.serve_with_graceful_shutdown(std::future::pending::<()>()).await
+    }
+
+    /// Start the server, stopping the accept loop when `shutdown` resolves.
+    ///
+    /// Mirrors `axum::serve(...).with_graceful_shutdown(f)` and hyper's
+    /// pattern. When `shutdown` completes, the server stops accepting new
+    /// connections, gives already-accepted connections a bounded grace window
+    /// to drain (see [`GRACEFUL_DRAIN_GRACE`]), then returns `Ok(())`.
+    ///
+    /// Downstream apps can pass a `watch`/`oneshot`/`CancellationToken`-driven
+    /// future flipped on `ctrl_c`/SIGTERM, then join their own background
+    /// workers after `.await` returns.
+    ///
+    /// [`GRACEFUL_DRAIN_GRACE`]: Self::GRACEFUL_DRAIN_GRACE
+    pub async fn serve_with_graceful_shutdown<F>(mut self, shutdown: F) -> Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
         // Load persisted schema history and lock status
         {
             use crate::schema::{load_lock_status, load_schema_history};
@@ -947,10 +973,16 @@ impl LithairServer {
         // Lifecycle matches the existing background-flusher pattern in
         // `DeclarativeHttpHandler::new` (line ~180): spawned and forgotten,
         // runtime shutdown aborts. We deliberately do NOT hold JoinHandles
-        // on `LithairServer` — that would force a shutdown signal we don't
-        // currently have, and it would diverge from the flusher's
-        // lifecycle. If/when graceful shutdown lands, both code paths
-        // should grow JoinHandle tracking together.
+        // on `LithairServer` — that would diverge from the flusher's
+        // lifecycle and touch async writers across several files.
+        //
+        // A graceful shutdown signal now exists
+        // (`serve_with_graceful_shutdown`, issue #112): the accept loop stops
+        // and in-flight HTTP connections get a grace window. Draining these
+        // *internal* tasks (auto-compaction, the WAL flusher, async writers)
+        // via tracked JoinHandles is still deferred — it spans 3+ files and
+        // is tracked as a follow-up. Both code paths should grow JoinHandle
+        // tracking together when that lands.
         // Initialize default logger BEFORE spawning auto-compaction tasks
         // (issue #69 follow-up — addresses Gemini review on PR #84).
         // Previously this `try_init` ran after the spawn loop, so any
@@ -1866,9 +1898,24 @@ impl LithairServer {
         // Share server state
         let server = Arc::new(self);
 
-        // Accept connections
+        // Pin the shutdown future once so we can poll it across loop
+        // iterations via `&mut`. For the `serve()` delegate this is
+        // `std::future::pending()`, which never resolves — the `select!`
+        // below then behaves identically to the historical unconditional
+        // `loop { listener.accept().await? }`.
+        tokio::pin!(shutdown);
+
+        // Accept connections until shutdown is signaled.
         loop {
-            let (stream, remote_addr) = listener.accept().await?;
+            let (stream, remote_addr) = tokio::select! {
+                accepted = listener.accept() => accepted?,
+                _ = &mut shutdown => {
+                    log::info!(
+                        "Graceful shutdown signal received; stopping accept loop"
+                    );
+                    break;
+                }
+            };
 
             // Connection-level anti-DDoS check
             if let Some(ref protection) = anti_ddos {
@@ -2035,7 +2082,35 @@ impl LithairServer {
                 }
             });
         }
+
+        // In-flight connection drain (approach (b) from issue #112).
+        //
+        // Per-connection handlers above are `tokio::spawn`ed and forgotten —
+        // we do not currently track their `JoinHandle`s, so we cannot join
+        // them precisely. Instead, once the accept loop has stopped, we give
+        // already-accepted connections a fixed grace window to finish before
+        // returning (after which the runtime drops any stragglers).
+        //
+        // This is the zero-new-dependency option: `tokio-util` is not a
+        // declared dependency of this crate, so a `CancellationToken` +
+        // JoinHandle join-with-timeout (approach (a)) would mean pulling it in
+        // just for this. Precise join-based draining is left as a follow-up.
+        //
+        // For the `serve()` delegate this code is unreachable: its shutdown
+        // future is `std::future::pending()`, so the loop above never breaks.
+        log::info!("Draining in-flight connections for up to {:?}", Self::GRACEFUL_DRAIN_GRACE);
+        tokio::time::sleep(Self::GRACEFUL_DRAIN_GRACE).await;
+        log::info!("Graceful shutdown complete");
+        Ok(())
     }
+
+    /// Grace period granted to already-accepted connections to drain after a
+    /// graceful shutdown signal, before [`serve_with_graceful_shutdown`]
+    /// returns. Currently a fixed constant; making it configurable and
+    /// switching to precise join-based draining is a follow-up to issue #112.
+    ///
+    /// [`serve_with_graceful_shutdown`]: Self::serve_with_graceful_shutdown
+    const GRACEFUL_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
     /// Add security headers to a response.
     /// Uses `entry().or_insert()` so handlers that explicitly set a header are not overridden.

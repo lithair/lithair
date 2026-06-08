@@ -2239,6 +2239,17 @@ impl LithairServerBuilder {
         let server = self.build()?;
         server.serve().await
     }
+
+    /// Build and start the server, stopping the accept loop when `shutdown`
+    /// resolves. Builder-level convenience over
+    /// [`LithairServer::serve_with_graceful_shutdown`] (issue #112).
+    pub async fn serve_with_graceful_shutdown<F>(self, shutdown: F) -> Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let server = self.build()?;
+        server.serve_with_graceful_shutdown(shutdown).await
+    }
 }
 
 impl Default for LithairServerBuilder {
