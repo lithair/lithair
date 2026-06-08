@@ -1908,13 +1908,18 @@ impl LithairServer {
         // Accept connections until shutdown is signaled.
         loop {
             let (stream, remote_addr) = tokio::select! {
-                accepted = listener.accept() => accepted?,
+                // `biased`: poll the shutdown branch first so a signal wins
+                // deterministically over a connection already sitting in the
+                // accept backlog. Without it, `select!`'s random fairness
+                // could accept one more connection after shutdown is ready.
+                biased;
                 _ = &mut shutdown => {
                     log::info!(
                         "Graceful shutdown signal received; stopping accept loop"
                     );
                     break;
                 }
+                accepted = listener.accept() => accepted?,
             };
 
             // Connection-level anti-DDoS check
@@ -2098,6 +2103,16 @@ impl LithairServer {
         //
         // For the `serve()` delegate this code is unreachable: its shutdown
         // future is `std::future::pending()`, so the loop above never breaks.
+        //
+        // Close the listening socket before the grace window so new TCP
+        // handshakes fail fast instead of completing into the accept backlog
+        // (where they'd never be serviced). This tightens the shutdown
+        // boundary: no connection accepted after the signal. Note this still
+        // does NOT signal the already-spawned per-connection tasks — a
+        // keep-alive connection accepted before shutdown can keep serving
+        // within the grace window; precise per-connection draining is the
+        // deferred approach-(a) follow-up.
+        drop(listener);
         log::info!("Draining in-flight connections for up to {:?}", Self::GRACEFUL_DRAIN_GRACE);
         tokio::time::sleep(Self::GRACEFUL_DRAIN_GRACE).await;
         log::info!("Graceful shutdown complete");
