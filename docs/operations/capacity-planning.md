@@ -184,7 +184,9 @@ The bundled k8s PVC requests 5Gi as a modest starting point
 volume if compaction is off.
 
 For `.raftlog` durability semantics (fsync mode, crash safety) see
-`lithair-core/DURABILITY.md`.
+`lithair-core/DURABILITY.md`. For backing up and restoring the event
+store (and how compaction bounds point-in-time recovery) see
+[`docs/operations/backup-restore.md`](backup-restore.md).
 
 ## CPU
 

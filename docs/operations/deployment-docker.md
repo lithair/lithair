@@ -89,8 +89,9 @@ docker volume inspect lithair-data
 
 Treat that volume like you would any database storage:
 
-- **Back it up** before upgrades. See `docs/operations/backup-restore.md`
-  (TODO: doc to land in a follow-up PR per issue #106).
+- **Back it up** before upgrades. See
+  [`docs/operations/backup-restore.md`](backup-restore.md) for the
+  backup/restore/PITR runbook.
 - **Don't share it across containers** unless you also coordinate
   Lithair's clustering primitives — the event log is not designed for
   concurrent writers from multiple processes.
