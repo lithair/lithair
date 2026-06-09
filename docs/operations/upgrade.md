@@ -51,25 +51,36 @@ That gives two compatibility surfaces to clear:
 ## Additive changes (safe path)
 
 Adding a field **with a default** is the safe upgrade. The mechanism is
-in the `LithairModel` derive macro: when a field carries
-`#[db(default = X)]` and has no explicit `#[serde(default)]`, the macro
-generates a default function and attaches `#[serde(default = "...")]`
-to the field (`lithair-macros/src/lithair_model.rs`, the
-`db_default_value` → generated `__lithair_default_<field>` →
-`#[serde(default = ...)]` block). At deserialization, events written by
-the **old** version that lack the new field deserialize cleanly — the
-missing field is filled with the default.
+the `#[lithair_model]` **attribute** macro — not the `DeclarativeModel`
+derive. A derive macro cannot modify the struct it is applied to, so it
+cannot inject `#[serde(default)]`; the attribute macro rewrites the
+item and can. When a field carries `#[db(default = X)]` and has no
+explicit `#[serde(default)]`, `#[lithair_model]` generates a default
+function and attaches `#[serde(default = "...")]` to the field
+(`lithair-macros/src/lithair_model.rs`, the `db_default_value` →
+generated `__lithair_default_<field>` → `#[serde(default = ...)]`
+block). At deserialization, events written by the **old** version that
+lack the new field deserialize cleanly — the missing field is filled
+with the default.
+
+> **You must use `#[lithair_model]` for this to work.** With a bare
+> `#[derive(DeclarativeModel)]`, `#[db(default = X)]` does NOT produce a
+> `#[serde(default)]`, so old events lacking the new field fail to
+> deserialize and are silently skipped on replay (`replay_events` does
+> `if let Ok(...)`), dropping those records. The attribute macro is what
+> makes an additive change safe.
 
 Worked example. Add a `phone` field with a default to an existing
 `User` model:
 
 ```rust
+#[lithair_model]                 // attribute macro — injects serde(default)
 #[derive(DeclarativeModel)]
 pub struct User {
     #[db(primary_key)]
     pub id: Uuid,
     pub name: String,
-    #[db(default = "")]      // macro emits #[serde(default = "...")]
+    #[db(default = "")]      // #[lithair_model] emits #[serde(default = "...")]
     pub phone: String,       // <-- new field
 }
 ```
