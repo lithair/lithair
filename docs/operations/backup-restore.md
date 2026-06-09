@@ -162,6 +162,14 @@ any line that does not deserialize. So a hot copy that captures a torn or
 partially-written **final** record replays the intact prefix and drops
 only that last incomplete event.
 
+In **binary mode** (`LT_ENABLE_BINARY=true`, off by default) the log uses
+length-prefixed framing (`[u64 length][payload]`) instead of JSON lines.
+The reader (`read_all_event_bytes`, same file) stops cleanly at the first
+frame whose length prefix or payload runs past the end of the file
+(logged as "Incomplete length prefix / payload at end of file"), keeping
+every fully-written frame before it. The net effect matches JSON mode: a
+torn final frame is dropped, the intact prefix is preserved.
+
 Caveats, in order of importance:
 
 - A hot copy is **not** a guaranteed point-in-time consistent snapshot.
@@ -201,6 +209,8 @@ The container user is UID 1000, so restored files must be owned by 1000:
 
 ```bash
 docker compose stop lithair
+# pull the backup tarball back down from object storage
+aws s3 cp s3://my-bucket/lithair/lithair-20260609T120000Z.tar.gz .
 # restore into the named volume from a tarball
 docker run --rm -v lithair-data:/data -v "$PWD:/in" alpine \
   sh -c 'rm -rf /data/* && tar xzf /in/lithair-20260609T120000Z.tar.gz -C /data && chown -R 1000:1000 /data'
