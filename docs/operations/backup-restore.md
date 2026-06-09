@@ -245,6 +245,10 @@ A restore round-trip (`backup → restore → boots → state matches`) is the
 only proof a backup is good. Test it on a schedule; do not trust an
 untested backup.
 
+**See also:** restoring a pre-upgrade backup is the rollback step when a
+version upgrade goes wrong — see [`upgrade.md`](upgrade.md) (Rollback),
+which also explains the rollback window for event-sourced deployments.
+
 ## Point-in-time recovery (PITR)
 
 Because state is rebuilt by replaying the log, recovering to an earlier
