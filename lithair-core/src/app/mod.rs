@@ -31,6 +31,9 @@ use bytes::Bytes;
 #[cfg(feature = "tls")]
 use sha2::Digest;
 use std::sync::Arc;
+// `Future::instrument(span)` for the per-request `http_request` span in the
+// serve loop (issue #107). Imported anonymously: only the method matters.
+use tracing::Instrument as _;
 
 pub mod builder;
 pub mod declarative_serve;
@@ -97,6 +100,100 @@ fn boxed_full(
 ) -> http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible> {
     use http_body_util::BodyExt;
     http_body_util::Full::new(data.into()).boxed()
+}
+
+/// Install the default tracing stack used by `serve()` /
+/// `serve_with_graceful_shutdown` (issue #107, phase 1).
+///
+/// Two independent try-style steps, in the same order
+/// `tracing_subscriber::util::SubscriberInitExt::try_init` uses internally
+/// (dispatcher first, so the `log` max-level hint below sees the installed
+/// filter):
+///
+/// 1. A `tracing_subscriber` registry — `EnvFilter` honoring `RUST_LOG`
+///    plus a compact fmt layer on stderr — becomes the global tracing
+///    subscriber via `set_global_default`.
+/// 2. `tracing_log::LogTracer` becomes the global `log` backend so the
+///    ~550 existing `log::*` call sites in this crate flow into tracing
+///    untouched (bridge strategy — deliberately NOT a mass migration).
+///
+/// Both steps ignore "already initialized" errors, preserving the
+/// first-wins contract the previous `env_logger::try_init()` had: users
+/// who installed their own `log` backend first — e.g. the opt-in
+/// `RaftstoneLogger` from `crate::logging` — keep it, and their `log::*`
+/// records keep flowing to it unchanged (step 2 is then a no-op).
+/// Likewise a user-installed tracing subscriber wins over step 1.
+///
+/// We deliberately do NOT use `SubscriberInitExt::try_init()`: with
+/// tracing-subscriber's default `tracing-log` feature it bails with `Err`
+/// after the dispatcher install when a `log` backend already exists, which
+/// makes the two installs impossible to reason about independently. The
+/// manual sequence keeps each step's try-semantics explicit (verified
+/// against tracing-subscriber 0.3.23 / tracing-log 0.2.0 sources).
+fn init_default_tracing() {
+    use tracing_log::AsLog;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    // RUST_LOG semantics: `env_logger::Builder::from_default_env()` (the
+    // previous default) fell back to `error` when RUST_LOG is unset.
+    // `EnvFilter::new("error")` preserves that exact out-of-the-box
+    // verbosity; a set RUST_LOG is honored with the same directive syntax.
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("error"));
+
+    // Match the old env_logger output as closely as `fmt` allows:
+    // millisecond UTC timestamps (`format_timestamp_millis()`), stderr
+    // (env_logger's default target), ANSI color only on a tty (env_logger
+    // auto-detected; fmt would otherwise default to always-on), and no
+    // target/module path (the old init used `format_module_path(false)`).
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_timer(tracing_subscriber::fmt::time::ChronoUtc::new(
+            "%Y-%m-%dT%H:%M:%S%.3fZ".to_owned(),
+        ))
+        .with_target(false)
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+        .with_writer(std::io::stderr);
+
+    let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
+    let _ = tracing::subscriber::set_global_default(subscriber);
+
+    // Bridge `log` → `tracing`. The max-level hint mirrors what the
+    // installed subscriber will actually accept (ERROR by default), so
+    // filtered-out `log::*` calls stay as cheap as they were under
+    // env_logger (which sets the same `log::set_max_level` hint from its
+    // filter) instead of paying the bridge dispatch on every call.
+    //
+    // Deliberate trade-off (PR #118 review): this freezes the bridge's
+    // ceiling at init time, so a hypothetical *runtime* level change in the
+    // subscriber would not reach `log::*` call sites. Lithair has no dynamic
+    // level reload today; if one lands (e.g. a tracing-subscriber `reload`
+    // layer), drop this hint — or re-issue `log::set_max_level` from the
+    // reload hook — as part of that change.
+    let _ = tracing_log::LogTracer::builder()
+        .with_max_level(tracing::level_filters::LevelFilter::current().as_log())
+        .init();
+}
+
+/// Extract a usable correlation ID from the inbound `X-Request-ID` header,
+/// or mint a fresh UUID v4 (issue #107).
+///
+/// Inbound values are accepted only when they are 1..=128 bytes of visible
+/// ASCII (0x21..=0x7E). Anything else — empty, oversized, whitespace,
+/// control bytes, non-ASCII — is replaced with a generated ID so we never
+/// reflect hostile bytes back into a response header or into log output
+/// (header-injection hygiene).
+fn request_id_from_headers(headers: &hyper::HeaderMap) -> String {
+    if let Some(value) = headers.get("x-request-id") {
+        // Validate the raw bytes directly (single scan — PR #118 review);
+        // `to_str()` would re-scan for UTF-8 first. Visible ASCII is valid
+        // UTF-8 by construction, so the lossy conversion below is lossless.
+        let bytes = value.as_bytes();
+        if (1..=128).contains(&bytes.len()) && bytes.iter().all(|b| (0x21..=0x7e).contains(b)) {
+            return String::from_utf8_lossy(bytes).into_owned();
+        }
+    }
+    uuid::Uuid::new_v4().to_string()
 }
 
 /// HTTP method re-exported from the `http` crate.
@@ -720,6 +817,15 @@ impl LithairServer {
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
+        // Install the default tracing subscriber + log bridge FIRST, before
+        // any boot-time `log::*` call (schema history load, validation,
+        // session fail-fast, handler creation below). A boot failure in
+        // those paths must be observable — with no subscriber installed,
+        // those records would be silently dropped (PR #118 review). Same
+        // try-semantics as the historical env_logger init: a logger the
+        // caller installed earlier (e.g. RaftstoneLogger) wins untouched.
+        init_default_tracing();
+
         // Load persisted schema history and lock status
         {
             use crate::schema::{load_lock_status, load_schema_history};
@@ -983,16 +1089,12 @@ impl LithairServer {
         // via tracked JoinHandles is still deferred — it spans 3+ files and
         // is tracked as a follow-up. Both code paths should grow JoinHandle
         // tracking together when that lands.
-        // Initialize default logger BEFORE spawning auto-compaction tasks
-        // (issue #69 follow-up — addresses Gemini review on PR #84).
-        // Previously this `try_init` ran after the spawn loop, so any
-        // `log::info!` / `log::warn!` emitted by the spawned tasks before
-        // this point routed to the fallback (silently dropped under the
-        // default `RUST_LOG` filter).
-        let _ = env_logger::Builder::from_default_env()
-            .format_timestamp_millis()
-            .format_module_path(false)
-            .try_init(); // Use try_init to avoid panic if already initialized
+        //
+        // Tracing init happens at the very top of this function (PR #118
+        // review) so logs emitted by the tasks spawned below — and by every
+        // boot step above — are always observable (issue #69 follow-up
+        // originally pinned the init before this spawn loop; moving it
+        // earlier preserves that property a fortiori).
 
         if let Some(cfg) = self.auto_compaction {
             let models = self.models.read().await;
@@ -1975,10 +2077,23 @@ impl LithairServer {
                             let start = std::time::Instant::now();
                             let req_method = req.method().to_string();
                             let req_path = req.uri().path().to_string();
+                            // Correlation ID (issue #107): respect a sane
+                            // inbound X-Request-ID, otherwise mint a UUID v4.
+                            // Captured as a span field so every log/span event
+                            // emitted while handling this request carries it,
+                            // and echoed on the response below.
+                            let request_id = request_id_from_headers(req.headers());
                             // Resolve real client IP (trusts proxy headers only from loopback/private)
                             let client_ip = crate::http::resolve_client_ip(&req, remote_addr);
 
-                            let result = (async move {
+                            let http_span = tracing::info_span!(
+                                "http_request",
+                                method = %req_method,
+                                path = %req_path,
+                                request_id = %request_id,
+                            );
+
+                            let mut result = (async move {
                                 // Firewall check (preserves 403 vs 429 distinction)
                                 if let Err(denied) = firewall.check(
                                     Some(remote_addr),
@@ -2058,7 +2173,26 @@ impl LithairServer {
                                     }
                                 }
                             })
+                            .instrument(http_span)
                             .await;
+
+                            // Echo the correlation ID on every response. This
+                            // is the single top-level attach point that wraps
+                            // ALL branches above — firewall 403/429, anti-DDoS
+                            // 429, body-size 413, handler 500, and success —
+                            // so no response-construction path can miss it.
+                            // `request_id` is either a validated visible-ASCII
+                            // inbound value or a generated UUID, so the
+                            // HeaderValue conversion cannot fail in practice;
+                            // we still go through `from_str` defensively
+                            // rather than panic.
+                            // (`Err` is `Infallible`, so the pattern is
+                            // irrefutable — same style as the access-log
+                            // destructuring below.)
+                            let Ok(ref mut resp) = result;
+                            if let Ok(hv) = hyper::header::HeaderValue::from_str(&request_id) {
+                                resp.headers_mut().insert("x-request-id", hv);
+                            }
 
                             if access_log {
                                 let Ok(ref resp) = result;
@@ -5780,6 +5914,73 @@ mod tests {
         let _server = LithairServer::default();
     }
 
+    /// `init_default_tracing` must be idempotent (issue #107): both the
+    /// subscriber install and the `log` bridge install are try-style, so
+    /// a second call (or a user-installed logger/subscriber racing it)
+    /// must be a silent no-op — exactly the contract the historical
+    /// `env_logger::try_init()` had.
+    #[test]
+    fn init_default_tracing_is_idempotent() {
+        init_default_tracing();
+        init_default_tracing();
+    }
+
+    // ------------------------------------------------------------------
+    // X-Request-ID sanitization (issue #107). The end-to-end echo
+    // behavior is covered in tests/request_id_test.rs; these cover the
+    // pure validation rules in isolation.
+    // ------------------------------------------------------------------
+
+    fn headers_with_request_id(value: &[u8]) -> hyper::HeaderMap {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(
+            "x-request-id",
+            hyper::header::HeaderValue::from_bytes(value).expect("test header value"),
+        );
+        headers
+    }
+
+    #[test]
+    fn request_id_accepts_sane_inbound_value() {
+        let headers = headers_with_request_id(b"trace-abc.123_456");
+        assert_eq!(request_id_from_headers(&headers), "trace-abc.123_456");
+    }
+
+    #[test]
+    fn request_id_generates_uuid_when_absent() {
+        let id = request_id_from_headers(&hyper::HeaderMap::new());
+        assert!(uuid::Uuid::parse_str(&id).is_ok(), "expected UUID, got {id:?}");
+    }
+
+    #[test]
+    fn request_id_rejects_oversized_value() {
+        let oversized = vec![b'a'; 129];
+        let id = request_id_from_headers(&headers_with_request_id(&oversized));
+        assert!(uuid::Uuid::parse_str(&id).is_ok(), "expected fresh UUID, got {id:?}");
+    }
+
+    #[test]
+    fn request_id_rejects_non_printable_and_empty_values() {
+        // All of these are *valid* HeaderValue bytes (so they can arrive
+        // on the wire) but sit outside our visible-ASCII 0x21..=0x7E
+        // window: space and tab are header-legal whitespace, 0xC3 0xA9 is
+        // obs-text (non-ASCII, `to_str()` fails), and empty values are
+        // useless as correlation IDs. DEL/CR/LF need no test — the http
+        // crate rejects them before a HeaderValue can even exist.
+        for bad in [&b"has space"[..], &b"\ttab"[..], &b"caf\xc3\xa9"[..], &b""[..]] {
+            let id = request_id_from_headers(&headers_with_request_id(bad));
+            assert_ne!(id.as_bytes(), bad);
+            assert!(uuid::Uuid::parse_str(&id).is_ok(), "expected fresh UUID, got {id:?}");
+        }
+    }
+
+    #[test]
+    fn request_id_accepts_max_length_boundary() {
+        let max = vec![b'x'; 128];
+        let id = request_id_from_headers(&headers_with_request_id(&max));
+        assert_eq!(id.len(), 128);
+    }
+
     // ------------------------------------------------------------------
     // Built-in operations endpoints (`/health`, `/ready`, `/info`).
     //
@@ -5798,7 +5999,7 @@ mod tests {
     /// `.abort()`) to stop the server.
     ///
     /// We deliberately *don't* call `LithairServer::serve()` here —
-    /// it pulls in schema validation, env_logger init, frontend
+    /// it pulls in schema validation, tracing init, frontend
     /// loading, and system metrics. None of that is wired for these
     /// tests, and serve() also blocks forever, which would deadlock
     /// the test harness.
