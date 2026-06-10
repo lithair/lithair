@@ -78,10 +78,6 @@ tempfile = "3"
 # `LithairServer` (e.g. tests/require_session_test.rs). Already used in
 # cucumber-tests under the same name.
 portpicker = "0.1"
-# X-Request-ID correlation tests (issue #107) assert that generated IDs are
-# valid UUID v4. Already a regular dependency — integration tests in `tests/`
-# are separate crates, so it must be repeated here to be importable.
-uuid = { version = "1", features = ["v4"] }
 # Auto-compaction tests (issue #69) use tokio's virtual-time control
 # (`start_paused`, `tokio::time::advance`), which is gated behind the
 # `test-util` feature. The main `tokio = { features = ["full"] }` import

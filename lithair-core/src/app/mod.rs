@@ -161,7 +161,15 @@ fn init_default_tracing() {
     // Bridge `log` → `tracing`. The max-level hint mirrors what the
     // installed subscriber will actually accept (ERROR by default), so
     // filtered-out `log::*` calls stay as cheap as they were under
-    // env_logger instead of paying the bridge dispatch on every call.
+    // env_logger (which sets the same `log::set_max_level` hint from its
+    // filter) instead of paying the bridge dispatch on every call.
+    //
+    // Deliberate trade-off (PR #118 review): this freezes the bridge's
+    // ceiling at init time, so a hypothetical *runtime* level change in the
+    // subscriber would not reach `log::*` call sites. Lithair has no dynamic
+    // level reload today; if one lands (e.g. a tracing-subscriber `reload`
+    // layer), drop this hint — or re-issue `log::set_max_level` from the
+    // reload hook — as part of that change.
     let _ = tracing_log::LogTracer::builder()
         .with_max_level(tracing::level_filters::LevelFilter::current().as_log())
         .init();
@@ -177,11 +185,12 @@ fn init_default_tracing() {
 /// (header-injection hygiene).
 fn request_id_from_headers(headers: &hyper::HeaderMap) -> String {
     if let Some(value) = headers.get("x-request-id") {
-        if let Ok(s) = value.to_str() {
-            let bytes = s.as_bytes();
-            if (1..=128).contains(&bytes.len()) && bytes.iter().all(|b| (0x21..=0x7e).contains(b)) {
-                return s.to_string();
-            }
+        // Validate the raw bytes directly (single scan — PR #118 review);
+        // `to_str()` would re-scan for UTF-8 first. Visible ASCII is valid
+        // UTF-8 by construction, so the lossy conversion below is lossless.
+        let bytes = value.as_bytes();
+        if (1..=128).contains(&bytes.len()) && bytes.iter().all(|b| (0x21..=0x7e).contains(b)) {
+            return String::from_utf8_lossy(bytes).into_owned();
         }
     }
     uuid::Uuid::new_v4().to_string()
@@ -808,6 +817,15 @@ impl LithairServer {
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
+        // Install the default tracing subscriber + log bridge FIRST, before
+        // any boot-time `log::*` call (schema history load, validation,
+        // session fail-fast, handler creation below). A boot failure in
+        // those paths must be observable — with no subscriber installed,
+        // those records would be silently dropped (PR #118 review). Same
+        // try-semantics as the historical env_logger init: a logger the
+        // caller installed earlier (e.g. RaftstoneLogger) wins untouched.
+        init_default_tracing();
+
         // Load persisted schema history and lock status
         {
             use crate::schema::{load_lock_status, load_schema_history};
@@ -1071,14 +1089,12 @@ impl LithairServer {
         // via tracked JoinHandles is still deferred — it spans 3+ files and
         // is tracked as a follow-up. Both code paths should grow JoinHandle
         // tracking together when that lands.
-        // Initialize the default tracing stack (subscriber + `log` bridge,
-        // issue #107 — replaces the historical env_logger init with the same
-        // try-semantics) BEFORE spawning auto-compaction tasks (issue #69
-        // follow-up — addresses Gemini review on PR #84). Previously this
-        // init ran after the spawn loop, so any `log::info!` / `log::warn!`
-        // emitted by the spawned tasks before this point routed to the
-        // fallback (silently dropped under the default `RUST_LOG` filter).
-        init_default_tracing();
+        //
+        // Tracing init happens at the very top of this function (PR #118
+        // review) so logs emitted by the tasks spawned below — and by every
+        // boot step above — are always observable (issue #69 follow-up
+        // originally pinned the init before this spawn loop; moving it
+        // earlier preserves that property a fortiori).
 
         if let Some(cfg) = self.auto_compaction {
             let models = self.models.read().await;
