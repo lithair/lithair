@@ -61,6 +61,19 @@ log = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "chrono"] }
 tracing-log = "0.2"
+# OpenTelemetry OTLP exporter stack (issue #107 phase 2), gated behind the
+# off-by-default `otel` feature. The four crates are version-paired and must
+# be bumped together: tracing-opentelemetry 0.33.x requires opentelemetry
+# ^0.32, and opentelemetry-otlp 0.32 requires opentelemetry_sdk ^0.32
+# (checked against the crates.io dependency metadata of each release).
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace", "rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "trace"], optional = true }
+# `tracing-log` feature kept: our log→tracing bridge (phase 1) means many
+# events reaching the otel layer originate from `log::*` records, and this
+# feature normalizes their metadata. `metrics` dropped — #107 phase 2 is
+# traces only (/metrics stays Prometheus).
+tracing-opentelemetry = { version = "0.33", default-features = false, features = ["tracing-log"], optional = true }
 mime_guess = "2"
 rand = "0.8"
 crc32fast = "1.4"  # CRC32 checksums for data integrity validation
@@ -101,6 +114,11 @@ cluster = ["openraft", "openraft-memstore"]
 
 # OpenAPI/Swagger documentation support
 openapi = ["utoipa"]
+
+# OpenTelemetry OTLP trace export (issue #107 phase 2). Off by default:
+# default builds compile zero otel code and behave byte-identically.
+# Activation at runtime is via LT_OTEL_ENDPOINT (see app::init_default_tracing).
+otel = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "tracing-opentelemetry"]
 
 # Data Admin UI - Embedded dashboard for database browsing
 # Adds ~30KB to binary when enabled
