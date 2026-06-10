@@ -184,12 +184,39 @@ fn init_default_tracing() {
     // `Option<Layer>` implements `Layer` (None = pass-through), so the
     // composition type stays uniform whether export is active or not.
     #[cfg(feature = "otel")]
-    let (otel_layer, otel_notice) = build_otel_layer_from_env();
+    let (otel_layer, otel_provider, otel_notice) = build_otel_layer_from_env();
 
     let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
     #[cfg(feature = "otel")]
     let subscriber = subscriber.with(otel_layer);
+    // Capture the install outcome (otel builds need it to decide the
+    // provider's fate below); default builds keep the historical
+    // ignore-the-result try-semantics.
+    #[cfg(not(feature = "otel"))]
     let _ = tracing::subscriber::set_global_default(subscriber);
+    #[cfg(feature = "otel")]
+    let subscriber_installed = tracing::subscriber::set_global_default(subscriber).is_ok();
+
+    // Provider lifecycle is bound to the install outcome (PR #119 review):
+    // only a layer that actually routes spans may keep its provider alive.
+    // If a custom subscriber won the first-wins race, our layer is orphaned
+    // — shut the provider down here rather than leak its batch-export
+    // worker thread for the process lifetime. `shutdown()` on a provider
+    // whose lazy tonic channel never connected returns quickly; the SDK
+    // caps it at 5s internally in the worst case (acceptable on this
+    // once-per-process edge path).
+    #[cfg(feature = "otel")]
+    let otel_orphaned = if subscriber_installed {
+        if let Some(provider) = otel_provider {
+            let _ = OTEL_TRACER_PROVIDER.set(provider);
+        }
+        false
+    } else if let Some(provider) = otel_provider {
+        let _ = provider.shutdown();
+        true
+    } else {
+        false
+    };
 
     // Bridge `log` → `tracing`. The max-level hint mirrors what the
     // installed subscriber will actually accept (ERROR by default), so
@@ -208,15 +235,27 @@ fn init_default_tracing() {
         .init();
 
     // Deferred otel init notices: emitted only now that a subscriber is
-    // installed, otherwise they would be silently dropped.
+    // installed (ours or a pre-existing one), otherwise they would be
+    // silently dropped. If our layer ended up orphaned (custom subscriber
+    // won), the "export enabled" notice would be a lie — report the
+    // orphaning instead so the operator knows export is NOT active.
     #[cfg(feature = "otel")]
     match otel_notice {
         Some(OtelInitNotice::Enabled { endpoint, service_name }) => {
-            tracing::info!(
-                %endpoint,
-                service_name = %service_name,
-                "OpenTelemetry OTLP trace export enabled"
-            );
+            if otel_orphaned {
+                tracing::warn!(
+                    %endpoint,
+                    "LT_OTEL_ENDPOINT is set but a tracing subscriber was already \
+                     installed before Lithair's — the OTLP layer is not wired in, \
+                     export is disabled and the provider was shut down"
+                );
+            } else {
+                tracing::info!(
+                    %endpoint,
+                    service_name = %service_name,
+                    "OpenTelemetry OTLP trace export enabled"
+                );
+            }
         }
         Some(OtelInitNotice::Failed { endpoint, error }) => {
             tracing::error!(
@@ -297,6 +336,7 @@ enum OtelInitNotice {
 #[cfg(feature = "otel")]
 fn build_otel_layer_from_env<S>() -> (
     Option<tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::SdkTracer>>,
+    Option<opentelemetry_sdk::trace::SdkTracerProvider>,
     Option<OtelInitNotice>,
 )
 where
@@ -306,7 +346,7 @@ where
     use opentelemetry_otlp::WithExportConfig;
 
     if !otel_endpoint_requested() {
-        return (None, None);
+        return (None, None, None);
     }
     // Non-empty by the check above; trim to tolerate stray whitespace from
     // env files.
@@ -329,7 +369,7 @@ where
     {
         Ok(exporter) => exporter,
         Err(e) => {
-            return (None, Some(OtelInitNotice::Failed { endpoint, error: e.to_string() }));
+            return (None, None, Some(OtelInitNotice::Failed { endpoint, error: e.to_string() }));
         }
     };
 
@@ -345,15 +385,15 @@ where
         .build();
     let tracer = provider.tracer("lithair");
 
-    // First-wins, matching the subscriber install. If a racing init already
-    // stored a provider, this one is dropped here — its batch thread shuts
-    // down with it and the layer about to be returned would only exist if
-    // the racing subscriber install also lost, in which case the layer is
-    // dropped too. In practice init is called once, at serve() start.
-    let _ = OTEL_TRACER_PROVIDER.set(provider);
-
+    // The provider is RETURNED, not registered in OTEL_TRACER_PROVIDER here
+    // (PR #119 review): registration must be conditional on the global
+    // subscriber install actually succeeding. If a custom subscriber was
+    // installed first (the supported coexistence case), the layer built
+    // below is orphaned — the caller then shuts this provider down instead
+    // of leaking its batch-export worker thread.
     (
         Some(tracing_opentelemetry::layer().with_tracer(tracer)),
+        Some(provider),
         Some(OtelInitNotice::Enabled { endpoint, service_name }),
     )
 }
