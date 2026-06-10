@@ -352,6 +352,15 @@ where
         Ok(handler)
     }
 
+    // `event_replay` span (issue #107): wraps the whole startup replay
+    // (snapshot load + event re-application). `count` is recorded at the
+    // end once the replayed total is known — declared `Empty` so the
+    // field exists on the span from the start.
+    #[tracing::instrument(
+        name = "event_replay",
+        skip(self),
+        fields(count = tracing::field::Empty)
+    )]
     pub async fn replay_events(&self) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
         // Snapshot-first replay (issue #69 follow-up):
         // If a snapshot was written by a previous `compact()` call, it
@@ -423,6 +432,7 @@ where
             }
         }
 
+        tracing::Span::current().record("count", replayed_count);
         Ok(replayed_count)
     }
 
@@ -675,9 +685,18 @@ where
 
         if let Some(retention) = retention {
             let to_evict = retention.track_insert(&key, last_updated, size_bytes);
-            for evict_key in to_evict {
-                if let Some(evicted_item) = storage.remove(&evict_key) {
-                    retention.evict_to_warm(&evict_key, &evicted_item, 0, last_updated);
+            if !to_evict.is_empty() {
+                // `retention_evict` span (issue #107): only entered around
+                // actual eviction work — the common no-eviction insert path
+                // stays span-free. Sync fn, no awaits, so an `entered()`
+                // guard is safe here.
+                let _evict_span =
+                    tracing::debug_span!("retention_evict", evicted_count = to_evict.len())
+                        .entered();
+                for evict_key in to_evict {
+                    if let Some(evicted_item) = storage.remove(&evict_key) {
+                        retention.evict_to_warm(&evict_key, &evicted_item, 0, last_updated);
+                    }
                 }
             }
         }

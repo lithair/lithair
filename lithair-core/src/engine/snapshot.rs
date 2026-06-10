@@ -219,6 +219,13 @@ impl SnapshotStore {
     }
 
     /// Save a snapshot for an aggregate
+    // `snapshot_save` span (issue #107): rare maintenance operation, info
+    // level — useful when correlating compaction latency with traces.
+    #[tracing::instrument(
+        name = "snapshot_save",
+        skip_all,
+        fields(aggregate_id = ?snapshot.metadata.aggregate_id)
+    )]
     pub fn save_snapshot(&self, snapshot: &Snapshot) -> EngineResult<()> {
         let path = self.snapshot_path(snapshot.metadata.aggregate_id.as_deref());
 
@@ -251,6 +258,8 @@ impl SnapshotStore {
     }
 
     /// Load a snapshot for an aggregate
+    // `snapshot_load` span (issue #107): startup/recovery path, info level.
+    #[tracing::instrument(name = "snapshot_load", skip_all, fields(aggregate_id = ?aggregate_id))]
     pub fn load_snapshot(&self, aggregate_id: Option<&str>) -> EngineResult<Option<Snapshot>> {
         let path = self.snapshot_path(aggregate_id);
 

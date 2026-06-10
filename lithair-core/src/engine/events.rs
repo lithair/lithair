@@ -375,6 +375,14 @@ impl EventStore {
     ///
     /// If hash chain is enabled, this will automatically add hash chain fields
     /// to the envelope before persisting.
+    // `event_append` span (issue #107): debug level keeps the per-write
+    // hot path span-free under the default / `info` filters.
+    #[tracing::instrument(
+        name = "event_append",
+        level = "debug",
+        skip_all,
+        fields(event_type = %envelope.event_type)
+    )]
     pub fn append_envelope(&mut self, envelope: &EventEnvelope) -> EngineResult<()> {
         // Apply hash chain if enabled and envelope doesn't already have hashes
         let envelope_to_persist = if self.enable_hash_chain && envelope.event_hash.is_none() {
