@@ -130,6 +130,17 @@ fn boxed_full(
 /// makes the two installs impossible to reason about independently. The
 /// manual sequence keeps each step's try-semantics explicit (verified
 /// against tracing-subscriber 0.3.23 / tracing-log 0.2.0 sources).
+///
+/// # OpenTelemetry export (issue #107, phase 2 — `otel` feature)
+///
+/// When the crate is compiled with the `otel` feature AND `LT_OTEL_ENDPOINT`
+/// is set, an OTLP/gRPC span exporter layer is added to the SAME registry
+/// composition (fmt layer + EnvFilter + otel layer coexist). When the env
+/// var is unset, the layer is `None` and behavior is exactly the phase-1
+/// stack. When the env var is set but the feature was NOT compiled, a
+/// one-time warning is emitted so operators aren't silently confused.
+/// An otel init failure (bad endpoint syntax, tonic error) never aborts
+/// startup — it is logged and the server continues without export.
 fn init_default_tracing() {
     use tracing_log::AsLog;
     use tracing_subscriber::layer::SubscriberExt;
@@ -138,8 +149,20 @@ fn init_default_tracing() {
     // previous default) fell back to `error` when RUST_LOG is unset.
     // `EnvFilter::new("error")` preserves that exact out-of-the-box
     // verbosity; a set RUST_LOG is honored with the same directive syntax.
+    //
+    // One documented exception (issue #107 phase 2): when LT_OTEL_ENDPOINT
+    // is set and RUST_LOG is NOT, the fallback is raised from `error` to
+    // `info`. The five instrumentation spans are emitted at INFO — under
+    // the `error` fallback the registry-level filter would discard them
+    // and an operator who explicitly opted into tracing would see zero
+    // spans in their collector (and none of the otel init notices below).
+    // A set RUST_LOG always wins unchanged. This check is compiled in ALL
+    // builds (not cfg-gated) so the filter computation — and therefore the
+    // visibility of the missing-feature warning below — is identical
+    // whether or not the `otel` feature is present.
+    let fallback = if otel_endpoint_requested() { "info" } else { "error" };
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("error"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(fallback));
 
     // Match the old env_logger output as closely as `fmt` allows:
     // millisecond UTC timestamps (`format_timestamp_millis()`), stderr
@@ -155,8 +178,45 @@ fn init_default_tracing() {
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
         .with_writer(std::io::stderr);
 
+    // Build the (optional) otel layer BEFORE installing the subscriber: any
+    // init outcome must be reported through the subscriber we are about to
+    // install, so the notice is stashed and emitted after the install below.
+    // `Option<Layer>` implements `Layer` (None = pass-through), so the
+    // composition type stays uniform whether export is active or not.
+    #[cfg(feature = "otel")]
+    let (otel_layer, otel_provider, otel_notice) = build_otel_layer_from_env();
+
     let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
+    #[cfg(feature = "otel")]
+    let subscriber = subscriber.with(otel_layer);
+    // Capture the install outcome (otel builds need it to decide the
+    // provider's fate below); default builds keep the historical
+    // ignore-the-result try-semantics.
+    #[cfg(not(feature = "otel"))]
     let _ = tracing::subscriber::set_global_default(subscriber);
+    #[cfg(feature = "otel")]
+    let subscriber_installed = tracing::subscriber::set_global_default(subscriber).is_ok();
+
+    // Provider lifecycle is bound to the install outcome (PR #119 review):
+    // only a layer that actually routes spans may keep its provider alive.
+    // If a custom subscriber won the first-wins race, our layer is orphaned
+    // — shut the provider down here rather than leak its batch-export
+    // worker thread for the process lifetime. `shutdown()` on a provider
+    // whose lazy tonic channel never connected returns quickly; the SDK
+    // caps it at 5s internally in the worst case (acceptable on this
+    // once-per-process edge path).
+    #[cfg(feature = "otel")]
+    let otel_orphaned = if subscriber_installed {
+        if let Some(provider) = otel_provider {
+            let _ = OTEL_TRACER_PROVIDER.set(provider);
+        }
+        false
+    } else if let Some(provider) = otel_provider {
+        let _ = provider.shutdown();
+        true
+    } else {
+        false
+    };
 
     // Bridge `log` → `tracing`. The max-level hint mirrors what the
     // installed subscriber will actually accept (ERROR by default), so
@@ -173,6 +233,209 @@ fn init_default_tracing() {
     let _ = tracing_log::LogTracer::builder()
         .with_max_level(tracing::level_filters::LevelFilter::current().as_log())
         .init();
+
+    // Deferred otel init notices: emitted only now that a subscriber is
+    // installed (ours or a pre-existing one), otherwise they would be
+    // silently dropped. If our layer ended up orphaned (custom subscriber
+    // won), the "export enabled" notice would be a lie — report the
+    // orphaning instead so the operator knows export is NOT active.
+    #[cfg(feature = "otel")]
+    match otel_notice {
+        Some(OtelInitNotice::Enabled { endpoint, service_name }) => {
+            if otel_orphaned {
+                tracing::warn!(
+                    %endpoint,
+                    "LT_OTEL_ENDPOINT is set but a tracing subscriber was already \
+                     installed before Lithair's — the OTLP layer is not wired in, \
+                     export is disabled and the provider was shut down"
+                );
+            } else {
+                tracing::info!(
+                    %endpoint,
+                    service_name = %service_name,
+                    "OpenTelemetry OTLP trace export enabled"
+                );
+            }
+        }
+        Some(OtelInitNotice::Failed { endpoint, error }) => {
+            tracing::error!(
+                %endpoint,
+                %error,
+                "OpenTelemetry OTLP exporter init failed; continuing without trace export"
+            );
+        }
+        None => {}
+    }
+    // The operator asked for OTLP export but this binary cannot provide it.
+    // This path must exist in default builds (cfg(not) + env check) so the
+    // misconfiguration is never silent. Visible out of the box: the same
+    // env var raised the unset-RUST_LOG fallback to `info` above.
+    #[cfg(not(feature = "otel"))]
+    if otel_endpoint_requested() {
+        tracing::warn!(
+            "LT_OTEL_ENDPOINT is set but this build lacks the 'otel' feature — \
+             traces will not be exported (rebuild with `--features otel`)"
+        );
+    }
+}
+
+/// `true` when the operator requested OTLP export via `LT_OTEL_ENDPOINT`
+/// (issue #107 phase 2). Compiled in ALL builds: default builds use it to
+/// emit the missing-feature warning and to compute the same EnvFilter
+/// fallback as otel builds; otel builds use it to decide whether to build
+/// the exporter layer.
+fn otel_endpoint_requested() -> bool {
+    std::env::var("LT_OTEL_ENDPOINT").map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+/// Global handle to the OTLP tracer provider, set once by
+/// [`build_otel_layer_from_env`] and read by [`shutdown_otel_provider`]
+/// (issue #107 phase 2).
+///
+/// Why a `static OnceLock` rather than a field on `LithairServer`: the otel
+/// layer is installed into the process-global tracing subscriber by
+/// `init_default_tracing()`, whose whole contract is global, first-wins,
+/// once-per-process (same as the `log` backend install). The provider that
+/// backs that global layer has exactly the same lifetime — it outlives any
+/// one server value (`serve_with_graceful_shutdown` consumes `self` into an
+/// `Arc` and tests spin several servers per process), so a per-server field
+/// would be a lie about ownership. `OnceLock` mirrors the first-wins
+/// semantics: only the init call that actually installed the layer stores
+/// its provider.
+#[cfg(feature = "otel")]
+static OTEL_TRACER_PROVIDER: std::sync::OnceLock<opentelemetry_sdk::trace::SdkTracerProvider> =
+    std::sync::OnceLock::new();
+
+/// Deferred outcome of the otel layer build, logged by
+/// [`init_default_tracing`] once a subscriber is installed.
+#[cfg(feature = "otel")]
+enum OtelInitNotice {
+    Enabled { endpoint: String, service_name: String },
+    Failed { endpoint: String, error: String },
+}
+
+/// Build the OTLP/gRPC export layer from `LT_OTEL_ENDPOINT` /
+/// `LT_OTEL_SERVICE_NAME` (issue #107 phase 2).
+///
+/// Returns `(None, None)` when `LT_OTEL_ENDPOINT` is unset — the registry
+/// composition is then byte-identical in behavior to the phase-1 stack.
+/// Returns `(None, Some(Failed))` when the exporter cannot be built (e.g.
+/// invalid endpoint URI): startup continues without export, per the
+/// fail-open contract of `init_default_tracing`.
+///
+/// Version pairing (bump together): opentelemetry 0.32 / opentelemetry_sdk
+/// 0.32 / opentelemetry-otlp 0.32 (grpc-tonic) / tracing-opentelemetry 0.33.
+///
+/// Runtime requirements: this is called from `serve_with_graceful_shutdown`,
+/// i.e. inside a live tokio runtime. That matters — `connect_lazy()` inside
+/// the tonic exporter builder spawns the channel's I/O worker onto the
+/// *current* runtime, and the SDK's batch span processor later drives
+/// exports from its own dedicated thread through that channel. Building the
+/// exporter outside a runtime would panic in tonic (upstream-documented
+/// constraint, opentelemetry-otlp 0.32 crate docs).
+#[cfg(feature = "otel")]
+fn build_otel_layer_from_env<S>() -> (
+    Option<tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::SdkTracer>>,
+    Option<opentelemetry_sdk::trace::SdkTracerProvider>,
+    Option<OtelInitNotice>,
+)
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    use opentelemetry::trace::TracerProvider as _;
+    use opentelemetry_otlp::WithExportConfig;
+
+    if !otel_endpoint_requested() {
+        return (None, None, None);
+    }
+    // Non-empty by the check above; trim to tolerate stray whitespace from
+    // env files.
+    let endpoint = std::env::var("LT_OTEL_ENDPOINT")
+        .map(|v| v.trim().to_owned())
+        .unwrap_or_default();
+    let service_name = std::env::var("LT_OTEL_SERVICE_NAME")
+        .ok()
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "lithair".to_owned());
+
+    // Endpoint-syntax and tonic transport errors surface here; an
+    // unreachable-but-well-formed endpoint does NOT (the channel is lazy,
+    // export failures are reported per-batch by the SDK's internal logging).
+    let exporter = match opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint.clone())
+        .build()
+    {
+        Ok(exporter) => exporter,
+        Err(e) => {
+            return (None, None, Some(OtelInitNotice::Failed { endpoint, error: e.to_string() }));
+        }
+    };
+
+    let resource = opentelemetry_sdk::Resource::builder()
+        .with_service_name(service_name.clone())
+        .build();
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        // Default batch processor: buffers spans and exports from a
+        // dedicated background thread. This is the batching the
+        // shutdown-flush in `shutdown_otel_provider` exists for.
+        .with_batch_exporter(exporter)
+        .with_resource(resource)
+        .build();
+    let tracer = provider.tracer("lithair");
+
+    // The provider is RETURNED, not registered in OTEL_TRACER_PROVIDER here
+    // (PR #119 review): registration must be conditional on the global
+    // subscriber install actually succeeding. If a custom subscriber was
+    // installed first (the supported coexistence case), the layer built
+    // below is orphaned — the caller then shuts this provider down instead
+    // of leaking its batch-export worker thread.
+    (
+        Some(tracing_opentelemetry::layer().with_tracer(tracer)),
+        Some(provider),
+        Some(OtelInitNotice::Enabled { endpoint, service_name }),
+    )
+}
+
+/// Flush and shut down the OTLP tracer provider at the end of a graceful
+/// shutdown (issue #107 phase 2).
+///
+/// The batch processor exports on an interval; without this, spans recorded
+/// after the last batch export — typically the final requests before the
+/// shutdown signal — would be lost. No-op when export was never enabled.
+///
+/// Bounded: `SdkTracerProvider::shutdown()` blocks the calling thread (the
+/// SDK caps it at 5s internally — verified against opentelemetry_sdk 0.32.1
+/// sources), so it runs on `spawn_blocking` to keep the runtime responsive,
+/// with a slightly larger outer timeout as a belt-and-braces bound in case
+/// the SDK's own cap regresses.
+#[cfg(feature = "otel")]
+async fn shutdown_otel_provider() {
+    const OTEL_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
+
+    let Some(provider) = OTEL_TRACER_PROVIDER.get() else {
+        return;
+    };
+    // `SdkTracerProvider` is a cheap Arc-backed clone; shutting down the
+    // clone shuts down the shared inner provider.
+    let provider = provider.clone();
+    log::info!("Flushing OpenTelemetry spans before shutdown");
+    match tokio::time::timeout(
+        OTEL_SHUTDOWN_TIMEOUT,
+        tokio::task::spawn_blocking(move || provider.shutdown()),
+    )
+    .await
+    {
+        Ok(Ok(Ok(()))) => log::info!("OpenTelemetry tracer provider shut down"),
+        // Includes `AlreadyShutdown` when several servers in one process
+        // shut down in sequence — harmless, hence warn not error.
+        Ok(Ok(Err(e))) => log::warn!("OpenTelemetry shutdown reported: {}", e),
+        Ok(Err(join_err)) => log::warn!("OpenTelemetry shutdown task panicked: {}", join_err),
+        Err(_) => {
+            log::warn!("OpenTelemetry shutdown timed out after {:?}", OTEL_SHUTDOWN_TIMEOUT)
+        }
+    }
 }
 
 /// Extract a usable correlation ID from the inbound `X-Request-ID` header,
@@ -2249,6 +2512,14 @@ impl LithairServer {
         drop(listener);
         log::info!("Draining in-flight connections for up to {:?}", Self::GRACEFUL_DRAIN_GRACE);
         tokio::time::sleep(Self::GRACEFUL_DRAIN_GRACE).await;
+
+        // OTLP exporters batch spans; flush AFTER the drain window so the
+        // spans of the last in-flight requests are exported too (issue #107
+        // phase 2). Bounded — see `shutdown_otel_provider`. No-op when
+        // export was never enabled.
+        #[cfg(feature = "otel")]
+        shutdown_otel_provider().await;
+
         log::info!("Graceful shutdown complete");
         Ok(())
     }
