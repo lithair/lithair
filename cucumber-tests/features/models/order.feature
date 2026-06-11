@@ -45,11 +45,11 @@ Feature: Order model with nested lines, status enum and FK relations
 
   @pain-point @fk
   Scenario: Engine-level FK auto-join expands user_id into a joined user object
-    # user_id uses #[relation(foreign_key = "bdd_users")] — the working FK
-    # syntax. product_id is left unexpanded both because its #[db(fk = ...)]
-    # annotation is dropped by the macro (see the @bug scenario below) and
-    # because no "bdd_products" source is registered; either way the original
-    # field must pass through untouched.
+    # user_id uses #[relation(foreign_key = "bdd_users")]. product_id carries
+    # #[db(fk = "bdd_products")] (parsed since the issue #122 fix — see the
+    # scenario below) but no "bdd_products" source is registered, so the
+    # AutoJoiner must leave it unexpanded and pass the original field through
+    # untouched.
     Given a fresh BDD user store
     When I create user "u-100" with email "grace@example.com", name "Grace" and role "admin"
     And I create order "ord-2" for user "u-100" and product "p-1" with status "paid" and 1 lines at unit price "5.00"
@@ -59,17 +59,14 @@ Feature: Order model with nested lines, status enum and FK relations
     And the expanded order still carries "user_id" equal to "u-100"
     And the expanded order has no joined "product" object
 
-  @bug @deferred @fk
-  Scenario: The db(fk = ...) attribute should mark the field as a foreign key
-    # FRAMEWORK BUG (found by this suite, June 2026): the macro's #[db(...)]
-    # parser walks proc-macro TokenTrees one by one, so the pair-shaped
-    # `fk = "table"` arrives as separate tokens and extract_string_value("fk")
-    # returns None — the FK target is silently dropped
-    # (lithair-macros/src/declarative_simple.rs, parse_db_attributes). This is
-    # the same bug class as issue #75 (#[http(validate = ...)]), which was
-    # fixed for #[http] only. Working alternative: #[relation(foreign_key)].
-    # This scenario asserts the DOCUMENTED behavior of #[db(fk = ...)] and
-    # fails until the parser is fixed — excluded from the green run via
-    # the @deferred tag.
+  @fk
+  Scenario: The db(fk = ...) attribute marks the field as a foreign key
+    # Regression coverage for issue #122 (found by this suite, June 2026):
+    # the macro's #[db(...)] parser used to walk proc-macro TokenTrees one by
+    # one, so the pair-shaped `fk = "table"` arrived as separate tokens and
+    # the FK target was silently dropped (same bug class as issue #75 for
+    # #[http(validate = ...)]). parse_db_attributes now splits the token
+    # string on commas, same as parse_http_attributes; this scenario asserts
+    # the documented behavior of #[db(fk = ...)] and must stay green.
     Given a fresh BDD order store
     Then the order model reports field "product_id" as a foreign key to "bdd_products"
