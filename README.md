@@ -56,7 +56,7 @@ and the framework generates the rest.
 
 ```toml
 [dependencies]
-lithair-core = "0.12"
+lithair-core = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 ```

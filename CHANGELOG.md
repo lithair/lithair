@@ -7,6 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-11
+
+### Added
+
+- **Graceful shutdown hook** (issue #112, PRs #114). New
+  `LithairServer::serve_with_graceful_shutdown(shutdown: impl Future)`
+  (also on the builder): the accept loop selects on the shutdown future
+  (`biased` — a pending connection in the backlog can no longer win over
+  a ready shutdown signal), the listening socket is closed before a 5s
+  drain window for in-flight connections, then the call returns so the
+  application can join its own background workers. `serve()` delegates
+  with `std::future::pending()` — existing callers are byte-for-byte
+  unchanged. Precise per-connection joins and internal-task draining are
+  tracked in #115.
+
+- **Tracing foundation** (issue #107 phase 1, PR #118). The default
+  logger init is now a `tracing-subscriber` registry (an `EnvFilter`
+  honoring `RUST_LOG`, same `error` fallback as the previous env_logger)
+  plus a `tracing-log` bridge: all ~550 existing `log::*` call sites
+  flow through unchanged, and a custom logger installed first (e.g.
+  `RaftstoneLogger`) still wins — same try-semantics as before.
+  Surgical spans on the critical paths: `http_request` (method, path,
+  request_id), `event_append`, `snapshot_save`/`snapshot_load`,
+  `retention_evict`, `event_replay`.
+
+- **`X-Request-ID` correlation** (issue #107 phase 1, PR #118). Every
+  response carries an `X-Request-ID` header: inbound values are honored
+  when they are 1–128 bytes of visible ASCII (anything else is replaced
+  — header-injection hygiene), otherwise a UUID v4 is minted. The id is
+  recorded on the `http_request` span for log/trace correlation.
+
+- **Opt-in OpenTelemetry OTLP exporter** (issue #107 phase 2, PR #119).
+  New `otel` cargo feature (off by default — default builds are
+  unchanged and compile none of it). With the feature and
+  `LT_OTEL_ENDPOINT` set (e.g. `http://collector:4317`), spans export
+  over OTLP/gRPC; `LT_OTEL_SERVICE_NAME` sets the resource name
+  (default `lithair`). The batch exporter is flushed during graceful
+  shutdown (bounded). Setting the env without the feature logs an
+  explicit warning instead of failing silently. See
+  `docs/operations/observability.md`.
+
+- **Operations runbooks** (issue #106, PRs #110/#111/#113/#116/#117).
+  `Dockerfile` + `docker-compose.yml` (bridge networking, named volume,
+  non-root, healthcheck), systemd unit (`StateDirectory`, hardening) and
+  Kubernetes manifests (single-replica + `Recreate` by design,
+  startupProbe sized for event-store replay), plus four guides under
+  `docs/operations/`: capacity planning (RAM/disk/CPU model incl. the
+  retention-bounded formula), backup/restore/PITR (logical export vs
+  physical event-store copy, torn-tail semantics for both JSON and
+  binary log modes), and the version-upgrade playbook (additive vs
+  breaking changes, `#[lithair_model]` requirement for `db(default)`
+  compat, rollback window).
+
+- **Production-realistic BDD coverage** (issue #105, PR #120). Four new
+  models (`BddInvoice`, `BddDocument`, `BddUser`, `BddOrder`) exercise
+  `rust_decimal` money, >100KB blobs under byte-budget retention,
+  timezone-aware timestamps, serde enums, `Option` fields, nested
+  structs and FK auto-join end-to-end — 25 scenarios. This coverage
+  found both bugs fixed below.
+
+- **Governance docs** (issue #108, PR #109): `CONTRIBUTING.md`
+  (dev setup, `cidx run code` gate, trunk-based PR flow) and
+  `SECURITY.md` (private disclosure via GitHub Security Advisories,
+  supported-versions policy).
+
+- **Example: configurable bind** (PR #110). `examples/01-hello-world`
+  reads `HOST`/`PORT` from env (defaults unchanged: `127.0.0.1:8080`) —
+  the pattern container deployments need.
+
+### Fixed
+
+- **`#[retention(max_mb = N)]` or `memory = "30d"` alone were silently
+  ignored** (issue #121, PR #123). Both retention gates
+  (`DeclarativeHttpHandler::new` and `Scc2Engine::enable_retention`)
+  only activated the retention layer when a count was configured, so a
+  budget-only or duration-only annotation capped nothing — a silent
+  misconfiguration for v0.12 adopters. The gate predicate is now
+  `RetentionConfig::is_configured()` (any of the three modes), defined
+  in exactly one place and delegated to by `has_retention_limit()` and
+  `RetentionLayer::is_active()`.
+
+- **`#[db(fk = "table")]` was dropped by the macro parser** (issue
+  #122, PR #124). `parse_db_attributes` walked TokenTrees one by one,
+  so the pair-shaped `fk = "..."` never matched and `fk_collection` was
+  `None` at runtime — the AutoJoiner could not expand the relation.
+  Converted to the same string-level comma-split parsing as the issue
+  #75 fix; flags and the `default = X` block are regression-pinned.
+  Third silently-dropped-attribute bug in this parser — making unknown
+  tokens a compile error is a candidate follow-up.
+
+- **Warm-entry permission bypass through the public list seam**
+  (PR #120 review). Extracting `list_response_json` from `handle_list`
+  made it callable with explicit `user_perms` while the warm-entry gate
+  only checked handler-configured extractors — a direct caller could
+  get hot items permission-filtered but evicted pinned data appended
+  unfiltered. Explicit perms now imply filtering is active.
+
+### Changed
+
+- `lithair-macros` bumped to 0.13 (the `#[db(fk)]` parser fix changes
+  generated specs — every model deriving `DeclarativeModel` must be
+  recompiled, which a `cargo update`/version bump does naturally).
+- `env_logger` removed from `lithair-core` dependencies (replaced by
+  the tracing stack; `RUST_LOG` behavior preserved, `RUST_LOG_STYLE`
+  no longer honored — color follows tty detection).
+- `.serena/` and `.cidx/` tool runtime state untracked (PR #103).
+
 ## [0.12.0] - 2026-05-29
 
 ### Added
