@@ -11,21 +11,24 @@ with the strongest guarantee — the on-disk event-store format.
 SemVer pre-1.0 rules apply: **a minor release may break**. The
 mitigations the project already practices:
 
-- Every break is listed in `CHANGELOG.md` under the version that ships
-  it, with the migration in the entry itself (see the 0.12.0
-  `lithair-macros` bump entry for the expected level of detail).
+- Every break is listed in [CHANGELOG.md](../../CHANGELOG.md) under the
+  version that ships it, with the migration in the entry itself (see
+  the 0.12.0 `lithair-macros` bump entry for the expected level of
+  detail).
 - Additive paths are preferred where they exist — e.g. adding a field
   with `#[db(default = X)]` under `#[lithair_model]` keeps old event
-  stores replayable (see `docs/operations/upgrade.md`).
-- Security fixes target the latest minor only (`SECURITY.md`).
+  stores replayable (see the
+  [upgrade playbook](../operations/upgrade.md)).
+- Security fixes target the latest minor only
+  ([SECURITY.md](../../SECURITY.md)).
 - The on-disk format is treated as if 1.0 rules already applied: no
   0.x release so far has required an event-store migration, and any
   that did would ship a migration path in the same release.
 
 There is no deprecation *window* pre-1.0 — the CHANGELOG entry is the
 notice. Pin your minor (`lithair-core = "0.13"`) and read the
-CHANGELOG before bumping; the upgrade playbook
-(`docs/operations/upgrade.md`) is the procedure.
+CHANGELOG before bumping; the
+[upgrade playbook](../operations/upgrade.md) is the procedure.
 
 ## Post-1.0 (the contract this policy will back)
 
@@ -41,7 +44,8 @@ CHANGELOG before bumping; the upgrade playbook
 3. **Remove (1.N+2 or later)** — the removal is its own CHANGELOG
    entry referencing the deprecation entry.
 
-Accelerated removal is allowed only for security (per `SECURITY.md`)
+Accelerated removal is allowed only for security (per
+[SECURITY.md](../../SECURITY.md))
 or for behavior that is already broken in a way users cannot rely on —
 both cases documented as such.
 

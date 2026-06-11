@@ -10,7 +10,7 @@ everyone — including future readers who land on a thread years later.
   because…" is useful; comments about the author are not.
 - **Bring evidence.** Reproduction steps, version numbers, logs, and
   links to the relevant source beat adjectives. This matches how the
-  project itself works (see `CONTRIBUTING.md`).
+  project itself works (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Assume competence and good faith** — in maintainers, contributors,
   and reporters alike. Most disagreements here are about trade-offs,
   not mistakes.
@@ -38,7 +38,8 @@ anyone participating in them — maintainer included.
 Report conduct issues privately via
 [GitHub's private reporting](https://github.com/lithair/lithair/security/advisories/new)
 — the same channel as security reports (pragmatic for a solo-maintainer
-project; see `SECURITY.md`). Reports are read by the maintainer only.
+project; see [SECURITY.md](SECURITY.md)). Reports are read by the
+maintainer only.
 
 Consequences scale with severity and repetition: a request to rephrase,
 hidden/edited comments, locked threads, and as a last resort a block
