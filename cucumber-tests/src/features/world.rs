@@ -174,10 +174,9 @@ pub struct BddDocument {
 }
 
 /// Budget-only retention model: `max_mb` WITHOUT a `memory` count.
-/// Exists to document a framework gap (see `@bug @deferred` scenario in
-/// document.feature): `DeclarativeHttpHandler::new` only constructs the
-/// `RetentionLayer` when `memory_count.is_some()`, so a budget-only
-/// annotation is silently ignored.
+/// Regression model for issue #121 (see the `@retention` budget-only
+/// scenario in document.feature): the handler/engine gates used to require
+/// `memory_count.is_some()`, silently ignoring budget-only annotations.
 #[derive(Debug, Clone, Serialize, Deserialize, lithair_core::DeclarativeModel)]
 #[retention(max_mb = 1)]
 pub struct BddBudgetOnlyDoc {

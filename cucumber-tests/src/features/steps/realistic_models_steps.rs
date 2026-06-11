@@ -535,7 +535,7 @@ async fn then_all_documents_intact(world: &mut LithairWorld, count: usize) {
     }
 }
 
-// Budget-only model steps (@bug @deferred scenario — see document.feature).
+// Budget-only model steps (issue #121 regression scenario — see document.feature).
 
 #[when(expr = "I create {int} budget-only documents of {int} KB each")]
 async fn when_create_budget_docs(world: &mut LithairWorld, count: usize, kb: usize) {

@@ -53,16 +53,14 @@ Feature: Document model with large blobs, versioning and tags
     Then all 15 documents are accessible with intact content
     And fewer than 15 documents are fully in memory
 
-  @bug @deferred @retention
-  Scenario: A max_mb-only retention annotation should enforce the byte budget
-    # FRAMEWORK GAP (found while writing this suite): DeclarativeHttpHandler::new
-    # only constructs the RetentionLayer when retention_config.memory_count is
-    # Some (lithair-core/src/http/declarative.rs, `new()`), so a model annotated
-    # with ONLY #[retention(max_mb = 1)] gets no retention at all — the budget
-    # is silently ignored even though lifecycle::is_retention_active() treats
-    # budget-only configs as active. This scenario asserts the CORRECT
-    # behavior and therefore fails today; it is excluded from the green run
-    # via the @deferred tag.
+  @retention
+  Scenario: A max_mb-only retention annotation enforces the byte budget
+    # Regression test for issue #121: DeclarativeHttpHandler::new used to
+    # construct the RetentionLayer only when retention_config.memory_count was
+    # Some, so a model annotated with ONLY #[retention(max_mb = 1)] got no
+    # retention at all. The gate now uses RetentionConfig::is_configured()
+    # (any of count/duration/budget), so the budget-only annotation below
+    # must evict.
     Given a fresh BDD budget-only document store
     When I create 5 budget-only documents of 500 KB each
     Then at most 2 budget-only documents are fully in memory

@@ -140,6 +140,19 @@ pub struct RetentionConfig {
     pub memory_budget_bytes: Option<usize>,
 }
 
+impl RetentionConfig {
+    /// Whether ANY retention dimension (count, duration or byte budget) is
+    /// configured. This is THE gate predicate: every site deciding whether
+    /// to build/activate a `RetentionLayer` must use it, so that a
+    /// budget-only or duration-only annotation activates retention exactly
+    /// like a count annotation does (issue #121).
+    pub fn is_configured(&self) -> bool {
+        self.memory_count.is_some()
+            || self.memory_duration_secs.is_some()
+            || self.memory_budget_bytes.is_some()
+    }
+}
+
 /// Trait for models with retention policies — controls memory/disk tiering
 pub trait RetentionAware {
     /// Get the model-level retention configuration
@@ -150,10 +163,7 @@ pub trait RetentionAware {
 
     /// Whether this model has ANY retention limit configured.
     fn has_retention_limit() -> bool {
-        let cfg = Self::retention_config();
-        cfg.memory_count.is_some()
-            || cfg.memory_duration_secs.is_some()
-            || cfg.memory_budget_bytes.is_some()
+        Self::retention_config().is_configured()
     }
 }
 
@@ -238,6 +248,26 @@ impl Default for LifecycleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Truth table for the unified retention gate predicate (issue #121):
+    /// ANY single configured dimension must activate retention, not just
+    /// `memory_count`.
+    #[test]
+    fn retention_config_is_configured_truth_table() {
+        let none = RetentionConfig::default();
+        assert!(!none.is_configured(), "empty config must not activate retention");
+
+        let count_only = RetentionConfig { memory_count: Some(100), ..Default::default() };
+        assert!(count_only.is_configured(), "count-only must activate retention");
+
+        let duration_only =
+            RetentionConfig { memory_duration_secs: Some(30 * 86_400), ..Default::default() };
+        assert!(duration_only.is_configured(), "duration-only must activate retention");
+
+        let budget_only =
+            RetentionConfig { memory_budget_bytes: Some(512 * 1024 * 1024), ..Default::default() };
+        assert!(budget_only.is_configured(), "budget-only must activate retention");
+    }
 
     #[test]
     fn test_field_policy_presets() {

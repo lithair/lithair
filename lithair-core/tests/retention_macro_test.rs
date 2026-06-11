@@ -29,6 +29,29 @@ struct Email {
     body: String,
 }
 
+/// Duration-only retention: `memory = "30d"` WITHOUT a count or budget.
+/// Regression model for issue #121 — the gates used to require
+/// `memory_count`, silently ignoring this annotation.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, DeclarativeModel)]
+#[retention(memory = "30d")]
+struct DurationOnlyEmail {
+    #[db(primary_key)]
+    #[pinned]
+    id: String,
+    body: String,
+}
+
+/// Budget-only retention: `max_mb` WITHOUT a count or duration.
+/// Regression model for issue #121.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, DeclarativeModel)]
+#[retention(max_mb = 512)]
+struct BudgetOnlyEmail {
+    #[db(primary_key)]
+    #[pinned]
+    id: String,
+    body: String,
+}
+
 /// No annotations → no retention, no pinned fields. Backward-compat check.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, DeclarativeModel)]
 struct Bare {
@@ -62,6 +85,38 @@ fn pinned_fields_listed_from_annotations() {
 #[test]
 fn has_retention_limit_when_memory_count_set() {
     assert!(Email::has_retention_limit());
+}
+
+/// Issue #121 regression: a duration-only annotation must report a
+/// retention limit (the gate in `DeclarativeHttpHandler::new` and
+/// `Scc2Engine::enable_retention` builds the `RetentionLayer` from this
+/// exact predicate via `RetentionConfig::is_configured`).
+#[test]
+fn duration_only_annotation_activates_retention() {
+    let cfg = DurationOnlyEmail::retention_config();
+    assert_eq!(cfg.memory_count, None);
+    assert_eq!(
+        cfg.memory_duration_secs,
+        Some(30 * 86_400),
+        "memory_duration_secs must reflect #[retention(memory = \"30d\")]"
+    );
+    assert!(cfg.is_configured(), "duration-only config must be considered configured");
+    assert!(DurationOnlyEmail::has_retention_limit());
+}
+
+/// Issue #121 regression: a budget-only annotation must report a
+/// retention limit.
+#[test]
+fn budget_only_annotation_activates_retention() {
+    let cfg = BudgetOnlyEmail::retention_config();
+    assert_eq!(cfg.memory_count, None);
+    assert_eq!(
+        cfg.memory_budget_bytes,
+        Some(512 * 1024 * 1024),
+        "memory_budget_bytes must reflect #[retention(max_mb = 512)] in BYTES"
+    );
+    assert!(cfg.is_configured(), "budget-only config must be considered configured");
+    assert!(BudgetOnlyEmail::has_retention_limit());
 }
 
 #[test]
