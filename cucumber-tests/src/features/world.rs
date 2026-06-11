@@ -241,12 +241,12 @@ pub struct BddOrder {
     pub id: String,
     #[relation(foreign_key = "bdd_users")]
     pub user_id: String,
-    /// Deliberately uses the `#[db(fk = "...")]` syntax, which the macro's
-    /// TokenTree-level `parse_db_attributes` currently DROPS (the pair-shaped
-    /// `fk = "table"` arrives as separate tokens — same bug class as issue
-    /// #75 for `#[http(validate)]`). See the `@bug @deferred` scenario in
-    /// order.feature; switch to `#[relation(foreign_key = ...)]` for the
-    /// working behavior.
+    /// Deliberately uses the `#[db(fk = "...")]` syntax — the form that the
+    /// macro's TokenTree-level `parse_db_attributes` used to DROP silently
+    /// (issue #122, same bug class as issue #75 for `#[http(validate)]`).
+    /// Kept on this syntax as regression coverage: the `@fk` scenario in
+    /// order.feature asserts the policy carries `fk_collection =
+    /// "bdd_products"`.
     #[db(fk = "bdd_products")]
     pub product_id: String,
     pub status: BddOrderStatus,

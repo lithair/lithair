@@ -368,22 +368,40 @@ fn parse_field_attributes(field: &Field) -> FieldAttributes {
 }
 
 /// Parse #[db(...)] attributes
+///
+/// Splits the attribute token stream by commas at the string level — the
+/// same approach as `parse_http_attributes` (see its doc comment for the
+/// full rationale and the known comma-in-value limitation, which is
+/// acceptable here too: collection/table names never contain commas).
+/// The original implementation walked `meta_list.tokens.into_iter()`
+/// TokenTree by TokenTree, which breaks pair-shaped attributes: in
+/// `fk = "bdd_users"` the `fk` Ident, `=` Punct, and `"bdd_users"` Literal
+/// arrive as THREE separate `TokenTree`s, so `extract_string_value("fk")`
+/// found no quote and the FK target was silently dropped
+/// (`fk_collection = None` at runtime, AutoJoiner blind) — issue #122,
+/// the same bug class as issue #75 (`#[http(validate = "...")]`).
+///
+/// Single-token flags (`primary_key`, `unique`, `indexed`, `nullable`)
+/// match the trimmed fragment exactly; pair-shaped keys use
+/// `starts_with(key)` + `extract_string_value`, mirroring
+/// `parse_http_attributes`.
 fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         // Get the full token string for more complex parsing
         let full_tokens = meta_list.tokens.to_string();
 
-        for nested in meta_list.tokens.clone().into_iter() {
-            let nested_str = nested.to_string();
-            match nested_str.as_str() {
+        for token in full_tokens.split(',') {
+            let token = token.trim();
+            match token {
                 "primary_key" => attrs.primary_key = true,
                 "unique" => attrs.unique = true,
                 "indexed" => attrs.indexed = true,
                 "nullable" => attrs.nullable = true,
-                _ if nested_str.starts_with("fk") => {
-                    // Simple parsing for fk = "Table"
-                    if let Some(value) = extract_string_value(&nested_str) {
+                _ if token.starts_with("fk") => {
+                    // Pair parsing for fk = "table" — the comma-split
+                    // fragment carries key AND literal together.
+                    if let Some(value) = extract_string_value(token) {
                         attrs.foreign_key = Some(value);
                     }
                 }
