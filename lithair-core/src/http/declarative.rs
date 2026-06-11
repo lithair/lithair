@@ -312,7 +312,10 @@ where
         if let Some(override_bytes) = Self::env_memory_max_mb_override() {
             retention_config.memory_budget_bytes = Some(override_bytes);
         }
-        let retention = if retention_config.memory_count.is_some() {
+        // Gate on ANY configured dimension (count, duration or budget) of
+        // the post-override config — a budget-only or duration-only
+        // annotation must activate retention too (issue #121).
+        let retention = if retention_config.is_configured() {
             let pinned = T::pinned_fields().iter().map(|s| s.to_string()).collect();
             Some(RetentionLayer::new(retention_config, pinned))
         } else {

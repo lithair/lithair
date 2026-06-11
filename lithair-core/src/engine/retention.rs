@@ -108,9 +108,7 @@ impl RetentionLayer {
     }
 
     pub fn is_active(&self) -> bool {
-        self.config.memory_count.is_some()
-            || self.config.memory_duration_secs.is_some()
-            || self.config.memory_budget_bytes.is_some()
+        self.config.is_configured()
     }
 
     /// Names of fields marked `#[pinned]` on the model. Used by uniqueness

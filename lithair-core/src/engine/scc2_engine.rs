@@ -85,7 +85,10 @@ where
     /// Once enabled, the engine evicts oldest items beyond the memory limit,
     /// keeping only pinned fields in a warm map for fast listing.
     pub fn enable_retention(&mut self, config: RetentionConfig, pinned_field_names: Vec<String>) {
-        if config.memory_count.is_some() {
+        // Gate on ANY configured dimension (count, duration or budget) — a
+        // budget-only or duration-only config must activate retention too
+        // (issue #121).
+        if config.is_configured() {
             self.retention = Some(RetentionLayer::new(config, pinned_field_names));
         }
     }
