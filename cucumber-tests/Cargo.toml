@@ -96,6 +96,10 @@ futures = "0.3"
 tempfile = "3.8"
 crc32fast = "1.4"
 rand = "0.8"
+# Decimal money handling for production-realistic BDD models (issue #105).
+# Scoped to cucumber-tests ONLY — lithair-core must not gain this dependency;
+# it exercises what real users do (Decimal fields on DeclarativeModel structs).
+rust_decimal = { version = "1", features = ["serde"] }
 
 # Lithair core framework
 lithair-core = { path = "../lithair-core" }

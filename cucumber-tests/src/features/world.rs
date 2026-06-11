@@ -119,6 +119,169 @@ pub struct RetentionTestEmail {
     pub body: String,
 }
 
+// ============================================================================
+// Production-realistic BDD models (issue #105).
+//
+// Real applications model decimal money, large blobs, nested structs,
+// timezone-aware timestamps, optional fields, and enum variants. These four
+// models exercise those types end-to-end through `DeclarativeHttpHandler<T>`
+// (created/replayed per scenario by `realistic_models_steps.rs`). All names
+// are prefixed `Bdd` to avoid colliding with existing test models.
+// ============================================================================
+
+/// Nested line item for `BddInvoice` — plain serde struct, not a model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BddInvoiceLine {
+    pub description: String,
+    pub quantity: u32,
+    /// rust_decimal::Decimal serializes as a JSON string by default,
+    /// preserving exact decimal precision across the event store.
+    pub unit_price: rust_decimal::Decimal,
+}
+
+/// Invoice — decimal money fields, due-date, currency code, nested lines.
+#[derive(Debug, Clone, Serialize, Deserialize, lithair_core::DeclarativeModel)]
+pub struct BddInvoice {
+    #[db(primary_key)]
+    pub id: String,
+    pub invoice_number: String,
+    /// ISO 4217 currency code (EUR, USD, ...)
+    pub currency: String,
+    pub total_amount: rust_decimal::Decimal,
+    pub tax_amount: rust_decimal::Decimal,
+    pub due_date: chrono::DateTime<chrono::Utc>,
+    pub lines: Vec<BddInvoiceLine>,
+}
+
+/// Document — large content blob (>100KB in scenarios), version, tag array.
+///
+/// Carries a huge static `memory` retention so the `RetentionLayer` is
+/// active; the budget scenarios tighten the byte budget via the
+/// `LT_BDDDOCUMENT_MEMORY_MAX_MB` env override (handler reads it in `new()`).
+#[derive(Debug, Clone, Serialize, Deserialize, lithair_core::DeclarativeModel)]
+#[retention(memory = 999999)]
+pub struct BddDocument {
+    #[db(primary_key)]
+    #[pinned]
+    pub id: String,
+    #[pinned]
+    pub title: String,
+    #[pinned]
+    pub version: u32,
+    pub tags: Vec<String>,
+    /// Large markdown blob — scenarios generate >100KB strings here.
+    pub content: String,
+}
+
+/// Budget-only retention model: `max_mb` WITHOUT a `memory` count.
+/// Exists to document a framework gap (see `@bug @deferred` scenario in
+/// document.feature): `DeclarativeHttpHandler::new` only constructs the
+/// `RetentionLayer` when `memory_count.is_some()`, so a budget-only
+/// annotation is silently ignored.
+#[derive(Debug, Clone, Serialize, Deserialize, lithair_core::DeclarativeModel)]
+#[retention(max_mb = 1)]
+pub struct BddBudgetOnlyDoc {
+    #[db(primary_key)]
+    #[pinned]
+    pub id: String,
+    pub content: String,
+}
+
+/// User role enum — verifies serde-serializable enums work through the derive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BddUserRole {
+    Admin,
+    Editor,
+    Viewer,
+}
+
+/// User — timezone-aware timestamp, optional bio, validated unique email,
+/// role enum.
+#[derive(Debug, Clone, Serialize, Deserialize, lithair_core::DeclarativeModel)]
+pub struct BddUser {
+    #[db(primary_key)]
+    pub id: String,
+    #[db(unique)]
+    #[http(expose, validate = "email")]
+    pub email: String,
+    pub display_name: String,
+    pub role: BddUserRole,
+    pub bio: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Nested line item for `BddOrder` — plain serde struct, not a model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BddOrderLine {
+    pub product_id: String,
+    pub quantity: u32,
+    pub unit_price: rust_decimal::Decimal,
+}
+
+/// Order status enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BddOrderStatus {
+    Pending,
+    Paid,
+    Shipped,
+    Cancelled,
+}
+
+/// Order — FK fields to user/product, nested line items, status enum.
+///
+/// `#[relation(foreign_key = "...")]` populates
+/// `ModelSpec::get_policy().fk_collection`, which the engine-level
+/// `AutoJoiner` uses for relation expansion. NOTE: the declarative HTTP
+/// handler path does NOT expand relations — the FK scenarios test the
+/// engine-level `AutoJoiner` directly (see order.feature).
+#[derive(Debug, Clone, Serialize, Deserialize, lithair_core::DeclarativeModel)]
+pub struct BddOrder {
+    #[db(primary_key)]
+    pub id: String,
+    #[relation(foreign_key = "bdd_users")]
+    pub user_id: String,
+    /// Deliberately uses the `#[db(fk = "...")]` syntax, which the macro's
+    /// TokenTree-level `parse_db_attributes` currently DROPS (the pair-shaped
+    /// `fk = "table"` arrives as separate tokens — same bug class as issue
+    /// #75 for `#[http(validate)]`). See the `@bug @deferred` scenario in
+    /// order.feature; switch to `#[relation(foreign_key = ...)]` for the
+    /// working behavior.
+    #[db(fk = "bdd_products")]
+    pub product_id: String,
+    pub status: BddOrderStatus,
+    pub lines: Vec<BddOrderLine>,
+}
+
+/// Per-model handler slot for the realistic-model scenarios. One generic
+/// struct instead of 4x3 loose fields on `LithairWorld` — each model keeps
+/// its handler, the temp dir (kept alive so the path survives the
+/// drop-and-replay restart step), and the event-store path.
+pub struct BddModelSlot<T>
+where
+    T: lithair_core::http::HttpExposable
+        + lithair_core::lifecycle::LifecycleAware
+        + lithair_core::consensus::ReplicatedModel
+        + lithair_core::lifecycle::RetentionAware,
+{
+    pub handler: Option<Arc<lithair_core::http::DeclarativeHttpHandler<T>>>,
+    pub temp_dir: Option<tempfile::TempDir>,
+    pub path: Option<String>,
+}
+
+impl<T> Default for BddModelSlot<T>
+where
+    T: lithair_core::http::HttpExposable
+        + lithair_core::lifecycle::LifecycleAware
+        + lithair_core::consensus::ReplicatedModel
+        + lithair_core::lifecycle::RetentionAware,
+{
+    fn default() -> Self {
+        Self { handler: None, temp_dir: None, path: None }
+    }
+}
+
 impl lithair_core::model_inspect::Inspectable for TestArticle {
     fn get_field_value(&self, field_name: &str) -> Option<serde_json::Value> {
         match field_name {
@@ -404,6 +567,21 @@ pub struct LithairWorld {
     pub retention_temp_dir: Arc<Mutex<Option<tempfile::TempDir>>>,
     pub retention_path: Arc<Mutex<Option<String>>>,
     pub retention_last_item: Arc<Mutex<Option<RetentionTestEmail>>>,
+    // Production-realistic model BDD state (issue #105). One handler slot per
+    // model type; scratch fields hold the last fetched/listed/expanded JSON
+    // and the last error so Then-steps can assert exact values.
+    pub bdd_invoices: BddModelSlot<BddInvoice>,
+    pub bdd_documents: BddModelSlot<BddDocument>,
+    pub bdd_budget_docs: BddModelSlot<BddBudgetOnlyDoc>,
+    pub bdd_users: BddModelSlot<BddUser>,
+    pub bdd_orders: BddModelSlot<BddOrder>,
+    pub bdd_last_value: Option<serde_json::Value>,
+    pub bdd_last_list: Option<serde_json::Value>,
+    pub bdd_last_error: Option<String>,
+    /// CRC32 checksums of generated document contents, keyed by document id,
+    /// so blob-integrity Then-steps can verify exact content after eviction
+    /// and replay without keeping the full >100KB strings in the world.
+    pub bdd_content_checksums: HashMap<String, u32>,
 }
 
 impl std::fmt::Debug for LithairWorld {
@@ -462,6 +640,15 @@ impl Default for LithairWorld {
             retention_temp_dir: Arc::new(Mutex::new(None)),
             retention_path: Arc::new(Mutex::new(None)),
             retention_last_item: Arc::new(Mutex::new(None)),
+            bdd_invoices: BddModelSlot::default(),
+            bdd_documents: BddModelSlot::default(),
+            bdd_budget_docs: BddModelSlot::default(),
+            bdd_users: BddModelSlot::default(),
+            bdd_orders: BddModelSlot::default(),
+            bdd_last_value: None,
+            bdd_last_list: None,
+            bdd_last_error: None,
+            bdd_content_checksums: HashMap::new(),
         }
     }
 }
