@@ -1328,16 +1328,41 @@ where
 
     /// GET /api/{model} - List all items with filtering, sorting, and pagination
     async fn handle_list(&self, req: &Req) -> Result<Resp, Infallible> {
-        use crate::http::query::{
-            compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE,
-        };
-
         // Extract permissions from request if extractor is provided
         let user_perms: Vec<String> =
             self.permission_extractor.as_ref().map(|f| f(req)).unwrap_or_default();
 
-        // Parse query parameters
         let query_str = req.uri().query().unwrap_or("");
+        let response = self.list_response_json(query_str, &user_perms).await;
+
+        match serde_json::to_string(&response) {
+            Ok(json) => Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "application/json")
+                .body(body_from(json))
+                .unwrap()),
+            Err(_) => Ok(self.internal_error_response()),
+        }
+    }
+
+    /// Build the JSON wrapper the GET-list endpoint returns
+    /// (`{data, total, skip, take, has_more}`) from a raw query string.
+    ///
+    /// This is the production list pipeline — filtering, sorting, and
+    /// skip/take pagination — extracted from `handle_list` so it can be
+    /// exercised directly by tests and BDD scenarios. `handle_list` cannot
+    /// be driven without a live socket because `Req = Request<Incoming>`
+    /// and hyper's `Incoming` body has no public constructor.
+    pub async fn list_response_json(
+        &self,
+        query_str: &str,
+        user_perms: &[String],
+    ) -> serde_json::Value {
+        use crate::http::query::{
+            compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE,
+        };
+
+        // Parse query parameters
         let params = parse_query_params(query_str);
 
         // Collect hot items (full data) + warm items (pinned fields only).
@@ -1349,14 +1374,24 @@ where
         // This is conservative but safe; a future enhancement could either
         // partially deserialize the warm JSON back to `T` or attach a
         // model-declared `#[pinned(public)]` flag.
-        let permission_filtering_active =
-            self.permission_extractor.is_some() || self.permission_checker.is_some();
+        //
+        // `!user_perms.is_empty()` matters since this method became public
+        // (PR #120 review, security-high): on the HTTP path `user_perms`
+        // always comes from the handler's own extractor, so the two
+        // `is_some()` checks were a faithful proxy — but a direct caller
+        // (custom route, admin surface) can pass explicit perms while the
+        // handler has no extractor configured. Hot items would then be
+        // can_read-filtered while warm entries bypassed the gate entirely.
+        // Explicit perms ⇒ filtering is active ⇒ warm entries are skipped.
+        let permission_filtering_active = self.permission_extractor.is_some()
+            || self.permission_checker.is_some()
+            || !user_perms.is_empty();
 
         let json_items: Vec<serde_json::Value> = {
             let storage = self.storage.read().await;
             let mut items: Vec<serde_json::Value> = storage
                 .values()
-                .filter(|item| item.can_read(&user_perms))
+                .filter(|item| item.can_read(user_perms))
                 .filter_map(|item| serde_json::to_value(item).ok())
                 .collect();
 
@@ -1410,22 +1445,13 @@ where
         json_items.truncate(effective_take);
 
         // Build wrapper response
-        let response = serde_json::json!({
+        serde_json::json!({
             "data": json_items,
             "total": total,
             "skip": params.skip,
             "take": effective_take,
             "has_more": has_more,
-        });
-
-        match serde_json::to_string(&response) {
-            Ok(json) => Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "application/json")
-                .body(body_from(json))
-                .unwrap()),
-            Err(_) => Ok(self.internal_error_response()),
-        }
+        })
     }
 
     /// GET /api/{model}/stream - SSE real-time change subscription
