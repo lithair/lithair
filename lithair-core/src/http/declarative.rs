@@ -1374,8 +1374,18 @@ where
         // This is conservative but safe; a future enhancement could either
         // partially deserialize the warm JSON back to `T` or attach a
         // model-declared `#[pinned(public)]` flag.
-        let permission_filtering_active =
-            self.permission_extractor.is_some() || self.permission_checker.is_some();
+        //
+        // `!user_perms.is_empty()` matters since this method became public
+        // (PR #120 review, security-high): on the HTTP path `user_perms`
+        // always comes from the handler's own extractor, so the two
+        // `is_some()` checks were a faithful proxy — but a direct caller
+        // (custom route, admin surface) can pass explicit perms while the
+        // handler has no extractor configured. Hot items would then be
+        // can_read-filtered while warm entries bypassed the gate entirely.
+        // Explicit perms ⇒ filtering is active ⇒ warm entries are skipped.
+        let permission_filtering_active = self.permission_extractor.is_some()
+            || self.permission_checker.is_some()
+            || !user_perms.is_empty();
 
         let json_items: Vec<serde_json::Value> = {
             let storage = self.storage.read().await;
