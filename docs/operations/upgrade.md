@@ -152,9 +152,11 @@ For a **cluster**, schema changes propagate through Raft consensus
 (internal `/_raft/schema/*` endpoints) and a node recovering from desync
 can pull the leader's schemas with `POST /_admin/schema/sync`. Note that
 `sync`'s full leader-communication path is not yet implemented (the
-handler logs and returns current state; see `handle_admin_schema_sync`)
-and cluster mode itself is not yet production-ready (issue #104) —
-single-node is the supported path today.
+handler logs and returns current state; see `handle_admin_schema_sync`).
+Cluster mode is production-stable within the documented operating
+envelope (issue #104 — see [`cluster.md`](cluster.md)); because of the
+sync stub, a node that missed schema changes while down must be
+restarted from current code rather than relying on `sync`.
 
 **Honest limitation.** The framework *detects and gates* breaking
 changes; it does not transform arbitrary data. A type change or rename

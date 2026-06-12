@@ -16,9 +16,11 @@ Two non-Docker deployment paths ship under
 | **systemd**          | Bare-metal or a VM with no container runtime.                  |
 | **Kubernetes**       | An orchestrated cluster you already operate.                   |
 
-All three run the same single-node server. Lithair's cluster mode is **not yet
-production-ready** (issue #104), so every path here deploys exactly one
-instance backed by one event store.
+All three run the same single-node server. Lithair's cluster mode is
+production-stable within a documented operating envelope (issue #104 — see
+[`cluster.md`](cluster.md)), but it is a different topology (one process
+per node, each with its own data directory); every path here deploys
+exactly one instance backed by one event store.
 
 ## systemd
 
@@ -101,8 +103,11 @@ ServiceMonitor.
 
 The Deployment pins `replicas: 1` and uses the `Recreate` strategy. Each pod
 runs an independent event store; a second replica would silently diverge.
-Until cluster mode is production-ready (issue #104), scale vertically by
-raising the container's CPU/memory, not the replica count.
+Scale vertically by raising the container's CPU/memory, not the replica
+count. Cluster mode (production-stable within the envelope documented in
+[`cluster.md`](cluster.md)) is a different k8s topology — one
+StatefulSet-style pod per node with its own volume and `--node-id` — and
+is out of scope for these bundled manifests.
 
 ### Point at your own image
 

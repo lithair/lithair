@@ -2480,7 +2480,18 @@ impl LithairServer {
                     .serve_connection(io, service)
                     .await
                 {
-                    log::error!("Connection error from {}: {}", remote_addr, err);
+                    // `header_read_timeout` reaps idle keep-alive connections
+                    // with a "read header from client timeout" error
+                    // (`hyper::Error::is_timeout()`). That is routine
+                    // housekeeping, not a fault — under sustained load it
+                    // fired thousands of times at ERROR (issue #104 stress
+                    // run), drowning real errors. Keep genuine connection
+                    // errors at ERROR.
+                    if err.is_timeout() {
+                        log::debug!("Idle connection reaped from {}: {}", remote_addr, err);
+                    } else {
+                        log::error!("Connection error from {}: {}", remote_addr, err);
+                    }
                 }
             });
         }
