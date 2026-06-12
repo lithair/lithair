@@ -96,9 +96,10 @@ storage, JWT support, and cookie-based auth.
 **RBAC** -- Field-level role-based access control. Define who can read and write
 each field directly on the struct.
 
-**Distributed consensus** -- OpenRaft integration for multi-node clusters with
-leader election and data replication. Opt-in via the `cluster` feature; single-
-node deployments don't pay for it.
+**Distributed consensus** -- Multi-node clusters with leader election and
+majority-acknowledged replication, production-stable within a documented
+operating envelope ([cluster runbook](docs/operations/cluster.md)). Opt-in via
+the `cluster` feature; single-node deployments don't pay for it.
 
 **HTTP server** -- Built on Hyper. Includes firewall with IP filtering and
 rate limiting, gzip compression, and CORS.

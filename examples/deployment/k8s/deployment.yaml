@@ -1,9 +1,12 @@
 # Lithair Deployment.
 #
-# Single replica by design. Lithair's single-node mode is the production-stable
-# path today; cluster mode is not yet production-ready (see issue #104). Do NOT
-# bump `replicas` above 1 — multiple replicas would each run an independent
-# event store and silently diverge. Scale vertically (CPU/RAM) instead.
+# Single replica by design. This manifest deploys single-node Lithair. Cluster
+# mode is production-stable within a documented operating envelope (issue #104,
+# docs/operations/cluster.md) but is a DIFFERENT topology — one pod per node
+# with stable identity and its own volume — and is out of scope for this
+# manifest. Do NOT bump `replicas` above 1 — multiple replicas of this
+# Deployment would each run an independent event store and silently diverge.
+# Scale vertically (CPU/RAM) instead.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
