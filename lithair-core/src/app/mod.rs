@@ -2818,8 +2818,17 @@ impl LithairServer {
             let is_write =
                 matches!(method, hyper::Method::POST | hyper::Method::PUT | hyper::Method::DELETE);
             let is_internal = path.starts_with("/internal/") || path.starts_with("/_raft/");
+            // Frontend reloads are NODE-LOCAL: each node serves its own assets
+            // from its own disk, so a follower must reload ITS frontend, not
+            // bounce to the leader (which would reload the wrong node's assets
+            // and leave the follower stale). Exempt the frontend admin plane
+            // from write redirection (PR #138 review). Note: /_admin/data and
+            // /_admin/schema are NOT exempt — their writes mutate the
+            // replicated event store and correctly belong on the leader.
+            let is_node_local_admin =
+                path == "/_admin/frontend" || path.starts_with("/_admin/frontend/");
 
-            if is_write && !raft_state.is_leader() && !is_internal {
+            if is_write && !raft_state.is_leader() && !is_internal && !is_node_local_admin {
                 let leader_port = raft_state.get_leader_port();
                 if leader_port == 0 {
                     return Ok(Self::leader_port_unknown_503());
@@ -5145,25 +5154,26 @@ impl LithairServer {
         engine: &crate::frontend::FrontendEngine,
         include_paths: bool,
     ) -> serde_json::Value {
-        let assets = engine.list_assets();
-        let asset_count = assets.len();
-        let total_bytes: u64 = assets.iter().map(|a| a.size_bytes).sum();
+        // Use the cached metadata (O(1)) — do NOT list+hash assets here, that
+        // reintroduced O(total asset bytes) work on every GET (PR #138 review).
+        // list_assets() is only needed below, and only when paths are requested.
         let mut detail = serde_json::json!({
             "key": key,
             "kind": kind,
             "host": host,
             "base_path": route_prefix,
             "source_dir": engine.source_dir(),
-            "asset_count": asset_count,
-            "total_bytes": total_bytes,
-            "version": crate::frontend::FrontendEngine::compute_version_pub(&assets),
+            "asset_count": engine.asset_count(),
+            "total_bytes": engine.total_bytes(),
+            "version": engine.version(),
             "last_reload_at": engine.last_reload_at().map(|t| t.to_rfc3339()),
         });
         if include_paths {
             // Cap the inline path list so a large frontend's detail response
             // stays bounded; callers needing the full manifest can page via
-            // the asset store directly.
+            // the asset store directly. This is the only path that lists assets.
             const MAX_INLINE_PATHS: usize = 500;
+            let assets = engine.list_assets();
             let mut paths: Vec<String> = assets.iter().map(|a| a.path.clone()).collect();
             paths.sort();
             if paths.len() <= MAX_INLINE_PATHS {

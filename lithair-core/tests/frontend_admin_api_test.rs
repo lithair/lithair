@@ -49,7 +49,16 @@ async fn frontend_admin_api_lists_inspects_and_reloads_per_vhost_without_restart
     // to the temp dir so the test never writes into the repo.
     let data_dir = tmp.path().join("data");
     std::fs::create_dir_all(&data_dir).expect("create data dir");
-    let prev_cwd = std::env::current_dir().expect("cwd");
+    // Restore the process CWD even if an assertion below panics — otherwise a
+    // failure here would leak the temp CWD into other tests in this binary
+    // (PR #138 review). RAII guard runs on drop, panic or not.
+    struct CwdGuard(std::path::PathBuf);
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.0);
+        }
+    }
+    let _cwd_guard = CwdGuard(std::env::current_dir().expect("cwd"));
     std::env::set_current_dir(tmp.path()).expect("chdir tmp");
 
     let public_dir_s = public_dir.to_string_lossy().to_string();
@@ -219,6 +228,5 @@ async fn frontend_admin_api_lists_inspects_and_reloads_per_vhost_without_restart
     let serve_result = joined.expect("serve task panicked");
     serve_result.expect("serve returned an error");
 
-    // Restore cwd for any sibling tests in the same process.
-    std::env::set_current_dir(prev_cwd).expect("restore cwd");
+    // CWD restoration is handled by `_cwd_guard` on drop (panic-safe).
 }
