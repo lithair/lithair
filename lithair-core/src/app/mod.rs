@@ -5231,30 +5231,34 @@ impl LithairServer {
                 );
             }
             let inventory = self.frontend_inventory();
-            let mut results = Vec::with_capacity(inventory.len());
-            for (key, kind, host, prefix, engine) in &inventory {
-                match engine.reload().await {
-                    Ok(outcome) => results.push(serde_json::json!({
-                        "key": key,
-                        "kind": kind,
-                        "host": host,
-                        "base_path": prefix,
-                        "status": "reloaded",
-                        "asset_count": outcome.asset_count,
-                        "total_bytes": outcome.total_bytes,
-                        "version": outcome.version,
-                        "changed": outcome.changed,
-                    })),
-                    Err(e) => results.push(serde_json::json!({
-                        "key": key,
-                        "kind": kind,
-                        "host": host,
-                        "base_path": prefix,
-                        "status": "error",
-                        "error": e.to_string(),
-                    })),
-                }
-            }
+            // Reload every frontend concurrently (PR #138 review): each
+            // engine's reload is independent (`reload(&self)`, distinct dirs),
+            // so there's no reason to serialize the per-engine disk reads.
+            let reload_futs =
+                inventory.iter().map(|(key, kind, host, prefix, engine)| async move {
+                    match engine.reload().await {
+                        Ok(outcome) => serde_json::json!({
+                            "key": key,
+                            "kind": kind,
+                            "host": host,
+                            "base_path": prefix,
+                            "status": "reloaded",
+                            "asset_count": outcome.asset_count,
+                            "total_bytes": outcome.total_bytes,
+                            "version": outcome.version,
+                            "changed": outcome.changed,
+                        }),
+                        Err(e) => serde_json::json!({
+                            "key": key,
+                            "kind": kind,
+                            "host": host,
+                            "base_path": prefix,
+                            "status": "error",
+                            "error": e.to_string(),
+                        }),
+                    }
+                });
+            let results: Vec<serde_json::Value> = futures::future::join_all(reload_futs).await;
             return json_resp(200, serde_json::json!({ "results": results }));
         }
 
