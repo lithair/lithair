@@ -5151,8 +5151,6 @@ impl LithairServer {
 
                 for export in &model_exports {
                     let model_name = export.get("model").and_then(|m| m.as_str()).unwrap_or("");
-                    let data: Vec<serde_json::Value> =
-                        export.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
 
                     if model_name.is_empty() {
                         any_error = true;
@@ -5163,6 +5161,23 @@ impl LithairServer {
                         }));
                         continue;
                     }
+
+                    // `data` must be an array; an empty array is fine (0 records).
+                    // A missing or non-array `data` is a malformed entry — report
+                    // it as an error in the 207 set rather than silently coercing
+                    // it to empty and reporting a 0-record success.
+                    let data: Vec<serde_json::Value> = match export.get("data") {
+                        Some(serde_json::Value::Array(items)) => items.clone(),
+                        _ => {
+                            any_error = true;
+                            results.push(serde_json::json!({
+                                "model": model_name,
+                                "status": "error",
+                                "error": "missing or non-array 'data' field"
+                            }));
+                            continue;
+                        }
+                    };
 
                     match models.iter().find(|m| m.name == model_name) {
                         Some(model) => {
@@ -5200,9 +5215,10 @@ impl LithairServer {
                 }
 
                 // 200 when every model imported cleanly; 207 Multi-Status when
-                // some entries failed (unknown model / deserialize error) so a
-                // deploy pipeline can detect partial success from the status
-                // line, not only by parsing the body.
+                // any entry failed (unknown model, malformed data, deserialize
+                // error). 207 is a 2xx, so `curl --fail` does NOT flag it —
+                // automation must test the status code (`!= 200`) or inspect the
+                // per-model `status` in the body to detect partial success.
                 let status = if any_error { 207 } else { 200 };
                 let response = serde_json::json!({
                     "status": if any_error { "partial" } else { "imported" },

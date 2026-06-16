@@ -300,3 +300,92 @@ async fn logical_import_endpoint_restores_a_whole_backup_in_one_call() {
         mixed_res
     );
 }
+
+/// The endpoint normalizes three request shapes; cover the two that the
+/// round-trip test doesn't (bare array, single object), and assert that a
+/// non-array `data` field is flagged as an error rather than silently
+/// imported as zero records.
+#[tokio::test]
+async fn logical_import_accepts_alternative_shapes_and_flags_malformed_data() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let dir = tmp.path().join("data");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let port = portpicker::pick_unused_port().expect("free port");
+    let client = spawn_server(dir, port).await;
+    let base = format!("http://127.0.0.1:{}", port);
+
+    // 1. Bare array of per-model exports.
+    let bare = serde_json::json!([
+        { "model": "Article", "data": [
+            { "id": "b1", "title": "Bare", "body": "array", "views": 1 }
+        ] }
+    ]);
+    let resp = client
+        .post(format!("{}/_admin/data/import", base))
+        .json(&bare)
+        .send()
+        .await
+        .expect("bare import");
+    assert_eq!(resp.status(), 200, "bare array shape accepted");
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["total_imported"].as_u64(), Some(1), "bare array imported one: {}", body);
+
+    // 2. Single {model, data} object.
+    let single = serde_json::json!({
+        "model": "Article",
+        "data": [ { "id": "s1", "title": "Single", "body": "object", "views": 2 } ]
+    });
+    let resp = client
+        .post(format!("{}/_admin/data/import", base))
+        .json(&single)
+        .send()
+        .await
+        .expect("single import");
+    assert_eq!(resp.status(), 200, "single object shape accepted");
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["total_imported"].as_u64(), Some(1), "single object imported one: {}", body);
+
+    // 3. Malformed: `data` present but not an array -> 207 error, NOT a silent
+    //    zero-record success.
+    let malformed = serde_json::json!({
+        "models": [ { "model": "Article", "data": { "not": "an array" } } ]
+    });
+    let resp = client
+        .post(format!("{}/_admin/data/import", base))
+        .json(&malformed)
+        .send()
+        .await
+        .expect("malformed import");
+    assert_eq!(resp.status(), 207, "non-array data is a partial failure");
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["status"], "partial");
+    assert_eq!(
+        body["total_imported"].as_u64(),
+        Some(0),
+        "nothing imported from malformed entry"
+    );
+    assert!(
+        body["models"]
+            .as_array()
+            .expect("models")
+            .iter()
+            .any(|e| e["status"] == "error"),
+        "non-array data reported as error: {}",
+        body
+    );
+
+    // The two valid records actually landed; the malformed one did not.
+    let backup: serde_json::Value = client
+        .post(format!("{}/_admin/data/backup", base))
+        .send()
+        .await
+        .expect("backup")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        backup["models"][0]["count"].as_u64(),
+        Some(2),
+        "bare + single imports both persisted, malformed ignored"
+    );
+}

@@ -92,14 +92,19 @@ filename="lithair_backup.json"`) looks like:
 for migration, seeding a fresh environment, or eyeballing data. It is
 **not** a disaster-recovery backup.
 
-**Restore via the import endpoint.** `POST /_admin/data/import` (issue
-#37) is the symmetric counterpart of `backup`: feed the backup document
-straight back and it re-applies every record as an event.
+**Restore via the import endpoint.** `POST /_admin/data/import` (issue `#37`)
+is the symmetric counterpart of `backup`: feed the backup document straight
+back and it re-applies every record as an event.
 
 ```bash
-curl -fsS -X POST http://localhost:8080/_admin/data/import \
+# Capture the HTTP status — a clean import is 200, a partial one is 207
+# (see "Partial success" below); do NOT rely on `curl --fail`, which treats
+# both as success.
+code=$(curl -sS -o /tmp/import.json -w '%{http_code}' \
+  -X POST http://localhost:8080/_admin/data/import \
   -H 'Content-Type: application/json' \
-  --data-binary @lithair_backup.json
+  --data-binary @lithair_backup.json)
+test "$code" = 200 || { echo "import not clean ($code):"; cat /tmp/import.json; }
 ```
 
 It accepts the full backup shape (`{ "models": [ {model, data}, … ] }`),
@@ -124,10 +129,12 @@ Properties to understand before relying on it:
   for the physical store if you need a compact log.
 - **No history.** It restores current state, not the original event
   timeline. For full fidelity including history, use Strategy B.
-- **Partial success is surfaced.** Unknown models or undeserializable
-  records are reported per-model and the call returns `207 Multi-Status`
-  (so `curl --fail` and deploy pipelines detect it) instead of failing the
-  whole import.
+- **Partial success is surfaced.** Unknown models, a missing/non-array
+  `data` field, or undeserializable records are reported per-model and the
+  call returns `207 Multi-Status` instead of failing the whole import.
+  Because `207` is a `2xx`, `curl --fail` does **not** flag it — automation
+  must test the status code (`!= 200`) or inspect the per-model `status` in
+  the response body to catch a partial import.
 - **Cluster: route to the leader.** Import is a write; on a follower it
   is redirected to the leader like any other event-store mutation (unlike
   the node-local frontend reload).
