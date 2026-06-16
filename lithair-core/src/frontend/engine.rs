@@ -50,6 +50,17 @@ pub struct FrontendEngine {
     /// Timestamp of the most recent successful load/reload, `None` until the
     /// first `load_directory`/`reload`. Used by the frontend admin API.
     last_reload_at: RwLock<Option<DateTime<Utc>>>,
+
+    /// Cached SHA-256 fingerprint of the loaded asset set, computed once at
+    /// load/reload. `version()` returns this instead of re-hashing every
+    /// asset's content on each `GET /_admin/frontend` (PR #138 review:
+    /// the previous per-request compute cloned + hashed all asset bytes).
+    version: RwLock<String>,
+
+    /// Cached sum of asset content sizes, updated at load/reload, so
+    /// `total_bytes()` is an O(1) atomic load instead of iterating + cloning
+    /// every asset on each call.
+    total_bytes: std::sync::atomic::AtomicU64,
 }
 
 impl FrontendEngine {
@@ -87,6 +98,8 @@ impl FrontendEngine {
             host_id,
             source_dir: RwLock::new(String::new()),
             last_reload_at: RwLock::new(None),
+            version: RwLock::new(String::new()),
+            total_bytes: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -136,8 +149,24 @@ impl FrontendEngine {
         if let Ok(mut ts) = self.last_reload_at.write() {
             *ts = Some(Utc::now());
         }
+        // Cache the fingerprint + size once, now that the asset set is loaded,
+        // so `version()`/`total_bytes()` are O(1) reads (PR #138 review).
+        self.refresh_version_cache();
 
         Ok(loaded_count)
+    }
+
+    /// Recompute and store the cached `version` and `total_bytes` from the
+    /// currently-loaded asset set. Called at the end of load/reload — never
+    /// on a read path. Hashing/summing happens here once, not per request.
+    fn refresh_version_cache(&self) {
+        let assets = self.list_assets();
+        let total: u64 = assets.iter().map(|a| a.size_bytes).sum();
+        let version = Self::compute_version(&assets);
+        self.total_bytes.store(total, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut v) = self.version.write() {
+            *v = version;
+        }
     }
 
     /// Recursively read a directory into `(web_path, content)` pairs.
@@ -250,8 +279,15 @@ impl FrontendEngine {
 
         let assets = self.list_assets();
         let asset_count = assets.len();
-        let total_bytes = assets.iter().map(|a| a.size_bytes).sum();
+        let total_bytes: u64 = assets.iter().map(|a| a.size_bytes).sum();
         let version_after = Self::compute_version(&assets);
+
+        // Update the caches from the values just computed (no extra scan), so
+        // subsequent `version()`/`total_bytes()` reads stay O(1) (PR #138).
+        self.total_bytes.store(total_bytes, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut v) = self.version.write() {
+            *v = version_after.clone();
+        }
 
         Ok(ReloadOutcome {
             asset_count,
@@ -290,8 +326,11 @@ impl FrontendEngine {
     }
 
     /// Sum of all asset content sizes currently held in memory.
+    ///
+    /// O(1) read of the cache populated at load/reload — does not iterate or
+    /// clone assets (PR #138 review).
     pub fn total_bytes(&self) -> u64 {
-        self.engine.iter_all_sync().iter().map(|(_, a)| a.size_bytes).sum()
+        self.total_bytes.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Filesystem directory this engine was last loaded from.
@@ -316,8 +355,12 @@ impl FrontendEngine {
     /// The same source directory loaded twice yields the same version; any
     /// added, removed, or modified file changes it. The string is prefixed
     /// `sha256:` and rendered as lowercase hex.
+    ///
+    /// O(1) read of the cache populated at load/reload — does not re-hash
+    /// asset content per call (PR #138 review). Empty string before the
+    /// first load.
     pub fn version(&self) -> String {
-        Self::compute_version(&self.list_assets())
+        self.version.read().map(|g| g.clone()).unwrap_or_default()
     }
 
     /// Public wrapper over [`compute_version`](Self::compute_version) for
