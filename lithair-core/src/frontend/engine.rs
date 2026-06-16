@@ -12,9 +12,26 @@
 use super::assets::StaticAsset;
 use crate::engine::{EventStore, Scc2Engine, Scc2EngineConfig};
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
+
+/// Summary of a single hot reload of a [`FrontendEngine`].
+///
+/// Returned by [`FrontendEngine::reload`] so the admin API can report what
+/// changed without re-reading the whole asset set.
+#[derive(Debug, Clone)]
+pub struct ReloadOutcome {
+    /// Number of assets live after the reload.
+    pub asset_count: usize,
+    /// Total bytes of asset content live after the reload.
+    pub total_bytes: u64,
+    /// Content fingerprint after the reload (see [`FrontendEngine::version`]).
+    pub version: String,
+    /// `true` when the post-reload fingerprint differs from the pre-reload one.
+    pub changed: bool,
+}
 
 /// Frontend Engine - Lock-free asset management with SCC2
 pub struct FrontendEngine {
@@ -24,6 +41,15 @@ pub struct FrontendEngine {
 
     /// Virtual host ID for this engine instance
     host_id: String,
+
+    /// Filesystem directory this engine was last loaded from. Interior
+    /// mutability (the engine is shared behind an `Arc` on the request path)
+    /// so a reload can re-read the same source without `&mut self`.
+    source_dir: RwLock<String>,
+
+    /// Timestamp of the most recent successful load/reload, `None` until the
+    /// first `load_directory`/`reload`. Used by the frontend admin API.
+    last_reload_at: RwLock<Option<DateTime<Utc>>>,
 }
 
 impl FrontendEngine {
@@ -56,7 +82,12 @@ impl FrontendEngine {
         // Create SCC2 engine
         let engine = Scc2Engine::new(event_store_arc, config)?;
 
-        Ok(Self { engine: Arc::new(engine), host_id })
+        Ok(Self {
+            engine: Arc::new(engine),
+            host_id,
+            source_dir: RwLock::new(String::new()),
+            last_reload_at: RwLock::new(None),
+        })
     }
 
     /// Load static directory into memory with event sourcing
@@ -75,36 +106,8 @@ impl FrontendEngine {
             return Err(anyhow::anyhow!("Directory does not exist: {}", dir_path.display()));
         }
 
+        let assets_vec = Self::scan_directory(dir_path)?;
         let mut loaded_count = 0;
-
-        // Walk directory recursively
-        fn walk_dir(
-            dir: &Path,
-            base_path_disk: &Path,
-            assets: &mut Vec<(String, Vec<u8>)>,
-        ) -> Result<()> {
-            for entry in std::fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
-
-                if path.is_dir() {
-                    walk_dir(&path, base_path_disk, assets)?;
-                } else if path.is_file() {
-                    // Create web path from file path
-                    let relative_path = path.strip_prefix(base_path_disk)?;
-                    let web_path =
-                        format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
-
-                    // Read file content
-                    let content = std::fs::read(&path)?;
-                    assets.push((web_path, content));
-                }
-            }
-            Ok(())
-        }
-
-        let mut assets_vec = Vec::new();
-        walk_dir(dir_path, dir_path, &mut assets_vec)?;
 
         // Store each asset in SCC2 engine with event sourcing
         for (web_path, content) in assets_vec {
@@ -125,7 +128,233 @@ impl FrontendEngine {
             loaded_count += 1;
         }
 
+        // Record where we loaded from so a later hot reload can re-read the
+        // same directory without the caller having to track it.
+        if let Ok(mut dir) = self.source_dir.write() {
+            *dir = dir_path.to_string_lossy().to_string();
+        }
+        if let Ok(mut ts) = self.last_reload_at.write() {
+            *ts = Some(Utc::now());
+        }
+
         Ok(loaded_count)
+    }
+
+    /// Recursively read a directory into `(web_path, content)` pairs.
+    ///
+    /// Symlinks are skipped to avoid traversal cycles, mirroring
+    /// [`crate::frontend::load_static_directory_to_memory`].
+    fn scan_directory(dir_path: &Path) -> Result<Vec<(String, Vec<u8>)>> {
+        fn walk_dir(
+            dir: &Path,
+            base_path_disk: &Path,
+            assets: &mut Vec<(String, Vec<u8>)>,
+        ) -> Result<()> {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+
+                // Skip symlinks to prevent infinite recursion from cycles.
+                if path.is_symlink() {
+                    continue;
+                }
+
+                if path.is_dir() {
+                    walk_dir(&path, base_path_disk, assets)?;
+                } else if path.is_file() {
+                    let relative_path = path.strip_prefix(base_path_disk)?;
+                    let web_path =
+                        format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
+                    let content = std::fs::read(&path)?;
+                    assets.push((web_path, content));
+                }
+            }
+            Ok(())
+        }
+
+        let mut assets_vec = Vec::new();
+        walk_dir(dir_path, dir_path, &mut assets_vec)?;
+        Ok(assets_vec)
+    }
+
+    /// Re-read this engine's source directory into memory atomically.
+    ///
+    /// The new asset set is built fully off the request path (blocking I/O runs
+    /// on a `spawn_blocking` worker) *before* any in-memory mutation. The swap
+    /// then upserts every freshly read asset and removes only the keys that no
+    /// longer exist on disk. A path that is present both before and after is
+    /// only ever overwritten in place — it is never transiently removed — so a
+    /// concurrent request can never observe a half-loaded set or a spurious
+    /// 404 for an asset that still exists.
+    ///
+    /// Returns a [`ReloadOutcome`] describing the post-reload state, including a
+    /// `changed` flag computed by comparing the content [`version`] before and
+    /// after.
+    ///
+    /// [`version`]: FrontendEngine::version
+    pub async fn reload(&self) -> Result<ReloadOutcome> {
+        let dir = self.source_dir();
+        if dir.is_empty() {
+            return Err(anyhow::anyhow!(
+                "frontend '{}' has no recorded source directory to reload",
+                self.host_id
+            ));
+        }
+
+        let dir_path = std::path::PathBuf::from(&dir);
+        if !dir_path.exists() {
+            return Err(anyhow::anyhow!("source directory does not exist: {}", dir));
+        }
+        if !dir_path.is_dir() {
+            return Err(anyhow::anyhow!("source path is not a directory: {}", dir));
+        }
+
+        let version_before = self.version();
+
+        // Read the whole tree off the request path before touching memory.
+        let scan_path = dir_path.clone();
+        let fresh = tokio::task::spawn_blocking(move || Self::scan_directory(&scan_path))
+            .await
+            .map_err(|e| anyhow::anyhow!("frontend reload scan task failed: {}", e))??;
+
+        // Build the new in-memory asset set keyed by SCC2 key. Doing this
+        // before any mutation guarantees the swap never exposes a partial set.
+        let mut new_assets: Vec<(String, StaticAsset)> = Vec::with_capacity(fresh.len());
+        let mut new_keys: std::collections::HashSet<String> =
+            std::collections::HashSet::with_capacity(fresh.len());
+        for (web_path, content) in fresh {
+            let asset = StaticAsset::new(web_path.clone(), content);
+            let key = format!("{}:{}", self.host_id, web_path);
+            new_keys.insert(key.clone());
+            new_assets.push((key, asset));
+        }
+
+        // Atomic swap: upsert every new asset (overwrites in place), then drop
+        // only keys that vanished from disk. SCC2 mutations are lock-free per
+        // key; reads of unaffected keys are never blocked or disturbed.
+        let existing_keys: Vec<String> =
+            self.engine.iter_all_sync().into_iter().map(|(k, _)| k).collect();
+
+        for (key, asset) in new_assets {
+            self.engine.insert_sync(key, asset);
+        }
+        for key in existing_keys {
+            if !new_keys.contains(&key) {
+                self.engine.remove_sync(&key);
+            }
+        }
+
+        if let Ok(mut ts) = self.last_reload_at.write() {
+            *ts = Some(Utc::now());
+        }
+
+        let assets = self.list_assets();
+        let asset_count = assets.len();
+        let total_bytes = assets.iter().map(|a| a.size_bytes).sum();
+        let version_after = Self::compute_version(&assets);
+
+        Ok(ReloadOutcome {
+            asset_count,
+            total_bytes,
+            changed: version_after != version_before,
+            version: version_after,
+        })
+    }
+
+    /// Snapshot the assets currently held by this engine.
+    ///
+    /// Returns one entry per asset with the SCC2-key prefix (`{host_id}:`)
+    /// stripped, so paths read as web paths (`/index.html`). The result is a
+    /// point-in-time copy; concurrent reloads do not block it.
+    pub fn list_assets(&self) -> Vec<StaticAsset> {
+        let prefix = format!("{}:", self.host_id);
+        self.engine
+            .iter_all_sync()
+            .into_iter()
+            .map(|(_key, asset)| asset)
+            .map(|mut asset| {
+                // `path` on the asset already stores the web path; the SCC2
+                // key carries the host prefix, not the asset's `path` field.
+                // Defensive strip in case a key ever leaks into `path`.
+                if let Some(stripped) = asset.path.strip_prefix(&prefix) {
+                    asset.path = stripped.to_string();
+                }
+                asset
+            })
+            .collect()
+    }
+
+    /// Number of assets currently held in memory.
+    pub fn asset_count(&self) -> usize {
+        self.engine.total_count()
+    }
+
+    /// Sum of all asset content sizes currently held in memory.
+    pub fn total_bytes(&self) -> u64 {
+        self.engine.iter_all_sync().iter().map(|(_, a)| a.size_bytes).sum()
+    }
+
+    /// Filesystem directory this engine was last loaded from.
+    ///
+    /// Empty until the first successful `load_directory`.
+    pub fn source_dir(&self) -> String {
+        self.source_dir.read().map(|g| g.clone()).unwrap_or_default()
+    }
+
+    /// Timestamp (RFC3339) of the most recent load/reload, if any.
+    pub fn last_reload_at(&self) -> Option<DateTime<Utc>> {
+        self.last_reload_at.read().ok().and_then(|g| *g)
+    }
+
+    /// Stable, comparable content fingerprint of the loaded asset set.
+    ///
+    /// Computed as the SHA-256 of the sorted `(web_path, size_bytes,
+    /// sha256(content))` tuples of every asset. The sort makes it independent
+    /// of filesystem iteration order; the per-asset content hash makes it
+    /// sensitive to any byte change even when a file's size is unchanged.
+    ///
+    /// The same source directory loaded twice yields the same version; any
+    /// added, removed, or modified file changes it. The string is prefixed
+    /// `sha256:` and rendered as lowercase hex.
+    pub fn version(&self) -> String {
+        Self::compute_version(&self.list_assets())
+    }
+
+    /// Public wrapper over [`compute_version`](Self::compute_version) for
+    /// callers (e.g. the admin API) that already hold an asset snapshot and
+    /// want to avoid a second `list_assets` scan.
+    pub fn compute_version_pub(assets: &[StaticAsset]) -> String {
+        Self::compute_version(assets)
+    }
+
+    /// Compute the fingerprint for a given asset snapshot. Shared by
+    /// [`version`](Self::version) and [`reload`](Self::reload) so both agree.
+    fn compute_version(assets: &[StaticAsset]) -> String {
+        use sha2::{Digest, Sha256};
+
+        // (web_path, size, content-hash) per asset, sorted by path for a
+        // deterministic, order-independent fingerprint.
+        let mut entries: Vec<(String, u64, [u8; 32])> = assets
+            .iter()
+            .map(|a| {
+                let mut h = Sha256::new();
+                h.update(&a.content);
+                let digest: [u8; 32] = h.finalize().into();
+                (a.path.clone(), a.size_bytes, digest)
+            })
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut hasher = Sha256::new();
+        for (path, size, content_hash) in &entries {
+            hasher.update(path.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(size.to_le_bytes());
+            hasher.update(b"\0");
+            hasher.update(content_hash);
+            hasher.update(b"\n");
+        }
+        format!("sha256:{:x}", hasher.finalize())
     }
 
     /// Get asset by path (lock-free read)
@@ -185,5 +414,56 @@ impl FrontendEngine {
     /// Get host ID
     pub fn host_id(&self) -> &str {
         &self.host_id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn asset(path: &str, content: &[u8]) -> StaticAsset {
+        StaticAsset::new(path.to_string(), content.to_vec())
+    }
+
+    #[test]
+    fn version_is_stable_for_same_assets() {
+        let set_a = vec![asset("/index.html", b"<h1>hi</h1>"), asset("/css/app.css", b"body{}")];
+        // Same content, different filesystem iteration order.
+        let set_b = vec![asset("/css/app.css", b"body{}"), asset("/index.html", b"<h1>hi</h1>")];
+
+        let v_a = FrontendEngine::compute_version(&set_a);
+        let v_b = FrontendEngine::compute_version(&set_b);
+        assert_eq!(v_a, v_b, "version must be independent of asset ordering");
+        assert!(v_a.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn version_changes_when_content_changes() {
+        let before = vec![asset("/index.html", b"<h1>v1</h1>")];
+        let after = vec![asset("/index.html", b"<h1>v2</h1>")];
+        assert_ne!(
+            FrontendEngine::compute_version(&before),
+            FrontendEngine::compute_version(&after),
+            "a content change must change the fingerprint"
+        );
+    }
+
+    #[test]
+    fn version_changes_when_asset_added_or_removed() {
+        let one = vec![asset("/index.html", b"x")];
+        let two = vec![asset("/index.html", b"x"), asset("/extra.txt", b"y")];
+        assert_ne!(
+            FrontendEngine::compute_version(&one),
+            FrontendEngine::compute_version(&two),
+            "adding an asset must change the fingerprint"
+        );
+    }
+
+    #[test]
+    fn version_distinguishes_same_bytes_different_paths() {
+        // Identical content under different paths must not collide.
+        let a = vec![asset("/a.txt", b"same")];
+        let b = vec![asset("/b.txt", b"same")];
+        assert_ne!(FrontendEngine::compute_version(&a), FrontendEngine::compute_version(&b));
     }
 }

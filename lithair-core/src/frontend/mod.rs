@@ -57,7 +57,7 @@ pub mod server;
 pub use admin::AssetAdminHandler;
 pub use assets::StaticAsset;
 pub use config::FrontendConfig;
-pub use engine::FrontendEngine;
+pub use engine::{FrontendEngine, ReloadOutcome};
 pub use server::{AssetServer, FrontendServer};
 
 // Utility functions are defined below
