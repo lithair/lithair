@@ -5,13 +5,15 @@
 //! registered model and returns one JSON document. This test asserts the
 //! export shape and that it contains the actual records.
 //!
-//! **Import is deliberately NOT faked.** There is no logical import/restore
-//! endpoint today — that is tracked in issue #37. The runbook documents the
-//! restore for a logical export as a manual re-POST of each record to the
-//! model's write endpoints. This test therefore proves the *export* leg and,
-//! to keep the round-trip honest, demonstrates the manual restore by POSTing
-//! the exported records into a SECOND, empty server and confirming they land.
-//! That mirrors exactly what an operator does until #37 lands an import path.
+//! Two restore paths are covered:
+//!   - `logical_backup_exports_records_and_manual_restore_loads_them` — the
+//!     original operator procedure: re-POST each exported record to the
+//!     model's write endpoint (works with no special endpoint).
+//!   - `logical_import_endpoint_restores_a_whole_backup_in_one_call` — the
+//!     `POST /_admin/data/import` endpoint (issue #37): feed the backup JSON
+//!     back in one call. Also asserts idempotency (re-import does not
+//!     duplicate, keyed by `id`) and the 207 partial-success path for an
+//!     unknown model.
 
 use lithair_core::app::LithairServer;
 use lithair_macros::DeclarativeModel;
@@ -171,4 +173,219 @@ async fn logical_backup_exports_records_and_manual_restore_loads_them() {
             .unwrap_or_else(|| panic!("article {} present after manual restore", original.id));
         assert_eq!(found, original, "manually restored article {} matches", original.id);
     }
+}
+
+#[tokio::test]
+async fn logical_import_endpoint_restores_a_whole_backup_in_one_call() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+
+    // --- Source server with known content ---------------------------------
+    let src_dir = tmp.path().join("source");
+    std::fs::create_dir_all(&src_dir).expect("create source dir");
+    let src_port = portpicker::pick_unused_port().expect("free port");
+    let src = spawn_server(src_dir, src_port).await;
+    let src_base = format!("http://127.0.0.1:{}", src_port);
+
+    let articles = vec![
+        Article { id: "a1".into(), title: "First".into(), body: "hello".into(), views: 10 },
+        Article { id: "a2".into(), title: "Second".into(), body: "world".into(), views: 0 },
+        Article { id: "a3".into(), title: "Third".into(), body: "lithair".into(), views: 42 },
+    ];
+    for a in &articles {
+        let resp = src
+            .post(format!("{}/api/articles", src_base))
+            .json(a)
+            .send()
+            .await
+            .expect("POST article");
+        assert!(resp.status().is_success(), "create article {} -> {}", a.id, resp.status());
+    }
+
+    let backup: serde_json::Value = src
+        .post(format!("{}/_admin/data/backup", src_base))
+        .send()
+        .await
+        .expect("POST backup")
+        .json()
+        .await
+        .expect("backup json");
+
+    // --- Import the WHOLE backup into a fresh, empty server in one call ----
+    let dst_dir = tmp.path().join("imported");
+    std::fs::create_dir_all(&dst_dir).expect("create imported dir");
+    let dst_port = portpicker::pick_unused_port().expect("free port");
+    let dst = spawn_server(dst_dir, dst_port).await;
+    let dst_base = format!("http://127.0.0.1:{}", dst_port);
+
+    let resp = dst
+        .post(format!("{}/_admin/data/import", dst_base))
+        .json(&backup)
+        .send()
+        .await
+        .expect("POST import");
+    assert_eq!(resp.status(), 200, "clean import returns 200");
+    let import: serde_json::Value = resp.json().await.expect("import json");
+    assert_eq!(import["status"], "imported", "import payload: {}", import);
+    assert_eq!(import["total_imported"].as_u64(), Some(3), "all three imported");
+    assert_eq!(import["models"][0]["model"], "Article");
+    assert_eq!(import["models"][0]["imported"].as_u64(), Some(3));
+
+    // The imported server now serves all three, field-identical.
+    let restored: serde_json::Value = dst
+        .post(format!("{}/_admin/data/backup", dst_base))
+        .send()
+        .await
+        .expect("POST backup on imported")
+        .json()
+        .await
+        .expect("restored backup json");
+    let restored_data = restored["models"][0]["data"].as_array().expect("restored data");
+    assert_eq!(restored_data.len(), 3, "import loaded all 3 records");
+    let restored_articles: Vec<Article> = restored_data
+        .iter()
+        .map(|v| serde_json::from_value(v.clone()).expect("article"))
+        .collect();
+    for original in &articles {
+        let found = restored_articles
+            .iter()
+            .find(|e| e.id == original.id)
+            .unwrap_or_else(|| panic!("article {} present after import", original.id));
+        assert_eq!(found, original, "imported article {} is field-identical", original.id);
+    }
+
+    // --- Idempotency: re-importing overwrites by id, never duplicates ------
+    let resp = dst
+        .post(format!("{}/_admin/data/import", dst_base))
+        .json(&backup)
+        .send()
+        .await
+        .expect("POST import again");
+    assert_eq!(resp.status(), 200, "re-import returns 200");
+    let count_after: serde_json::Value = dst
+        .post(format!("{}/_admin/data/backup", dst_base))
+        .send()
+        .await
+        .expect("POST backup after re-import")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        count_after["models"][0]["count"].as_u64(),
+        Some(3),
+        "re-import did not duplicate entities (idempotent by id)"
+    );
+
+    // --- Partial success: an unknown model yields 207 Multi-Status --------
+    let mixed = serde_json::json!({
+        "models": [
+            { "model": "Article", "data": [] },
+            { "model": "DoesNotExist", "data": [ { "id": "x" } ] }
+        ]
+    });
+    let resp = dst
+        .post(format!("{}/_admin/data/import", dst_base))
+        .json(&mixed)
+        .send()
+        .await
+        .expect("POST mixed import");
+    assert_eq!(resp.status(), 207, "partial import returns 207 Multi-Status");
+    let mixed_res: serde_json::Value = resp.json().await.expect("mixed json");
+    assert_eq!(mixed_res["status"], "partial");
+    let entries = mixed_res["models"].as_array().expect("models array");
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["model"] == "DoesNotExist" && e["status"] == "unknown_model"),
+        "unknown model reported: {}",
+        mixed_res
+    );
+}
+
+/// The endpoint normalizes three request shapes; cover the two that the
+/// round-trip test doesn't (bare array, single object), and assert that a
+/// non-array `data` field is flagged as an error rather than silently
+/// imported as zero records.
+#[tokio::test]
+async fn logical_import_accepts_alternative_shapes_and_flags_malformed_data() {
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    let dir = tmp.path().join("data");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let port = portpicker::pick_unused_port().expect("free port");
+    let client = spawn_server(dir, port).await;
+    let base = format!("http://127.0.0.1:{}", port);
+
+    // 1. Bare array of per-model exports.
+    let bare = serde_json::json!([
+        { "model": "Article", "data": [
+            { "id": "b1", "title": "Bare", "body": "array", "views": 1 }
+        ] }
+    ]);
+    let resp = client
+        .post(format!("{}/_admin/data/import", base))
+        .json(&bare)
+        .send()
+        .await
+        .expect("bare import");
+    assert_eq!(resp.status(), 200, "bare array shape accepted");
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["total_imported"].as_u64(), Some(1), "bare array imported one: {}", body);
+
+    // 2. Single {model, data} object.
+    let single = serde_json::json!({
+        "model": "Article",
+        "data": [ { "id": "s1", "title": "Single", "body": "object", "views": 2 } ]
+    });
+    let resp = client
+        .post(format!("{}/_admin/data/import", base))
+        .json(&single)
+        .send()
+        .await
+        .expect("single import");
+    assert_eq!(resp.status(), 200, "single object shape accepted");
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["total_imported"].as_u64(), Some(1), "single object imported one: {}", body);
+
+    // 3. Malformed: `data` present but not an array -> 207 error, NOT a silent
+    //    zero-record success.
+    let malformed = serde_json::json!({
+        "models": [ { "model": "Article", "data": { "not": "an array" } } ]
+    });
+    let resp = client
+        .post(format!("{}/_admin/data/import", base))
+        .json(&malformed)
+        .send()
+        .await
+        .expect("malformed import");
+    assert_eq!(resp.status(), 207, "non-array data is a partial failure");
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["status"], "partial");
+    assert_eq!(
+        body["total_imported"].as_u64(),
+        Some(0),
+        "nothing imported from malformed entry"
+    );
+    assert!(
+        body["models"]
+            .as_array()
+            .expect("models")
+            .iter()
+            .any(|e| e["status"] == "error"),
+        "non-array data reported as error: {}",
+        body
+    );
+
+    // The two valid records actually landed; the malformed one did not.
+    let backup: serde_json::Value = client
+        .post(format!("{}/_admin/data/backup", base))
+        .send()
+        .await
+        .expect("backup")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(
+        backup["models"][0]["count"].as_u64(),
+        Some(2),
+        "bare + single imports both persisted, malformed ignored"
+    );
 }

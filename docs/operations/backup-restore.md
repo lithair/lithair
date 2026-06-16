@@ -23,7 +23,7 @@ that log on startup. That single fact drives everything below.
   | History | No event history | Full history preserved |
   | PITR | No | Yes (bounded by snapshot cadence) |
   | Use for | Migration, seeding, inspection | Disaster recovery |
-  | Restore | Manual re-POST to model endpoints | Drop dir back, restart, replay |
+  | Restore | `POST /_admin/data/import` (or manual re-POST) | Drop dir back, restart, replay |
 
 Strategy B is the real DR path. Strategy A is a convenience export, not
 a backup of record.
@@ -92,13 +92,56 @@ filename="lithair_backup.json"`) looks like:
 for migration, seeding a fresh environment, or eyeballing data. It is
 **not** a disaster-recovery backup.
 
-**Restore is manual.** There is no import/restore endpoint today — the
-data admin API exposes export and backup but no counterpart to load JSON
-back in (`/_admin/data/*` has `models`, `export`, `routes`, `backup`,
-and per-entity `edit`/`history`, and nothing else). To restore a logical
-export you re-create the records through the model's normal write
-endpoints (`POST`/`PUT` to the model's `base_path`). For full fidelity
-including history, use Strategy B.
+**Restore via the import endpoint.** `POST /_admin/data/import` (issue `#37`)
+is the symmetric counterpart of `backup`: feed the backup document straight
+back and it re-applies every record as an event.
+
+```bash
+# Capture the HTTP status — a clean import is 200, a partial one is 207
+# (see "Partial success" below); do NOT rely on `curl --fail`, which treats
+# both as success.
+code=$(curl -sS -o /tmp/import.json -w '%{http_code}' \
+  -X POST http://localhost:8080/_admin/data/import \
+  -H 'Content-Type: application/json' \
+  --data-binary @lithair_backup.json)
+test "$code" = 200 || { echo "import not clean ($code):"; cat /tmp/import.json; }
+```
+
+It accepts the full backup shape (`{ "models": [ {model, data}, … ] }`),
+a bare array of per-model exports, or a single `{model, data}` object, so
+you can replay a whole backup or just one model's slice. The response
+lists a per-model result and `total_imported`:
+
+```json
+{ "status": "imported", "total_imported": 3,
+  "models": [ { "model": "Article", "status": "imported", "requested": 3, "imported": 3 } ],
+  "note": "logical import: re-applies items as events, idempotent by id, does not restore event history" }
+```
+
+Properties to understand before relying on it:
+
+- **Idempotent by `id`.** Re-importing overwrites the entity in place; it
+  never creates a duplicate. Re-running an import is safe for the
+  resulting state.
+- **Appends events.** Each import writes one event per record (event type
+  `Replicated`), so the event log grows on every run even though the
+  final state is unchanged. Fine for a one-time migration; not a substitute
+  for the physical store if you need a compact log.
+- **No history.** It restores current state, not the original event
+  timeline. For full fidelity including history, use Strategy B.
+- **Partial success is surfaced.** Unknown models, a missing/non-array
+  `data` field, or undeserializable records are reported per-model and the
+  call returns `207 Multi-Status` instead of failing the whole import.
+  Because `207` is a `2xx`, `curl --fail` does **not** flag it — automation
+  must test the status code (`!= 200`) or inspect the per-model `status` in
+  the response body to catch a partial import.
+- **Cluster: route to the leader.** Import is a write; on a follower it
+  is redirected to the leader like any other event-store mutation (unlike
+  the node-local frontend reload).
+
+Records can also be re-created one at a time through the model's normal
+write endpoints (`POST`/`PUT` to the model's `base_path`) — the import
+endpoint just does that in bulk in a single call.
 
 ## Strategy B — physical event-store backup
 
@@ -385,8 +428,9 @@ logs even without an explicit verify step; `verify` additionally catches
 intentional tampering that fixes the CRC but cannot forge the SHA256
 chain.
 
-The logical export/import counterpart and a `--to-event` / `--to-timestamp`
-replay flag are tracked in issue #37.
+The logical import counterpart (`POST /_admin/data/import`) has landed —
+see Strategy A above. A `--to-event` / `--to-timestamp` point-in-time
+replay flag remains tracked in issue #37.
 
 ## Operational checklist
 
