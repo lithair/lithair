@@ -4708,7 +4708,8 @@ impl LithairServer {
     /// - GET /_admin/data/models/{name} - Get model info and data
     /// - GET /_admin/data/models/{name}/export - Export model data as JSON
     /// - GET /_admin/data/routes - List all registered API routes
-    /// - POST /_admin/data/backup - Trigger full data backup
+    /// - POST /_admin/data/backup - Trigger full logical data backup (current state, JSON)
+    /// - POST /_admin/data/import - Re-apply a logical backup as events (issue #37)
     async fn handle_data_admin_request(
         &self,
         _req: hyper::Request<hyper::body::Incoming>,
@@ -5035,6 +5036,11 @@ impl LithairServer {
                         "path": "/_admin/data/backup",
                         "type": "admin"
                     }));
+                    routes.push(serde_json::json!({
+                        "method": "POST",
+                        "path": "/_admin/data/import",
+                        "type": "admin"
+                    }));
                 }
 
                 let response = serde_json::json!({
@@ -5074,6 +5080,142 @@ impl LithairServer {
                     .header("Content-Disposition", "attachment; filename=\"lithair_backup.json\"")
                     .body(boxed_full(Bytes::from(
                         serde_json::to_string_pretty(&backup).expect("serializable response"),
+                    )))
+                    .expect("valid HTTP response"))
+            }
+
+            // POST /_admin/data/import - Logical import: re-apply a backup's
+            // items as events (the symmetric counterpart of POST .../backup,
+            // issue #37). This is for content migration / seeding, NOT
+            // disaster recovery: it re-applies the *current state* carried in
+            // the backup as new events. It is idempotent by `id` (re-importing
+            // overwrites the entity, never duplicates it) but appends an event
+            // per item each run (the log grows); it does NOT restore event
+            // history. The DR path remains a physical event-store copy + replay
+            // (docs/operations/backup-restore.md). As a write it is correctly
+            // subject to leader redirection on a follower (not exempted above).
+            (&hyper::Method::POST, ["import"]) => {
+                use http_body_util::BodyExt;
+
+                let body_bytes = match _req.into_body().collect().await.map(|c| c.to_bytes()) {
+                    Ok(bytes) => bytes,
+                    Err(_) => {
+                        return Ok(hyper::Response::builder()
+                            .status(400)
+                            .header("Content-Type", "application/json")
+                            .body(boxed_full(Bytes::from(r#"{"error":"Invalid request body"}"#)))
+                            .expect("valid HTTP response"));
+                    }
+                };
+
+                let parsed: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok(hyper::Response::builder()
+                            .status(400)
+                            .header("Content-Type", "application/json")
+                            .body(boxed_full(Bytes::from(
+                                serde_json::json!({"error": format!("Invalid JSON: {}", e)})
+                                    .to_string(),
+                            )))
+                            .expect("valid HTTP response"));
+                    }
+                };
+
+                // Accept the exact shape produced by POST /_admin/data/backup
+                // (`{ "models": [ {model, data}, ... ] }`), a bare array of
+                // per-model exports, or a single `{model, data}` object — so an
+                // operator can re-feed a whole backup or just one model's slice.
+                let model_exports: Vec<serde_json::Value> = if let Some(models) =
+                    parsed.get("models").and_then(|m| m.as_array())
+                {
+                    models.clone()
+                } else if let Some(arr) = parsed.as_array() {
+                    arr.clone()
+                } else if parsed.get("model").is_some() {
+                    vec![parsed.clone()]
+                } else {
+                    return Ok(hyper::Response::builder()
+                            .status(400)
+                            .header("Content-Type", "application/json")
+                            .body(boxed_full(Bytes::from(
+                                r#"{"error":"Expected a backup object with a 'models' array, a bare array of model exports, or a single {model,data} object"}"#,
+                            )))
+                            .expect("valid HTTP response"));
+                };
+
+                let models = self.models.read().await;
+                let mut results = Vec::new();
+                let mut total_imported = 0usize;
+                let mut any_error = false;
+
+                for export in &model_exports {
+                    let model_name = export.get("model").and_then(|m| m.as_str()).unwrap_or("");
+                    let data: Vec<serde_json::Value> =
+                        export.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+
+                    if model_name.is_empty() {
+                        any_error = true;
+                        results.push(serde_json::json!({
+                            "model": model_name,
+                            "status": "error",
+                            "error": "missing 'model' name in export entry"
+                        }));
+                        continue;
+                    }
+
+                    match models.iter().find(|m| m.name == model_name) {
+                        Some(model) => {
+                            let requested = data.len();
+                            match model.handler.apply_replicated_items_json(data).await {
+                                Ok(applied) => {
+                                    total_imported += applied;
+                                    results.push(serde_json::json!({
+                                        "model": model_name,
+                                        "status": "imported",
+                                        "requested": requested,
+                                        "imported": applied
+                                    }));
+                                }
+                                Err(e) => {
+                                    any_error = true;
+                                    results.push(serde_json::json!({
+                                        "model": model_name,
+                                        "status": "error",
+                                        "requested": requested,
+                                        "error": e
+                                    }));
+                                }
+                            }
+                        }
+                        None => {
+                            any_error = true;
+                            results.push(serde_json::json!({
+                                "model": model_name,
+                                "status": "unknown_model",
+                                "error": format!("no registered model named '{}'", model_name)
+                            }));
+                        }
+                    }
+                }
+
+                // 200 when every model imported cleanly; 207 Multi-Status when
+                // some entries failed (unknown model / deserialize error) so a
+                // deploy pipeline can detect partial success from the status
+                // line, not only by parsing the body.
+                let status = if any_error { 207 } else { 200 };
+                let response = serde_json::json!({
+                    "status": if any_error { "partial" } else { "imported" },
+                    "total_imported": total_imported,
+                    "models": results,
+                    "note": "logical import: re-applies items as events, idempotent by id, does not restore event history"
+                });
+
+                Ok(hyper::Response::builder()
+                    .status(status)
+                    .header("Content-Type", "application/json")
+                    .body(boxed_full(Bytes::from(
+                        serde_json::to_string_pretty(&response).expect("serializable response"),
                     )))
                     .expect("valid HTTP response"))
             }
