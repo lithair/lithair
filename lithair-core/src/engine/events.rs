@@ -77,11 +77,21 @@ pub struct EventEnvelope {
     pub aggregate_id: Option<String>,
     /// SHA256 hash of this event's content (for tamper detection)
     /// Computed from: event_type + event_id + timestamp + payload + previous_hash
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// NOTE: deliberately NOT `skip_serializing_if`. Binary mode
+    /// (`LT_ENABLE_BINARY`) serializes envelopes with bincode, a
+    /// non-self-describing format: skipping a `None` field on encode while
+    /// the decoder still expects an `Option` discriminant corrupts the byte
+    /// stream and the frame fails to decode (`UnexpectedEnd`). That silently
+    /// dropped the genesis event (whose `previous_hash` is `None`) on binary
+    /// replay and made `verify_chain()` see zero events. `#[serde(default)]`
+    /// keeps JSON logs written by older versions (which omitted the field
+    /// when `None`) readable. Found by the backup/restore drill (issue #133).
+    #[serde(default)]
     pub event_hash: Option<String>,
     /// SHA256 hash of the previous event in the chain (None for genesis event)
     /// Forms a hash chain for tamper-evident audit trail
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub previous_hash: Option<String>,
 }
 
@@ -209,9 +219,23 @@ impl EventStore {
             EventStoreBackend::Single(Box::new(storage))
         };
 
+        // Resolve the effective binary mode ONCE (caller flag OR env) and use
+        // it for the initial reads below. Previously the bare `binary_mode`
+        // parameter decided how to count events and load the last hash, while
+        // the struct field merged the `LT_ENABLE_BINARY` env var — so opening
+        // an existing binary-mode log via `EventStore::new()` (which passes
+        // `binary_mode = false`) tried the JSON line reader on bincode frames
+        // and failed with "stream did not contain valid UTF-8". That broke
+        // both binary-mode restart-replay and `verify_chain()` on a binary
+        // log. Found by the backup/restore drill (issue #133).
+        let effective_binary_mode = binary_mode
+            || std::env::var("LT_ENABLE_BINARY")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+
         let events_count = match &backend {
             EventStoreBackend::Single(s) => {
-                if binary_mode {
+                if effective_binary_mode {
                     s.read_all_event_bytes()?.len()
                 } else {
                     s.read_all_events()?.len()
@@ -221,7 +245,7 @@ impl EventStore {
         };
 
         // Load the last event hash for chain continuity
-        let last_event_hash = Self::load_last_event_hash(&backend, binary_mode)?;
+        let last_event_hash = Self::load_last_event_hash(&backend, effective_binary_mode)?;
 
         // Enable hash chain by default, can be disabled via env var
         let enable_hash_chain = !std::env::var("LT_DISABLE_HASH_CHAIN")
