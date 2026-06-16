@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-16
+
+This release closes the three "lifecycle of an installed product" gates on
+the [road to v1.0](docs/roadmap/v1.0.md) — backup (G7), frontend updates
+(G8), and cluster (G1, documented envelope) — so an operator can update
+content, update the frontend, and trust backups without restarting Lithair
+except on a binary change.
+
+### Added
+
+- **Frontend lifecycle admin API** (issue #134, PR #138). New
+  `/_admin/frontend/*` endpoints (gated by `with_data_admin()`): `GET
+  /_admin/frontend` lists every configured frontend with a comparable
+  `sha256:` version; `GET /_admin/frontend/{key}` inspects one frontend's
+  config, version and asset manifest; `POST /_admin/frontend/{key}/reload`
+  reloads a single vhost (or `POST /_admin/frontend/reload` for all)
+  atomically in memory. Reloads build the new asset set and swap it under a
+  write lock, are node-local (correctly exempt from Raft write-redirection
+  so a follower reloads its own assets), and touch neither the event store
+  nor other vhosts. Covers both the path-prefix (`with_frontend_at`) and
+  per-vhost (`with_vhost`) storage paths. The version is O(1) cached and
+  recomputed only at load/reload. This turns "redeploy = restart everything"
+  into "redeploy = one API call."
+
+- **`lithair verify <data-dir>` CLI** (issue #133, PR #136). Opens an event
+  store offline and runs the hash-chain verification an operator needs to
+  check a restored backup by hand: exit `0` (valid), `1` (chain broken),
+  `2` (could not open), with the full verification report on stdout.
+
+- **Backup/restore end-to-end drill** (issue #133, PR #136).
+  `backup_restore_drill_test.rs` backs up, wipes, restores to a fresh state,
+  and asserts field-level identity, a valid hash chain, and a
+  chain-continuing write after restore — in both JSON and binary log modes,
+  plus the torn-tail case. A documented backup that has never been restored
+  is a guess; this makes it a tested path.
+
+### Fixed
+
+- **On-disk format — binary log mode (`LT_ENABLE_BINARY`) is now usable**
+  (PR #136). Proving the backup drill surfaced two latent bugs that made
+  binary log mode non-functional in ≤0.13 (the default JSON mode was never
+  affected):
+  - The genesis event (whose `previous_hash` is `None`) was dropped on
+    bincode replay because `EventEnvelope`'s hash fields used
+    `skip_serializing_if`, which bincode encodes as an absent field rather
+    than `None`. Removed `skip_serializing_if` (kept `serde(default)` so
+    JSON stores written by earlier versions still read back unchanged).
+  - Reopening a binary log failed because `EventStore::new` applied the
+    JSON line reader to bincode frames: the `LT_ENABLE_BINARY` env var was
+    merged into the struct field but not into the *initial* read path. Both
+    the initial reads and the stored mode now use one resolved
+    `effective_binary_mode`.
+
+  Because binary mode could not produce a round-trippable store before
+  v0.14, there is no functional pre-0.14 binary log to break; JSON-mode
+  stores are byte-compatible. Operators relying on the on-disk format
+  promise should note these are format-sensitive fixes.
+
+### Docs
+
+- **Cluster operations runbook + G1 envelope** (issue #104, PR #127). The
+  cluster operating envelope (single-leader writes at a measured
+  ~210–240 ops/s ceiling, static lowest-ID election, fixed membership) and
+  its procedures are documented in `docs/operations/cluster.md`; G1 marked
+  resolved (production-stable within that envelope).
+- **v1.0 roadmap, deprecation policy, governance** (PR #125): `docs/roadmap/v1.0.md`
+  (the three compatibility surfaces and the v1.0 gates), the
+  deprecate-in-N / remove-in-N+2 [deprecation policy](docs/policy/deprecation.md),
+  and `CODE_OF_CONDUCT.md`.
+- Roadmap gates G7 (backup proven) and G8 (frontend lifecycle API) added
+  and marked resolved (PRs #135/#137/#139).
+
 ## [0.13.0] - 2026-06-11
 
 ### Added
