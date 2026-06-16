@@ -983,7 +983,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/lithair/lithair/compare/v0.13.0...v0.14.0
 [0.1.3]: https://github.com/lithair/lithair/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/lithair/lithair/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lithair/lithair/releases/tag/v0.1.0
