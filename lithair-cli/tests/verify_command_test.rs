@@ -108,11 +108,11 @@ fn verify_tampered_store_exits_one() {
         stdout,
         stderr
     );
-    assert!(stderr.contains("INVALID"), "reports INVALID on stderr:\n{}", stderr);
+    assert!(stdout.contains("INVALID"), "reports INVALID on stdout:\n{}", stdout);
     assert!(
-        stderr.contains("first bad hash") || stderr.contains("first broken link"),
-        "points at the first offending event:\n{}",
-        stderr
+        stdout.contains("first bad hash") || stdout.contains("first broken link"),
+        "points at the first offending event on stdout:\n{}",
+        stdout
     );
 }
 

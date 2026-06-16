@@ -258,10 +258,7 @@ impl EventStore {
             log_verbose: false, // Disabled for performance
             pending_since_flush: 0,
             flush_every: 1,
-            binary_mode: binary_mode
-                || std::env::var("LT_ENABLE_BINARY")
-                    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                    .unwrap_or(false),
+            binary_mode: effective_binary_mode,
             disable_index: std::env::var("LT_DISABLE_INDEX")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),

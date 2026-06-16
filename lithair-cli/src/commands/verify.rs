@@ -58,19 +58,21 @@ pub fn run(data_dir: &Path) -> i32 {
     } else {
         // Report the first offending event so the operator has a starting
         // point. `invalid_hashes` and `broken_links` are ordered by index.
+        // Keep the whole report on stdout (the exit code carries pass/fail)
+        // so an operator can capture it in one stream (PR #136 review).
         if let Some(first) = result.invalid_hashes.first() {
-            eprintln!(
+            println!(
                 "  first bad hash:  index {} (event_id {})",
                 first.event_index, first.event_id
             );
         }
         if let Some(first) = result.broken_links.first() {
-            eprintln!(
+            println!(
                 "  first broken link: index {} (event_id {})",
                 first.event_index, first.event_id
             );
         }
-        eprintln!("Result: INVALID — {}", result.summary());
+        println!("Result: INVALID — {}", result.summary());
         1
     }
 }
