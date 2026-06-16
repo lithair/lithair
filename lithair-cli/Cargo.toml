@@ -16,6 +16,14 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+# `lithair verify <data-dir>` opens an event store offline and runs
+# `EventStore::verify_chain()` so an operator can check a restored backup
+# BEFORE starting the server. This pulls the framework into the scaffolding
+# binary, but the alternative (a `GET /_admin/data/verify` endpoint) requires
+# a running server, which defeats the "verify before boot" use case that
+# gate G7 (issue #133) is about. `default-features = false` drops the
+# `macros` re-export (lithair-macros) the CLI does not need.
+lithair-core = { path = "../lithair-core", version = "0.13.0", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.8"

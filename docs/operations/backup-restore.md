@@ -110,6 +110,17 @@ postures: cold (recommended) and hot.
 The simplest correct backup stops writes first, so the copied directory
 is a quiescent, internally consistent set.
 
+**Why stopping matters: the background flusher.** A running server batches
+event writes and flushes them on a timer (`flush_events()` every
+`LT_FLUSH_INTERVAL_MS`, default 100 ms). At any instant a copy of a
+*running* store may miss the last unflushed batch — the in-memory event
+count can be ahead of what is on disk. Stopping or draining the service
+flushes the buffer on the way down, so the copied `events.raftlog` holds
+every committed event. Do **not** copy a running store and assume the
+last few writes are on disk; stop or drain first (or accept the torn-tail
+loss documented under "Hot / live backup" below). This is the single
+most common mistake in a cold backup of an active deployment.
+
 Option 1 — stop the service:
 
 ```bash
@@ -169,6 +180,23 @@ frame whose length prefix or payload runs past the end of the file
 (logged as "Incomplete length prefix / payload at end of file"), keeping
 every fully-written frame before it. The net effect matches JSON mode: a
 torn final frame is dropped, the intact prefix is preserved.
+
+> **Binary mode was broken before the G7 drill (fixed).** Two latent bugs
+> in binary mode were found while building the restore drill (issue #133)
+> and fixed in the same change:
+>
+> 1. The event envelope serialized its `event_hash` / `previous_hash`
+>    fields with `skip_serializing_if`, which is incompatible with bincode
+>    (a non-self-describing format). The genesis event (whose
+>    `previous_hash` is `None`) failed to decode, so it was silently
+>    dropped on binary replay and `verify_chain()` reported zero events.
+> 2. `EventStore::new()` chose the JSON line reader regardless of the
+>    `LT_ENABLE_BINARY` env var when first opening a store, so reopening an
+>    existing binary log (on restart or `lithair verify`) failed with
+>    "stream did not contain valid UTF-8".
+>
+> If you took binary-mode backups before this fix, re-verify them with
+> `lithair verify` on a build that includes it.
 
 Caveats, in order of importance:
 
@@ -245,6 +273,17 @@ A restore round-trip (`backup → restore → boots → state matches`) is the
 only proof a backup is good. Test it on a schedule; do not trust an
 untested backup.
 
+**This procedure is now proven by an automated drill.** Strategy B
+(write → force-flush → copy dir → wipe → restore → replay → verify) is
+exercised end-to-end in `lithair-core/tests/backup_restore_drill_test.rs`
+for both JSON and binary (`LT_ENABLE_BINARY`) log modes. The drill
+asserts field-level record identity (not just counts), a valid
+`verify_chain()` on the restored store, and that a write after restore
+continues the chain cleanly. It also proves the torn-tail claim below: a
+truncated final record is dropped while the intact prefix survives, in
+both modes. (Building that drill surfaced and fixed two bugs in binary
+mode — see the note under "Hot / live backup".)
+
 **See also:** restoring a pre-upgrade backup is the rollback step when a
 version upgrade goes wrong — see [`upgrade.md`](upgrade.md) (Rollback),
 which also explains the rollback window for event-sourced deployments.
@@ -303,17 +342,51 @@ Each event carries a SHA256 hash linking it to the previous event.
 The result reports `total_events`, `verified_events`, `legacy_events`,
 `invalid_hashes`, `broken_links`, and an overall `is_valid`.
 
-**Current limitation:** `verify_chain()` is exposed as a library API
-only. There is no `lithair verify` CLI subcommand or HTTP endpoint that
-calls it today — its only callers in the tree are the BDD step
-definitions (`cucumber-tests/src/features/steps/hash_chain_steps.rs`).
-To verify a restored store programmatically you must call
-`verify_chain()` from Rust (e.g. a small binary that opens the event
-store). A `lithair verify <data-dir>` CLI or an admin endpoint is a
-known follow-up gap (issue #37's verification sub-task). Note that
-restore replay already rejects CRC32-corrupt log lines at boot
+### `lithair verify` — offline integrity check
+
+Run `lithair verify <data-dir>` against a **restored** backup before you
+start the server, so a bad restore is caught before it becomes the live
+source of truth. It opens the event store offline (no running server),
+walks the hash chain via `verify_chain()`, prints a summary, and sets a
+scriptable exit code:
+
+| Exit | Meaning |
+|------|---------|
+| `0`  | Chain valid (no tampered hashes, no broken links) |
+| `1`  | Chain INVALID (tamper/corruption detected) |
+| `2`  | Store could not be opened (bad path, unreadable files) |
+
+```console
+$ lithair verify /var/lib/lithair
+Event store: /var/lib/lithair
+  total events:    8
+  verified:        8
+  invalid hashes:  0
+  broken links:    0
+Result: OK — Chain fully verified: 8/8 events
+
+$ lithair verify /var/lib/lithair-tampered
+Event store: /var/lib/lithair-tampered
+  total events:    8
+  verified:        8
+  invalid hashes:  1
+  broken links:    0
+  first bad hash:  index 0 (event_id evt-0)
+Result: INVALID — Chain INVALID: 1 hash errors, 0 broken links out of 8 events
+$ echo $?
+1
+```
+
+It reads both JSON and binary (`LT_ENABLE_BINARY`) logs — pass the same
+env var the server used so the log format is detected correctly. Restore
+replay also rejects CRC32-corrupt log lines at boot
 (`parse_and_validate_event`), so gross on-disk corruption surfaces in the
-logs even without an explicit verify step.
+logs even without an explicit verify step; `verify` additionally catches
+intentional tampering that fixes the CRC but cannot forge the SHA256
+chain.
+
+The logical export/import counterpart and a `--to-event` / `--to-timestamp`
+replay flag are tracked in issue #37.
 
 ## Operational checklist
 
@@ -330,8 +403,11 @@ logs even without an explicit verify step.
    window — especially if auto-compaction is on, since on-disk history
    beyond the last snapshot is gone.
 5. **Test restores.** Periodically run a full round-trip into a throwaway
-   host/volume and confirm `/health`, a data spot-check, and (where you
-   can) `verify_chain()`. An untested backup is a guess.
+   host/volume and confirm `/health`, a data spot-check, and
+   `lithair verify <data-dir>` on the restored directory before starting
+   the server. An untested backup is a guess. The automated drill in
+   `lithair-core/tests/backup_restore_drill_test.rs` proves the procedure
+   in CI; your scheduled restore test proves your *backups*.
 6. **RPO/RTO.** RPO is set by backup frequency (and, for PITR depth, by
    snapshot cadence — the 10 000-event default bounds how far back you
    can go on a single restored directory). RTO is dominated by replay

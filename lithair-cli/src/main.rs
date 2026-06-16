@@ -6,6 +6,12 @@
 //! lithair new my-app
 //! ```
 //!
+//! Verify a restored backup's integrity before starting the server:
+//!
+//! ```bash
+//! lithair verify ./data
+//! ```
+//!
 //! See `lithair --help` for all available commands and options.
 
 mod commands;
@@ -37,20 +43,34 @@ enum Commands {
         #[arg(long)]
         no_frontend: bool,
     },
+
+    /// Verify the event-store hash chain of a data directory (offline).
+    ///
+    /// Run this against a restored backup before starting the server. Exits
+    /// 0 if the chain is valid, 1 if tampering/corruption is detected, 2 if
+    /// the store cannot be opened.
+    Verify {
+        /// Path to the event-store data directory (the one containing
+        /// events.raftlog).
+        data_dir: PathBuf,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    let result = match cli.command {
+    match cli.command {
         Commands::New { name, no_frontend } => {
             let base = PathBuf::from(".");
-            commands::new::run(&name, &base, no_frontend)
+            if let Err(e) = commands::new::run(&name, &base, no_frontend) {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
         }
-    };
-
-    if let Err(e) = result {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
+        Commands::Verify { data_dir } => {
+            // `verify` owns its exit code (0 valid, 1 invalid, 2 unreadable)
+            // so it is scriptable in restore drills.
+            std::process::exit(commands::verify::run(&data_dir));
+        }
     }
 }
