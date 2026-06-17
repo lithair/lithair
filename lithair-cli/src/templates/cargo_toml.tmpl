@@ -8,12 +8,7 @@ name = "{{project_name}}"
 path = "src/main.rs"
 
 [dependencies]
-lithair-core = "0.1"
-lithair-macros = "0.1"
+lithair-core = "{{lithair_version}}"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 anyhow = "1.0"
-bytes = "1"
-hyper = { version = "1", features = ["full"] }
-http-body-util = "0.1"

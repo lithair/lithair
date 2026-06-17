@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`lithair_core::prelude`** — the recommended one-line application import
+  (`use lithair_core::prelude::*;`). Re-exports the stable user-facing
+  surface: `LithairServer`, the derive/attribute macros, the custom-route
+  types (`Method`, `RouteRequest`, `RouteResponse`, `StatusCode`,
+  `response`), and the core RBAC types. This is the canonical stable v1.0
+  application surface (gate G3 groundwork).
+
+### Fixed
+
+- **`lithair new` generated a project that did not compile.** The scaffold
+  templates referenced `lithair_core::prelude::*` (which did not exist),
+  pinned `lithair-core = "0.1"` (the current line is `0.14`), and emitted a
+  custom-route handler written against an obsolete signature plus imports
+  (`http`, `hyper`, `Full<Bytes>`) for crates the scaffold did not depend
+  on. The templates now use the new prelude, pin `lithair-core` to this
+  CLI's own version (`CARGO_PKG_VERSION`, so scaffolds track the release),
+  carry only the dependencies they use, and emit a handler matching the
+  current `with_route(RouteRequest) -> Result<RouteResponse>` contract. A
+  new test (`scaffold_targets_current_version_and_api`) guards against this
+  rot, and a freshly generated project was verified to compile end-to-end.
+
 ## [0.14.0] - 2026-06-16
 
 This release closes the three "lifecycle of an installed product" gates on

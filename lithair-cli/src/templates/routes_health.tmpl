@@ -1,17 +1,15 @@
-use anyhow::Result;
-use bytes::Bytes;
-use http_body_util::Full;
-use hyper::{Request, Response, body::Incoming};
-use lithair_core::app::response;
+use lithair_core::prelude::*;
 use std::future::Future;
 use std::pin::Pin;
 
+/// A custom route handler: takes a [`RouteRequest`] and returns a
+/// [`RouteResponse`], matching the signature `with_route` expects.
 pub fn handler(
-    _req: Request<Incoming>,
-) -> Pin<Box<dyn Future<Output = Result<Response<Full<Bytes>>>> + Send>> {
+    _req: RouteRequest,
+) -> Pin<Box<dyn Future<Output = anyhow::Result<RouteResponse>> + Send>> {
     Box::pin(async {
         Ok(response::json(
-            http::StatusCode::OK,
+            StatusCode::OK,
             r#"{"status":"ok","service":"{{project_name}}"}"#,
         ))
     })

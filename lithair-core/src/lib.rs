@@ -117,6 +117,9 @@ pub mod admin_ui;
 
 pub mod testing;
 
+// The recommended one-line application import (stable v1.0 surface).
+pub mod prelude;
+
 // Internal modules (not in public API)
 mod macros;
 

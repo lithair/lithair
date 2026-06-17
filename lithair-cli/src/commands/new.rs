@@ -156,4 +156,41 @@ mod tests {
         assert!(content.contains("LT_DATA_DIR"));
         assert!(!content.contains("RS_"));
     }
+
+    /// Guard against scaffold rot: a generated project must depend on the
+    /// CURRENT `lithair-core` (not a stale pin) and use the CURRENT public API.
+    /// Each assertion below maps to a real way `lithair new` was once broken —
+    /// a stale `0.1` dep, an import of the (then-missing) `prelude`, and a route
+    /// handler written against an obsolete signature / removed imports.
+    #[test]
+    fn scaffold_targets_current_version_and_api() {
+        let tmp = tempfile::tempdir().unwrap();
+        run("fresh", tmp.path(), false).unwrap();
+        let root = tmp.path().join("fresh");
+
+        // 1. Cargo.toml pins this CLI's own version (caret), never the old "0.1".
+        let cargo = fs::read_to_string(root.join("Cargo.toml")).unwrap();
+        let expected = format!("lithair-core = \"{}\"", env!("CARGO_PKG_VERSION"));
+        assert!(cargo.contains(&expected), "Cargo.toml should pin {expected}; got:\n{cargo}");
+        assert!(!cargo.contains("lithair-core = \"0.1\""), "stale 0.1 pin must be gone");
+        assert!(
+            !cargo.contains("{{lithair_version}}"),
+            "version placeholder must be substituted"
+        );
+
+        // 2. Sources use the prelude (which now exists in lithair-core).
+        let main_rs = fs::read_to_string(root.join("src/main.rs")).unwrap();
+        let item_rs = fs::read_to_string(root.join("src/models/item.rs")).unwrap();
+        assert!(main_rs.contains("use lithair_core::prelude::*;"), "main.rs uses the prelude");
+        assert!(item_rs.contains("use lithair_core::prelude::*;"), "item.rs uses the prelude");
+
+        // 3. The custom-route handler matches the current with_route signature
+        //    (RouteRequest -> RouteResponse) and drops the removed imports that
+        //    referenced crates no longer in the scaffold's dependencies.
+        let health_rs = fs::read_to_string(root.join("src/routes/health.rs")).unwrap();
+        assert!(health_rs.contains("RouteResponse"), "health handler returns RouteResponse");
+        assert!(health_rs.contains("RouteRequest"), "health handler takes RouteRequest");
+        assert!(!health_rs.contains("http::StatusCode"), "no bare `http` crate dependency");
+        assert!(!health_rs.contains("Full<Bytes>"), "no obsolete Full<Bytes> return type");
+    }
 }
