@@ -10,15 +10,23 @@ use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
-// Re-export useful types
+// Engine submodules. Those whose entire public surface is hidden-tier (see
+// docs/reference/api-stability.md) are `#[doc(hidden)]` at the module level too
+// — hiding the re-exports alone still left the types documented via their
+// defining-module path, e.g. `engine::scc2_engine::Scc2Engine` (#129 review).
+#[doc(hidden)]
 pub mod async_writer;
 pub mod events;
+#[doc(hidden)]
 pub mod lockfree_engine;
 pub mod multi_file_store;
+#[doc(hidden)]
 pub mod persistence;
+#[doc(hidden)]
 pub mod persistence_optimized;
 pub mod relations;
 pub mod retention;
+#[doc(hidden)]
 pub mod scc2_engine;
 pub mod snapshot;
 pub mod state;
