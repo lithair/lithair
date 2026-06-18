@@ -58,12 +58,26 @@ pub(crate) enum RecognizedSessionStore {
     /// produced by `with_sessions(SessionManager::new(store_by_value))`
     /// or `with_sessions(SessionManager::from_arc(arc_store))`.
     Manager(Arc<SessionManager<PersistentSessionStore>>),
+    /// A raw `Arc<MemorySessionStore>` — the in-memory store documented for
+    /// development/testing.
+    Memory(Arc<MemorySessionStore>),
+    /// An `Arc<SessionManager<MemorySessionStore>>` — the shape produced by
+    /// `with_sessions(SessionManager::new(MemorySessionStore::new()))`, the
+    /// exact pattern in this module's doc example.
+    MemoryManager(Arc<SessionManager<MemorySessionStore>>),
 }
 
 impl RecognizedSessionStore {
     /// Attempt to identify the concrete shape of a registered session
-    /// store. Returns `Some` if it matches one of the two shapes the
+    /// store. Returns `Some` if it matches one of the built-in shapes the
     /// framework knows how to look sessions up in; `None` otherwise.
+    ///
+    /// Covers both built-in stores (`PersistentSessionStore`,
+    /// `MemorySessionStore`), each either raw or wrapped in a
+    /// `SessionManager`. A fully custom `SessionStore` impl is not recognized
+    /// — the builder stores the manager as `Arc<dyn Any>`, which cannot be
+    /// downcast to a trait object, so recognition must enumerate concrete
+    /// types (issue #143 review).
     ///
     /// The `Arc::downcast` calls consume the `Arc`, so this clones once
     /// per attempt — cheap, only happens on misses.
@@ -73,6 +87,12 @@ impl RecognizedSessionStore {
         }
         if let Ok(m) = store_any.clone().downcast::<SessionManager<PersistentSessionStore>>() {
             return Some(Self::Manager(m));
+        }
+        if let Ok(s) = store_any.clone().downcast::<MemorySessionStore>() {
+            return Some(Self::Memory(s));
+        }
+        if let Ok(m) = store_any.clone().downcast::<SessionManager<MemorySessionStore>>() {
+            return Some(Self::MemoryManager(m));
         }
         None
     }
@@ -87,6 +107,10 @@ impl RecognizedSessionStore {
                 store.get(id).await.ok().flatten().filter(|s| !s.is_expired())
             }
             Self::Manager(manager) => {
+                manager.get_session(id).await.ok().flatten().filter(|s| !s.is_expired())
+            }
+            Self::Memory(store) => store.get(id).await.ok().flatten().filter(|s| !s.is_expired()),
+            Self::MemoryManager(manager) => {
                 manager.get_session(id).await.ok().flatten().filter(|s| !s.is_expired())
             }
         }

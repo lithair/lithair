@@ -131,8 +131,6 @@ impl RouteGuard {
         redirect_to: &Option<String>,
         exclude: &[String],
     ) -> Result<GuardResult, anyhow::Error> {
-        use crate::session::{PersistentSessionStore, SessionStore};
-
         let path = req.uri().path();
 
         // Check exclusions
@@ -142,16 +140,18 @@ impl RouteGuard {
             }
         }
 
-        // Get session store
-        let store = match session_store {
-            Some(store_any) => {
-                let store: Arc<PersistentSessionStore> = store_any
-                    .downcast()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
-                store
-            }
-            None => return Ok(GuardResult::Allow), // No session store = no auth check
+        // Resolve the session store via the shared recognizer so this guard
+        // honors BOTH a raw `Arc<PersistentSessionStore>` (the RBAC builder
+        // path) AND an `Arc<SessionManager<…>>` (the `with_sessions(...)` API).
+        // The previous raw downcast to `PersistentSessionStore` silently failed
+        // for the `SessionManager` shape, which made RequireAuth a no-op for the
+        // documented `with_sessions` configuration (issue #143; recognizer is
+        // the same single source of truth used by the model gate, issue #80).
+        let store_any = match session_store {
+            Some(store_any) => store_any,
+            None => return Ok(GuardResult::Allow), // No session store = no auth configured.
         };
+        let recognized = crate::session::RecognizedSessionStore::recognize(&store_any);
 
         // Extract token from Authorization header or Cookie
         let token = req
@@ -170,9 +170,13 @@ impl RouteGuard {
                 )
             });
 
-        // Validate token
-        let is_valid =
-            if let Some(token) = token { store.get(token).await?.is_some() } else { false };
+        // Validate token: a live (present, non-expired) session in a recognized
+        // store. A configured-but-unrecognized store shape fails CLOSED (deny) —
+        // this is a security guard, so an unverifiable session is not allowed.
+        let is_valid = match (&recognized, token) {
+            (Some(store), Some(token)) => store.get_live_session(token).await.is_some(),
+            _ => false,
+        };
 
         if is_valid {
             Ok(GuardResult::Allow)

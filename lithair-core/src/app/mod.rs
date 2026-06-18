@@ -1173,11 +1173,11 @@ impl LithairServer {
                     anyhow::bail!(
                         "Refusing to start: `with_models_require_session(true)` is set \
                          but the registered session store has an unrecognized shape \
-                         (TypeId = {:?}). The gate only recognizes \
-                         `Arc<PersistentSessionStore>` and \
-                         `Arc<SessionManager<PersistentSessionStore>>`. This usually \
-                         means `SessionManager::new(arc_store)` was called with an \
-                         already-`Arc`-wrapped store, producing a double-`Arc` shape \
+                         (TypeId = {:?}). The gate recognizes the built-in stores \
+                         (`PersistentSessionStore`, `MemorySessionStore`), each either \
+                         raw or wrapped in a `SessionManager`. An unrecognized shape \
+                         usually means `SessionManager::new(arc_store)` was called with \
+                         an already-`Arc`-wrapped store, producing a double-`Arc` shape \
                          that silently 401s every request. Use \
                          `SessionManager::from_arc(arc_store)` instead, or pass the \
                          store by value to `SessionManager::new`. See issue #80.",
@@ -3076,8 +3076,10 @@ impl LithairServer {
 
         // Frontend lifecycle admin API (/_admin/frontend[/...]) — issue #134.
         // Gated behind the same `data_admin_enabled` toggle as the data admin
-        // plane and protected by the global firewall (checked above), matching
-        // the other mutating `/_admin/*` surfaces.
+        // plane. `with_data_admin()` registers a secure-by-default
+        // `RequireAuth` guard over `/_admin/data/*` and `/_admin/frontend/*`
+        // (evaluated in the route-guard loop above, issue #143); the firewall,
+        // when enabled, is additional defense-in-depth, not the sole guard.
         if self.config.admin.data_admin_enabled
             && (path == "/_admin/frontend" || path.starts_with("/_admin/frontend/"))
         {

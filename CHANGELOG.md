@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`with_data_admin()` is now secure by default** (issue #143). Enabling the
+  data-admin / frontend-admin planes now auto-registers a `RequireAuth` guard
+  over `/_admin/data/*` **and** `/_admin/frontend/*`, so a server configured
+  with sessions/RBAC no longer exposes them unauthenticated (previously a guard
+  was added only by `with_data_admin_ui()`, and `/_admin/frontend/*` — info
+  disclosure + forced reload — had none, relying on the off-by-default
+  firewall). Two supporting fixes: the route-guard `RequireAuth` path now
+  recognizes the `Arc<SessionManager<…>>` shape produced by `with_sessions(...)`
+  (it previously only matched a raw `PersistentSessionStore`, silently making
+  the guard a no-op for the documented API), and it now also checks session
+  expiry. New `with_data_admin_public()` is the explicit, loudly-logged opt-out
+  for dev/internal use (mirrors `with_data_admin_ui_public()`); with no session
+  store configured the guard is a no-op, so single-user deployments are
+  unaffected.
+
 ### Added
 
 - **`lithair_core::prelude`** — the recommended one-line application import
