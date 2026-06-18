@@ -135,49 +135,66 @@ fn split_csv(s: &str) -> Vec<String> {
 }
 
 /// Parse struct-level #[firewall(...)] attributes
-fn parse_firewall_attributes(input: &DeriveInput) -> FirewallAttributes {
+fn parse_firewall_attributes(input: &DeriveInput) -> syn::Result<FirewallAttributes> {
     let mut fw = FirewallAttributes::default();
     for attr in &input.attrs {
         if attr.path().is_ident("firewall") {
             fw.present = true;
             if let Meta::List(meta_list) = &attr.meta {
                 let nested_str = meta_list.tokens.to_string();
-                for token in nested_str.split(',') {
+                for token in split_attr_tokens(&nested_str) {
                     let token = token.trim();
-                    if token.starts_with("enabled") {
-                        if let Some(v) = parse_bool_value(token) {
-                            fw.enabled = v;
+                    if token.is_empty() {
+                        continue;
+                    }
+                    let key = token.split('=').next().unwrap_or(token).trim();
+                    // Every #[firewall] key carries a value; a known key whose
+                    // value is missing/unparseable is an error, not a silent
+                    // no-op (gate G2 — "a value they can't parse", #128).
+                    match key {
+                        "enabled" => {
+                            fw.enabled = parse_bool_value(token).ok_or_else(|| {
+                                syn::Error::new_spanned(
+                                    attr,
+                                    "invalid or missing boolean for `enabled` in #[firewall(...)]",
+                                )
+                            })?;
                         }
-                    } else if token.starts_with("allow") {
-                        if let Some(val) = extract_string_value(token) {
-                            fw.allow = split_csv(&val);
+                        "allow" => {
+                            fw.allow = split_csv(&fw_string_value(attr, token, "allow")?);
                         }
-                    } else if token.starts_with("deny") {
-                        if let Some(val) = extract_string_value(token) {
-                            fw.deny = split_csv(&val);
+                        "deny" => {
+                            fw.deny = split_csv(&fw_string_value(attr, token, "deny")?);
                         }
-                    } else if token.starts_with("global_qps") {
-                        if let Some(v) = extract_u64_value(token) {
-                            fw.global_qps = Some(v);
+                        "global_qps" => {
+                            fw.global_qps = Some(fw_u64_value(attr, token, "global_qps")?);
                         }
-                    } else if token.starts_with("per_ip_qps") {
-                        if let Some(v) = extract_u64_value(token) {
-                            fw.per_ip_qps = Some(v);
+                        "per_ip_qps" => {
+                            fw.per_ip_qps = Some(fw_u64_value(attr, token, "per_ip_qps")?);
                         }
-                    } else if token.starts_with("protected") {
-                        if let Some(val) = extract_string_value(token) {
-                            fw.protected = split_csv(&val);
+                        // Accept both the bare and `_prefixes` spellings.
+                        "protected" | "protected_prefixes" => {
+                            fw.protected = split_csv(&fw_string_value(attr, token, key)?);
                         }
-                    } else if token.starts_with("exempt") {
-                        if let Some(val) = extract_string_value(token) {
-                            fw.exempt = split_csv(&val);
+                        "exempt" | "exempt_prefixes" => {
+                            fw.exempt = split_csv(&fw_string_value(attr, token, key)?);
+                        }
+                        other => {
+                            return Err(syn::Error::new_spanned(
+                                attr,
+                                format!(
+                                    "unknown key `{other}` in #[firewall(...)]; valid keys: \
+                                     enabled, allow, deny, global_qps, per_ip_qps, \
+                                     protected_prefixes, exempt_prefixes"
+                                ),
+                            ));
                         }
                     }
                 }
             }
         }
     }
-    fw
+    Ok(fw)
 }
 
 /// Server-level attributes from #[server(...)]
@@ -190,7 +207,7 @@ struct ServerAttributes {
 }
 
 /// Parse server attributes from struct-level #[server(...)] annotations
-fn parse_server_attributes(input: &DeriveInput) -> ServerAttributes {
+fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes> {
     let mut server_attrs = ServerAttributes {
         default_port: 8080, // Default port
         ..Default::default()
@@ -201,36 +218,64 @@ fn parse_server_attributes(input: &DeriveInput) -> ServerAttributes {
             if let Meta::List(meta_list) = &attr.meta {
                 // Parse server(...) tokens
                 let nested_str = meta_list.tokens.to_string();
-                for token in nested_str.split(',') {
+                for token in split_attr_tokens(&nested_str) {
                     let token = token.trim();
-                    match token {
-                        "main" => server_attrs.generate_main = true,
-                        "distributed" => server_attrs.distributed = true,
-                        "cli" => server_attrs.cli = true,
-                        token if token.starts_with("port") => {
-                            // Parse port = 8080
-                            if let Some(port_str) = token.split('=').nth(1) {
-                                if let Ok(port) = port_str.trim().parse::<u16>() {
-                                    server_attrs.default_port = port;
-                                }
+                    if token.is_empty() {
+                        continue;
+                    }
+                    let key = token.split('=').next().unwrap_or(token).trim();
+                    match key {
+                        // Bare flags — they take NO value. Reject `main = …`
+                        // explicitly: otherwise `#[server(main = false)]` would
+                        // silently set `main = true` (the `= false` dropped).
+                        "main" | "distributed" | "cli" => {
+                            if token.contains('=') {
+                                return Err(syn::Error::new_spanned(
+                                    attr,
+                                    format!(
+                                        "`{key}` in #[server(...)] is a flag and takes no value"
+                                    ),
+                                ));
+                            }
+                            match key {
+                                "main" => server_attrs.generate_main = true,
+                                "distributed" => server_attrs.distributed = true,
+                                "cli" => server_attrs.cli = true,
+                                _ => unreachable!(),
                             }
                         }
-                        token if token.starts_with("default_port") => {
-                            // Parse default_port = 9001
-                            if let Some(port_str) = token.split('=').nth(1) {
-                                if let Ok(port) = port_str.trim().parse::<u16>() {
-                                    server_attrs.default_port = port;
-                                }
-                            }
+                        // `port = 8080` / `default_port = 9001` both set the port.
+                        "port" | "default_port" => {
+                            server_attrs.default_port = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .and_then(|s| s.parse::<u16>().ok())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        format!(
+                                            "invalid or missing u16 value for `{key}` in #[server(...)]"
+                                        ),
+                                    )
+                                })?;
                         }
-                        _ => {} // Ignore unknown tokens
+                        other => {
+                            return Err(syn::Error::new_spanned(
+                                attr,
+                                format!(
+                                    "unknown key `{other}` in #[server(...)]; valid keys: \
+                                     main, distributed, cli, port, default_port"
+                                ),
+                            ));
+                        }
                     }
                 }
             }
         }
     }
 
-    server_attrs
+    Ok(server_attrs)
 }
 
 /// Model-level retention configuration from `#[retention(...)]` annotations.
@@ -281,63 +326,134 @@ fn parse_duration_literal(s: &str) -> Option<u64> {
 /// - `max_mb = N` (integer literal) — memory budget in megabytes
 ///
 /// Multiple keys may be combined: `#[retention(memory = 1000, max_mb = 512)]`.
-fn parse_model_retention(input: &DeriveInput) -> ModelRetentionConfig {
+fn parse_model_retention(input: &DeriveInput) -> syn::Result<ModelRetentionConfig> {
     let mut config = ModelRetentionConfig::default();
     for attr in &input.attrs {
         if attr.path().is_ident("retention") {
             if let Meta::List(meta_list) = &attr.meta {
                 let nested_str = meta_list.tokens.to_string();
-                for token in nested_str.split(',') {
+                for token in split_attr_tokens(&nested_str) {
                     let token = token.trim();
-                    if let Some(rest) = token.strip_prefix("memory") {
-                        if let Some(eq_pos) = rest.find('=') {
-                            let val = rest[eq_pos + 1..].trim();
-                            // String literal → duration mode.
+                    if token.is_empty() {
+                        continue;
+                    }
+                    let key = token.split('=').next().unwrap_or(token).trim();
+                    match key {
+                        "memory" => {
+                            let val = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "missing value for `memory` in #[retention(...)]",
+                                    )
+                                })?;
+                            // Quoted string → duration mode; bare integer → count.
                             if let Some(unquoted) = extract_string_value(val) {
-                                if let Some(secs) = parse_duration_literal(&unquoted) {
-                                    config.memory_duration_secs = Some(secs);
-                                }
+                                config.memory_duration_secs =
+                                    Some(parse_duration_literal(&unquoted).ok_or_else(|| {
+                                        syn::Error::new_spanned(
+                                            attr,
+                                            "invalid duration for `memory` in #[retention(...)] \
+                                             (expected e.g. \"30d\": s/m/h/d/w/y suffixes)",
+                                        )
+                                    })?);
                             } else if let Ok(n) = val.parse::<usize>() {
-                                // Bare integer → count mode.
                                 config.memory_count = Some(n);
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    attr,
+                                    "`memory` in #[retention(...)] must be an integer count or a \
+                                     quoted duration like \"30d\"",
+                                ));
                             }
                         }
-                    } else if let Some(rest) = token.strip_prefix("max_mb") {
-                        if let Some(eq_pos) = rest.find('=') {
-                            let val = rest[eq_pos + 1..].trim();
-                            if let Ok(mb) = val.parse::<usize>() {
-                                config.memory_budget_bytes = mb.checked_mul(1024 * 1024);
-                            }
+                        "max_mb" => {
+                            let mb = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .and_then(|s| s.parse::<usize>().ok())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "invalid or missing integer value for `max_mb` in \
+                                         #[retention(...)]",
+                                    )
+                                })?;
+                            // Error on overflow rather than silently leaving the
+                            // budget unset (CodeRabbit #147).
+                            config.memory_budget_bytes =
+                                Some(mb.checked_mul(1024 * 1024).ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "`max_mb` value is too large — it overflows when converted \
+                                         to bytes in #[retention(...)]",
+                                    )
+                                })?);
+                        }
+                        other => {
+                            return Err(syn::Error::new_spanned(
+                                attr,
+                                format!(
+                                    "unknown key `{other}` in #[retention(...)]; valid keys: \
+                                     memory, max_mb"
+                                ),
+                            ));
                         }
                     }
                 }
             }
         }
     }
-    config
+    Ok(config)
 }
 
 /// Parse struct-level #[schema(version = N)] attribute.
 /// Defaults to 1 if not specified.
-fn parse_schema_version(input: &DeriveInput) -> u32 {
+fn parse_schema_version(input: &DeriveInput) -> syn::Result<u32> {
+    let mut version = 1; // default
     for attr in &input.attrs {
         if attr.path().is_ident("schema") {
             if let Meta::List(meta_list) = &attr.meta {
                 let nested_str = meta_list.tokens.to_string();
-                for token in nested_str.split(',') {
+                for token in split_attr_tokens(&nested_str) {
                     let token = token.trim();
-                    if token.starts_with("version") {
-                        if let Some(val) = token.split('=').nth(1) {
-                            if let Ok(v) = val.trim().parse::<u32>() {
-                                return v;
-                            }
+                    if token.is_empty() {
+                        continue;
+                    }
+                    let key = token.split('=').next().unwrap_or(token).trim();
+                    match key {
+                        "version" => {
+                            version = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .and_then(|s| s.parse::<u32>().ok())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "invalid or missing u32 value for `version` in #[schema(...)]",
+                                    )
+                                })?;
+                        }
+                        other => {
+                            return Err(syn::Error::new_spanned(
+                                attr,
+                                format!(
+                                    "unknown key `{other}` in #[schema(...)]; valid keys: version"
+                                ),
+                            ));
                         }
                     }
                 }
             }
         }
     }
-    1
+    Ok(version)
 }
 
 /// Parse attributes from a field using modern syn API
@@ -758,6 +874,27 @@ fn split_attr_tokens(s: &str) -> Vec<String> {
     out
 }
 
+/// `#[firewall]` helper: a known key's string value, or a compile error if it
+/// is missing/unparseable (gate G2 — "a value they can't parse", #128).
+fn fw_string_value(attr: &Attribute, token: &str, key: &str) -> syn::Result<String> {
+    extract_string_value(token).ok_or_else(|| {
+        syn::Error::new_spanned(
+            attr,
+            format!("invalid or missing string value for `{key}` in #[firewall(...)]"),
+        )
+    })
+}
+
+/// `#[firewall]` helper: a known key's u64 value, or a compile error.
+fn fw_u64_value(attr: &Attribute, token: &str, key: &str) -> syn::Result<u64> {
+    extract_u64_value(token).ok_or_else(|| {
+        syn::Error::new_spanned(
+            attr,
+            format!("invalid or missing integer value for `{key}` in #[firewall(...)]"),
+        )
+    })
+}
+
 /// Extract string value from attribute token (simple parsing)
 fn extract_string_value(token_str: &str) -> Option<String> {
     if let Some(start) = token_str.find('"') {
@@ -971,12 +1108,26 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, Span::call_site());
     // Keep server attributes parsed so later (currently unreachable) code compiles
-    let server_attrs = parse_server_attributes(&input);
+    // Struct-level attribute parsers reject unknown keys (gate G2, #128);
+    // surface any error as a compile error.
+    let server_attrs = match parse_server_attributes(&input) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error(),
+    };
 
     // Parse firewall and http attributes
-    let fw_attrs = parse_firewall_attributes(&input);
-    let schema_version = parse_schema_version(&input);
-    let retention_config = parse_model_retention(&input);
+    let fw_attrs = match parse_firewall_attributes(&input) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error(),
+    };
+    let schema_version = match parse_schema_version(&input) {
+        Ok(v) => v,
+        Err(e) => return e.to_compile_error(),
+    };
+    let retention_config = match parse_model_retention(&input) {
+        Ok(c) => c,
+        Err(e) => return e.to_compile_error(),
+    };
     let http_model_attrs = parse_model_http_attributes(&input);
 
     // Use #[http(base_path = "custom")] if specified, otherwise auto-generate
@@ -2102,6 +2253,80 @@ mod tests {
             !out.contains("compile_error"),
             "a comma inside a quoted attribute value must not raise a spurious \
              unknown-key error; got:\n{out}"
+        );
+    }
+
+    /// Helper: derive output for a struct carrying a struct-level `attr`.
+    fn derive_with_struct_attr(attr: proc_macro2::TokenStream) -> String {
+        derive_declarative_model(quote! {
+            #[derive(DeclarativeModel)]
+            #attr
+            struct Product {
+                id: u64,
+                name: String,
+            }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn struct_level_unknown_keys_emit_compile_error() {
+        let cases = [
+            (quote! { #[server(distribted)] }, "distribted"),
+            (quote! { #[firewall(enabledd = true)] }, "enabledd"),
+            (quote! { #[retention(memry = 100)] }, "memry"),
+            (quote! { #[schema(versionn = 2)] }, "versionn"),
+        ];
+        for (attr, bad_key) in cases {
+            let out = derive_with_struct_attr(attr);
+            assert!(
+                out.contains("compile_error"),
+                "a typo'd struct-level key must emit compile_error; got:\n{out}"
+            );
+            assert!(
+                out.contains(bad_key),
+                "the compile error must name the offending key `{bad_key}`; got:\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn struct_level_invalid_values_emit_compile_error() {
+        // Known key, unparseable value → compile error (gate G2: "a value they
+        // can't parse"). Covers the struct-level value validators.
+        let cases = [
+            quote! { #[server(port = "notaport")] },
+            quote! { #[firewall(global_qps = "lots")] },
+            quote! { #[retention(memory = "notaduration")] },
+            quote! { #[retention(max_mb = "big")] },
+            quote! { #[schema(version = "two")] },
+            // A flag key with a value is rejected (`main = false` would
+            // otherwise silently mean `main = true`).
+            quote! { #[server(main = false)] },
+            // max_mb that parses as usize but overflows when converted to
+            // bytes (×1Mi) must error, not silently leave the budget unset.
+            quote! { #[retention(max_mb = 17592186044416)] },
+        ];
+        for attr in cases {
+            let out = derive_with_struct_attr(attr.clone());
+            assert!(
+                out.contains("compile_error"),
+                "an unparseable value for a known key must emit compile_error; attr {attr}\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn struct_level_known_keys_do_not_error() {
+        let out = derive_with_struct_attr(quote! {
+            #[server(main, cli, distributed, port = 8080)]
+            #[firewall(enabled = true, allow = "10.0.0.0/8", protected_prefixes = "/admin")]
+            #[retention(memory = 1000, max_mb = 512)]
+            #[schema(version = 3)]
+        });
+        assert!(
+            !out.contains("compile_error"),
+            "valid struct-level keys must NOT emit a compile error; got:\n{out}"
         );
     }
 }

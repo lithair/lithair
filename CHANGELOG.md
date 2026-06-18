@@ -26,18 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Macro: unknown keys in field-level model attributes are now a compile
-  error** (gate G2, issue #128, partial). The declarative attribute parsers
-  for `#[db]`, `#[http]`, `#[lifecycle]`, `#[permission]`, `#[rbac]`,
-  `#[persistence]` and `#[relation]` previously **silently skipped** any key
-  they didn't recognize — the class of bug that shipped three times (#75
-  `validate`, the `retention`/`pinned` miss, #122 `db(fk)`). They now emit a
-  `compile_error!` naming the offending key and listing the valid ones. This
-  immediately surfaced and fixed a latent bug in the schema-migration example
-  (`#[db(immutable)]`, silently dropped — `immutable` is a `#[lifecycle]` key,
-  so the field was never actually immutable). Struct-level attributes
-  (`#[server]`, `#[firewall]`, `#[retention]`, `#[schema]`) are hardened in a
-  follow-up; #128 stays open until then.
+- **Macro: unknown keys in model attributes are now a compile error**
+  (gate G2, issue #128). The declarative attribute parsers previously
+  **silently skipped** any key they didn't recognize — the class of bug that
+  shipped three times (#75 `validate`, the `retention`/`pinned` miss, #122
+  `db(fk)`). Now both the field-level attributes (`#[db]`, `#[http]`,
+  `#[lifecycle]`, `#[permission]`, `#[rbac]`, `#[persistence]`, `#[relation]`)
+  and the struct-level attributes (`#[server]`, `#[firewall]`, `#[retention]`,
+  `#[schema]`) emit a `compile_error!` naming the offending key and listing the
+  valid ones. Comma splitting in the value parsers is now quote-aware, so a
+  rule value containing a comma stays whole instead of being torn (which would
+  otherwise raise a spurious unknown-key error). This immediately surfaced and
+  fixed a latent bug in the schema-migration example (`#[db(immutable)]`,
+  silently dropped — `immutable` is a `#[lifecycle]` key, so the field was
+  never actually immutable).
 
 - **API surface classified for v1.0** (gate G3, issue #129). New
   [`docs/reference/api-stability.md`](docs/reference/api-stability.md) tiers
