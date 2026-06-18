@@ -148,42 +148,36 @@ fn parse_firewall_attributes(input: &DeriveInput) -> syn::Result<FirewallAttribu
                         continue;
                     }
                     let key = token.split('=').next().unwrap_or(token).trim();
+                    // Every #[firewall] key carries a value; a known key whose
+                    // value is missing/unparseable is an error, not a silent
+                    // no-op (gate G2 — "a value they can't parse", #128).
                     match key {
                         "enabled" => {
-                            if let Some(v) = parse_bool_value(token) {
-                                fw.enabled = v;
-                            }
+                            fw.enabled = parse_bool_value(token).ok_or_else(|| {
+                                syn::Error::new_spanned(
+                                    attr,
+                                    "invalid or missing boolean for `enabled` in #[firewall(...)]",
+                                )
+                            })?;
                         }
                         "allow" => {
-                            if let Some(val) = extract_string_value(token) {
-                                fw.allow = split_csv(&val);
-                            }
+                            fw.allow = split_csv(&fw_string_value(attr, token, "allow")?);
                         }
                         "deny" => {
-                            if let Some(val) = extract_string_value(token) {
-                                fw.deny = split_csv(&val);
-                            }
+                            fw.deny = split_csv(&fw_string_value(attr, token, "deny")?);
                         }
                         "global_qps" => {
-                            if let Some(v) = extract_u64_value(token) {
-                                fw.global_qps = Some(v);
-                            }
+                            fw.global_qps = Some(fw_u64_value(attr, token, "global_qps")?);
                         }
                         "per_ip_qps" => {
-                            if let Some(v) = extract_u64_value(token) {
-                                fw.per_ip_qps = Some(v);
-                            }
+                            fw.per_ip_qps = Some(fw_u64_value(attr, token, "per_ip_qps")?);
                         }
                         // Accept both the bare and `_prefixes` spellings.
                         "protected" | "protected_prefixes" => {
-                            if let Some(val) = extract_string_value(token) {
-                                fw.protected = split_csv(&val);
-                            }
+                            fw.protected = split_csv(&fw_string_value(attr, token, key)?);
                         }
                         "exempt" | "exempt_prefixes" => {
-                            if let Some(val) = extract_string_value(token) {
-                                fw.exempt = split_csv(&val);
-                            }
+                            fw.exempt = split_csv(&fw_string_value(attr, token, key)?);
                         }
                         other => {
                             return Err(syn::Error::new_spanned(
@@ -236,11 +230,19 @@ fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes>
                         "cli" => server_attrs.cli = true,
                         // `port = 8080` / `default_port = 9001` both set the port.
                         "port" | "default_port" => {
-                            if let Some(port_str) = token.split('=').nth(1) {
-                                if let Ok(port) = port_str.trim().parse::<u16>() {
-                                    server_attrs.default_port = port;
-                                }
-                            }
+                            server_attrs.default_port = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .and_then(|s| s.parse::<u16>().ok())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        format!(
+                                            "invalid or missing u16 value for `{key}` in #[server(...)]"
+                                        ),
+                                    )
+                                })?;
                         }
                         other => {
                             return Err(syn::Error::new_spanned(
@@ -322,30 +324,51 @@ fn parse_model_retention(input: &DeriveInput) -> syn::Result<ModelRetentionConfi
                     let key = token.split('=').next().unwrap_or(token).trim();
                     match key {
                         "memory" => {
-                            if let Some(rest) = token.strip_prefix("memory") {
-                                if let Some(eq_pos) = rest.find('=') {
-                                    let val = rest[eq_pos + 1..].trim();
-                                    // String literal → duration mode.
-                                    if let Some(unquoted) = extract_string_value(val) {
-                                        if let Some(secs) = parse_duration_literal(&unquoted) {
-                                            config.memory_duration_secs = Some(secs);
-                                        }
-                                    } else if let Ok(n) = val.parse::<usize>() {
-                                        // Bare integer → count mode.
-                                        config.memory_count = Some(n);
-                                    }
-                                }
+                            let val = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "missing value for `memory` in #[retention(...)]",
+                                    )
+                                })?;
+                            // Quoted string → duration mode; bare integer → count.
+                            if let Some(unquoted) = extract_string_value(val) {
+                                config.memory_duration_secs =
+                                    Some(parse_duration_literal(&unquoted).ok_or_else(|| {
+                                        syn::Error::new_spanned(
+                                            attr,
+                                            "invalid duration for `memory` in #[retention(...)] \
+                                             (expected e.g. \"30d\": s/m/h/d/w/y suffixes)",
+                                        )
+                                    })?);
+                            } else if let Ok(n) = val.parse::<usize>() {
+                                config.memory_count = Some(n);
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    attr,
+                                    "`memory` in #[retention(...)] must be an integer count or a \
+                                     quoted duration like \"30d\"",
+                                ));
                             }
                         }
                         "max_mb" => {
-                            if let Some(rest) = token.strip_prefix("max_mb") {
-                                if let Some(eq_pos) = rest.find('=') {
-                                    let val = rest[eq_pos + 1..].trim();
-                                    if let Ok(mb) = val.parse::<usize>() {
-                                        config.memory_budget_bytes = mb.checked_mul(1024 * 1024);
-                                    }
-                                }
-                            }
+                            config.memory_budget_bytes = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .and_then(|s| s.parse::<usize>().ok())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "invalid or missing integer value for `max_mb` in \
+                                         #[retention(...)]",
+                                    )
+                                })?
+                                .checked_mul(1024 * 1024);
                         }
                         other => {
                             return Err(syn::Error::new_spanned(
@@ -380,11 +403,17 @@ fn parse_schema_version(input: &DeriveInput) -> syn::Result<u32> {
                     let key = token.split('=').next().unwrap_or(token).trim();
                     match key {
                         "version" => {
-                            if let Some(val) = token.split('=').nth(1) {
-                                if let Ok(v) = val.trim().parse::<u32>() {
-                                    version = v;
-                                }
-                            }
+                            version = token
+                                .split('=')
+                                .nth(1)
+                                .map(str::trim)
+                                .and_then(|s| s.parse::<u32>().ok())
+                                .ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "invalid or missing u32 value for `version` in #[schema(...)]",
+                                    )
+                                })?;
                         }
                         other => {
                             return Err(syn::Error::new_spanned(
@@ -818,6 +847,27 @@ fn split_attr_tokens(s: &str) -> Vec<String> {
         out.push(cur);
     }
     out
+}
+
+/// `#[firewall]` helper: a known key's string value, or a compile error if it
+/// is missing/unparseable (gate G2 — "a value they can't parse", #128).
+fn fw_string_value(attr: &Attribute, token: &str, key: &str) -> syn::Result<String> {
+    extract_string_value(token).ok_or_else(|| {
+        syn::Error::new_spanned(
+            attr,
+            format!("invalid or missing string value for `{key}` in #[firewall(...)]"),
+        )
+    })
+}
+
+/// `#[firewall]` helper: a known key's u64 value, or a compile error.
+fn fw_u64_value(attr: &Attribute, token: &str, key: &str) -> syn::Result<u64> {
+    extract_u64_value(token).ok_or_else(|| {
+        syn::Error::new_spanned(
+            attr,
+            format!("invalid or missing integer value for `{key}` in #[firewall(...)]"),
+        )
+    })
 }
 
 /// Extract string value from attribute token (simple parsing)
@@ -2211,6 +2261,26 @@ mod tests {
             assert!(
                 out.contains(bad_key),
                 "the compile error must name the offending key `{bad_key}`; got:\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn struct_level_invalid_values_emit_compile_error() {
+        // Known key, unparseable value → compile error (gate G2: "a value they
+        // can't parse"). Covers the struct-level value validators.
+        let cases = [
+            quote! { #[server(port = "notaport")] },
+            quote! { #[firewall(global_qps = "lots")] },
+            quote! { #[retention(memory = "notaduration")] },
+            quote! { #[retention(max_mb = "big")] },
+            quote! { #[schema(version = "two")] },
+        ];
+        for attr in cases {
+            let out = derive_with_struct_attr(attr.clone());
+            assert!(
+                out.contains("compile_error"),
+                "an unparseable value for a known key must emit compile_error; attr {attr}\n{out}"
             );
         }
     }
