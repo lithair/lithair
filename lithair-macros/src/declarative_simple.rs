@@ -225,9 +225,25 @@ fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes>
                     }
                     let key = token.split('=').next().unwrap_or(token).trim();
                     match key {
-                        "main" => server_attrs.generate_main = true,
-                        "distributed" => server_attrs.distributed = true,
-                        "cli" => server_attrs.cli = true,
+                        // Bare flags — they take NO value. Reject `main = …`
+                        // explicitly: otherwise `#[server(main = false)]` would
+                        // silently set `main = true` (the `= false` dropped).
+                        "main" | "distributed" | "cli" => {
+                            if token.contains('=') {
+                                return Err(syn::Error::new_spanned(
+                                    attr,
+                                    format!(
+                                        "`{key}` in #[server(...)] is a flag and takes no value"
+                                    ),
+                                ));
+                            }
+                            match key {
+                                "main" => server_attrs.generate_main = true,
+                                "distributed" => server_attrs.distributed = true,
+                                "cli" => server_attrs.cli = true,
+                                _ => unreachable!(),
+                            }
+                        }
                         // `port = 8080` / `default_port = 9001` both set the port.
                         "port" | "default_port" => {
                             server_attrs.default_port = token
@@ -356,7 +372,7 @@ fn parse_model_retention(input: &DeriveInput) -> syn::Result<ModelRetentionConfi
                             }
                         }
                         "max_mb" => {
-                            config.memory_budget_bytes = token
+                            let mb = token
                                 .split('=')
                                 .nth(1)
                                 .map(str::trim)
@@ -367,8 +383,17 @@ fn parse_model_retention(input: &DeriveInput) -> syn::Result<ModelRetentionConfi
                                         "invalid or missing integer value for `max_mb` in \
                                          #[retention(...)]",
                                     )
-                                })?
-                                .checked_mul(1024 * 1024);
+                                })?;
+                            // Error on overflow rather than silently leaving the
+                            // budget unset (CodeRabbit #147).
+                            config.memory_budget_bytes =
+                                Some(mb.checked_mul(1024 * 1024).ok_or_else(|| {
+                                    syn::Error::new_spanned(
+                                        attr,
+                                        "`max_mb` value is too large — it overflows when converted \
+                                         to bytes in #[retention(...)]",
+                                    )
+                                })?);
                         }
                         other => {
                             return Err(syn::Error::new_spanned(
@@ -2275,6 +2300,12 @@ mod tests {
             quote! { #[retention(memory = "notaduration")] },
             quote! { #[retention(max_mb = "big")] },
             quote! { #[schema(version = "two")] },
+            // A flag key with a value is rejected (`main = false` would
+            // otherwise silently mean `main = true`).
+            quote! { #[server(main = false)] },
+            // max_mb that parses as usize but overflows when converted to
+            // bytes (×1Mi) must error, not silently leave the budget unset.
+            quote! { #[retention(max_mb = 17592186044416)] },
         ];
         for attr in cases {
             let out = derive_with_struct_attr(attr.clone());
