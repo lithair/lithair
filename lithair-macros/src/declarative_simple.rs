@@ -395,7 +395,7 @@ fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Re
         // Get the full token string for more complex parsing
         let full_tokens = meta_list.tokens.to_string();
 
-        for token in full_tokens.split(',') {
+        for token in split_attr_tokens(&full_tokens) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -457,7 +457,7 @@ fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> 
         // pair like `versioned = 3` arrives as one fragment whose key is the
         // part before `=`. Reject unknown keys (gate G2, #128).
         let full_tokens = meta_list.tokens.to_string();
-        for token in full_tokens.split(',') {
+        for token in split_attr_tokens(&full_tokens) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -505,28 +505,24 @@ fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> 
 /// generated `HttpExposable::validate()` was a no-op on POST/PUT/PATCH —
 /// exactly the symptom reported in issue #75.
 ///
-/// Known limitation: this parser splits on `,` *after* stringification, so a
-/// rule value that itself contains a comma — e.g. a hypothetical
-/// `validate = "length(5, 50)"` — would be torn in half and silently
-/// dropped. This is acceptable today because every rule currently
-/// implemented by `generate_validation_check` (`non_empty`,
-/// `not_negative`, `email`, `min_length(N)`, `max_length(N)`,
-/// `min_value(N)`, `max_value(N)`) is single-argument and comma-free. If
-/// `length(N, N)`, `range(N, N)`, or `enum(A, B, C)` rules are added
-/// later (they are advertised in `docs/reference/declarative-attributes.md`
-/// but not yet implemented), this parser must be upgraded to either
-/// quote-aware splitting or windowed `TokenTree` matching first.
+/// Comma handling: splitting happens via `split_attr_tokens`, which is
+/// quote-aware — a rule value that itself contains a comma (e.g. a future
+/// `validate = "length(5, 50)"`, `range(N, N)`, or `enum(A, B, C)` rule,
+/// advertised in `docs/reference/declarative-attributes.md` but not yet
+/// implemented) stays whole. This matters since #128: a torn fragment would
+/// now raise a spurious "unknown key" compile error rather than being
+/// silently dropped.
 fn parse_http_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         // `tokens.to_string()` joins TokenTrees with spaces, producing e.g.
         // `expose , validate = "non_empty" , validate = "max_length(200)"`.
-        // Splitting on `,` walks one logical attribute per iteration.
-        // String literals survive stringification as one chunk (the token
-        // boundary is preserved), but the subsequent `split(',')` is not
-        // quote-aware — see the "Known limitation" note on this function.
+        // `split_attr_tokens` walks one logical attribute per iteration and is
+        // quote-aware, so a rule value containing a comma (e.g. a future
+        // `validate = "length(5, 50)"`) stays whole instead of being torn —
+        // which since #128 would otherwise raise a spurious "unknown key".
         let nested_str = meta_list.tokens.to_string();
-        for token in nested_str.split(',') {
+        for token in split_attr_tokens(&nested_str) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -567,7 +563,7 @@ fn parse_permission_attributes(attrs: &mut FieldAttributes, attr: &Attribute) ->
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         let full_tokens = meta_list.tokens.to_string();
-        for token in full_tokens.split(',') {
+        for token in split_attr_tokens(&full_tokens) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -603,7 +599,7 @@ fn parse_rbac_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         let full_tokens = meta_list.tokens.to_string();
-        for token in full_tokens.split(',') {
+        for token in split_attr_tokens(&full_tokens) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -628,7 +624,7 @@ fn parse_persistence_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         let full_tokens = meta_list.tokens.to_string();
-        for token in full_tokens.split(',') {
+        for token in split_attr_tokens(&full_tokens) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -730,6 +726,36 @@ fn parse_relation_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> s
         }
     }
     Ok(())
+}
+
+/// Split a stringified attribute token list on **top-level** commas — commas
+/// inside a double-quoted string literal are preserved.
+///
+/// The field-attribute parsers match on key names, so they stringify the token
+/// stream and split on `,`. A value like `validate = "length(5, 50)"` must not
+/// be torn at its inner comma: pre-#128 that silently dropped the rule, and
+/// since #128 (unknown keys are an error) the trailing fragment (`50)"`) would
+/// raise a spurious "unknown key" compile error. Quote-aware splitting keeps
+/// each `key = "value"` fragment whole. (The `relation` parser walks
+/// `TokenTree`s directly and is already quote-safe.)
+fn split_attr_tokens(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    for ch in s.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+                cur.push(ch);
+            }
+            ',' if !in_quotes => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 /// Extract string value from attribute token (simple parsing)
@@ -2060,6 +2086,22 @@ mod tests {
         assert!(
             !out.contains("compile_error"),
             "known, valid attribute keys must NOT emit a compile error; got:\n{out}"
+        );
+    }
+
+    /// A rule value containing a comma must stay whole (quote-aware split), not
+    /// be torn into a fragment that then trips the unknown-key error (#128
+    /// review). `validate` accepts any string, so this asserts the *parser*
+    /// admits it without a spurious compile error.
+    #[test]
+    fn comma_in_quoted_value_does_not_trip_unknown_key() {
+        let out = derive_with_field_attr(quote! {
+            #[http(expose, validate = "length(5, 50)")]
+        });
+        assert!(
+            !out.contains("compile_error"),
+            "a comma inside a quoted attribute value must not raise a spurious \
+             unknown-key error; got:\n{out}"
         );
     }
 }
