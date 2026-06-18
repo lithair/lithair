@@ -17,7 +17,9 @@
 
 use chrono::Utc;
 use lithair_core::app::LithairServer;
-use lithair_core::session::{PersistentSessionStore, Session, SessionManager, SessionStore};
+use lithair_core::session::{
+    MemorySessionStore, PersistentSessionStore, Session, SessionManager, SessionStore,
+};
 use std::time::Duration;
 
 /// Spawn a server with the data-admin plane enabled.
@@ -144,6 +146,76 @@ async fn public_opt_out_leaves_plane_open() {
         .expect("request sent");
     assert_ne!(resp.status(), 401, "with_data_admin_public() must not guard the plane");
     assert!(resp.status().is_success(), "public plane should serve: {}", resp.status());
+}
+
+/// A `MemorySessionStore` (the documented dev/test store) must be honored, not
+/// locked out. Before the recognizer covered it, a valid session would still
+/// get 401 because the guard could not resolve the store shape (issue #143
+/// review). Asserts: valid token → not blocked; no token → still 401 (enforced).
+#[tokio::test]
+async fn memory_session_store_is_not_locked_out() {
+    let port = portpicker::pick_unused_port().expect("free port available");
+    let base = format!("http://127.0.0.1:{}", port);
+
+    // Seed a session, then hand the SAME store (Arc-shared internally) to the
+    // server so the seeded token is visible.
+    let store = MemorySessionStore::new();
+    let token = format!("mem-session-{}", uuid::Uuid::new_v4());
+    store
+        .set(Session::new(token.clone(), Utc::now() + chrono::Duration::hours(1)))
+        .await
+        .expect("seed session");
+    let manager = SessionManager::new(store);
+
+    let builder = LithairServer::new()
+        .with_host("127.0.0.1")
+        .with_port(port)
+        .with_data_admin()
+        .with_sessions(manager);
+    tokio::spawn(async move {
+        if let Err(e) = builder.serve().await {
+            eprintln!("test server error: {}", e);
+        }
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .expect("reqwest client");
+    let health_url = format!("{}/health", base);
+    let mut ready = false;
+    for _ in 0..50 {
+        if let Ok(resp) = client.get(&health_url).send().await {
+            if resp.status().is_success() {
+                ready = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(ready, "server failed to start on {}", port);
+
+    // Valid token → NOT locked out (the recognizer now resolves MemorySessionStore).
+    let authed = client
+        .get(format!("{}/_admin/frontend", base))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("authed request");
+    assert_ne!(
+        authed.status(),
+        401,
+        "MemorySessionStore deployment must not lock out a valid session"
+    );
+    assert!(authed.status().is_success(), "authed list should succeed: {}", authed.status());
+
+    // No token → still enforced.
+    let anon = client
+        .get(format!("{}/_admin/frontend", base))
+        .send()
+        .await
+        .expect("anon request");
+    assert_eq!(anon.status(), 401, "MemorySessionStore: unauthenticated must still be 401");
 }
 
 /// Backward compat: with NO session store the guard is a no-op — a single-user

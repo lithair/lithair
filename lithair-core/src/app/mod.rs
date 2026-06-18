@@ -1173,11 +1173,11 @@ impl LithairServer {
                     anyhow::bail!(
                         "Refusing to start: `with_models_require_session(true)` is set \
                          but the registered session store has an unrecognized shape \
-                         (TypeId = {:?}). The gate only recognizes \
-                         `Arc<PersistentSessionStore>` and \
-                         `Arc<SessionManager<PersistentSessionStore>>`. This usually \
-                         means `SessionManager::new(arc_store)` was called with an \
-                         already-`Arc`-wrapped store, producing a double-`Arc` shape \
+                         (TypeId = {:?}). The gate recognizes the built-in stores \
+                         (`PersistentSessionStore`, `MemorySessionStore`), each either \
+                         raw or wrapped in a `SessionManager`. An unrecognized shape \
+                         usually means `SessionManager::new(arc_store)` was called with \
+                         an already-`Arc`-wrapped store, producing a double-`Arc` shape \
                          that silently 401s every request. Use \
                          `SessionManager::from_arc(arc_store)` instead, or pass the \
                          store by value to `SessionManager::new`. See issue #80.",

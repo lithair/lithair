@@ -2044,17 +2044,28 @@ impl LithairServerBuilder {
     /// RBAC/session-secured deployments described in issue #143.
     fn guard_admin_api_planes(&mut self) {
         for pattern in ["/_admin/data/*", "/_admin/frontend/*"] {
-            let already = self.route_guards.iter().any(|g| g.pattern == pattern);
-            if !already {
-                self.route_guards.push(crate::http::RouteGuardMatcher {
-                    pattern: pattern.to_string(),
-                    methods: None,
-                    guard: crate::http::RouteGuard::RequireAuth {
-                        redirect_to: None, // 401 JSON for API planes
-                        exclude: vec![],
-                    },
-                });
-            }
+            // Drop any prior 401-JSON guard we registered for this pattern, then
+            // re-push it at the END. Guards are evaluated in order and the first
+            // to deny wins, so keeping the API guard last lets a more specific
+            // UI guard (a login-redirect on the UI path, pushed earlier by
+            // `with_data_admin_ui`) take precedence regardless of the order the
+            // builder methods were chained in (issue #143 review). A user's own
+            // guard on the same pattern (redirect_to: Some(..)) is left intact.
+            self.route_guards.retain(|g| {
+                !(g.pattern == pattern
+                    && matches!(
+                        g.guard,
+                        crate::http::RouteGuard::RequireAuth { redirect_to: None, .. }
+                    ))
+            });
+            self.route_guards.push(crate::http::RouteGuardMatcher {
+                pattern: pattern.to_string(),
+                methods: None,
+                guard: crate::http::RouteGuard::RequireAuth {
+                    redirect_to: None, // 401 JSON for API planes
+                    exclude: vec![],
+                },
+            });
         }
     }
 
