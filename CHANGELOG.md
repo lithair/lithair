@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   store configured the guard is a no-op, so single-user deployments are
   unaffected.
 
+### Changed
+
+- **API surface classified for v1.0** (gate G3, issue #129). New
+  [`docs/reference/api-stability.md`](docs/reference/api-stability.md) tiers
+  every public item into stable / unstable / hidden and records the MSRV
+  policy (minimum = the pinned toolchain, raised only in a minor with a
+  CHANGELOG note). Engine internals public only for testability — `Scc2Engine`,
+  `FileStorage`, `AsyncWriter`, the optimized persistence path — are now
+  `#[doc(hidden)]` (no source-breaking change; they remain reachable but leave
+  the documented surface). `EventStore` stays public, classified *unstable*
+  (the `lithair verify` CLI opens it).
+
 ### Added
 
 - **`lithair_core::prelude`** — the recommended one-line application import

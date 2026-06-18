@@ -23,15 +23,25 @@ pub mod scc2_engine;
 pub mod snapshot;
 pub mod state;
 
-// Re-export types
+// Re-export types.
+//
+// Stability tiers are documented in `docs/reference/api-stability.md` (gate
+// G3). Items kept `pub` only for crate-internal reuse / testability carry
+// `#[doc(hidden)]` and are not part of any 1.x promise. `EventStore` (the
+// `lithair verify` CLI opens it) and `StateEngine` stay visible as the
+// low-level/unstable surface.
+#[doc(hidden)] // internal: background event-flush writer
 pub use async_writer::{AsyncWriter, DurabilityMode, WriteEvent};
 pub use events::{
     ChainError, ChainVerificationResult, Event, EventDeserializer, EventEnvelope, EventStore,
 };
 pub use multi_file_store::MultiFileEventStore;
+#[doc(hidden)] // internal: on-disk storage backend
 pub use persistence::{DatabaseStats, FileStorage};
+#[doc(hidden)] // internal: alternate persistence path
 pub use persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 pub use relations::{AutoJoiner, DataSource, RelationRegistry};
+#[doc(hidden)] // internal: lock-free concurrent engine
 pub use scc2_engine::{Scc2Engine, Scc2EngineConfig, VersionedEntry};
 pub use snapshot::{
     AutoCompactionConfig, RecoveryContext, Snapshot, SnapshotMetadata, SnapshotStats,
