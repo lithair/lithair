@@ -3076,8 +3076,10 @@ impl LithairServer {
 
         // Frontend lifecycle admin API (/_admin/frontend[/...]) — issue #134.
         // Gated behind the same `data_admin_enabled` toggle as the data admin
-        // plane and protected by the global firewall (checked above), matching
-        // the other mutating `/_admin/*` surfaces.
+        // plane. `with_data_admin()` registers a secure-by-default
+        // `RequireAuth` guard over `/_admin/data/*` and `/_admin/frontend/*`
+        // (evaluated in the route-guard loop above, issue #143); the firewall,
+        // when enabled, is additional defense-in-depth, not the sole guard.
         if self.config.admin.data_admin_enabled
             && (path == "/_admin/frontend" || path.starts_with("/_admin/frontend/"))
         {

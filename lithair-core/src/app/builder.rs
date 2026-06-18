@@ -1999,12 +1999,63 @@ impl LithairServerBuilder {
         log::info!("   GET  /_admin/data/models/{{name}} - Model data");
         log::info!("   GET  /_admin/data/routes        - List routes");
         log::info!("   POST /_admin/data/backup        - Backup all");
+        log::info!("   POST /_admin/data/import        - Import a backup");
 
         // Note: The actual endpoint handlers are registered in LithairServer::serve()
         // after models are initialized. Here we just set a flag.
         self.config.admin.data_admin_enabled = true;
 
+        // Secure by default (issue #143): guard the mutating admin API planes
+        // with RequireAuth so a server configured with sessions/RBAC does not
+        // expose them unauthenticated. Use `with_data_admin_public()` to opt
+        // out for local/dev use.
+        self.guard_admin_api_planes();
+        log::info!(
+            "   Auth protection enabled (RequireAuth) — use with_data_admin_public() to disable"
+        );
+
         self
+    }
+
+    /// Enable the Data Admin API WITHOUT the default auth guard
+    /// (development / internal use only).
+    ///
+    /// WARNING: this leaves `/_admin/data/*` and `/_admin/frontend/*` open to
+    /// anyone who can reach the server (subject only to the firewall, which is
+    /// off by default). Only use behind a VPN/firewall or for local dev. For
+    /// production use [`with_data_admin`](Self::with_data_admin), which
+    /// auto-applies `RequireAuth`. Mirrors `with_data_admin_ui_public`.
+    pub fn with_data_admin_public(mut self) -> Self {
+        log::warn!("Data Admin API enabled (NO AUTH GUARD — development only!)");
+        log::warn!("   /_admin/data/* and /_admin/frontend/* are exposed without authentication");
+        self.config.admin.data_admin_enabled = true;
+        self
+    }
+
+    /// Register secure-by-default `RequireAuth` guards over the mutating admin
+    /// API planes (`/_admin/data/*` and `/_admin/frontend/*`), returning a 401
+    /// JSON response rather than a login redirect (these are API surfaces).
+    ///
+    /// Idempotent: a pattern already guarded — by a prior call, by
+    /// `with_data_admin_ui`, or by an explicit user `with_route_guard` — is not
+    /// duplicated. When no session store is configured the guard is a no-op
+    /// (there is nothing to authenticate against), so this never breaks an
+    /// unauthenticated single-user deployment; it closes the hole for the
+    /// RBAC/session-secured deployments described in issue #143.
+    fn guard_admin_api_planes(&mut self) {
+        for pattern in ["/_admin/data/*", "/_admin/frontend/*"] {
+            let already = self.route_guards.iter().any(|g| g.pattern == pattern);
+            if !already {
+                self.route_guards.push(crate::http::RouteGuardMatcher {
+                    pattern: pattern.to_string(),
+                    methods: None,
+                    guard: crate::http::RouteGuard::RequireAuth {
+                        redirect_to: None, // 401 JSON for API planes
+                        exclude: vec![],
+                    },
+                });
+            }
+        }
     }
 
     /// Enable embedded data admin UI at the specified path (with automatic auth protection)
@@ -2068,15 +2119,11 @@ impl LithairServerBuilder {
             },
         });
 
-        // Protect the API endpoints
-        self.route_guards.push(crate::http::RouteGuardMatcher {
-            pattern: "/_admin/data/*".to_string(),
-            methods: None,
-            guard: crate::http::RouteGuard::RequireAuth {
-                redirect_to: None, // Return 401 JSON for API calls
-                exclude: vec![],
-            },
-        });
+        // Protect the API planes (data + frontend). Pushed AFTER the UI-path
+        // guards above so a UI request that also matches an API pattern still
+        // gets the login redirect (first matching guard to deny wins). Idempotent
+        // — shared with `with_data_admin` (issue #143).
+        self.guard_admin_api_planes();
 
         self
     }
