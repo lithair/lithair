@@ -10,28 +10,46 @@ use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
-// Re-export useful types
+// Engine submodules. Those whose entire public surface is hidden-tier (see
+// docs/reference/api-stability.md) are `#[doc(hidden)]` at the module level too
+// — hiding the re-exports alone still left the types documented via their
+// defining-module path, e.g. `engine::scc2_engine::Scc2Engine` (#129 review).
+#[doc(hidden)]
 pub mod async_writer;
 pub mod events;
+#[doc(hidden)]
 pub mod lockfree_engine;
 pub mod multi_file_store;
+#[doc(hidden)]
 pub mod persistence;
+#[doc(hidden)]
 pub mod persistence_optimized;
 pub mod relations;
 pub mod retention;
+#[doc(hidden)]
 pub mod scc2_engine;
 pub mod snapshot;
 pub mod state;
 
-// Re-export types
+// Re-export types.
+//
+// Stability tiers are documented in `docs/reference/api-stability.md` (gate
+// G3). Items kept `pub` only for crate-internal reuse / testability carry
+// `#[doc(hidden)]` and are not part of any 1.x promise. `EventStore` (the
+// `lithair verify` CLI opens it) and `StateEngine` stay visible as the
+// low-level/unstable surface.
+#[doc(hidden)] // internal: background event-flush writer
 pub use async_writer::{AsyncWriter, DurabilityMode, WriteEvent};
 pub use events::{
     ChainError, ChainVerificationResult, Event, EventDeserializer, EventEnvelope, EventStore,
 };
 pub use multi_file_store::MultiFileEventStore;
+#[doc(hidden)] // internal: on-disk storage backend
 pub use persistence::{DatabaseStats, FileStorage};
+#[doc(hidden)] // internal: alternate persistence path
 pub use persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 pub use relations::{AutoJoiner, DataSource, RelationRegistry};
+#[doc(hidden)] // internal: lock-free concurrent engine
 pub use scc2_engine::{Scc2Engine, Scc2EngineConfig, VersionedEntry};
 pub use snapshot::{
     AutoCompactionConfig, RecoveryContext, Snapshot, SnapshotMetadata, SnapshotStats,
