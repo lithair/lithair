@@ -14,8 +14,18 @@ const INDEX_HTML: &str = include_str!("index_html.tmpl");
 const STYLES_CSS: &str = include_str!("styles_css.tmpl");
 const APP_JS: &str = include_str!("app_js.tmpl");
 
+/// The `lithair-core` version a freshly scaffolded project depends on.
+///
+/// Pinned to this CLI's own version so `lithair new` always emits a project
+/// that builds against the matching published crate (a caret requirement, so
+/// patch releases are picked up). Sourced from `CARGO_PKG_VERSION` at compile
+/// time — bumping the workspace version updates scaffolds automatically.
+const LITHAIR_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn render(template: &str, project_name: &str) -> String {
-    template.replace("{{project_name}}", project_name)
+    template
+        .replace("{{project_name}}", project_name)
+        .replace("{{lithair_version}}", LITHAIR_VERSION)
 }
 
 /// A file to write into the scaffolded project, with its relative path and rendered content.
