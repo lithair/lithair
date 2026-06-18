@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Macro: unknown keys in field-level model attributes are now a compile
+  error** (gate G2, issue #128, partial). The declarative attribute parsers
+  for `#[db]`, `#[http]`, `#[lifecycle]`, `#[permission]`, `#[rbac]`,
+  `#[persistence]` and `#[relation]` previously **silently skipped** any key
+  they didn't recognize — the class of bug that shipped three times (#75
+  `validate`, the `retention`/`pinned` miss, #122 `db(fk)`). They now emit a
+  `compile_error!` naming the offending key and listing the valid ones. This
+  immediately surfaced and fixed a latent bug in the schema-migration example
+  (`#[db(immutable)]`, silently dropped — `immutable` is a `#[lifecycle]` key,
+  so the field was never actually immutable). Struct-level attributes
+  (`#[server]`, `#[firewall]`, `#[retention]`, `#[schema]`) are hardened in a
+  follow-up; #128 stays open until then.
+
 - **API surface classified for v1.0** (gate G3, issue #129). New
   [`docs/reference/api-stability.md`](docs/reference/api-stability.md) tiers
   every public item into stable / unstable / hidden and records the MSRV
