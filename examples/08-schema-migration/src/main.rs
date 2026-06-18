@@ -131,7 +131,7 @@ pub struct Product {
     pub active: bool,
 
     /// Creation timestamp
-    #[db(immutable)]
+    #[lifecycle(immutable)]
     #[http(expose)]
     #[permission(read = "Public")]
     pub created_at: DateTime<Utc>,

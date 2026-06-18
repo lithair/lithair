@@ -341,7 +341,7 @@ fn parse_schema_version(input: &DeriveInput) -> u32 {
 }
 
 /// Parse attributes from a field using modern syn API
-fn parse_field_attributes(field: &Field) -> FieldAttributes {
+fn parse_field_attributes(field: &Field) -> syn::Result<FieldAttributes> {
     let mut attrs = FieldAttributes {
         expose: true,          // Default to exposed unless explicitly set to false
         retention: usize::MAX, // Default to no retention limit
@@ -350,21 +350,25 @@ fn parse_field_attributes(field: &Field) -> FieldAttributes {
 
     for attr in &field.attrs {
         if let Some(ident) = attr.path().get_ident() {
+            // NOTE: the top-level `_ => {}` is deliberate — a field may carry
+            // attributes Lithair doesn't own (`#[serde(...)]`, doc comments,
+            // etc.). Gate G2 (#128) is about rejecting unknown keys *inside*
+            // Lithair's own attributes, which each parser below now does.
             match ident.to_string().as_str() {
                 "pinned" => attrs.pinned = true,
-                "db" => parse_db_attributes(&mut attrs, attr),
-                "lifecycle" => parse_lifecycle_attributes(&mut attrs, attr),
-                "http" => parse_http_attributes(&mut attrs, attr),
-                "permission" => parse_permission_attributes(&mut attrs, attr),
-                "rbac" => parse_rbac_attributes(&mut attrs, attr),
-                "relation" => parse_relation_attributes(&mut attrs, attr),
-                "persistence" => parse_persistence_attributes(&mut attrs, attr),
+                "db" => parse_db_attributes(&mut attrs, attr)?,
+                "lifecycle" => parse_lifecycle_attributes(&mut attrs, attr)?,
+                "http" => parse_http_attributes(&mut attrs, attr)?,
+                "permission" => parse_permission_attributes(&mut attrs, attr)?,
+                "rbac" => parse_rbac_attributes(&mut attrs, attr)?,
+                "relation" => parse_relation_attributes(&mut attrs, attr)?,
+                "persistence" => parse_persistence_attributes(&mut attrs, attr)?,
                 _ => {}
             }
         }
     }
 
-    attrs
+    Ok(attrs)
 }
 
 /// Parse #[db(...)] attributes
@@ -385,27 +389,45 @@ fn parse_field_attributes(field: &Field) -> FieldAttributes {
 /// match the trimmed fragment exactly; pair-shaped keys use
 /// `starts_with(key)` + `extract_string_value`, mirroring
 /// `parse_http_attributes`.
-fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         // Get the full token string for more complex parsing
         let full_tokens = meta_list.tokens.to_string();
 
-        for token in full_tokens.split(',') {
+        for token in split_attr_tokens(&full_tokens) {
             let token = token.trim();
-            match token {
+            if token.is_empty() {
+                continue;
+            }
+            // The key is the part before `=` (flags like `primary_key` have no
+            // `=`, so `key == token`). Reject unknown keys (gate G2, #128)
+            // instead of silently dropping them — that class of bug shipped
+            // three times (#75, retention/pinned, #122).
+            let key = token.split('=').next().unwrap_or(token).trim();
+            match key {
                 "primary_key" => attrs.primary_key = true,
                 "unique" => attrs.unique = true,
                 "indexed" => attrs.indexed = true,
                 "nullable" => attrs.nullable = true,
-                _ if token.starts_with("fk") => {
+                "fk" => {
                     // Pair parsing for fk = "table" — the comma-split
                     // fragment carries key AND literal together.
                     if let Some(value) = extract_string_value(token) {
                         attrs.foreign_key = Some(value);
                     }
                 }
-                _ => {}
+                // `default = X` is value-parsed separately below; accept the key here.
+                "default" => {}
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        format!(
+                            "unknown key `{other}` in #[db(...)]; valid keys: \
+                             primary_key, unique, indexed, nullable, fk, default"
+                        ),
+                    ));
+                }
             }
         }
 
@@ -424,32 +446,50 @@ fn parse_db_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
             }
         }
     }
+    Ok(())
 }
 
 /// Parse #[lifecycle(...)] attributes
-fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
-        for nested in meta_list.tokens.clone().into_iter() {
-            let nested_str = nested.to_string();
-            match nested_str.as_str() {
+        // Split on commas at the string level (like the other parsers) so a
+        // pair like `versioned = 3` arrives as one fragment whose key is the
+        // part before `=`. Reject unknown keys (gate G2, #128).
+        let full_tokens = meta_list.tokens.to_string();
+        for token in split_attr_tokens(&full_tokens) {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let key = token.split('=').next().unwrap_or(token).trim();
+            match key {
                 "immutable" => attrs.immutable = true,
                 "audited" => attrs.audited = true,
                 "snapshot_only" => attrs.snapshot_only = true,
-                _ if nested_str.starts_with("versioned") => {
-                    if let Some(value) = extract_u32_value(&nested_str) {
+                "versioned" => {
+                    if let Some(value) = extract_u32_value(token) {
                         attrs.versioned = value;
                     }
                 }
-                _ if nested_str.starts_with("retention") => {
-                    if let Some(value) = extract_usize_value(&nested_str) {
+                "retention" => {
+                    if let Some(value) = extract_usize_value(token) {
                         attrs.retention = value;
                     }
                 }
-                _ => {}
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        format!(
+                            "unknown key `{other}` in #[lifecycle(...)]; valid keys: \
+                             immutable, audited, snapshot_only, versioned, retention"
+                        ),
+                    ));
+                }
             }
         }
     }
+    Ok(())
 }
 
 /// Parse #[http(...)] attributes
@@ -465,106 +505,162 @@ fn parse_lifecycle_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
 /// generated `HttpExposable::validate()` was a no-op on POST/PUT/PATCH —
 /// exactly the symptom reported in issue #75.
 ///
-/// Known limitation: this parser splits on `,` *after* stringification, so a
-/// rule value that itself contains a comma — e.g. a hypothetical
-/// `validate = "length(5, 50)"` — would be torn in half and silently
-/// dropped. This is acceptable today because every rule currently
-/// implemented by `generate_validation_check` (`non_empty`,
-/// `not_negative`, `email`, `min_length(N)`, `max_length(N)`,
-/// `min_value(N)`, `max_value(N)`) is single-argument and comma-free. If
-/// `length(N, N)`, `range(N, N)`, or `enum(A, B, C)` rules are added
-/// later (they are advertised in `docs/reference/declarative-attributes.md`
-/// but not yet implemented), this parser must be upgraded to either
-/// quote-aware splitting or windowed `TokenTree` matching first.
-fn parse_http_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+/// Comma handling: splitting happens via `split_attr_tokens`, which is
+/// quote-aware — a rule value that itself contains a comma (e.g. a future
+/// `validate = "length(5, 50)"`, `range(N, N)`, or `enum(A, B, C)` rule,
+/// advertised in `docs/reference/declarative-attributes.md` but not yet
+/// implemented) stays whole. This matters since #128: a torn fragment would
+/// now raise a spurious "unknown key" compile error rather than being
+/// silently dropped.
+fn parse_http_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         // `tokens.to_string()` joins TokenTrees with spaces, producing e.g.
         // `expose , validate = "non_empty" , validate = "max_length(200)"`.
-        // Splitting on `,` walks one logical attribute per iteration.
-        // String literals survive stringification as one chunk (the token
-        // boundary is preserved), but the subsequent `split(',')` is not
-        // quote-aware — see the "Known limitation" note on this function.
+        // `split_attr_tokens` walks one logical attribute per iteration and is
+        // quote-aware, so a rule value containing a comma (e.g. a future
+        // `validate = "length(5, 50)"`) stays whole instead of being torn —
+        // which since #128 would otherwise raise a spurious "unknown key".
         let nested_str = meta_list.tokens.to_string();
-        for token in nested_str.split(',') {
+        for token in split_attr_tokens(&nested_str) {
             let token = token.trim();
-            if token == "expose" {
-                attrs.expose = true;
-            } else if token.starts_with("expose") && token.contains("false") {
-                attrs.expose = false;
-            } else if token.starts_with("validate") {
-                if let Some(value) = extract_string_value(token) {
-                    attrs.validation.push(value);
+            if token.is_empty() {
+                continue;
+            }
+            let key = token.split('=').next().unwrap_or(token).trim();
+            match key {
+                "expose" => {
+                    // bare `expose` → true; `expose = false` → false.
+                    attrs.expose = !token.contains("false");
                 }
-            } else if token.starts_with("serialize") {
-                if let Some(value) = extract_string_value(token) {
-                    attrs.serialization = Some(value);
+                "validate" => {
+                    if let Some(value) = extract_string_value(token) {
+                        attrs.validation.push(value);
+                    }
+                }
+                "serialize" => {
+                    if let Some(value) = extract_string_value(token) {
+                        attrs.serialization = Some(value);
+                    }
+                }
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        format!(
+                            "unknown key `{other}` in #[http(...)]; valid keys: \
+                             expose, validate, serialize"
+                        ),
+                    ));
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Parse #[permission(...)] attributes
-fn parse_permission_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+fn parse_permission_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
-        for nested in meta_list.tokens.clone().into_iter() {
-            let nested_str = nested.to_string();
-            if nested_str.starts_with("read") {
-                if let Some(value) = extract_string_value(&nested_str) {
-                    attrs.read_permission = Some(value);
+        let full_tokens = meta_list.tokens.to_string();
+        for token in split_attr_tokens(&full_tokens) {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let key = token.split('=').next().unwrap_or(token).trim();
+            match key {
+                "read" => {
+                    if let Some(value) = extract_string_value(token) {
+                        attrs.read_permission = Some(value);
+                    }
                 }
-            } else if nested_str.starts_with("write") {
-                if let Some(value) = extract_string_value(&nested_str) {
-                    attrs.write_permission = Some(value);
+                "write" => {
+                    if let Some(value) = extract_string_value(token) {
+                        attrs.write_permission = Some(value);
+                    }
+                }
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        format!(
+                            "unknown key `{other}` in #[permission(...)]; valid keys: read, write"
+                        ),
+                    ));
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Parse #[rbac(...)] attributes
-fn parse_rbac_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+fn parse_rbac_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
-        for nested in meta_list.tokens.clone().into_iter() {
-            let nested_str = nested.to_string();
-            if nested_str.contains("owner_field") {
-                attrs.owner_field = true;
+        let full_tokens = meta_list.tokens.to_string();
+        for token in split_attr_tokens(&full_tokens) {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let key = token.split('=').next().unwrap_or(token).trim();
+            match key {
+                "owner_field" => attrs.owner_field = true,
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        format!("unknown key `{other}` in #[rbac(...)]; valid keys: owner_field"),
+                    ));
+                }
             }
         }
     }
+    Ok(())
 }
 
 /// Parse #[persistence(...)] attributes
-fn parse_persistence_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+fn parse_persistence_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
-        for nested in meta_list.tokens.clone().into_iter() {
-            let nested_str = nested.to_string();
-            match nested_str.as_str() {
+        let full_tokens = meta_list.tokens.to_string();
+        for token in split_attr_tokens(&full_tokens) {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let key = token.split('=').next().unwrap_or(token).trim();
+            match key {
                 "replicate" => attrs.replicate = true,
                 "track_history" => attrs.track_history = true,
                 "cache" => attrs.cache = true,
-                _ if nested_str.starts_with("compact_after") => {
-                    if let Some(value) = extract_u64_value(&nested_str) {
+                "compact_after" => {
+                    if let Some(value) = extract_u64_value(token) {
                         attrs.compact_after = Some(value);
                     }
                 }
-                _ if nested_str.starts_with("snapshot_every") => {
-                    if let Some(value) = extract_u64_value(&nested_str) {
+                "snapshot_every" => {
+                    if let Some(value) = extract_u64_value(token) {
                         attrs.snapshot_every = Some(value);
                     }
                 }
-                _ => {}
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        format!(
+                            "unknown key `{other}` in #[persistence(...)]; valid keys: \
+                             replicate, track_history, cache, compact_after, snapshot_every"
+                        ),
+                    ));
+                }
             }
         }
     }
+    Ok(())
 }
 
 /// Parse #[relation(...)] attributes
-fn parse_relation_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
+fn parse_relation_attributes(attrs: &mut FieldAttributes, attr: &Attribute) -> syn::Result<()> {
     let meta = &attr.meta;
     if let Meta::List(meta_list) = meta {
         let tokens: Vec<String> =
@@ -606,11 +702,60 @@ fn parse_relation_attributes(attrs: &mut FieldAttributes, attr: &Attribute) {
                     }
                     i += 2;
                 }
-                _ => {}
+                other => {
+                    // The token walk emits `=`, `,` and value tokens (string
+                    // literals, numbers) as separate iterations that the
+                    // windowed matches above already consumed or that are not
+                    // keys. Only an unrecognized *identifier* is a real typo'd
+                    // key — reject it (gate G2, #128); skip punctuation/values.
+                    let is_ident = other.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
+                        && other.chars().all(|c| c.is_alphanumeric() || c == '_');
+                    if is_ident {
+                        return Err(syn::Error::new_spanned(
+                            attr,
+                            format!(
+                                "unknown key `{other}` in #[relation(...)]; valid keys: \
+                                 foreign_key, has_many, has_one, belongs_to, cascade_delete, \
+                                 cascade_null, lazy, eager, indexed"
+                            ),
+                        ));
+                    }
+                }
             }
             i += 1;
         }
     }
+    Ok(())
+}
+
+/// Split a stringified attribute token list on **top-level** commas — commas
+/// inside a double-quoted string literal are preserved.
+///
+/// The field-attribute parsers match on key names, so they stringify the token
+/// stream and split on `,`. A value like `validate = "length(5, 50)"` must not
+/// be torn at its inner comma: pre-#128 that silently dropped the rule, and
+/// since #128 (unknown keys are an error) the trailing fragment (`50)"`) would
+/// raise a spurious "unknown key" compile error. Quote-aware splitting keeps
+/// each `key = "value"` fragment whole. (The `relation` parser walks
+/// `TokenTree`s directly and is already quote-safe.)
+fn split_attr_tokens(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    for ch in s.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+                cur.push(ch);
+            }
+            ',' if !in_quotes => out.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 /// Extract string value from attribute token (simple parsing)
@@ -902,7 +1047,10 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     if let Data::Struct(data_struct) = &input.data {
         if let Fields::Named(fields_named) = &data_struct.fields {
             for field in &fields_named.named {
-                let attrs = parse_field_attributes(field);
+                let attrs = match parse_field_attributes(field) {
+                    Ok(a) => a,
+                    Err(e) => return e.to_compile_error(),
+                };
                 if let Some(rp) = attrs.read_permission {
                     read_perms_vec.push(syn::LitStr::new(&rp, Span::call_site()));
                 }
@@ -991,7 +1139,10 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             let field_name_str = field_name.to_string();
             field_names.push(field_name_str.clone());
 
-            let mut attrs = parse_field_attributes(field);
+            let mut attrs = match parse_field_attributes(field) {
+                Ok(a) => a,
+                Err(e) => return e.to_compile_error(),
+            };
             // Capture the Rust type as a string for OpenAPI generation
             attrs.rust_type = field.ty.to_token_stream().to_string().replace(' ', "");
             if attrs.replicate {
@@ -1871,6 +2022,86 @@ mod tests {
             output.contains("\"title\""),
             "expected emitted validate() to embed the 'title' field name in error messages; got:\n{}",
             output
+        );
+    }
+
+    // ===== Gate G2 (#128): unknown attribute keys are a compile error =====
+    //
+    // Three bugs of this class shipped because the parser silently skipped
+    // tokens it didn't understand (#75 validate, retention/pinned, #122 fk).
+    // The derive now emits a `compile_error!` naming the offending key. These
+    // tests are the compile-fail equivalent the gate calls for — exercised
+    // end-to-end through `derive_declarative_model`, so they also prove the
+    // error is threaded all the way to the macro output.
+
+    /// Helper: derive output as a string for a single-field struct carrying
+    /// `attr` on the `id` field.
+    fn derive_with_field_attr(attr: proc_macro2::TokenStream) -> String {
+        derive_declarative_model(quote! {
+            #[derive(DeclarativeModel)]
+            struct Product {
+                #attr
+                id: u64,
+                name: String,
+            }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn unknown_keys_emit_compile_error_naming_the_key() {
+        // (attribute, offending key) pairs across every field-level parser.
+        let cases = [
+            (quote! { #[db(primary_ky)] }, "primary_ky"),
+            (quote! { #[http(exposee)] }, "exposee"),
+            (quote! { #[lifecycle(audites)] }, "audites"),
+            (quote! { #[persistence(replicat)] }, "replicat"),
+            (quote! { #[permission(reed = "Public")] }, "reed"),
+            (quote! { #[rbac(owner_fild)] }, "owner_fild"),
+            (quote! { #[relation(forein_key = "X")] }, "forein_key"),
+        ];
+        for (attr, bad_key) in cases {
+            let out = derive_with_field_attr(attr);
+            assert!(
+                out.contains("compile_error"),
+                "a typo'd attribute key must emit compile_error; got:\n{out}"
+            );
+            assert!(
+                out.contains(bad_key),
+                "the compile error must name the offending key `{bad_key}`; got:\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn known_attributes_do_not_error() {
+        let out = derive_with_field_attr(quote! {
+            #[db(primary_key, indexed, unique, nullable)]
+            #[http(expose, validate = "non_empty")]
+            #[lifecycle(immutable, audited, versioned = 2)]
+            #[persistence(replicate, track_history)]
+            #[permission(read = "Public", write = "Admin")]
+            #[relation(foreign_key = "Other", cascade_delete)]
+        });
+        assert!(
+            !out.contains("compile_error"),
+            "known, valid attribute keys must NOT emit a compile error; got:\n{out}"
+        );
+    }
+
+    /// A rule value containing a comma must stay whole (quote-aware split), not
+    /// be torn into a fragment that then trips the unknown-key error (#128
+    /// review). `validate` accepts any string, so this asserts the *parser*
+    /// admits it without a spurious compile error.
+    #[test]
+    fn comma_in_quoted_value_does_not_trip_unknown_key() {
+        let out = derive_with_field_attr(quote! {
+            #[http(expose, validate = "length(5, 50)")]
+        });
+        assert!(
+            !out.contains("compile_error"),
+            "a comma inside a quoted attribute value must not raise a spurious \
+             unknown-key error; got:\n{out}"
         );
     }
 }
