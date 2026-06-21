@@ -2046,9 +2046,13 @@ impl LithairServerBuilder {
         for pattern in ["/_admin/data/*", "/_admin/frontend/*"] {
             // Don't downgrade an explicit role scope (with_admin_roles, #149) to
             // plain authentication just because with_data_admin() was also
-            // chained — leave a RequireRole on this pattern in place.
+            // chained — leave a RequireRole on this pattern in place. Only the
+            // full-plane (`methods: None`) guards are the ones these helpers
+            // manage; a user's method-scoped guard on the same pattern is theirs
+            // and is neither counted here nor removed below (CodeRabbit #151).
             let has_role_guard = self.route_guards.iter().any(|g| {
                 g.pattern == pattern
+                    && g.methods.is_none()
                     && matches!(g.guard, crate::http::RouteGuard::RequireRole { .. })
             });
             if has_role_guard {
@@ -2074,8 +2078,11 @@ impl LithairServerBuilder {
     /// take precedence regardless of builder call order (#143). A user's own
     /// guard on the pattern (e.g. `RequireAuth` with a redirect) is left intact.
     fn register_admin_plane_guard(&mut self, pattern: &str, guard: crate::http::RouteGuard) {
+        // Only remove the full-plane (`methods: None`) admin guards these helpers
+        // own — never a user's method-scoped guard on the same pattern (#151).
         self.route_guards.retain(|g| {
             !(g.pattern == pattern
+                && g.methods.is_none()
                 && matches!(
                     g.guard,
                     crate::http::RouteGuard::RequireAuth { redirect_to: None, .. }
