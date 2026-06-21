@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-18
+
+Production-readiness and v1.0-gate release. Makes an installed Lithair safe to
+operate and extend by people other than the maintainer: the admin planes are
+secure by default, `lithair new` produces a project that compiles, content can
+be migrated in/out via the logical backup pair, and two more v1.0 gates close
+(G2 macro hardening, G3 API-surface classification). No on-disk format change.
+
 ### Security
 
 - **`with_data_admin()` is now secure by default** (issue #143). Enabling the
@@ -59,6 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   types (`Method`, `RouteRequest`, `RouteResponse`, `StatusCode`,
   `response`), and the core RBAC types. This is the canonical stable v1.0
   application surface (gate G3 groundwork).
+
+- **`POST /_admin/data/import`** (issue #37) — the symmetric counterpart of
+  `POST /_admin/data/backup`: feed a logical backup back and it re-applies each
+  record as an event, for content migration / seeding in one call. Accepts the
+  full backup shape, a bare array of per-model exports, or a single
+  `{model, data}` object. Idempotent by `id` (re-import overwrites, never
+  duplicates) but appends events and restores current state, not history — the
+  DR path remains the physical event-store copy. Partial failures (unknown
+  model, non-array `data`) return `207 Multi-Status` with a per-model result
+  set; as a write it is leader-routed in a cluster.
 
 ### Fixed
 
@@ -1050,7 +1068,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/lithair/lithair/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/lithair/lithair/compare/v0.13.0...v0.14.0
 [0.1.3]: https://github.com/lithair/lithair/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/lithair/lithair/compare/v0.1.0...v0.1.1
