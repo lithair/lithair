@@ -71,7 +71,10 @@ fn serialized_size<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 /// `with_models_require_session(true)` is on (issue #78).
 ///
 /// Returns `None` if no usable token is found.
-fn extract_session_token(req: &Req) -> Option<String> {
+///
+/// `pub(crate)` so the route guards (`route_guard.rs`) share this one canonical
+/// extractor rather than duplicating it (issue #149 review).
+pub(crate) fn extract_session_token(req: &Req) -> Option<String> {
     // 1) Authorization: Bearer <token>  (case-insensitive scheme)
     if let Some(auth_header) = req.headers().get(http::header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {

@@ -153,7 +153,7 @@ impl RouteGuard {
         };
         let recognized = crate::session::RecognizedSessionStore::recognize(&store_any);
 
-        let token = extract_session_token(req);
+        let token = super::declarative::extract_session_token(req);
 
         // Validate token: a live (present, non-expired) session in a recognized
         // store. A configured-but-unrecognized store shape fails CLOSED (deny) —
@@ -214,7 +214,7 @@ impl RouteGuard {
         let Some(recognized) = crate::session::RecognizedSessionStore::recognize(&store_any) else {
             return Ok(deny_role(redirect_to));
         };
-        let Some(token) = extract_session_token(req) else {
+        let Some(token) = super::declarative::extract_session_token(req) else {
             return Ok(deny_role(redirect_to));
         };
         let Some(session) = recognized.get_live_session(&token).await else {
@@ -233,28 +233,6 @@ impl RouteGuard {
             Ok(deny_role(redirect_to))
         }
     }
-}
-
-/// Extract a session token from the request: a `Bearer` Authorization header,
-/// else a `session_token=` cookie. Returned owned so callers don't thread the
-/// header borrow. Shared by `check_auth` and `check_role`.
-fn extract_session_token(req: &Req) -> Option<String> {
-    req.headers()
-        .get(hyper::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|h| h.strip_prefix("Bearer "))
-        .map(|t| t.to_string())
-        .or_else(|| {
-            req.headers().get(hyper::header::COOKIE).and_then(|h| h.to_str().ok()).and_then(
-                |cookies| {
-                    cookies
-                        .split(';')
-                        .find(|c| c.trim().starts_with("session_token="))
-                        .and_then(|c| c.trim().strip_prefix("session_token="))
-                        .map(|t| t.to_string())
-                },
-            )
-        })
 }
 
 /// Build the denial response for a failed role check: a redirect when one is
