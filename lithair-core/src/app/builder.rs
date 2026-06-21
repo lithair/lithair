@@ -2122,6 +2122,21 @@ impl LithairServerBuilder {
         self.config.admin.data_admin_enabled = true;
         let frontend_roles: Vec<String> = frontend_roles.into_iter().map(Into::into).collect();
         let data_roles: Vec<String> = data_roles.into_iter().map(Into::into).collect();
+        // An empty role list means NO role can ever match → the plane is
+        // unconditionally inaccessible. That's a valid "lock it down" choice but
+        // far more often a misconfiguration, so warn loudly (Gemini #151).
+        if frontend_roles.is_empty() {
+            log::warn!(
+                "with_admin_roles: frontend_roles is empty — /_admin/frontend/* is now \
+                 unreachable for everyone (no role can match)"
+            );
+        }
+        if data_roles.is_empty() {
+            log::warn!(
+                "with_admin_roles: data_roles is empty — /_admin/data/* is now unreachable \
+                 for everyone (no role can match)"
+            );
+        }
         log::info!(
             "Admin API role-scoped (#149): /_admin/frontend/* → {:?}, /_admin/data/* → {:?}",
             frontend_roles,
