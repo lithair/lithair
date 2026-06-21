@@ -153,27 +153,12 @@ impl RouteGuard {
         };
         let recognized = crate::session::RecognizedSessionStore::recognize(&store_any);
 
-        // Extract token from Authorization header or Cookie
-        let token = req
-            .headers()
-            .get(hyper::header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .and_then(|h| h.strip_prefix("Bearer "))
-            .or_else(|| {
-                req.headers().get(hyper::header::COOKIE).and_then(|h| h.to_str().ok()).and_then(
-                    |cookies| {
-                        cookies
-                            .split(';')
-                            .find(|c| c.trim().starts_with("session_token="))
-                            .and_then(|c| c.trim().strip_prefix("session_token="))
-                    },
-                )
-            });
+        let token = super::declarative::extract_session_token(req);
 
         // Validate token: a live (present, non-expired) session in a recognized
         // store. A configured-but-unrecognized store shape fails CLOSED (deny) —
         // this is a security guard, so an unverifiable session is not allowed.
-        let is_valid = match (&recognized, token) {
+        let is_valid = match (&recognized, &token) {
             (Some(store), Some(token)) => store.get_live_session(token).await.is_some(),
             _ => false,
         };
@@ -210,32 +195,70 @@ impl RouteGuard {
 
     async fn check_role(
         &self,
-        _req: &Req,
-        _session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
-        _roles: &[String],
+        req: &Req,
+        session_store: Option<Arc<dyn std::any::Any + Send + Sync>>,
+        roles: &[String],
         redirect_to: &Option<String>,
     ) -> Result<GuardResult, anyhow::Error> {
-        // Fail closed: role checking is not yet enforced, deny all role-protected routes
-        log::warn!("RequireRole guard is not yet implemented; denying request");
-        if let Some(redirect_url) = redirect_to {
-            Ok(GuardResult::Deny(
-                Response::builder()
-                    .status(StatusCode::FOUND)
-                    .header("Location", redirect_url)
-                    .body(Full::new(Bytes::from("Redirecting...")))
-                    .unwrap(),
-            ))
+        // Authorization guard: resolve the live session (same recognizer path
+        // RequireAuth uses, issue #143), then check its role against the
+        // allowed set. The role lives in `session.data["role"]` — the
+        // convention the login examples establish via `session.set("role", …)`.
+        //
+        // Fail CLOSED: unlike RequireAuth (which allows when no session store is
+        // configured, i.e. no auth at all), an authz guard with no way to read a
+        // role denies — an unverifiable role must not pass.
+        let Some(store_any) = session_store else {
+            return Ok(deny_role(redirect_to));
+        };
+        let Some(recognized) = crate::session::RecognizedSessionStore::recognize(&store_any) else {
+            return Ok(deny_role(redirect_to));
+        };
+        let Some(token) = super::declarative::extract_session_token(req) else {
+            return Ok(deny_role(redirect_to));
+        };
+        let Some(session) = recognized.get_live_session(&token).await else {
+            return Ok(deny_role(redirect_to));
+        };
+
+        // `data["role"]` is a JSON string (see `Session::set`). Match it against
+        // the allowed roles by exact string equality — the application chooses
+        // the role strings it writes at login.
+        let role = session.data.get("role").and_then(|v| v.as_str());
+        let allowed = role.is_some_and(|r| roles.iter().any(|allowed| allowed == r));
+
+        if allowed {
+            Ok(GuardResult::Allow)
         } else {
-            Ok(GuardResult::Deny(
-                Response::builder()
-                    .status(StatusCode::FORBIDDEN)
-                    .header("Content-Type", "application/json")
-                    .body(Full::new(Bytes::from(
-                        r#"{"error":"Role-based access control not yet available"}"#,
-                    )))
-                    .unwrap(),
-            ))
+            Ok(deny_role(redirect_to))
         }
+    }
+}
+
+/// Build the denial response for a failed role check: a redirect when one is
+/// configured (browser flows), otherwise a `403` JSON (API flows).
+fn deny_role(redirect_to: &Option<String>) -> GuardResult {
+    if let Some(redirect_url) = redirect_to {
+        GuardResult::Deny(
+            Response::builder()
+                .status(StatusCode::FOUND)
+                .header("Location", redirect_url)
+                .header("Content-Type", "text/html")
+                .body(Full::new(Bytes::from(format!(
+                    r#"<!DOCTYPE html>
+<html><head><meta http-equiv="refresh" content="0;url={redirect_url}"></head>
+<body><p>Redirecting...</p></body></html>"#
+                ))))
+                .unwrap(),
+        )
+    } else {
+        GuardResult::Deny(
+            Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(r#"{"error":"Forbidden: insufficient role"}"#)))
+                .unwrap(),
+        )
     }
 }
 

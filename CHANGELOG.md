@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`RouteGuard::RequireRole` is now implemented** (issue #149, PR 1). It was a
+  stub that denied every request; it now resolves the live session (the same
+  recognizer path #143 fixed) and checks the role at `session.data["role"]` —
+  the convention the login examples establish via `session.set("role", …)` —
+  against the allowed set. A matching role passes; a non-allowed role or no
+  session gets `403` (authz fails closed). This is the primitive for
+  role-scoped admin access (content-manager / admin / super-admin); the
+  opt-in admin-plane gating and admin-UI page build on it.
+
 ## [0.15.0] - 2026-06-18
 
 Production-readiness and v1.0-gate release. Makes an installed Lithair safe to
