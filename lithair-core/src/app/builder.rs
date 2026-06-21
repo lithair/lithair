@@ -2044,29 +2044,98 @@ impl LithairServerBuilder {
     /// RBAC/session-secured deployments described in issue #143.
     fn guard_admin_api_planes(&mut self) {
         for pattern in ["/_admin/data/*", "/_admin/frontend/*"] {
-            // Drop any prior 401-JSON guard we registered for this pattern, then
-            // re-push it at the END. Guards are evaluated in order and the first
-            // to deny wins, so keeping the API guard last lets a more specific
-            // UI guard (a login-redirect on the UI path, pushed earlier by
-            // `with_data_admin_ui`) take precedence regardless of the order the
-            // builder methods were chained in (issue #143 review). A user's own
-            // guard on the same pattern (redirect_to: Some(..)) is left intact.
-            self.route_guards.retain(|g| {
-                !(g.pattern == pattern
-                    && matches!(
-                        g.guard,
-                        crate::http::RouteGuard::RequireAuth { redirect_to: None, .. }
-                    ))
+            // Don't downgrade an explicit role scope (with_admin_roles, #149) to
+            // plain authentication just because with_data_admin() was also
+            // chained — leave a RequireRole on this pattern in place.
+            let has_role_guard = self.route_guards.iter().any(|g| {
+                g.pattern == pattern
+                    && matches!(g.guard, crate::http::RouteGuard::RequireRole { .. })
             });
-            self.route_guards.push(crate::http::RouteGuardMatcher {
-                pattern: pattern.to_string(),
-                methods: None,
-                guard: crate::http::RouteGuard::RequireAuth {
+            if has_role_guard {
+                continue;
+            }
+            self.register_admin_plane_guard(
+                pattern,
+                crate::http::RouteGuard::RequireAuth {
                     redirect_to: None, // 401 JSON for API planes
                     exclude: vec![],
                 },
-            });
+            );
         }
+    }
+
+    /// Register a secure-by-default guard over one admin API plane.
+    ///
+    /// Drops any admin guard we previously put on this exact pattern (the
+    /// RequireAuth-401 default *or* a RequireRole scope) and re-pushes the new
+    /// one at the END. Guards are evaluated in order and the first to deny wins,
+    /// so keeping the API guard last lets a more specific UI guard (a
+    /// login-redirect on the UI path, pushed earlier by `with_data_admin_ui`)
+    /// take precedence regardless of builder call order (#143). A user's own
+    /// guard on the pattern (e.g. `RequireAuth` with a redirect) is left intact.
+    fn register_admin_plane_guard(&mut self, pattern: &str, guard: crate::http::RouteGuard) {
+        self.route_guards.retain(|g| {
+            !(g.pattern == pattern
+                && matches!(
+                    g.guard,
+                    crate::http::RouteGuard::RequireAuth { redirect_to: None, .. }
+                        | crate::http::RouteGuard::RequireRole { .. }
+                ))
+        });
+        self.route_guards.push(crate::http::RouteGuardMatcher {
+            pattern: pattern.to_string(),
+            methods: None,
+            guard,
+        });
+    }
+
+    /// Scope the admin API planes by role (issue #149). **Opt-in**:
+    /// [`with_data_admin`](Self::with_data_admin) alone only requires
+    /// authentication; this restricts each plane to a set of roles.
+    ///
+    /// - the **frontend** plane (`/_admin/frontend/*` — list / inspect / reload)
+    ///   is restricted to `frontend_roles`;
+    /// - the **data** plane (`/_admin/data/*` — models, backup, import) is
+    ///   restricted to `data_roles`.
+    ///
+    /// A session's role is read from `session.data["role"]` (set at login via
+    /// `session.set("role", …)`). Include your super-admin role in **both**
+    /// lists; put your content/frontend-manager role in `frontend_roles` only.
+    /// Enables the data-admin API if not already enabled, and overrides the
+    /// blanket `RequireAuth` from `with_data_admin()`. Like `with_data_admin`,
+    /// enforcement needs sessions/RBAC configured — with no session store the
+    /// role can't be resolved (the guard denies).
+    ///
+    /// ```rust,ignore
+    /// LithairServer::new()
+    ///     .with_sessions(session_manager)
+    ///     .with_admin_roles(
+    ///         ["content-manager", "admin", "super-admin"], // frontend plane
+    ///         ["admin", "super-admin"],                    // data plane
+    ///     )
+    /// ```
+    pub fn with_admin_roles(
+        mut self,
+        frontend_roles: impl IntoIterator<Item = impl Into<String>>,
+        data_roles: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.config.admin.data_admin_enabled = true;
+        let frontend_roles: Vec<String> = frontend_roles.into_iter().map(Into::into).collect();
+        let data_roles: Vec<String> = data_roles.into_iter().map(Into::into).collect();
+        log::info!(
+            "Admin API role-scoped (#149): /_admin/frontend/* → {:?}, /_admin/data/* → {:?}",
+            frontend_roles,
+            data_roles
+        );
+        self.register_admin_plane_guard(
+            "/_admin/frontend/*",
+            crate::http::RouteGuard::RequireRole { roles: frontend_roles, redirect_to: None },
+        );
+        self.register_admin_plane_guard(
+            "/_admin/data/*",
+            crate::http::RouteGuard::RequireRole { roles: data_roles, redirect_to: None },
+        );
+        self
     }
 
     /// Enable embedded data admin UI at the specified path (with automatic auth protection)

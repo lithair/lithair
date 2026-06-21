@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`with_admin_roles(frontend_roles, data_roles)`** — opt-in role scoping for
+  the admin API planes (issue #149, PR 2). `with_data_admin()` alone still only
+  requires authentication; with this, the frontend plane (`/_admin/frontend/*`)
+  is restricted to `frontend_roles` and the data plane (`/_admin/data/*`) to
+  `data_roles` (a session's role is read from `session.data["role"]`). This
+  enables least-privilege tiers — e.g. a content-manager who can publish content
+  and reload frontends but cannot touch the data/RBAC plane, vs admin vs
+  super-admin. Backward compatible: existing `with_data_admin()` deployments are
+  unchanged, and the gating is non-destructive of an explicit role scope
+  regardless of builder call order.
+
 - **`RouteGuard::RequireRole` is now implemented** (issue #149, PR 1). It was a
   stub that denied every request; it now resolves the live session (the same
   recognizer path #143 fixed) and checks the role at `session.data["role"]` —
