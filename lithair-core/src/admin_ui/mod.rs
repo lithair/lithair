@@ -61,6 +61,10 @@ mod tests {
             "loadFrontendView",
             "/_admin/frontend",
             "reloadAllFrontends",
+            // The reload key is passed via data-key/dataset, not interpolated
+            // into the inline onclick (avoids the encodeURIComponent quote bug,
+            // #152 review).
+            "this.dataset.key",
         ] {
             assert!(
                 DASHBOARD_HTML.contains(needle),

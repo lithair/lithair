@@ -624,10 +624,10 @@
         }
 
         function renderFrontends(data) {
-            const frontends = data.frontends || [];
+            const frontends = data?.frontends || [];
             document.getElementById('stats').innerHTML = `
                 <div class="stat-card">
-                    <div class="stat-value">${data.total ?? frontends.length}</div>
+                    <div class="stat-value">${data?.total ?? frontends.length}</div>
                     <div class="stat-label">Frontends</div>
                 </div>
             `;
@@ -650,7 +650,7 @@
                         <td><code title="${escapeHtml(f.version || '')}">${ver}</code></td>
                         <td>${reloaded}</td>
                         <td>
-                            <button class="btn btn-secondary" onclick="reloadFrontend('${encodeURIComponent(key)}')">🔄 Reload</button>
+                            <button class="btn btn-secondary" data-key="${escapeHtml(key)}" onclick="reloadFrontend(this.dataset.key)">🔄 Reload</button>
                         </td>
                     </tr>`;
             }).join('');
@@ -672,13 +672,17 @@
             `;
         }
 
-        async function reloadFrontend(encodedKey) {
+        async function reloadFrontend(key) {
             try {
-                const res = await fetch('/_admin/frontend/' + encodedKey + '/reload', { method: 'POST' });
+                // Encode the raw key here (passed via data-key / this.dataset.key,
+                // never interpolated into the inline handler) — encodeURIComponent
+                // does not escape single quotes, so building the onclick string
+                // with it would break on a key containing `'` (#152 review).
+                const res = await fetch('/_admin/frontend/' + encodeURIComponent(key) + '/reload', { method: 'POST' });
                 if (res.status === 403) { showToast('Not allowed: insufficient role', true); return; }
                 if (!res.ok) throw new Error('reload returned ' + res.status);
                 const out = await res.json();
-                showToast(out.changed ? 'Reloaded (content changed)' : 'Reloaded (no change)');
+                showToast(out?.changed ? 'Reloaded (content changed)' : 'Reloaded (no change)');
                 loadFrontendView();
             } catch (e) {
                 showToast('Reload failed', true);
@@ -691,7 +695,7 @@
                 if (res.status === 403) { showToast('Not allowed: insufficient role', true); return; }
                 if (!res.ok) throw new Error('reload-all returned ' + res.status);
                 const out = await res.json();
-                const n = (out.results || []).length;
+                const n = (out?.results || []).length;
                 showToast(`Reloaded ${n} frontend${n === 1 ? '' : 's'}`);
                 loadFrontendView();
             } catch (e) {
