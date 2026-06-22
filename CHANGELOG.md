@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-22
+
+Role-scoped admin access (issue #149). Builds on v0.15's secure-by-default
+admin planes: an authenticated admin session was previously all-or-nothing —
+now access can be tiered by role (content-manager / admin / super-admin), so
+the people who update content don't need the keys to the whole server. No
+on-disk format change; fully backward compatible (the scoping is opt-in).
+
 ### Added
+
+- **Frontend management in the embedded admin UI** (issue #149, PR 3). The
+  `/_data` dashboard (behind the `admin-ui` feature) gains a **Frontends** tab
+  that wraps the `/_admin/frontend/*` API: lists each configured frontend with
+  its kind/host, asset count, `sha256:` version and last-reload time, with a
+  per-frontend reload button and a "reload all" button. No authorization logic
+  in the page — the boundary is enforced server-side (a `403` shows an
+  "insufficient role" message), and rendered values are HTML-escaped.
 
 - **`with_admin_roles(frontend_roles, data_roles)`** — opt-in role scoping for
   the admin API planes (issue #149, PR 2). `with_data_admin()` alone still only
@@ -1090,7 +1106,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/lithair/lithair/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/lithair/lithair/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/lithair/lithair/compare/v0.13.0...v0.14.0
 [0.1.3]: https://github.com/lithair/lithair/compare/v0.1.1...v0.1.3
