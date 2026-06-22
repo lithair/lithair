@@ -44,3 +44,28 @@ impl AdminUiConfig {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DASHBOARD_HTML;
+
+    /// Anti-rot guard for the frontend-management section (#149 PR 3): the
+    /// embedded dashboard must wire the Frontends tab and the calls into the
+    /// `/_admin/frontend/*` API. A token check, since the page is static HTML
+    /// (the API itself is covered by `frontend_admin_api_test` and the role
+    /// boundary by `admin_role_scoping_test`).
+    #[test]
+    fn dashboard_wires_frontend_management() {
+        for needle in [
+            "switchTab('frontend')",
+            "loadFrontendView",
+            "/_admin/frontend",
+            "reloadAllFrontends",
+        ] {
+            assert!(
+                DASHBOARD_HTML.contains(needle),
+                "dashboard.html must contain `{needle}` for the frontend section"
+            );
+        }
+    }
+}
