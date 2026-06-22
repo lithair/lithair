@@ -495,6 +495,7 @@
         <h1>Lithair Data Admin</h1>
         <div class="nav-tabs">
             <button class="nav-tab active" id="tab-data" onclick="switchTab('data')">🗄️ Data</button>
+            <button class="nav-tab" id="tab-frontend" onclick="switchTab('frontend')">🎨 Frontends</button>
             <button class="nav-tab" id="tab-cluster" onclick="switchTab('cluster')">🔄 Cluster</button>
         </div>
         <div class="nav-buttons">
@@ -572,6 +573,10 @@
                 backupBtn.style.display = 'block';
                 stopClusterRefresh();
                 loadModels();
+            } else if (tab === 'frontend') {
+                backupBtn.style.display = 'none';
+                stopClusterRefresh();
+                loadFrontendView();
             } else if (tab === 'cluster') {
                 backupBtn.style.display = 'none';
                 loadClusterView();
@@ -585,9 +590,123 @@
                 } else {
                     loadModels();
                 }
+            } else if (currentTab === 'frontend') {
+                loadFrontendView();
             } else if (currentTab === 'cluster') {
                 loadClusterData();
             }
+        }
+
+        // ==================== FRONTEND VIEW ====================
+        // Wraps the /_admin/frontend/* API (issue #134 / #149 PR 3). The API is
+        // role-gated by with_admin_roles (#149 PR 2): a content/frontend manager
+        // reaches it, the data plane stays separate. A 403 here means the
+        // session's role isn't allowed on the frontend plane.
+
+        async function loadFrontendView() {
+            document.getElementById('breadcrumb').innerHTML = 'Frontends';
+            document.getElementById('stats').innerHTML = '';
+            document.getElementById('content').innerHTML = '<div class="loading">Loading frontends...</div>';
+            try {
+                const res = await fetch('/_admin/frontend');
+                if (res.status === 403) {
+                    document.getElementById('content').innerHTML =
+                        '<div class="empty-state">Your role does not have access to frontend management.</div>';
+                    return;
+                }
+                if (!res.ok) throw new Error('frontend API returned ' + res.status);
+                const data = await res.json();
+                renderFrontends(data);
+            } catch (e) {
+                document.getElementById('content').innerHTML =
+                    '<div class="empty-state">Frontend management is not available on this server.</div>';
+            }
+        }
+
+        function renderFrontends(data) {
+            const frontends = data?.frontends || [];
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${data?.total ?? frontends.length}</div>
+                    <div class="stat-label">Frontends</div>
+                </div>
+            `;
+            if (frontends.length === 0) {
+                document.getElementById('content').innerHTML =
+                    '<div class="empty-state">No frontends configured</div>';
+                return;
+            }
+            const rows = frontends.map(f => {
+                const key = f.key || '';
+                const reloaded = f.last_reload_at
+                    ? new Date(f.last_reload_at).toLocaleString()
+                    : '—';
+                const ver = (f.version || '').replace(/^sha256:/, '').slice(0, 12) || '—';
+                return `
+                    <tr>
+                        <td><code>${escapeHtml(key)}</code></td>
+                        <td>${escapeHtml(f.kind || '')}${f.host ? ' · ' + escapeHtml(f.host) : ''}</td>
+                        <td>${f.asset_count ?? 0}</td>
+                        <td><code title="${escapeHtml(f.version || '')}">${ver}</code></td>
+                        <td>${reloaded}</td>
+                        <td>
+                            <button class="btn btn-secondary" data-key="${escapeHtml(key)}" onclick="reloadFrontend(this.dataset.key)">🔄 Reload</button>
+                        </td>
+                    </tr>`;
+            }).join('');
+            document.getElementById('content').innerHTML = `
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                        <strong>Configured frontends</strong>
+                        <button class="btn btn-warning" onclick="reloadAllFrontends()">🔄 Reload all</button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Key</th><th>Kind</th><th>Assets</th><th>Version</th><th>Last reload</th><th></th></tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function reloadFrontend(key) {
+            try {
+                // Encode the raw key here (passed via data-key / this.dataset.key,
+                // never interpolated into the inline handler) — encodeURIComponent
+                // does not escape single quotes, so building the onclick string
+                // with it would break on a key containing `'` (#152 review).
+                const res = await fetch('/_admin/frontend/' + encodeURIComponent(key) + '/reload', { method: 'POST' });
+                if (res.status === 403) { showToast('Not allowed: insufficient role', true); return; }
+                if (!res.ok) throw new Error('reload returned ' + res.status);
+                const out = await res.json();
+                showToast(out?.changed ? 'Reloaded (content changed)' : 'Reloaded (no change)');
+                loadFrontendView();
+            } catch (e) {
+                showToast('Reload failed', true);
+            }
+        }
+
+        async function reloadAllFrontends() {
+            try {
+                const res = await fetch('/_admin/frontend/reload', { method: 'POST' });
+                if (res.status === 403) { showToast('Not allowed: insufficient role', true); return; }
+                if (!res.ok) throw new Error('reload-all returned ' + res.status);
+                const out = await res.json();
+                const n = (out?.results || []).length;
+                showToast(`Reloaded ${n} frontend${n === 1 ? '' : 's'}`);
+                loadFrontendView();
+            } catch (e) {
+                showToast('Reload-all failed', true);
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
         }
 
         // ==================== CLUSTER VIEW ====================
