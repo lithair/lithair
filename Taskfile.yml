@@ -256,6 +256,11 @@ tasks:
       - task: loadgen:echo
         vars: { BYTES: '1048576', TOTAL: '10000', CONC: '256' }
 
+  bench:baselines:
+    desc: "G4: CRUD throughput/latency, Lithair vs Axum+SQLite (docs/performance/baselines.md)"
+    cmds:
+      - ./benchmarks/run.sh
+
   raft:consistency:
     desc: Run Raft consistency test (3 nodes, auto-launch, verify replication)
     vars:
