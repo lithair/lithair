@@ -19,13 +19,10 @@ use bytes::Bytes;
 use http_body_util::BodyExt;
 use http_body_util::Full;
 use hyper::{Method, Request, Response, StatusCode};
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 type Req = Request<hyper::body::Incoming>;
 type Resp = Response<Full<Bytes>>;
-type BoxFuture = Pin<Box<dyn Future<Output = Result<GuardResult, anyhow::Error>> + Send>>;
 
 /// Result of a route guard check
 #[derive(Debug)]
@@ -54,17 +51,6 @@ pub enum RouteGuard {
         /// Where to redirect if unauthorized (None = 403 response)
         redirect_to: Option<String>,
     },
-
-    /// Rate limiting
-    RateLimit {
-        /// Maximum requests per window
-        max_requests: u32,
-        /// Window duration in seconds
-        window_secs: u64,
-    },
-
-    /// Custom policy with user-defined logic
-    Custom(Arc<dyn Fn(Req) -> BoxFuture + Send + Sync>),
 }
 
 impl std::fmt::Debug for RouteGuard {
@@ -80,12 +66,6 @@ impl std::fmt::Debug for RouteGuard {
                 .field("roles", roles)
                 .field("redirect_to", redirect_to)
                 .finish(),
-            RouteGuard::RateLimit { max_requests, window_secs } => f
-                .debug_struct("RateLimit")
-                .field("max_requests", max_requests)
-                .field("window_secs", window_secs)
-                .finish(),
-            RouteGuard::Custom(_) => f.debug_struct("Custom").finish(),
         }
     }
 }
@@ -103,23 +83,6 @@ impl RouteGuard {
             }
             RouteGuard::RequireRole { roles, redirect_to } => {
                 self.check_role(req, session_store, roles, redirect_to).await
-            }
-            RouteGuard::RateLimit { .. } => {
-                // Fail closed: rate limiting is not yet enforced, deny all rate-limited routes
-                log::warn!("RateLimit guard is not yet implemented; denying request");
-                Ok(GuardResult::Deny(
-                    Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .header("Content-Type", "application/json")
-                        .body(Full::new(Bytes::from(
-                            r#"{"error":"Rate limiting not yet available"}"#,
-                        )))
-                        .unwrap(),
-                ))
-            }
-            RouteGuard::Custom(_checker) => {
-                // Custom policies handle their own logic
-                Ok(GuardResult::Allow)
             }
         }
     }

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Dead surface cut** (over-engineering audit). Removed code with zero callers
+  and no behavior: `engine::lockfree_engine` (a 373-line legacy engine
+  superseded by `Scc2Engine`); the `Lithair<A>` low-level entry point + `run_app`
+  + `LithairMode` (one mode, distributed commented out, used by no example —
+  applications use `LithairServer`; the `RaftstoneApplication` trait stays, the
+  engine uses it); `RouteGuard::RateLimit` (a stub that denied every request)
+  and `RouteGuard::Custom` (which never invoked its closure — always `Allow`,
+  a dead-flexibility no-op); and the unused `lazy_static` dependency. ~840 lines
+  and one dependency gone, no functional change.
+
 ### Added
 
 - **Benchmark harness + published baselines** (gate G4, issue #126).
