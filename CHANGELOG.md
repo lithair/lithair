@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Benchmark harness + published baselines** (gate G4, issue #126).
+  `task bench:baselines` (`benchmarks/run.sh`) drives the same `tools/loadgen`
+  harness against Lithair and an Axum+SQLite baseline
+  (`benchmarks/baseline-axum-sqlite`, file-backed for a durable-vs-durable write
+  comparison), reporting CRUD throughput + p50/p95/p99.
+  [`docs/performance/baselines.md`](docs/performance/baselines.md) publishes the
+  methodology and an honest wins/loses: Lithair wins reads (~1.3–1.7 ms p50,
+  flat under load), loses write throughput ~30–60× (single-leader durable
+  append). Docs/scripts only — no library change. (Actix+Postgres, memory-growth,
+  cold-start-replay and multi-run stddev are named as deferred in the doc.)
+
 ## [0.16.0] - 2026-06-22
 
 Role-scoped admin access (issue #149). Builds on v0.15's secure-by-default

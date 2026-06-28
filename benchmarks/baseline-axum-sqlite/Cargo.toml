@@ -1,0 +1,24 @@
+# Standalone baseline crate — deliberately NOT a workspace member, so the
+# benchmark stack (axum, rusqlite) never burdens the workspace build / CI. It
+# compiles only when you run `task bench:baselines`.
+[workspace]
+
+[package]
+name = "baseline-axum-sqlite"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "baseline-axum-sqlite"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+opt-level = 3
