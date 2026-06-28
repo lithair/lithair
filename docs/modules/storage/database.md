@@ -790,7 +790,8 @@ let category_performance: Vec<_> = state.daily_sales
 ### Automatic Snapshotting
 
 ```rust
-impl Lithair {
+// Illustrative: a snapshotting strategy on your own application type.
+impl MyApp {
     pub async fn background_snapshot_task(&self) {
         let mut interval = tokio::time::interval(Duration::from_secs(3600)); // Every hour
 
