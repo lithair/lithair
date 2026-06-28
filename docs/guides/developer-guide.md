@@ -252,25 +252,31 @@ pub fn lithair_model(input: TokenStream) -> TokenStream {
 ### Example Test Structure
 
 ```rust
-// tests/integration_test.rs
-use lithair_core::{Lithair, RaftstoneApplication};
+// tests/integration_test.rs — spin up a real server and hit it (the pattern
+// the in-repo integration tests use; see lithair-core/tests/).
+use lithair_core::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default)]
-struct TestApp {
-    counter: u64,
+#[derive(Serialize, Deserialize, DeclarativeModel)]
+struct Item {
+    #[db(primary_key)]
+    #[http(expose)]
+    id: String,
+    #[http(expose)]
+    name: String,
 }
 
-impl RaftstoneApplication for TestApp {
-    type State = Self;
-    fn initial_state() -> Self::State { Self::default() }
-    fn routes() -> Vec<Route<Self::State>> { vec![] }
-}
-
-#[test]
-fn test_basic_framework_creation() {
-    let app = TestApp::default();
-    let framework = Lithair::new(app);
-    // Test framework initialization
+#[tokio::test]
+async fn server_serves_the_model() {
+    // Isolate the event store per run so tests don't pollute each other.
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("items").to_string_lossy().into_owned();
+    let port = portpicker::pick_unused_port().unwrap();
+    let server = LithairServer::new()
+        .with_port(port)
+        .with_model::<Item>(data, "/api/items");
+    tokio::spawn(async move { server.serve().await.unwrap() });
+    // ... then drive /api/items with reqwest and assert.
 }
 ```
 
