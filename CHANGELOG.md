@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Stale deprecations removed — deprecation cycle exercised** (gate G6). The
+  `AdminHandler` trait and `dispatch_admin_route` (`http/admin.rs`), deprecated
+  since **0.2.0** (`note = "Use ... ServerMetrics / handle_auto_admin_endpoints
+  instead"`) and used by nothing, are removed — well past the policy's
+  remove-no-earlier-than-N+2 window. This is the [deprecation
+  policy](docs/policy/deprecation.md) proven end-to-end (deprecate → remove),
+  the half that had never been demonstrated. (Other 0.2.0-deprecated items —
+  `consensus::ConsensusConfig` / `DeclarativeConsensus` — stay: they're still
+  load-bearing via `DeclarativeHttpHandler`, so their removal waits on a
+  migration to `with_raft_cluster`.)
+
 - **Dead surface cut** (over-engineering audit). Removed code with zero callers
   and no behavior: `engine::lockfree_engine` (a 373-line legacy engine
   superseded by `Scc2Engine`); the `Lithair<A>` low-level entry point + `run_app`

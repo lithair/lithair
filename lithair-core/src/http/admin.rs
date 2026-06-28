@@ -31,40 +31,12 @@
 //! ```
 
 use crate::http::firewall::Firewall;
-use crate::http::{
-    body_from, extract_client_ip, json_error_response, not_found_response, Req, Resp,
-};
+use crate::http::{body_from, extract_client_ip, not_found_response, Req, Resp};
 #[allow(unused_imports)]
 use http_body_util::BodyExt;
 use hyper::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::sync::Arc;
-
-/// Legacy admin handler trait - DEPRECATED
-///
-/// **DEPRECATED**: Use the automatic admin system instead.
-/// - Implement `ServerMetrics` trait
-/// - Configure `AutoAdminConfig`
-/// - Use `handle_auto_admin_endpoints` for automatic routing
-///
-/// This trait is kept for backward compatibility but should not be used in new code.
-#[deprecated(since = "0.2.0", note = "Use automatic admin system with ServerMetrics trait instead")]
-pub trait AdminHandler: Send + Sync {
-    /// Handle admin GET requests (status, info, etc.)
-    fn handle_admin_get(
-        &self,
-        path: &str,
-        req: &Req,
-    ) -> impl std::future::Future<Output = Resp> + Send;
-
-    /// Handle admin POST requests (actions, configuration, etc.)
-    fn handle_admin_post(
-        &self,
-        path: &str,
-        req: Req,
-    ) -> impl std::future::Future<Output = Resp> + Send;
-}
 
 /// Generic admin firewall protection with logging
 pub async fn check_admin_firewall(
@@ -133,44 +105,6 @@ pub fn build_status_response(status_data: serde_json::Value) -> Resp {
         .header("Content-Type", "application/json")
         .body(body_from(status_data.to_string()))
         .unwrap()
-}
-
-/// Legacy admin route dispatcher - DEPRECATED
-///
-/// **DEPRECATED**: Use `handle_auto_admin_endpoints` instead.
-/// The automatic admin system provides better routing with zero boilerplate.
-///
-/// This function is kept for backward compatibility but should not be used in new code.
-#[deprecated(since = "0.2.0", note = "Use handle_auto_admin_endpoints instead")]
-#[allow(deprecated)]
-pub async fn dispatch_admin_route<H>(
-    method: &Method,
-    path: &str,
-    req: Req,
-    handler: &Arc<H>,
-    firewall: Option<&Firewall>,
-) -> Resp
-where
-    H: AdminHandler,
-{
-    // Check firewall protection first
-    let fake_addr: Option<SocketAddr> = "127.0.0.1:0".parse().ok();
-    if let Err(forbidden_response) =
-        check_admin_firewall(firewall, method, path, &req, fake_addr).await
-    {
-        return forbidden_response;
-    }
-
-    // Route based on HTTP method
-    match *method {
-        Method::GET => handler.handle_admin_get(path, &req).await,
-        Method::POST => handler.handle_admin_post(path, req).await,
-        _ => json_error_response(
-            StatusCode::METHOD_NOT_ALLOWED,
-            "method_not_allowed",
-            "Only GET and POST methods are supported for admin endpoints",
-        ),
-    }
 }
 
 //  ╔═══════════════════════════════════════════════════════════╗
