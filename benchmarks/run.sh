@@ -58,7 +58,9 @@ bench_target() {
       --create-pct "$CREATE_PCT" --read-pct "$READ_PCT" --update-pct 0 --delete-pct 0 \
       --read-path /api/products 2>&1 | grep -E "p50=|throughput=" || true
   done
-  kill "$SRV_PID" 2>/dev/null || true; SRV_PID=""
+  kill "$SRV_PID" 2>/dev/null || true
+  wait "$SRV_PID" 2>/dev/null || true  # reap before rm so no file handles linger
+  SRV_PID=""
   rm -rf "$WORK"; WORK=""
 }
 

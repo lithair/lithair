@@ -32,7 +32,7 @@ async fn main() {
     let conn = rusqlite::Connection::open(&db_path).expect("open sqlite");
     conn.execute_batch(
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;
-         CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL, category TEXT);",
+         CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price REAL, category TEXT);",
     )
     .expect("init schema");
     let db: Db = Arc::new(Mutex::new(conn));
