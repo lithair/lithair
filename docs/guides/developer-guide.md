@@ -268,10 +268,13 @@ struct Item {
 
 #[tokio::test]
 async fn server_serves_the_model() {
+    // Isolate the event store per run so tests don't pollute each other.
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("items").to_string_lossy().into_owned();
     let port = portpicker::pick_unused_port().unwrap();
     let server = LithairServer::new()
         .with_port(port)
-        .with_model::<Item>("./data/items", "/api/items");
+        .with_model::<Item>(data, "/api/items");
     tokio::spawn(async move { server.serve().await.unwrap() });
     // ... then drive /api/items with reqwest and assert.
 }

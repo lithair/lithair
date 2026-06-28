@@ -822,54 +822,55 @@ impl Lithair {
 ### Crash Recovery
 
 ```rust
-impl Lithair {
-    pub async fn recover_from_crash() -> Result<Self> {
-        println!(" Recovering from crash...");
+// Recover application state from snapshot + event log after a crash, then hand
+// the result to your `LithairServer` setup.
+pub async fn recover_from_crash() -> Result<ECommerceState> {
+    println!(" Recovering from crash...");
 
-        // 1. Load latest snapshot
-        let snapshot_path = "data/state.raftsnap";
-        let mut state = if Path::new(snapshot_path).exists() {
-            let snapshot_data = fs::read(snapshot_path)?;
-            let snapshot: StateSnapshot = bincode::deserialize(&snapshot_data)?;
-            println!(" Loaded snapshot from event #{}", snapshot.last_event_id);
-            snapshot.state
-        } else {
-            println!("🆕 No snapshot found, starting with empty state");
-            ECommerceState::default()
-        };
+    // 1. Load latest snapshot
+    let snapshot_path = "data/state.raftsnap";
+    let mut state = if Path::new(snapshot_path).exists() {
+        let snapshot_data = fs::read(snapshot_path)?;
+        let snapshot: StateSnapshot = bincode::deserialize(&snapshot_data)?;
+        println!(" Loaded snapshot from event #{}", snapshot.last_event_id);
+        snapshot.state
+    } else {
+        println!("🆕 No snapshot found, starting with empty state");
+        ECommerceState::default()
+    };
 
-        // 2. Replay events since snapshot
-        let events_path = "data/events.raftlog";
-        if Path::new(events_path).exists() {
-            let events_data = fs::read_to_string(events_path)?;
-            let mut replayed_events = 0;
+    // 2. Replay events since snapshot
+    let events_path = "data/events.raftlog";
+    if Path::new(events_path).exists() {
+        let events_data = fs::read_to_string(events_path)?;
+        let mut replayed_events = 0;
 
-            for line in events_data.lines() {
-                if line.trim().is_empty() { continue; }
+        for line in events_data.lines() {
+            if line.trim().is_empty() { continue; }
 
-                let event: GenericEvent = serde_json::from_str(line)?;
-                if event.id > state.last_applied_event {
-                    event.apply(&mut state);
-                    replayed_events += 1;
-                }
+            let event: GenericEvent = serde_json::from_str(line)?;
+            if event.id > state.last_applied_event {
+                event.apply(&mut state);
+                replayed_events += 1;
             }
-
-            println!(" Replayed {} events", replayed_events);
         }
 
-        // 3. Verify state consistency
-        let consistency_check = state.verify_consistency();
-        if !consistency_check.is_valid {
-            return Err(format!("State consistency check failed: {:?}", consistency_check.errors).into());
-        }
-
-        println!(" Recovery completed successfully");
-        println!("   • Users: {}", state.users.len());
-        println!("   • Products: {}", state.products.len());
-        println!("   • Orders: {}", state.orders.len());
-
-        Ok(state) // hand the recovered state to your LithairServer setup
+        println!(" Replayed {} events", replayed_events);
     }
+
+    // 3. Verify state consistency
+    let consistency_check = state.verify_consistency();
+    if !consistency_check.is_valid {
+        return Err(format!("State consistency check failed: {:?}", consistency_check.errors).into());
+    }
+
+    println!(" Recovery completed successfully");
+    println!("   • Users: {}", state.users.len());
+    println!("   • Products: {}", state.products.len());
+    println!("   • Orders: {}", state.orders.len());
+
+    Ok(state)
+}
 }
 ```
 
