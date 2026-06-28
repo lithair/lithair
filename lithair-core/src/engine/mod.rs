@@ -17,8 +17,6 @@ use std::sync::{Arc, RwLock};
 #[doc(hidden)]
 pub mod async_writer;
 pub mod events;
-#[doc(hidden)]
-pub mod lockfree_engine;
 pub mod multi_file_store;
 #[doc(hidden)]
 pub mod persistence;
