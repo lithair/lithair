@@ -868,7 +868,7 @@ impl Lithair {
         println!("   • Products: {}", state.products.len());
         println!("   • Orders: {}", state.orders.len());
 
-        Ok(Lithair::new(state))
+        Ok(state) // hand the recovered state to your LithairServer setup
     }
 }
 ```
