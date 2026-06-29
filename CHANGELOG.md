@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-06-28
+
+First **1.0 release candidate.** All v1.0 roadmap gates are closed except the
+real-world soak (G5), which this RC exists to perform: run it in production
+through an upgrade cycle and report back before 1.0.0 final.
+
+What 1.0 promises is now a contract, not an aspiration — see
+[`docs/reference/api-stability.md`](docs/reference/api-stability.md) (stable /
+unstable / hidden tiers + MSRV) and the [road to v1.0](docs/roadmap/v1.0.md).
+Gates landed across 0.14–1.0.0-rc.1: cluster envelope (G1), macro parser
+hardening (G2), API-surface classification (G3), published benchmarks (G4),
+backup proven (G7), frontend lifecycle API (G8), and the deprecation cycle
+exercised (G6). No on-disk format change since 0.13.
+
+Since 0.16.0:
+
 ### Removed
 
 - **Stale deprecations removed — deprecation cycle exercised** (gate G6). The
@@ -1142,7 +1158,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/lithair/lithair/compare/v0.16.0...v1.0.0-rc.1
 [0.16.0]: https://github.com/lithair/lithair/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/lithair/lithair/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/lithair/lithair/compare/v0.13.0...v0.14.0
