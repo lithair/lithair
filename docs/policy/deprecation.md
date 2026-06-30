@@ -26,7 +26,7 @@ mitigations the project already practices:
   that did would ship a migration path in the same release.
 
 There is no deprecation *window* pre-1.0 — the CHANGELOG entry is the
-notice. Pin your minor (`lithair-core = "0.13"`) and read the
+notice. Pin your minor (`lithair-core = "1.0"`) and read the
 CHANGELOG before bumping; the
 [upgrade playbook](../operations/upgrade.md) is the procedure.
 

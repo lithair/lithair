@@ -4,12 +4,10 @@
 
 Following Lithair's **90% Rule**, route guards provide declarative protection for common scenarios:
 
-- ✅ Authentication checks
-- ✅ Role-based access
-- ✅ Rate limiting
-- ✅ Custom validation
+- ✅ Authentication checks (`RequireAuth`)
+- ✅ Role-based access (`RequireRole`)
 
-**Zero boilerplate for 90% of use cases. Simple customization for the remaining 10%.**
+**Zero boilerplate for the common cases.**
 
 ## 🚀 Quick Start
 
@@ -52,54 +50,23 @@ RouteGuard::RequireAuth {
 
 ### 2. RequireRole - Role-Based Access
 
-Requires specific user roles (coming soon).
+Requires the session's role to be in the allowed set. The role is read from
+`session.data["role"]` — the value your login handler sets via
+`session.set("role", …)`. A matching role passes; anything else (wrong role or
+no session) gets `403`.
 
 ```rust
 RouteGuard::RequireRole {
     roles: vec!["Admin".to_string(), "Manager".to_string()],
-    redirect_to: Some("/unauthorized".to_string()),
+    redirect_to: Some("/unauthorized".to_string()),  // None = 403 JSON
 }
 ```
 
 **Use cases:**
 
 - Admin-only sections
-- Manager dashboards
+- Role-scoped admin planes (see `with_admin_roles`)
 - Role-specific features
-
-### 3. RateLimit - Request Throttling
-
-Prevents abuse with rate limiting (coming soon).
-
-```rust
-RouteGuard::RateLimit {
-    max_requests: 100,
-    window_secs: 60,  // 100 requests per minute
-}
-```
-
-**Use cases:**
-
-- API endpoints
-- Login forms
-- Resource-intensive operations
-
-### 4. Custom - Your Logic
-
-For the 10% of special cases.
-
-```rust
-RouteGuard::Custom(Arc::new(|req| {
-    Box::pin(async move {
-        // Your custom validation logic
-        if some_condition(&req) {
-            Ok(GuardResult::Allow)
-        } else {
-            Ok(GuardResult::Deny(custom_response()))
-        }
-    })
-}))
-```
 
 ## 🔧 Advanced Usage
 
@@ -115,13 +82,7 @@ LithairServer::new()
         exclude: vec!["/admin/login/".to_string()],
     })
 
-    // Protect API with rate limiting
-    .with_route_guard("/api/*", RouteGuard::RateLimit {
-        max_requests: 100,
-        window_secs: 60,
-    })
-
-    // Protect settings with role check
+    // Protect settings with a role check
     .with_route_guard("/settings/*", RouteGuard::RequireRole {
         roles: vec!["Admin".to_string()],
         redirect_to: Some("/unauthorized".to_string()),
@@ -214,11 +175,10 @@ Request → Match Guards → Validate Session → Allow/Deny
 
 ## 🚀 Future Enhancements
 
-- [ ] Complete `RequireRole` implementation
-- [ ] Complete `RateLimit` with Redis backend
-- [ ] Add `RequireScope` for OAuth2 scopes
-- [ ] Add `IPWhitelist` for IP-based restrictions
-- [ ] Add guard composition (`And`, `Or`, `Not`)
+- [ ] Rate limiting guard
+- [ ] `RequireScope` for OAuth2 scopes
+- [ ] `IPWhitelist` for IP-based restrictions
+- [ ] Guard composition (`And`, `Or`, `Not`)
 
 ## 📚 Examples
 
@@ -232,9 +192,8 @@ See working examples in:
 
 **The 90% Rule in action:**
 
-- 🎯 **90% of routes** need simple auth checks → `RouteGuard::RequireAuth`
-- 🔧 **10% need custom logic** → `RouteGuard::Custom`
-- ✅ **Zero boilerplate** for common cases
-- ✅ **Full flexibility** when needed
+- 🎯 **Most routes** need a simple auth check → `RouteGuard::RequireAuth`
+- 🔐 **Role-scoped routes** → `RouteGuard::RequireRole`
+- ✅ **Zero boilerplate** for the common cases
 
 **"Why write 50 lines of middleware when `.with_route_guard()` does it better?"**

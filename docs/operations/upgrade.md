@@ -199,7 +199,7 @@ shows a `ModifyFieldType` or `RemoveField`.
 
    ```toml
    [dependencies]
-   lithair-core = "0.12"
+   lithair-core = "1.0"
    ```
 
 3. **`cargo build`** — this clears compatibility surface (a), the Rust
