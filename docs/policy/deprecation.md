@@ -6,10 +6,10 @@ the declarative annotations, the builder API, generated endpoint
 shapes, operational endpoints, `LT_*` environment variables, and —
 with the strongest guarantee — the on-disk event-store format.
 
-## Pre-1.0 (now)
+## The 0.x line (history)
 
-SemVer pre-1.0 rules apply: **a minor release may break**. The
-mitigations the project already practices:
+Before 1.0, SemVer pre-1.0 rules applied: **a minor release could break**. The
+mitigations the project practiced (and still does):
 
 - Every break is listed in [CHANGELOG.md](../../CHANGELOG.md) under the
   version that ships it, with the migration in the entry itself (see
@@ -25,14 +25,17 @@ mitigations the project already practices:
   0.x release so far has required an event-store migration, and any
   that did would ship a migration path in the same release.
 
-There is no deprecation *window* pre-1.0 — the CHANGELOG entry is the
-notice. Pin your minor (`lithair-core = "1.0"`) and read the
-CHANGELOG before bumping; the
+There was no deprecation *window* pre-1.0 — the CHANGELOG entry was the
+notice. Pinning a 0.x minor (`lithair-core = "0.13"`) and reading the CHANGELOG
+before bumping was the mitigation; the
 [upgrade playbook](../operations/upgrade.md) is the procedure.
 
-## Post-1.0 (the contract this policy will back)
+## 1.x — the active contract (since 1.0.0)
 
-**Window: deprecate in minor N, remove no earlier than minor N+2.**
+Now that 1.0 has shipped this is in force: **1.x minors are additive — they do
+not break** the stable surface. Removals follow a window: **deprecate in minor
+N, remove no earlier than minor N+2.** (To stay on one minor regardless, pin
+with a tilde, e.g. `lithair-core = "~1.2"`; a plain `"1"` accepts every 1.x.)
 
 1. **Deprecate (1.N)** — the item gets `#[deprecated(note = "use X;
    removed in 1.N+2 or later")]` (or for non-Rust surfaces: a startup
