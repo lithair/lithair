@@ -38,8 +38,9 @@ claim, because the single-binary model cannot truthfully make one:
 - **A binary / version change** (this playbook) — a **brief graceful restart**:
   the old process drains in-flight connections (`serve_with_graceful_shutdown`),
   then the new one boots and replays the event log to rebuild state. Boot time
-  scales with log size minus the last snapshot — typically seconds; size it with
-  [capacity-planning](capacity-planning.md) and a snapshot cadence.
+  scales with the number of events **since** the last snapshot — typically
+  seconds; size it with [capacity-planning](capacity-planning.md) and a snapshot
+  cadence.
 
 True zero-downtime *across a binary change* is an **operational pattern, not a
 framework guarantee**: run two instances behind a proxy/load balancer and cut
