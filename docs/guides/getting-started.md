@@ -31,7 +31,7 @@ Edit `Cargo.toml`:
 
 ```toml
 [dependencies]
-lithair-core = "0.1"
+lithair-core = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
