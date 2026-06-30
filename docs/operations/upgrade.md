@@ -27,6 +27,27 @@ That gives two compatibility surfaces to clear:
   [Additive](#additive-changes-safe-path) vs.
   [Breaking](#breaking-changes-managed-path) below.
 
+## Downtime: what is and isn't zero-restart
+
+Lithair is explicit about this — it is **not** a marketing "zero-downtime"
+claim, because the single-binary model cannot truthfully make one:
+
+- **Content updates** (event-sourced writes through the API) — **no restart.**
+- **Frontend updates** (`POST /_admin/frontend/*/reload`) — **no restart**, hot
+  in memory.
+- **A binary / version change** (this playbook) — a **brief graceful restart**:
+  the old process drains in-flight connections (`serve_with_graceful_shutdown`),
+  then the new one boots and replays the event log to rebuild state. Boot time
+  scales with log size minus the last snapshot — typically seconds; size it with
+  [capacity-planning](capacity-planning.md) and a snapshot cadence.
+
+True zero-downtime *across a binary change* is an **operational pattern, not a
+framework guarantee**: run two instances behind a proxy/load balancer and cut
+over (blue-green / rolling), each instance pointed at its own replayed state.
+That sits on top of Lithair; it is intentionally out of the v1.0 contract for
+the single-binary deployment. (A built-in hand-off may come post-1.0; it is not
+promised.)
+
 ## Before you upgrade
 
 - **Read the CHANGELOG for the target version.** Note breaking changes
