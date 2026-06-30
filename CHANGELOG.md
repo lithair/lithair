@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-30
+
+**Lithair 1.0.** Promotes `1.0.0-rc.1` unchanged after a clean production soak
+(no data loss; the upgrade path, secure-by-default admin and role-scoping were
+exercised live).
+
+All eight v1.0 roadmap gates are resolved: cluster operating envelope (G1),
+macro parser hardening (G2), API-surface classification (G3), published
+benchmarks (G4), real-world soak (G5), deprecation cycle exercised (G6), backup
+proven (G7), frontend lifecycle API (G8).
+
+**The stability contract is now in effect** ([`docs/reference/api-stability.md`](docs/reference/api-stability.md)):
+
+- The **on-disk event-store format** is the strongest promise — any 1.x binary
+  replays a store written by any earlier 1.x binary. No format change since 0.13.
+- The **declarative surface** (annotations, the `LithairServer` builder, generated
+  endpoints, operational + admin endpoints) and the **prelude** evolve additively
+  within 1.x; removals go through the [deprecation policy](docs/policy/deprecation.md).
+- Items classified *unstable* / `#[doc(hidden)]` are explicitly outside the promise.
+- MSRV is the pinned toolchain, raised only in a minor with a CHANGELOG note.
+
+Known boundary (not a regression): zero-downtime applies to content and frontend
+reload; a binary/version change is a brief graceful restart — see
+[upgrade.md → Downtime](docs/operations/upgrade.md#downtime-what-is-and-isnt-zero-restart).
+
+No changes since `1.0.0-rc.1`.
+
 ## [1.0.0-rc.1] - 2026-06-28
 
 First **1.0 release candidate.** All v1.0 roadmap gates are closed except the
@@ -1158,7 +1185,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/lithair/lithair/compare/v1.0.0-rc.1...v1.0.0
 [1.0.0-rc.1]: https://github.com/lithair/lithair/compare/v0.16.0...v1.0.0-rc.1
 [0.16.0]: https://github.com/lithair/lithair/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/lithair/lithair/compare/v0.14.0...v0.15.0
