@@ -10,16 +10,11 @@
 //! - **Binary**: Zero-copy, uses rkyv for ~10GB/s throughput
 
 pub mod binary;
-pub mod bincode_optimized;
 pub mod json;
 pub mod rkyv_mode;
 
 // Re-export main types
 pub use binary::{BinaryEnvelope, BinaryError, BinarySerializable, BinaryStats};
-pub use bincode_optimized::{
-    BincodeSerializable, SerializationBenchmark, SerializationEnvelope, SerializationFormat,
-    SmartSerializer,
-};
 pub use json::{parse_json, stringify_json, JsonError, JsonValue};
 
 // Re-export dual-mode serialization (NEW)

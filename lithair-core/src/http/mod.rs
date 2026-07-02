@@ -28,7 +28,6 @@
 //! - **Concurrency**: Efficient handling of thousands of connections
 
 pub mod admin;
-pub mod api_router; // Generic API routing for DeclarativeHttpHandler
 pub mod async_server; // Async HTTP server with Hyper
 pub mod backend;
 #[allow(deprecated)]
@@ -55,7 +54,6 @@ pub use admin::{
     handle_auto_reload_endpoint, handle_complete_admin_management, AutoAdminConfig,
     ReloadableServer, ServerMetrics,
 };
-pub use api_router::{ApiRouter, ApiRouterStats};
 pub use async_server::AsyncHttpServer;
 pub use backend::{
     handle_with_segments, proxy_to_declarative_handler, BackendHandler, BackendRoute, BackendRouter,

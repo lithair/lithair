@@ -11,8 +11,6 @@ mod lifecycle;
 mod lithair_model;
 mod page;
 mod rbac_role;
-use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemImpl};
 
 /// Derive macro for generating lifecycle-aware data models
 ///
@@ -141,96 +139,6 @@ pub fn persistence(_args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn server(_args: TokenStream, input: TokenStream) -> TokenStream {
     input
-}
-
-/// Derive macro for generating events and serialization for data models
-///
-/// This macro automatically generates:
-/// - Event types for Create, Update, Delete operations
-/// - Serialization implementations
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use lithair_macros::RaftstoneModel;
-///
-/// #[derive(RaftstoneModel)]
-/// struct Product {
-///     id: u64,
-///     name: String,
-///     price: f64,
-/// }
-/// ```
-#[proc_macro_derive(RaftstoneModel)]
-pub fn derive_lithair_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let name = &input.ident;
-    let name_str = name.to_string();
-
-    let _fields = match &input.data {
-        syn::Data::Struct(data_struct) => &data_struct.fields,
-        _ => {
-            return syn::Error::new_spanned(name, "RaftstoneModel can only be derived for structs")
-                .to_compile_error()
-                .into();
-        }
-    };
-
-    let expanded = quote! {
-        impl lithair_core::macros::GeneratedModel for #name {
-            fn model_name() -> &'static str {
-                #name_str
-            }
-
-            fn field_names() -> &'static [&'static str] {
-                &[]
-            }
-        }
-    };
-
-    TokenStream::from(expanded)
-}
-
-/// Attribute macro for generating HTTP routes from API implementations
-///
-/// This macro automatically generates:
-/// - HTTP route handlers
-/// - JSON request/response serialization
-/// - Route registration code
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use lithair_core::RaftstoneApi;
-///
-/// #[RaftstoneApi]
-/// impl MyApp {
-///     fn create_user(&mut self, name: String, email: String) -> Result<User, String> {
-///         // Your business logic here
-///     }
-///     
-///     fn get_users(&self) -> Vec<User> {
-///         // Your query logic here
-///     }
-/// }
-///
-/// // This generates:
-/// // - POST /users route for create_user
-/// // - GET /users route for get_users
-/// // - JSON serialization handling
-/// ```
-#[proc_macro_attribute]
-pub fn lithair_api(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as ItemImpl);
-
-    // Passes through the impl block unchanged. Route registration is handled
-    // by `LithairServer::with_route()` at the call site.
-    let expanded = quote! {
-        #input
-    };
-
-    TokenStream::from(expanded)
 }
 
 /// Derive macro for schema evolution and migration support.
