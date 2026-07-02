@@ -76,6 +76,28 @@ opted into tracing would see zero spans. A set `RUST_LOG` always wins —
 if you export traces with a custom filter, make sure it admits INFO for
 `lithair_core` or your collector stays empty.
 
+## Log-level policy
+
+What each level means in Lithair — the contract for reading production logs,
+and the rule contributors follow when adding a call site:
+
+| Level | Meaning | Frequency guarantee |
+|---|---|---|
+| `error` | Actionable failure — an operator may need to react | rare |
+| `warn`  | Degraded/misconfigured but still serving (empty role list, env var without its feature, best-effort persist failed) | rare |
+| `info`  | **Lifecycle events only**: boot, config summary, model registration, shutdown, snapshot install/ship, resync, schema migrations, frontend reload | *never* per-request |
+| `debug` | Per-request / per-write flow (dispatch decisions, consensus apply, replication acks, audited-field traces) | hot paths |
+| `trace` | Per-item detail inside loops | hottest |
+
+The performance rationale: a *disabled* level costs one atomic load per call
+site — negligible. An *enabled* `info` on a per-write path costs formatting +
+I/O on every request, which is why per-request lines live at `debug`: running
+production at `RUST_LOG=info` gives quiet, lifecycle-only logs at full speed,
+and `lithair_core=debug` turns the flow on when needed. There are deliberately
+**no compile-time level caps** (`release_max_level_*`): an operator can raise
+verbosity on a live production binary with an env var and a restart — no
+rebuild.
+
 ## Exporting traces (OpenTelemetry)
 
 Trace export is **off by default twice over**: it requires the `otel`

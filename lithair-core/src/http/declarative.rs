@@ -1096,7 +1096,9 @@ where
             let old_val = old_json.get(field_name);
             let new_val = new_json.get(field_name);
             if old_val != new_val {
-                log::info!(
+                // debug, not info: fires per audited field per update (hot path); the
+                // event store is the audit source of truth, this line is a trace aid.
+                log::debug!(
                     "AUDIT {}/{}: field '{}' changed from {} to {}",
                     model_name,
                     id,
@@ -1589,7 +1591,7 @@ where
                     .await
                 {
                     Ok(_) => {
-                        log::info!("Raft: Consensus achieved, applying operation locally");
+                        log::debug!("Raft: Consensus achieved, applying operation locally");
 
                         // Apply to local storage after successful consensus
                         // Use the item's actual ID as key, not the placeholder
@@ -1625,7 +1627,7 @@ where
                             return Ok(self.internal_error_response());
                         }
 
-                        log::info!(
+                        log::debug!(
                             "Raft: Successfully replicated item {} across cluster",
                             primary_key
                         );

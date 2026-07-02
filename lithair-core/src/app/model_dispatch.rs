@@ -143,7 +143,7 @@ impl LithairServer {
                     }
                 } else if is_update {
                     let id = resource_id.clone().unwrap_or_default();
-                    log::info!("CLUSTER: Creating UPDATE operation for id={}", id);
+                    log::debug!("CLUSTER: Creating UPDATE operation for id={}", id);
                     // For UPDATE: merge delta with existing item to send complete object
                     // This ensures followers can deserialize the full item
                     let existing = model.handler.get_item_json(&id).await;
@@ -170,7 +170,7 @@ impl LithairServer {
                     }
                 } else if is_delete {
                     let id = resource_id.clone().unwrap_or_default();
-                    log::info!("CLUSTER: Creating DELETE operation for id={}", id);
+                    log::debug!("CLUSTER: Creating DELETE operation for id={}", id);
                     crate::cluster::CrudOperation::Delete {
                         model_path: model.base_path.clone(),
                         id,
