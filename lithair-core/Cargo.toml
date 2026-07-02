@@ -34,7 +34,6 @@ chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metadata
 scc = "3"            # SCC2 HashMap ultra-performant (40M+ ops/sec)
 reqwest = { version = "0.13", features = ["json", "rustls", "form"], default-features = false }  # HTTP client with rustls
 uuid = { version = "1", features = ["v4", "serde"] }  # For generating unique IDs with Serde
-urlencoding = "2.1"  # URL encoding for OAuth2 parameters
 clap = { version = "4", features = ["derive"] }  # CLI argument parsing for auto-generated apps
 hyper = { version = "1.7", features = ["full"] }
 hyper-util = { version = "0.1", features = ["server", "http1", "tokio"] }
@@ -90,6 +89,7 @@ tempfile = "3"
 # `LithairServer` (e.g. tests/require_session_test.rs). Already used in
 # cucumber-tests under the same name.
 portpicker = "0.1"
+urlencoding = "2.1" # tests URL-encode attack probes (per_model_stats_test)
 # Auto-compaction tests (issue #69) use tokio's virtual-time control
 # (`start_paused`, `tokio::time::advance`), which is gated behind the
 # `test-util` feature. The main `tokio = { features = ["full"] }` import

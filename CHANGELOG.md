@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Dead surface cut #2** (over-engineering audit). Removed items with zero
+  consumers, none in the stable tier of
+  [`api-stability.md`](docs/reference/api-stability.md) (unstable/unlisted items
+  may change in any minor): `serialization::bincode_optimized`
+  (`SmartSerializer` & co., 374 lines, superseded by `serialization::binary` +
+  the engine's direct bincode path); `http::ApiRouter`/`ApiRouterStats` (174
+  lines, never wired); `rbac` `GoogleProvider` + the never-constructed
+  `ProviderConfig::Google`/`OAuth`/`Ldap` variants (169 lines — OAuth2 support,
+  if wanted, deserves a real implementation); `app::DeclarativeServe` (a compat
+  shim for the retired `DeclarativeServer`, 115 lines); the private
+  `lithair_core::macros` helper module. The `urlencoding` dependency moved to
+  dev-dependencies (only a test used it) — consumers no longer pull it.
+
+- **`#[derive(RaftstoneModel)]` removed from `lithair-macros`.** Its only
+  output was `impl lithair_core::macros::GeneratedModel` — a **private** module
+  path, so the derive could never compile for an external user (latently broken
+  since the module was made private; zero users in or out of tree). Removal of
+  already-broken behavior per the deprecation policy's accelerated clause.
+  `#[derive(DeclarativeModel)]` is the supported derive.
+
+- The crate-front doc example (docs.rs) now pins `lithair-core = "1.0"`
+  (was `0.13`).
+
 ## [1.0.0] - 2026-06-30
 
 **Lithair 1.0.** Promotes `1.0.0-rc.1` unchanged after a clean production soak

@@ -22,7 +22,7 @@
 //!
 //! ```toml,ignore
 //! [dependencies]
-//! lithair-core = "0.13"
+//! lithair-core = "1.0"
 //! serde = { version = "1.0", features = ["derive"] }
 //! tokio = { version = "1", features = ["full"] }
 //! ```
@@ -118,9 +118,6 @@ pub mod testing;
 
 // The recommended one-line application import (stable v1.0 surface).
 pub mod prelude;
-
-// Internal modules (not in public API)
-mod macros;
 
 // Re-export derive macros from lithair-macros so users only need one crate
 #[cfg(feature = "macros")]

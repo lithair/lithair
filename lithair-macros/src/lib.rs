@@ -12,7 +12,7 @@ mod lithair_model;
 mod page;
 mod rbac_role;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemImpl};
+use syn::{parse_macro_input, ItemImpl};
 
 /// Derive macro for generating lifecycle-aware data models
 ///
@@ -141,55 +141,6 @@ pub fn persistence(_args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn server(_args: TokenStream, input: TokenStream) -> TokenStream {
     input
-}
-
-/// Derive macro for generating events and serialization for data models
-///
-/// This macro automatically generates:
-/// - Event types for Create, Update, Delete operations
-/// - Serialization implementations
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use lithair_macros::RaftstoneModel;
-///
-/// #[derive(RaftstoneModel)]
-/// struct Product {
-///     id: u64,
-///     name: String,
-///     price: f64,
-/// }
-/// ```
-#[proc_macro_derive(RaftstoneModel)]
-pub fn derive_lithair_model(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let name = &input.ident;
-    let name_str = name.to_string();
-
-    let _fields = match &input.data {
-        syn::Data::Struct(data_struct) => &data_struct.fields,
-        _ => {
-            return syn::Error::new_spanned(name, "RaftstoneModel can only be derived for structs")
-                .to_compile_error()
-                .into();
-        }
-    };
-
-    let expanded = quote! {
-        impl lithair_core::macros::GeneratedModel for #name {
-            fn model_name() -> &'static str {
-                #name_str
-            }
-
-            fn field_names() -> &'static [&'static str] {
-                &[]
-            }
-        }
-    };
-
-    TokenStream::from(expanded)
 }
 
 /// Attribute macro for generating HTTP routes from API implementations

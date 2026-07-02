@@ -36,7 +36,6 @@ use std::sync::Arc;
 use tracing::Instrument as _;
 
 pub mod builder;
-pub mod declarative_serve;
 pub mod model_handler;
 mod ops_endpoints;
 pub mod request;
@@ -45,7 +44,6 @@ pub mod router;
 mod schema_handlers;
 
 pub use builder::LithairServerBuilder;
-pub use declarative_serve::DeclarativeServe;
 pub use model_handler::{DeclarativeModelHandler, ModelHandler, ModelStats};
 
 // ============================================================================
