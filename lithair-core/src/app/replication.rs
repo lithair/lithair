@@ -28,9 +28,9 @@ impl LithairServer {
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(response::json(
+                return Ok(response::json_value(
                     StatusCode::BAD_REQUEST,
-                    serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
                 ));
             }
         };
@@ -71,9 +71,9 @@ impl LithairServer {
                         }
                         Err(e) => {
                             log::error!("CREATE replication failed: {}", e);
-                            return Ok(response::json(
+                            return Ok(response::json_value(
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                serde_json::json!({"error": e.to_string()}).to_string(),
+                                &serde_json::json!({"error": e.to_string()}),
                             ));
                         }
                     }
@@ -89,9 +89,9 @@ impl LithairServer {
                         }
                         Err(e) => {
                             log::error!("UPDATE replication failed: {}", e);
-                            return Ok(response::json(
+                            return Ok(response::json_value(
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                serde_json::json!({"error": e.to_string()}).to_string(),
+                                &serde_json::json!({"error": e.to_string()}),
                             ));
                         }
                     }
@@ -105,9 +105,9 @@ impl LithairServer {
                         }
                         Err(e) => {
                             log::error!("DELETE replication failed: {}", e);
-                            return Ok(response::json(
+                            return Ok(response::json_value(
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                serde_json::json!({"error": e.to_string()}).to_string(),
+                                &serde_json::json!({"error": e.to_string()}),
                             ));
                         }
                     }
@@ -132,9 +132,9 @@ impl LithairServer {
                 }
                 Err(e) => {
                     log::error!("Replication failed: {}", e);
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::json!({"error": e.to_string()}).to_string(),
+                        &serde_json::json!({"error": e.to_string()}),
                     ))
                 }
             }
@@ -163,9 +163,9 @@ impl LithairServer {
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(response::json(
+                return Ok(response::json_value(
                     StatusCode::BAD_REQUEST,
-                    serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
                 ));
             }
         };
@@ -213,9 +213,9 @@ impl LithairServer {
                 }
                 Err(e) => {
                     log::error!("Bulk replication failed: {}", e);
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::json!({"error": e.to_string()}).to_string(),
+                        &serde_json::json!({"error": e.to_string()}),
                     ))
                 }
             }
@@ -244,9 +244,9 @@ impl LithairServer {
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(response::json(
+                return Ok(response::json_value(
                     StatusCode::BAD_REQUEST,
-                    serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
                 ));
             }
         };
@@ -293,9 +293,9 @@ impl LithairServer {
                 }
                 Err(e) => {
                     log::error!("Replication UPDATE failed: {}", e);
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::json!({"error": e.to_string()}).to_string(),
+                        &serde_json::json!({"error": e.to_string()}),
                     ))
                 }
             }
@@ -324,9 +324,9 @@ impl LithairServer {
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(response::json(
+                return Ok(response::json_value(
                     StatusCode::BAD_REQUEST,
-                    serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
                 ));
             }
         };
@@ -371,9 +371,9 @@ impl LithairServer {
                 }
                 Err(e) => {
                     log::error!("Replication DELETE failed: {}", e);
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::json!({"error": e.to_string()}).to_string(),
+                        &serde_json::json!({"error": e.to_string()}),
                     ))
                 }
             }
@@ -405,9 +405,9 @@ impl LithairServer {
             match serde_json::from_slice(&body_bytes) {
                 Ok(r) => r,
                 Err(e) => {
-                    return Ok(response::json(
+                    return Ok(response::json_value(
                         StatusCode::BAD_REQUEST,
-                        format!(r#"{{"error":"Invalid request: {}"}}"#, e),
+                        &serde_json::json!({"error": format!("Invalid request: {}", e)}),
                     ));
                 }
             };
@@ -436,9 +436,9 @@ impl LithairServer {
                 applied_index: consensus_log.applied_index(),
             };
             return Ok(response::json_serialize(StatusCode::OK, &response).unwrap_or_else(|e| {
-                response::json(
+                response::json_value(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    serde_json::json!({"error": e.to_string()}).to_string(),
+                    &serde_json::json!({"error": e.to_string()}),
                 )
             }));
         }
@@ -530,9 +530,9 @@ impl LithairServer {
         };
 
         Ok(response::json_serialize(StatusCode::OK, &response).unwrap_or_else(|e| {
-            response::json(
+            response::json_value(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                serde_json::json!({"error": e.to_string()}).to_string(),
+                &serde_json::json!({"error": e.to_string()}),
             )
         }))
     }
@@ -584,9 +584,9 @@ impl LithairServer {
             }
             Err(e) => {
                 log::error!("Failed to read snapshot: {}", e);
-                Ok(response::json(
+                Ok(response::json_value(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!(r#"{{"error":"Failed to read snapshot: {}"}}"#, e),
+                    &serde_json::json!({"error": format!("Failed to read snapshot: {}", e)}),
                 ))
             }
         }
@@ -642,9 +642,9 @@ impl LithairServer {
         let body_bytes: Vec<u8> = match req.into_body().collect().await.map(|c| c.to_bytes()) {
             Ok(bytes) => bytes.to_vec(),
             Err(e) => {
-                return Ok(response::json(
+                return Ok(response::json_value(
                     StatusCode::BAD_REQUEST,
-                    format!(r#"{{"error":"Failed to read body: {}"}}"#, e),
+                    &serde_json::json!({"error": format!("Failed to read body: {}", e)}),
                 ));
             }
         };
@@ -699,9 +699,9 @@ impl LithairServer {
                 };
 
                 Ok(response::json_serialize(StatusCode::OK, &response).unwrap_or_else(|e| {
-                    response::json(
+                    response::json_value(
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::json!({"error": e.to_string()}).to_string(),
+                        &serde_json::json!({"error": e.to_string()}),
                     )
                 }))
             }
@@ -715,9 +715,9 @@ impl LithairServer {
 
                 Ok(response::json_serialize(StatusCode::INTERNAL_SERVER_ERROR, &response)
                     .unwrap_or_else(|e| {
-                        response::json(
+                        response::json_value(
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            serde_json::json!({"error": e.to_string()}).to_string(),
+                            &serde_json::json!({"error": e.to_string()}),
                         )
                     }))
             }
@@ -807,10 +807,7 @@ impl LithairServer {
             }
         }
 
-        Ok(response::json(
-            StatusCode::OK,
-            serde_json::to_string_pretty(&health_data).unwrap_or_default(),
-        ))
+        Ok(response::json_value(StatusCode::OK, &health_data))
     }
 
     /// Handle GET /_raft/resync_stats - Return snapshot resync statistics
@@ -828,10 +825,7 @@ impl LithairServer {
             "resync_stats": stats_json,
         });
 
-        Ok(response::json(
-            StatusCode::OK,
-            serde_json::to_string_pretty(&response_data).unwrap_or_default(),
-        ))
+        Ok(response::json_value(StatusCode::OK, &response_data))
     }
 
     /// Handle GET /_raft/sync-status - Return detailed sync status for each follower
@@ -848,11 +842,14 @@ impl LithairServer {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
         if !is_leader {
-            return Ok(response::json(StatusCode::OK, serde_json::to_string_pretty(&serde_json::json!({
+            return Ok(response::json_value(
+                StatusCode::OK,
+                &serde_json::json!({
                     "node_id": self.node_id,
                     "is_leader": false,
                     "message": "This node is not the leader. Sync status is only available on the leader."
-                })).unwrap_or_default()));
+                }),
+            ));
         }
 
         // Get commit index from consensus log
@@ -890,10 +887,7 @@ impl LithairServer {
             "followers": followers_json,
         });
 
-        Ok(response::json(
-            StatusCode::OK,
-            serde_json::to_string_pretty(&response_data).unwrap_or_default(),
-        ))
+        Ok(response::json_value(StatusCode::OK, &response_data))
     }
 
     /// Handle POST /_raft/force-resync - Manually trigger snapshot resync to a follower
@@ -947,9 +941,9 @@ impl LithairServer {
         };
 
         if !marked {
-            return Ok(response::json(
+            return Ok(response::json_value(
                 StatusCode::NOT_FOUND,
-                format!(r#"{{"error":"Follower '{}' not found in cluster"}}"#, target),
+                &serde_json::json!({"error": format!("Follower '{}' not found in cluster", target)}),
             ));
         }
 
@@ -979,18 +973,14 @@ impl LithairServer {
             }
         };
 
-        Ok(hyper::Response::builder()
-            .status(status)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "target": target,
-                    "success": status == hyper::StatusCode::OK,
-                    "message": message,
-                }))
-                .unwrap_or_default(),
-            )))
-            .expect("valid HTTP response"))
+        Ok(response::json_value(
+            status,
+            &serde_json::json!({
+                "target": target,
+                "success": status == hyper::StatusCode::OK,
+                "message": message,
+            }),
+        ))
     }
 
     /// Handle POST /_raft/migrate - Submit migration operations through consensus
@@ -1036,12 +1026,11 @@ impl LithairServer {
         let operation: crate::cluster::CrudOperation = match serde_json::from_slice(&body) {
             Ok(op) => op,
             Err(e) => {
-                return Ok(response::json(
+                return Ok(response::json_value(
                     StatusCode::BAD_REQUEST,
-                    serde_json::json!({
+                    &serde_json::json!({
                         "error": format!("Invalid operation: {}", e)
-                    })
-                    .to_string(),
+                    }),
                 ));
             }
         };
@@ -1056,12 +1045,11 @@ impl LithairServer {
         );
 
         if !is_migration {
-            return Ok(response::json(
+            return Ok(response::json_value(
                 StatusCode::BAD_REQUEST,
-                serde_json::json!({
+                &serde_json::json!({
                     "error": "Only migration operations are allowed on this endpoint"
-                })
-                .to_string(),
+                }),
             ));
         }
 
@@ -1102,51 +1090,46 @@ impl LithairServer {
                     let apply_result = self.apply_crud_operation(&operation).await;
 
                     match apply_result {
-                        Ok(result) => Ok(response::json(
+                        Ok(result) => Ok(response::json_value(
                             StatusCode::OK,
-                            serde_json::json!({
+                            &serde_json::json!({
                                 "success": true,
                                 "commit_index": new_commit,
                                 "result": result
-                            })
-                            .to_string(),
+                            }),
                         )),
-                        Err(e) => Ok(response::json(
+                        Err(e) => Ok(response::json_value(
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            serde_json::json!({
+                            &serde_json::json!({
                                 "error": format!("Migration apply failed: {}", e),
                                 "commit_index": new_commit
-                            })
-                            .to_string(),
+                            }),
                         )),
                     }
                 }
-                Err(e) => Ok(response::json(
+                Err(e) => Ok(response::json_value(
                     StatusCode::SERVICE_UNAVAILABLE,
-                    serde_json::json!({
+                    &serde_json::json!({
                         "error": format!("Replication failed: {}", e)
-                    })
-                    .to_string(),
+                    }),
                 )),
             }
         } else {
             // Single node mode - just apply
             let apply_result = self.apply_crud_operation(&operation).await;
             match apply_result {
-                Ok(result) => Ok(response::json(
+                Ok(result) => Ok(response::json_value(
                     StatusCode::OK,
-                    serde_json::json!({
+                    &serde_json::json!({
                         "success": true,
                         "result": result
-                    })
-                    .to_string(),
+                    }),
                 )),
-                Err(e) => Ok(response::json(
+                Err(e) => Ok(response::json_value(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    serde_json::json!({
+                    &serde_json::json!({
                         "error": format!("Migration failed: {}", e)
-                    })
-                    .to_string(),
+                    }),
                 )),
             }
         }

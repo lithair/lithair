@@ -73,10 +73,9 @@ impl LithairServer {
 
                     Ok(response::json_value(StatusCode::OK, &response))
                 } else {
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::NOT_FOUND,
-                        serde_json::json!({"error": format!("Model '{}' not found", name)})
-                            .to_string(),
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
                     ))
                 }
             }
@@ -99,9 +98,9 @@ impl LithairServer {
                     let stats = handler.get_stats(&data_path).await;
 
                     Ok(response::json_serialize(StatusCode::OK, &stats).unwrap_or_else(|e| {
-                        response::json(
+                        response::json_value(
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            serde_json::json!({"error": e.to_string()}).to_string(),
+                            &serde_json::json!({"error": e.to_string()}),
                         )
                     }))
                 } else {
@@ -139,10 +138,9 @@ impl LithairServer {
                         )))
                         .expect("valid HTTP response"))
                 } else {
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::NOT_FOUND,
-                        serde_json::json!({"error": format!("Model '{}' not found", name)})
-                            .to_string(),
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
                     ))
                 }
             }
@@ -156,10 +154,9 @@ impl LithairServer {
 
                     Ok(response::json_value(StatusCode::OK, &history))
                 } else {
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::NOT_FOUND,
-                        serde_json::json!({"error": format!("Model '{}' not found", name)})
-                            .to_string(),
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
                     ))
                 }
             }
@@ -202,22 +199,17 @@ impl LithairServer {
                                 "updated_data": updated
                             });
 
-                            Ok(response::json(
-                                StatusCode::OK,
-                                serde_json::to_string_pretty(&response)
-                                    .expect("serializable response"),
-                            ))
+                            Ok(response::json_value(StatusCode::OK, &response))
                         }
-                        Err(e) => Ok(response::json(
+                        Err(e) => Ok(response::json_value(
                             StatusCode::BAD_REQUEST,
-                            serde_json::json!({"error": e.to_string()}).to_string(),
+                            &serde_json::json!({"error": e.to_string()}),
                         )),
                     }
                 } else {
-                    Ok(response::json(
+                    Ok(response::json_value(
                         StatusCode::NOT_FOUND,
-                        serde_json::json!({"error": format!("Model '{}' not found", name)})
-                            .to_string(),
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
                     ))
                 }
             }
@@ -366,10 +358,9 @@ impl LithairServer {
                 let parsed: serde_json::Value = match serde_json::from_slice(&body_bytes) {
                     Ok(v) => v,
                     Err(e) => {
-                        return Ok(response::json(
+                        return Ok(response::json_value(
                             StatusCode::BAD_REQUEST,
-                            serde_json::json!({"error": format!("Invalid JSON: {}", e)})
-                                .to_string(),
+                            &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
                         ));
                     }
                 };

@@ -35,10 +35,10 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(super::boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Invalid schema change: {}"}}"#,
-                        e
-                    ))))
+                    .body(super::boxed_full(Bytes::from(
+                        serde_json::json!({"error": format!("Invalid schema change: {}", e)})
+                            .to_string(),
+                    )))
                     .unwrap());
             }
         };
@@ -147,10 +147,10 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(super::boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Invalid vote request: {}"}}"#,
-                        e
-                    ))))
+                    .body(super::boxed_full(Bytes::from(
+                        serde_json::json!({"error": format!("Invalid vote request: {}", e)})
+                            .to_string(),
+                    )))
                     .unwrap());
             }
         };
@@ -174,10 +174,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(StatusCode::CONFLICT)
                     .header("Content-Type", "application/json")
-                    .body(super::boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Change is no longer pending (status: {:?})"}}"#,
-                        status
-                    ))))
+                    .body(super::boxed_full(Bytes::from(serde_json::json!({"error": format!("Change is no longer pending (status: {:?})", status)}).to_string())))
                     .unwrap());
             }
             _ => {}
@@ -414,10 +411,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(StatusCode::CONFLICT)
                     .header("Content-Type", "application/json")
-                    .body(super::boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Change is no longer pending (status: {:?})"}}"#,
-                        status
-                    ))))
+                    .body(super::boxed_full(Bytes::from(serde_json::json!({"error": format!("Change is no longer pending (status: {:?})", status)}).to_string())))
                     .unwrap());
             }
             _ => {}
@@ -542,10 +536,7 @@ impl LithairServer {
                 return Ok(hyper::Response::builder()
                     .status(StatusCode::CONFLICT)
                     .header("Content-Type", "application/json")
-                    .body(super::boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Change is no longer pending (status: {:?})"}}"#,
-                        pending.status
-                    ))))
+                    .body(super::boxed_full(Bytes::from(serde_json::json!({"error": format!("Change is no longer pending (status: {:?})", pending.status)}).to_string())))
                     .unwrap());
             }
 
@@ -964,10 +955,7 @@ impl LithairServer {
                             return Ok(hyper::Response::builder()
                                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
-                                .body(super::boxed_full(Bytes::from(format!(
-                                    r#"{{"error":"Failed to save rollback schema: {}"}}"#,
-                                    e
-                                ))))
+                                .body(super::boxed_full(Bytes::from(serde_json::json!({"error": format!("Failed to save rollback schema: {}", e)}).to_string())))
                                 .unwrap());
                         }
 

@@ -2426,13 +2426,10 @@ impl LithairServer {
                                     Err(e) => {
                                         log::error!("Request handler error: {}", e);
                                         Ok(Self::add_security_headers(
-                                            hyper::Response::builder()
-                                                .status(500)
-                                                .header("Content-Type", "application/json")
-                                                .body(boxed_full(bytes::Bytes::from(
-                                                    r#"{"error":"Internal server error"}"#,
-                                                )))
-                                                .expect("valid HTTP response"),
+                                            response::json(
+                                                StatusCode::INTERNAL_SERVER_ERROR,
+                                                r#"{"error":"Internal server error"}"#,
+                                            ),
                                             tls_active,
                                         ))
                                     }

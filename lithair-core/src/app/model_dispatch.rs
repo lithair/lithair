@@ -107,12 +107,11 @@ impl LithairServer {
                             ));
                         }
                         Err(e) => {
-                            return Ok(response::json(
+                            return Ok(response::json_value(
                                 StatusCode::BAD_REQUEST,
-                                serde_json::json!({
+                                &serde_json::json!({
                                     "error": format!("Invalid JSON in request body: {}", e)
-                                })
-                                .to_string(),
+                                }),
                             ));
                         }
                     }
@@ -282,10 +281,9 @@ impl LithairServer {
                 // Check WAL result first (must succeed for durability)
                 if let Err(e) = wal_result {
                     log::error!("WAL write failed: {}", e);
-                    return Ok(response::json(
+                    return Ok(response::json_value(
                         StatusCode::SERVICE_UNAVAILABLE,
-                        serde_json::json!({"error": format!("WAL write failed: {}", e)})
-                            .to_string(),
+                        &serde_json::json!({"error": format!("WAL write failed: {}", e)}),
                     ));
                 }
                 log::debug!("WAL entry durable: index={}", entry_index);
@@ -368,15 +366,14 @@ impl LithairServer {
                                     consensus_log.commit_index()
                                 );
                                 // Return error - something is seriously wrong if commit takes this long
-                                return Ok(response::json(
+                                return Ok(response::json_value(
                                     StatusCode::SERVICE_UNAVAILABLE,
-                                    serde_json::json!({
+                                    &serde_json::json!({
                                         "error": format!(
                                             "Commit ordering timeout: entry {} waiting for {}",
                                             entry_index, expected_prior
                                         )
-                                    })
-                                    .to_string(),
+                                    }),
                                 ));
                             }
                             tokio::time::sleep(std::time::Duration::from_micros(100)).await;
@@ -421,12 +418,11 @@ impl LithairServer {
                             }
                             Err(e) => {
                                 log::error!("Failed to apply operation: {}", e);
-                                return Ok(response::json(
+                                return Ok(response::json_value(
                                     StatusCode::INTERNAL_SERVER_ERROR,
-                                    serde_json::json!({
+                                    &serde_json::json!({
                                         "error": format!("Apply failed: {}", e)
-                                    })
-                                    .to_string(),
+                                    }),
                                 ));
                             }
                         }
