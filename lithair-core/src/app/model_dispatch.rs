@@ -72,7 +72,13 @@ impl LithairServer {
                         .status(307) // Temporary Redirect
                         .header("Location", format!("http://127.0.0.1:{}{}", leader_port, path))
                         .header("X-Raft-Leader", format!("{}", leader_port))
-                        .body(boxed_full(Bytes::from(serde_json::json!({"error": "Not leader", "leader_port": leader_port}).to_string())))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({
+                                "error": "Not leader",
+                                "leader_port": leader_port
+                            })
+                            .to_string(),
+                        )))
                         .expect("valid HTTP response"));
                     }
                 }
@@ -84,22 +90,41 @@ impl LithairServer {
                 use http_body_util::BodyExt;
                 let (_parts, body) = req.into_parts();
                 let body_bytes = body.collect().await?.to_bytes();
-                let body_json: serde_json::Value =
-                    serde_json::from_slice(&body_bytes).unwrap_or(serde_json::Value::Null);
-                // Reject valid-JSON-but-not-an-object bodies (`42`, `"abc"`, `[..]`)
-                // up front: the `data["id"] = …` inserts below use serde_json's
-                // `IndexMut`, which PANICS on non-object/non-null values (Null is
-                // fine — it auto-converts to an object). Pre-existing panic found
-                // by review on #164.
-                if !(body_json.is_object() || body_json.is_null()) {
-                    return Ok(hyper::Response::builder()
-                        .status(400)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            r#"{"error":"Request body must be a JSON object"}"#,
-                        )))
-                        .expect("valid HTTP response"));
-                }
+                // CREATE/UPDATE consume the body: it must parse as a JSON
+                // OBJECT. Anything else is a 400 — a non-object (`42`, `[..]`)
+                // would PANIC in the `data["id"] = …` IndexMut inserts below,
+                // and malformed JSON silently became an empty entity via the
+                // old `unwrap_or(Null)` (both found by review on #164/#166).
+                // DELETE ignores the body entirely (typically empty), so it
+                // gets no such constraint.
+                let body_json: serde_json::Value = if is_create || is_update {
+                    match serde_json::from_slice(&body_bytes) {
+                        Ok(v @ serde_json::Value::Object(_)) => v,
+                        Ok(_) => {
+                            return Ok(hyper::Response::builder()
+                                .status(400)
+                                .header("Content-Type", "application/json")
+                                .body(boxed_full(Bytes::from(
+                                    r#"{"error":"Request body must be a JSON object"}"#,
+                                )))
+                                .expect("valid HTTP response"));
+                        }
+                        Err(e) => {
+                            return Ok(hyper::Response::builder()
+                                .status(400)
+                                .header("Content-Type", "application/json")
+                                .body(boxed_full(Bytes::from(
+                                    serde_json::json!({
+                                        "error": format!("Invalid JSON in request body: {}", e)
+                                    })
+                                    .to_string(),
+                                )))
+                                .expect("valid HTTP response"));
+                        }
+                    }
+                } else {
+                    serde_json::Value::Null
+                };
 
                 // Create the CRUD operation
                 // For CREATE operations: generate ID on leader to ensure all nodes have same ID
@@ -352,9 +377,17 @@ impl LithairServer {
                                 );
                                 // Return error - something is seriously wrong if commit takes this long
                                 return Ok(hyper::Response::builder()
-                                .status(503)
-                                .body(boxed_full(Bytes::from(serde_json::json!({"error": format!("Commit ordering timeout: entry {} waiting for {}", entry_index, expected_prior)}).to_string())))
-                                .expect("valid HTTP response"));
+                                    .status(503)
+                                    .body(boxed_full(Bytes::from(
+                                        serde_json::json!({
+                                            "error": format!(
+                                                "Commit ordering timeout: entry {} waiting for {}",
+                                                entry_index, expected_prior
+                                            )
+                                        })
+                                        .to_string(),
+                                    )))
+                                    .expect("valid HTTP response"));
                             }
                             tokio::time::sleep(std::time::Duration::from_micros(100)).await;
                             commit_waited += 1;
@@ -400,7 +433,12 @@ impl LithairServer {
                                 log::error!("Failed to apply operation: {}", e);
                                 return Ok(hyper::Response::builder()
                                     .status(500)
-                                    .body(boxed_full(Bytes::from(serde_json::json!({"error": format!("Apply failed: {}", e)}).to_string())))
+                                    .body(boxed_full(Bytes::from(
+                                        serde_json::json!({
+                                            "error": format!("Apply failed: {}", e)
+                                        })
+                                        .to_string(),
+                                    )))
                                     .expect("valid HTTP response"));
                             }
                         }
@@ -409,7 +447,12 @@ impl LithairServer {
                         log::error!("Failed to replicate: {}", e);
                         return Ok(hyper::Response::builder()
                         .status(503) // Service Unavailable
-                        .body(boxed_full(Bytes::from(serde_json::json!({"error": format!("Replication failed: {}", e)}).to_string())))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({
+                                "error": format!("Replication failed: {}", e)
+                            })
+                            .to_string(),
+                        )))
                         .expect("valid HTTP response"));
                     }
                 }
