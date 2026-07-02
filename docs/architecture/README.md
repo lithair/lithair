@@ -13,6 +13,7 @@ Understanding the architectural foundations and design principles of the Lithair
 
 ### System Design
 - [Overview](./overview.md) - General architecture overview with diagrams
+- [Code Map](./code-map.md) - Bricks ↔ modules: where every concern lives in the source
 - [System Design](./system-design.md) - Design principles and architectural patterns
 - [Data Flow](./data-flow.md) - How data flows through the system
 

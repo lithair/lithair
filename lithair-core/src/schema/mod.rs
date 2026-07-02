@@ -1,3 +1,8 @@
+//! Schema & migration: model specifications, schema history and locking,
+//! relations / foreign-key registry, and cluster schema synchronization.
+//! Backs the `#[schema(version = N)]` attribute and the `/_admin/schema/*`
+//! admin plane.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;

@@ -42,6 +42,7 @@
 # Architecture
 
 - [Overview](architecture/overview.md)
+- [Code Map — bricks ↔ modules](architecture/code-map.md)
 - [Data Flow](architecture/data-flow.md)
 - [System Design](architecture/system-design.md)
 
