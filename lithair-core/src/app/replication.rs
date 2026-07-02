@@ -21,24 +21,17 @@ impl LithairServer {
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
             Ok(bytes) => bytes,
             Err(_) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(StatusCode::BAD_REQUEST, r#"{"error":"Invalid body"}"#));
             }
         };
 
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json_value(
+                    StatusCode::BAD_REQUEST,
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
+                ));
             }
         };
 
@@ -74,21 +67,14 @@ impl LithairServer {
                     match model.handler.apply_replicated_item_json(item_data).await {
                         Ok(()) => {
                             log::debug!("CREATE replication applied for model {}", model.name);
-                            return Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::OK)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#));
                         }
                         Err(e) => {
                             log::error!("CREATE replication failed: {}", e);
-                            return Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    serde_json::json!({"error": e.to_string()}).to_string(),
-                                )))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json_value(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                &serde_json::json!({"error": e.to_string()}),
+                            ));
                         }
                     }
                 } else if let Some(update_data) = op.get("Update") {
@@ -99,21 +85,14 @@ impl LithairServer {
                     match model.handler.apply_replicated_update_json(primary_key, item_data).await {
                         Ok(()) => {
                             log::debug!("UPDATE replication applied for model {}", model.name);
-                            return Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::OK)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#));
                         }
                         Err(e) => {
                             log::error!("UPDATE replication failed: {}", e);
-                            return Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    serde_json::json!({"error": e.to_string()}).to_string(),
-                                )))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json_value(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                &serde_json::json!({"error": e.to_string()}),
+                            ));
                         }
                     }
                 } else if let Some(delete_data) = op.get("Delete") {
@@ -122,21 +101,14 @@ impl LithairServer {
                     match model.handler.apply_replicated_delete_json(primary_key).await {
                         Ok(_) => {
                             log::debug!("DELETE replication applied for model {}", model.name);
-                            return Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::OK)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#));
                         }
                         Err(e) => {
                             log::error!("DELETE replication failed: {}", e);
-                            return Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    serde_json::json!({"error": e.to_string()}).to_string(),
-                                )))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json_value(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                &serde_json::json!({"error": e.to_string()}),
+                            ));
                         }
                     }
                 }
@@ -146,42 +118,28 @@ impl LithairServer {
             let item_data = match message.get("data") {
                 Some(data) => data.clone(),
                 None => {
-                    return Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::BAD_REQUEST)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            r#"{"error":"Missing 'data' or 'operation' field"}"#,
-                        )))
-                        .expect("valid HTTP response"));
+                    return Ok(response::json(
+                        StatusCode::BAD_REQUEST,
+                        r#"{"error":"Missing 'data' or 'operation' field"}"#,
+                    ));
                 }
             };
 
             match model.handler.apply_replicated_item_json(item_data).await {
                 Ok(()) => {
                     log::debug!("Replication applied for model {}", model.name);
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::OK)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
-                        .expect("valid HTTP response"))
+                    Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#))
                 }
                 Err(e) => {
                     log::error!("Replication failed: {}", e);
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": e.to_string()}).to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &serde_json::json!({"error": e.to_string()}),
+                    ))
                 }
             }
         } else {
-            Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::NOT_FOUND)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .expect("valid HTTP response"))
+            Ok(response::json(StatusCode::NOT_FOUND, r#"{"error":"No model handler found"}"#))
         }
     }
 
@@ -198,24 +156,17 @@ impl LithairServer {
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
             Ok(bytes) => bytes,
             Err(_) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(StatusCode::BAD_REQUEST, r#"{"error":"Invalid body"}"#));
             }
         };
 
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json_value(
+                    StatusCode::BAD_REQUEST,
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
+                ));
             }
         };
 
@@ -226,13 +177,10 @@ impl LithairServer {
         let items: Vec<serde_json::Value> = match message.get("items") {
             Some(serde_json::Value::Array(arr)) => arr.clone(),
             _ => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        r#"{"error":"Missing or invalid 'items' field"}"#,
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"Missing or invalid 'items' field"}"#,
+                ));
             }
         };
 
@@ -258,32 +206,21 @@ impl LithairServer {
                         model.name,
                         batch_id
                     );
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::OK)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"status":"ok","count":{}}}"#,
-                            count
-                        ))))
-                        .expect("valid HTTP response"))
+                    Ok(response::json(
+                        StatusCode::OK,
+                        format!(r#"{{"status":"ok","count":{}}}"#, count),
+                    ))
                 }
                 Err(e) => {
                     log::error!("Bulk replication failed: {}", e);
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": e.to_string()}).to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &serde_json::json!({"error": e.to_string()}),
+                    ))
                 }
             }
         } else {
-            Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::NOT_FOUND)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .expect("valid HTTP response"))
+            Ok(response::json(StatusCode::NOT_FOUND, r#"{"error":"No model handler found"}"#))
         }
     }
 
@@ -300,24 +237,17 @@ impl LithairServer {
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
             Ok(bytes) => bytes,
             Err(_) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(StatusCode::BAD_REQUEST, r#"{"error":"Invalid body"}"#));
             }
         };
 
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json_value(
+                    StatusCode::BAD_REQUEST,
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
+                ));
             }
         };
 
@@ -327,22 +257,20 @@ impl LithairServer {
         let id = match message.get("id").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"Missing 'id' field"}"#,
+                ));
             }
         };
 
         let item_data = match message.get("data") {
             Some(data) => data.clone(),
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'data' field"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"Missing 'data' field"}"#,
+                ));
             }
         };
 
@@ -361,29 +289,18 @@ impl LithairServer {
             match model.handler.apply_replicated_update_json(&id, item_data).await {
                 Ok(()) => {
                     log::debug!("Replication UPDATE applied for {} in model {}", id, model.name);
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::OK)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
-                        .expect("valid HTTP response"))
+                    Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#))
                 }
                 Err(e) => {
                     log::error!("Replication UPDATE failed: {}", e);
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": e.to_string()}).to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &serde_json::json!({"error": e.to_string()}),
+                    ))
                 }
             }
         } else {
-            Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::NOT_FOUND)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .expect("valid HTTP response"))
+            Ok(response::json(StatusCode::NOT_FOUND, r#"{"error":"No model handler found"}"#))
         }
     }
 
@@ -400,24 +317,17 @@ impl LithairServer {
         let body_bytes = match req.into_body().collect().await.map(|c| c.to_bytes()) {
             Ok(bytes) => bytes,
             Err(_) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Invalid body"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(StatusCode::BAD_REQUEST, r#"{"error":"Invalid body"}"#));
             }
         };
 
         let message: serde_json::Value = match serde_json::from_slice(&body_bytes) {
             Ok(v) => v,
             Err(e) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({"error": format!("Invalid JSON: {}", e)}).to_string(),
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json_value(
+                    StatusCode::BAD_REQUEST,
+                    &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
+                ));
             }
         };
 
@@ -427,11 +337,10 @@ impl LithairServer {
         let id = match message.get("id").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'id' field"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"Missing 'id' field"}"#,
+                ));
             }
         };
 
@@ -455,32 +364,21 @@ impl LithairServer {
                         model.name,
                         deleted
                     );
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::OK)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"status":"ok","deleted":{}}}"#,
-                            deleted
-                        ))))
-                        .expect("valid HTTP response"))
+                    Ok(response::json(
+                        StatusCode::OK,
+                        format!(r#"{{"status":"ok","deleted":{}}}"#, deleted),
+                    ))
                 }
                 Err(e) => {
                     log::error!("Replication DELETE failed: {}", e);
-                    Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": e.to_string()}).to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &serde_json::json!({"error": e.to_string()}),
+                    ))
                 }
             }
         } else {
-            Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::NOT_FOUND)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(r#"{"error":"No model handler found"}"#)))
-                .expect("valid HTTP response"))
+            Ok(response::json(StatusCode::NOT_FOUND, r#"{"error":"No model handler found"}"#))
         }
     }
 
@@ -507,14 +405,10 @@ impl LithairServer {
             match serde_json::from_slice(&body_bytes) {
                 Ok(r) => r,
                 Err(e) => {
-                    return Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::BAD_REQUEST)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"error":"Invalid request: {}"}}"#,
-                            e
-                        ))))
-                        .expect("valid HTTP response"));
+                    return Ok(response::json_value(
+                        StatusCode::BAD_REQUEST,
+                        &serde_json::json!({"error": format!("Invalid request: {}", e)}),
+                    ));
                 }
             };
 
@@ -522,11 +416,10 @@ impl LithairServer {
         let consensus_log = match &self.consensus_log {
             Some(log) => log,
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Consensus log not initialized"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    r#"{"error":"Consensus log not initialized"}"#,
+                ));
             }
         };
 
@@ -542,11 +435,12 @@ impl LithairServer {
                 last_log_index: consensus_log.last_index().await,
                 applied_index: consensus_log.applied_index(),
             };
-            return Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
-                .expect("valid HTTP response"));
+            return Ok(response::json_serialize(StatusCode::OK, &response).unwrap_or_else(|e| {
+                response::json_value(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &serde_json::json!({"error": e.to_string()}),
+                )
+            }));
         }
 
         // Reconcile Raft role: an accepted AppendEntries means another node is
@@ -635,11 +529,12 @@ impl LithairServer {
             applied_index: consensus_log.applied_index(),
         };
 
-        Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(serde_json::to_vec(&response).unwrap_or_default())))
-            .expect("valid HTTP response"))
+        Ok(response::json_serialize(StatusCode::OK, &response).unwrap_or_else(|e| {
+            response::json_value(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &serde_json::json!({"error": e.to_string()}),
+            )
+        }))
     }
 
     /// Handle GET /_raft/snapshot - Return current snapshot for resync
@@ -654,13 +549,10 @@ impl LithairServer {
         let snapshot_manager = match &self.snapshot_manager {
             Some(mgr) => mgr,
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        r#"{"error":"Snapshot manager not initialized"}"#,
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    r#"{"error":"Snapshot manager not initialized"}"#,
+                ));
             }
         };
 
@@ -669,11 +561,10 @@ impl LithairServer {
         let meta = match mgr.current_meta() {
             Some(m) => m.clone(),
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::NOT_FOUND)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"No snapshot available"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::NOT_FOUND,
+                    r#"{"error":"No snapshot available"}"#,
+                ));
             }
         };
 
@@ -693,14 +584,10 @@ impl LithairServer {
             }
             Err(e) => {
                 log::error!("Failed to read snapshot: {}", e);
-                Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Failed to read snapshot: {}"}}"#,
-                        e
-                    ))))
-                    .expect("valid HTTP response"))
+                Ok(response::json_value(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &serde_json::json!({"error": format!("Failed to read snapshot: {}", e)}),
+                ))
             }
         }
     }
@@ -719,13 +606,10 @@ impl LithairServer {
         let snapshot_manager = match &self.snapshot_manager {
             Some(mgr) => mgr,
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        r#"{"error":"Snapshot manager not initialized"}"#,
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    r#"{"error":"Snapshot manager not initialized"}"#,
+                ));
             }
         };
 
@@ -758,14 +642,10 @@ impl LithairServer {
         let body_bytes: Vec<u8> = match req.into_body().collect().await.map(|c| c.to_bytes()) {
             Ok(bytes) => bytes.to_vec(),
             Err(e) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(format!(
-                        r#"{{"error":"Failed to read body: {}"}}"#,
-                        e
-                    ))))
-                    .expect("valid HTTP response"));
+                return Ok(response::json_value(
+                    StatusCode::BAD_REQUEST,
+                    &serde_json::json!({"error": format!("Failed to read body: {}", e)}),
+                ));
             }
         };
 
@@ -818,13 +698,12 @@ impl LithairServer {
                     error: None,
                 };
 
-                Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::OK)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::to_vec(&response).unwrap_or_default(),
-                    )))
-                    .expect("valid HTTP response"))
+                Ok(response::json_serialize(StatusCode::OK, &response).unwrap_or_else(|e| {
+                    response::json_value(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &serde_json::json!({"error": e.to_string()}),
+                    )
+                }))
             }
             Err(e) => {
                 log::error!("Failed to install snapshot: {}", e);
@@ -834,13 +713,13 @@ impl LithairServer {
                     error: Some(e.to_string()),
                 };
 
-                Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::to_vec(&response).unwrap_or_default(),
-                    )))
-                    .expect("valid HTTP response"))
+                Ok(response::json_serialize(StatusCode::INTERNAL_SERVER_ERROR, &response)
+                    .unwrap_or_else(|e| {
+                        response::json_value(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &serde_json::json!({"error": e.to_string()}),
+                        )
+                    }))
             }
         }
     }
@@ -928,13 +807,7 @@ impl LithairServer {
             }
         }
 
-        Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(
-                serde_json::to_string_pretty(&health_data).unwrap_or_default(),
-            )))
-            .expect("valid HTTP response"))
+        Ok(response::json_value(StatusCode::OK, &health_data))
     }
 
     /// Handle GET /_raft/resync_stats - Return snapshot resync statistics
@@ -952,13 +825,7 @@ impl LithairServer {
             "resync_stats": stats_json,
         });
 
-        Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(
-                serde_json::to_string_pretty(&response_data).unwrap_or_default(),
-            )))
-            .expect("valid HTTP response"))
+        Ok(response::json_value(StatusCode::OK, &response_data))
     }
 
     /// Handle GET /_raft/sync-status - Return detailed sync status for each follower
@@ -975,15 +842,14 @@ impl LithairServer {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
         if !is_leader {
-            return Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(serde_json::to_string_pretty(&serde_json::json!({
+            return Ok(response::json_value(
+                StatusCode::OK,
+                &serde_json::json!({
                     "node_id": self.node_id,
                     "is_leader": false,
                     "message": "This node is not the leader. Sync status is only available on the leader."
-                })).unwrap_or_default())))
-                .expect("valid HTTP response"));
+                }),
+            ));
         }
 
         // Get commit index from consensus log
@@ -1021,13 +887,7 @@ impl LithairServer {
             "followers": followers_json,
         });
 
-        Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(
-                serde_json::to_string_pretty(&response_data).unwrap_or_default(),
-            )))
-            .expect("valid HTTP response"))
+        Ok(response::json_value(StatusCode::OK, &response_data))
     }
 
     /// Handle POST /_raft/force-resync - Manually trigger snapshot resync to a follower
@@ -1044,11 +904,10 @@ impl LithairServer {
         let is_leader = self.raft_state.as_ref().map(|s| s.is_leader()).unwrap_or(false);
 
         if !is_leader {
-            return Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::BAD_REQUEST)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(r#"{"error":"This node is not the leader. Force resync must be called on the leader."}"#)))
-                .expect("valid HTTP response"));
+            return Ok(response::json(
+                StatusCode::BAD_REQUEST,
+                r#"{"error":"This node is not the leader. Force resync must be called on the leader."}"#,
+            ));
         }
 
         // Parse target from query string
@@ -1065,11 +924,10 @@ impl LithairServer {
         let target = match target {
             Some(t) => t,
             None => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"error":"Missing 'target' query parameter. Use /_raft/force-resync?target=127.0.0.1:8081"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"Missing 'target' query parameter. Use /_raft/force-resync?target=127.0.0.1:8081"}"#,
+                ));
             }
         };
 
@@ -1083,14 +941,10 @@ impl LithairServer {
         };
 
         if !marked {
-            return Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::NOT_FOUND)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(format!(
-                    r#"{{"error":"Follower '{}' not found in cluster"}}"#,
-                    target
-                ))))
-                .expect("valid HTTP response"));
+            return Ok(response::json_value(
+                StatusCode::NOT_FOUND,
+                &serde_json::json!({"error": format!("Follower '{}' not found in cluster", target)}),
+            ));
         }
 
         // Trigger immediate snapshot send
@@ -1119,18 +973,14 @@ impl LithairServer {
             }
         };
 
-        Ok(hyper::Response::builder()
-            .status(status)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "target": target,
-                    "success": status == hyper::StatusCode::OK,
-                    "message": message,
-                }))
-                .unwrap_or_default(),
-            )))
-            .expect("valid HTTP response"))
+        Ok(response::json_value(
+            status,
+            &serde_json::json!({
+                "target": target,
+                "success": status == hyper::StatusCode::OK,
+                "message": message,
+            }),
+        ))
     }
 
     /// Handle POST /_raft/migrate - Submit migration operations through consensus
@@ -1176,16 +1026,12 @@ impl LithairServer {
         let operation: crate::cluster::CrudOperation = match serde_json::from_slice(&body) {
             Ok(op) => op,
             Err(e) => {
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({
-                            "error": format!("Invalid operation: {}", e)
-                        })
-                        .to_string(),
-                    )))
-                    .expect("valid HTTP response"));
+                return Ok(response::json_value(
+                    StatusCode::BAD_REQUEST,
+                    &serde_json::json!({
+                        "error": format!("Invalid operation: {}", e)
+                    }),
+                ));
             }
         };
 
@@ -1199,16 +1045,12 @@ impl LithairServer {
         );
 
         if !is_migration {
-            return Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::BAD_REQUEST)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(
-                    serde_json::json!({
-                        "error": "Only migration operations are allowed on this endpoint"
-                    })
-                    .to_string(),
-                )))
-                .expect("valid HTTP response"));
+            return Ok(response::json_value(
+                StatusCode::BAD_REQUEST,
+                &serde_json::json!({
+                    "error": "Only migration operations are allowed on this endpoint"
+                }),
+            ));
         }
 
         // Create log entry and replicate
@@ -1248,67 +1090,47 @@ impl LithairServer {
                     let apply_result = self.apply_crud_operation(&operation).await;
 
                     match apply_result {
-                        Ok(result) => Ok(hyper::Response::builder()
-                            .status(hyper::StatusCode::OK)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(
-                                serde_json::json!({
-                                    "success": true,
-                                    "commit_index": new_commit,
-                                    "result": result
-                                })
-                                .to_string(),
-                            )))
-                            .expect("valid HTTP response")),
-                        Err(e) => Ok(hyper::Response::builder()
-                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(
-                                serde_json::json!({
-                                    "error": format!("Migration apply failed: {}", e),
-                                    "commit_index": new_commit
-                                })
-                                .to_string(),
-                            )))
-                            .expect("valid HTTP response")),
+                        Ok(result) => Ok(response::json_value(
+                            StatusCode::OK,
+                            &serde_json::json!({
+                                "success": true,
+                                "commit_index": new_commit,
+                                "result": result
+                            }),
+                        )),
+                        Err(e) => Ok(response::json_value(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &serde_json::json!({
+                                "error": format!("Migration apply failed: {}", e),
+                                "commit_index": new_commit
+                            }),
+                        )),
                     }
                 }
-                Err(e) => Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::SERVICE_UNAVAILABLE)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({
-                            "error": format!("Replication failed: {}", e)
-                        })
-                        .to_string(),
-                    )))
-                    .expect("valid HTTP response")),
+                Err(e) => Ok(response::json_value(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &serde_json::json!({
+                        "error": format!("Replication failed: {}", e)
+                    }),
+                )),
             }
         } else {
             // Single node mode - just apply
             let apply_result = self.apply_crud_operation(&operation).await;
             match apply_result {
-                Ok(result) => Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::OK)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({
-                            "success": true,
-                            "result": result
-                        })
-                        .to_string(),
-                    )))
-                    .expect("valid HTTP response")),
-                Err(e) => Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::json!({
-                            "error": format!("Migration failed: {}", e)
-                        })
-                        .to_string(),
-                    )))
-                    .expect("valid HTTP response")),
+                Ok(result) => Ok(response::json_value(
+                    StatusCode::OK,
+                    &serde_json::json!({
+                        "success": true,
+                        "result": result
+                    }),
+                )),
+                Err(e) => Ok(response::json_value(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &serde_json::json!({
+                        "error": format!("Migration failed: {}", e)
+                    }),
+                )),
             }
         }
     }

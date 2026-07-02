@@ -53,13 +53,7 @@ impl LithairServer {
                     "total_models": models.len()
                 });
 
-                Ok(hyper::Response::builder()
-                    .status(200)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::to_string_pretty(&response).expect("serializable response"),
-                    )))
-                    .expect("valid HTTP response"))
+                Ok(response::json_value(StatusCode::OK, &response))
             }
 
             // GET /_admin/data/models/{name} - Get model data
@@ -77,22 +71,12 @@ impl LithairServer {
                         "data": data
                     });
 
-                    Ok(hyper::Response::builder()
-                        .status(200)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::to_string_pretty(&response).expect("serializable response"),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(StatusCode::OK, &response))
                 } else {
-                    Ok(hyper::Response::builder()
-                        .status(404)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": format!("Model '{}' not found", name)})
-                                .to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::NOT_FOUND,
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
+                    ))
                 }
             }
 
@@ -113,29 +97,25 @@ impl LithairServer {
                 if let Some((data_path, handler)) = resolved {
                     let stats = handler.get_stats(&data_path).await;
 
-                    Ok(hyper::Response::builder()
-                        .status(200)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::to_string_pretty(&stats).expect("serializable response"),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_serialize(StatusCode::OK, &stats).unwrap_or_else(|e| {
+                        response::json_value(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            &serde_json::json!({"error": e.to_string()}),
+                        )
+                    }))
                 } else {
                     // Build the JSON body via serde_json so `name` is properly
                     // escaped — a naked `format!` would let a model name like
                     // `x", "y":"z` break out of the error string and produce
                     // malformed (or worse, attacker-shaped) JSON. See Gemini
                     // review on PR #83.
-                    Ok(hyper::Response::builder()
-                        .status(404)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::to_string(&serde_json::json!({
-                                "error": format!("Model '{}' not found", name)
-                            }))
-                            .expect("error response is serializable"),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json(
+                        StatusCode::NOT_FOUND,
+                        serde_json::to_string(&serde_json::json!({
+                            "error": format!("Model '{}' not found", name)
+                        }))
+                        .expect("error response is serializable"),
+                    ))
                 }
             }
 
@@ -158,14 +138,10 @@ impl LithairServer {
                         )))
                         .expect("valid HTTP response"))
                 } else {
-                    Ok(hyper::Response::builder()
-                        .status(404)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": format!("Model '{}' not found", name)})
-                                .to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::NOT_FOUND,
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
+                    ))
                 }
             }
 
@@ -176,22 +152,12 @@ impl LithairServer {
                 if let Some(model) = models.iter().find(|m| m.name == *name) {
                     let history = model.handler.get_entity_history(id).await;
 
-                    Ok(hyper::Response::builder()
-                        .status(200)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::to_string_pretty(&history).expect("serializable response"),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(StatusCode::OK, &history))
                 } else {
-                    Ok(hyper::Response::builder()
-                        .status(404)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": format!("Model '{}' not found", name)})
-                                .to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::NOT_FOUND,
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
+                    ))
                 }
             }
 
@@ -206,24 +172,20 @@ impl LithairServer {
                     let body_bytes = match _req.into_body().collect().await.map(|c| c.to_bytes()) {
                         Ok(bytes) => bytes,
                         Err(_) => {
-                            return Ok(hyper::Response::builder()
-                                .status(400)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    r#"{"error":"Invalid request body"}"#,
-                                )))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(
+                                StatusCode::BAD_REQUEST,
+                                r#"{"error":"Invalid request body"}"#,
+                            ));
                         }
                     };
 
                     let changes: serde_json::Value = match serde_json::from_slice(&body_bytes) {
                         Ok(v) => v,
                         Err(_) => {
-                            return Ok(hyper::Response::builder()
-                                .status(400)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(r#"{"error":"Invalid JSON"}"#)))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(
+                                StatusCode::BAD_REQUEST,
+                                r#"{"error":"Invalid JSON"}"#,
+                            ));
                         }
                     };
 
@@ -237,32 +199,18 @@ impl LithairServer {
                                 "updated_data": updated
                             });
 
-                            Ok(hyper::Response::builder()
-                                .status(200)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    serde_json::to_string_pretty(&response)
-                                        .expect("serializable response"),
-                                )))
-                                .expect("valid HTTP response"))
+                            Ok(response::json_value(StatusCode::OK, &response))
                         }
-                        Err(e) => Ok(hyper::Response::builder()
-                            .status(400)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(
-                                serde_json::json!({"error": e.to_string()}).to_string(),
-                            )))
-                            .expect("valid HTTP response")),
+                        Err(e) => Ok(response::json_value(
+                            StatusCode::BAD_REQUEST,
+                            &serde_json::json!({"error": e.to_string()}),
+                        )),
                     }
                 } else {
-                    Ok(hyper::Response::builder()
-                        .status(404)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": format!("Model '{}' not found", name)})
-                                .to_string(),
-                        )))
-                        .expect("valid HTTP response"))
+                    Ok(response::json_value(
+                        StatusCode::NOT_FOUND,
+                        &serde_json::json!({"error": format!("Model '{}' not found", name)}),
+                    ))
                 }
             }
 
@@ -354,13 +302,7 @@ impl LithairServer {
                     "total_routes": routes.len()
                 });
 
-                Ok(hyper::Response::builder()
-                    .status(200)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::to_string_pretty(&response).expect("serializable response"),
-                    )))
-                    .expect("valid HTTP response"))
+                Ok(response::json_value(StatusCode::OK, &response))
             }
 
             // POST /_admin/data/backup - Backup all models
@@ -406,25 +348,20 @@ impl LithairServer {
                 let body_bytes = match _req.into_body().collect().await.map(|c| c.to_bytes()) {
                     Ok(bytes) => bytes,
                     Err(_) => {
-                        return Ok(hyper::Response::builder()
-                            .status(400)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(r#"{"error":"Invalid request body"}"#)))
-                            .expect("valid HTTP response"));
+                        return Ok(response::json(
+                            StatusCode::BAD_REQUEST,
+                            r#"{"error":"Invalid request body"}"#,
+                        ));
                     }
                 };
 
                 let parsed: serde_json::Value = match serde_json::from_slice(&body_bytes) {
                     Ok(v) => v,
                     Err(e) => {
-                        return Ok(hyper::Response::builder()
-                            .status(400)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(
-                                serde_json::json!({"error": format!("Invalid JSON: {}", e)})
-                                    .to_string(),
-                            )))
-                            .expect("valid HTTP response"));
+                        return Ok(response::json_value(
+                            StatusCode::BAD_REQUEST,
+                            &serde_json::json!({"error": format!("Invalid JSON: {}", e)}),
+                        ));
                     }
                 };
 
@@ -441,13 +378,10 @@ impl LithairServer {
                 } else if parsed.get("model").is_some() {
                     vec![parsed.clone()]
                 } else {
-                    return Ok(hyper::Response::builder()
-                            .status(400)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(
-                                r#"{"error":"Expected a backup object with a 'models' array, a bare array of model exports, or a single {model,data} object"}"#,
-                            )))
-                            .expect("valid HTTP response"));
+                    return Ok(response::json(
+                        StatusCode::BAD_REQUEST,
+                        r#"{"error":"Expected a backup object with a 'models' array, a bare array of model exports, or a single {model,data} object"}"#,
+                    ));
                 };
 
                 let models = self.models.read().await;
@@ -525,7 +459,7 @@ impl LithairServer {
                 // error). 207 is a 2xx, so `curl --fail` does NOT flag it —
                 // automation must test the status code (`!= 200`) or inspect the
                 // per-model `status` in the body to detect partial success.
-                let status = if any_error { 207 } else { 200 };
+                let status = if any_error { StatusCode::MULTI_STATUS } else { StatusCode::OK };
                 let response = serde_json::json!({
                     "status": if any_error { "partial" } else { "imported" },
                     "total_imported": total_imported,
@@ -533,21 +467,14 @@ impl LithairServer {
                     "note": "logical import: re-applies items as events, idempotent by id, does not restore event history"
                 });
 
-                Ok(hyper::Response::builder()
-                    .status(status)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(
-                        serde_json::to_string_pretty(&response).expect("serializable response"),
-                    )))
-                    .expect("valid HTTP response"))
+                Ok(response::json_value(status, &response))
             }
 
             // 404 for unknown data admin paths
-            _ => Ok(hyper::Response::builder()
-                .status(404)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(r#"{"error":"Unknown data admin endpoint"}"#)))
-                .expect("valid HTTP response")),
+            _ => Ok(response::json(
+                StatusCode::NOT_FOUND,
+                r#"{"error":"Unknown data admin endpoint"}"#,
+            )),
         }
     }
 
