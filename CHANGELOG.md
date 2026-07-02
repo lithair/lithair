@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already-broken behavior per the deprecation policy's accelerated clause.
   `#[derive(DeclarativeModel)]` is the supported derive.
 
+- **`#[lithair_api]` removed from `lithair-macros`.** A pass-through no-op
+  whose doc promised generated HTTP routes it never produced (route
+  registration is `LithairServer::with_route()` at the call site); zero users.
+
 - The crate-front doc example (docs.rs) now pins `lithair-core = "1.0"`
   (was `0.13`).
 
