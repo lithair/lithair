@@ -101,25 +101,19 @@ impl LithairServer {
                     match serde_json::from_slice(&body_bytes) {
                         Ok(v @ serde_json::Value::Object(_)) => v,
                         Ok(_) => {
-                            return Ok(hyper::Response::builder()
-                                .status(400)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    r#"{"error":"Request body must be a JSON object"}"#,
-                                )))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(
+                                StatusCode::BAD_REQUEST,
+                                r#"{"error":"Request body must be a JSON object"}"#,
+                            ));
                         }
                         Err(e) => {
-                            return Ok(hyper::Response::builder()
-                                .status(400)
-                                .header("Content-Type", "application/json")
-                                .body(boxed_full(Bytes::from(
-                                    serde_json::json!({
-                                        "error": format!("Invalid JSON in request body: {}", e)
-                                    })
-                                    .to_string(),
-                                )))
-                                .expect("valid HTTP response"));
+                            return Ok(response::json(
+                                StatusCode::BAD_REQUEST,
+                                serde_json::json!({
+                                    "error": format!("Invalid JSON in request body: {}", e)
+                                })
+                                .to_string(),
+                            ));
                         }
                     }
                 } else {
@@ -288,13 +282,11 @@ impl LithairServer {
                 // Check WAL result first (must succeed for durability)
                 if let Err(e) = wal_result {
                     log::error!("WAL write failed: {}", e);
-                    return Ok(hyper::Response::builder()
-                        .status(503)
-                        .body(boxed_full(Bytes::from(
-                            serde_json::json!({"error": format!("WAL write failed: {}", e)})
-                                .to_string(),
-                        )))
-                        .expect("valid HTTP response"));
+                    return Ok(response::json(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        serde_json::json!({"error": format!("WAL write failed: {}", e)})
+                            .to_string(),
+                    ));
                 }
                 log::debug!("WAL entry durable: index={}", entry_index);
 
@@ -376,18 +368,16 @@ impl LithairServer {
                                     consensus_log.commit_index()
                                 );
                                 // Return error - something is seriously wrong if commit takes this long
-                                return Ok(hyper::Response::builder()
-                                    .status(503)
-                                    .body(boxed_full(Bytes::from(
-                                        serde_json::json!({
-                                            "error": format!(
-                                                "Commit ordering timeout: entry {} waiting for {}",
-                                                entry_index, expected_prior
-                                            )
-                                        })
-                                        .to_string(),
-                                    )))
-                                    .expect("valid HTTP response"));
+                                return Ok(response::json(
+                                    StatusCode::SERVICE_UNAVAILABLE,
+                                    serde_json::json!({
+                                        "error": format!(
+                                            "Commit ordering timeout: entry {} waiting for {}",
+                                            entry_index, expected_prior
+                                        )
+                                    })
+                                    .to_string(),
+                                ));
                             }
                             tokio::time::sleep(std::time::Duration::from_micros(100)).await;
                             commit_waited += 1;
@@ -431,15 +421,13 @@ impl LithairServer {
                             }
                             Err(e) => {
                                 log::error!("Failed to apply operation: {}", e);
-                                return Ok(hyper::Response::builder()
-                                    .status(500)
-                                    .body(boxed_full(Bytes::from(
-                                        serde_json::json!({
-                                            "error": format!("Apply failed: {}", e)
-                                        })
-                                        .to_string(),
-                                    )))
-                                    .expect("valid HTTP response"));
+                                return Ok(response::json(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    serde_json::json!({
+                                        "error": format!("Apply failed: {}", e)
+                                    })
+                                    .to_string(),
+                                ));
                             }
                         }
                     }
@@ -469,10 +457,10 @@ impl LithairServer {
                 // sending anything to the client.
                 Ok(resp)
             }
-            Err(_) => Ok(hyper::Response::builder()
-                .status(500)
-                .body(boxed_full(Bytes::from(r#"{"error":"Internal error"}"#)))
-                .expect("valid HTTP response")),
+            Err(_) => Ok(response::json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                r#"{"error":"Internal error"}"#,
+            )),
         }
     }
 

@@ -2746,11 +2746,10 @@ impl LithairServer {
                     req.headers().get("X-Raft-Token").and_then(|v| v.to_str().ok());
 
                 if !self.config.raft.validate_token(provided_token) {
-                    return Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::UNAUTHORIZED)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
-                        .expect("valid HTTP response"));
+                    return Ok(response::json(
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":"Invalid Raft token"}"#,
+                    ));
                 }
 
                 // Update heartbeat timestamp
@@ -2781,11 +2780,7 @@ impl LithairServer {
                     }
                 }
 
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::OK)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(r#"{"status":"ok"}"#)))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(StatusCode::OK, r#"{"status":"ok"}"#));
             }
 
             // Raft leader discovery endpoint
@@ -2794,11 +2789,10 @@ impl LithairServer {
                     req.headers().get("X-Raft-Token").and_then(|v| v.to_str().ok());
 
                 if !self.config.raft.validate_token(provided_token) {
-                    return Ok(hyper::Response::builder()
-                        .status(hyper::StatusCode::UNAUTHORIZED)
-                        .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(r#"{"error":"Invalid Raft token"}"#)))
-                        .expect("valid HTTP response"));
+                    return Ok(response::json(
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":"Invalid Raft token"}"#,
+                    ));
                 }
 
                 let response = serde_json::json!({
@@ -2808,11 +2802,7 @@ impl LithairServer {
                     "node_id": raft_state.node_id
                 });
 
-                return Ok(hyper::Response::builder()
-                    .status(hyper::StatusCode::OK)
-                    .header("Content-Type", "application/json")
-                    .body(boxed_full(Bytes::from(response.to_string())))
-                    .expect("valid HTTP response"));
+                return Ok(response::json(StatusCode::OK, response.to_string()));
             }
 
             // Redirect writes to leader if we're a follower
@@ -2980,11 +2970,10 @@ impl LithairServer {
                     }
                     Err(e) => {
                         log::error!("Guard check failed: {}", e);
-                        return Ok(hyper::Response::builder()
-                            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "application/json")
-                            .body(boxed_full(Bytes::from(r#"{"error":"Internal server error"}"#)))
-                            .expect("valid HTTP response"));
+                        return Ok(response::json(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            r#"{"error":"Internal server error"}"#,
+                        ));
                     }
                 }
             }
@@ -3009,11 +2998,7 @@ impl LithairServer {
                 });
             }
 
-            return Ok(hyper::Response::builder()
-                .status(hyper::StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(boxed_full(Bytes::from(status.to_string())))
-                .expect("valid HTTP response"));
+            return Ok(response::json(StatusCode::OK, status.to_string()));
         }
 
         // OpenAPI spec endpoint
@@ -3245,11 +3230,7 @@ impl LithairServer {
         }
 
         // 404 Not Found (default)
-        Ok(hyper::Response::builder()
-            .status(404)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(r#"{"error":"Not found"}"#)))
-            .expect("valid HTTP response"))
+        Ok(response::json(StatusCode::NOT_FOUND, r#"{"error":"Not found"}"#))
     }
 
     /// Handle admin panel request — returns a JSON overview of the running server
@@ -3287,11 +3268,7 @@ impl LithairServer {
 
         let body = serde_json::to_string_pretty(&dashboard).unwrap_or_default();
 
-        Ok(hyper::Response::builder()
-            .status(200)
-            .header("Content-Type", "application/json")
-            .body(boxed_full(Bytes::from(body)))
-            .expect("valid HTTP response"))
+        Ok(response::json(StatusCode::OK, body))
     }
 
     /// Handle metrics request
