@@ -86,6 +86,20 @@ impl LithairServer {
                 let body_bytes = body.collect().await?.to_bytes();
                 let body_json: serde_json::Value =
                     serde_json::from_slice(&body_bytes).unwrap_or(serde_json::Value::Null);
+                // Reject valid-JSON-but-not-an-object bodies (`42`, `"abc"`, `[..]`)
+                // up front: the `data["id"] = …` inserts below use serde_json's
+                // `IndexMut`, which PANICS on non-object/non-null values (Null is
+                // fine — it auto-converts to an object). Pre-existing panic found
+                // by review on #164.
+                if !(body_json.is_object() || body_json.is_null()) {
+                    return Ok(hyper::Response::builder()
+                        .status(400)
+                        .header("Content-Type", "application/json")
+                        .body(boxed_full(Bytes::from(
+                            r#"{"error":"Request body must be a JSON object"}"#,
+                        )))
+                        .expect("valid HTTP response"));
+                }
 
                 // Create the CRUD operation
                 // For CREATE operations: generate ID on leader to ensure all nodes have same ID
@@ -251,10 +265,10 @@ impl LithairServer {
                     log::error!("WAL write failed: {}", e);
                     return Ok(hyper::Response::builder()
                         .status(503)
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"error":"WAL write failed: {}"}}"#,
-                            e
-                        ))))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({"error": format!("WAL write failed: {}", e)})
+                                .to_string(),
+                        )))
                         .expect("valid HTTP response"));
                 }
                 log::debug!("WAL entry durable: index={}", entry_index);
@@ -339,10 +353,7 @@ impl LithairServer {
                                 // Return error - something is seriously wrong if commit takes this long
                                 return Ok(hyper::Response::builder()
                                 .status(503)
-                                .body(boxed_full(Bytes::from(format!(
-                                    r#"{{"error":"Commit ordering timeout: entry {} waiting for {}"}}"#,
-                                    entry_index, expected_prior
-                                ))))
+                                .body(boxed_full(Bytes::from(serde_json::json!({"error": format!("Commit ordering timeout: entry {} waiting for {}", entry_index, expected_prior)}).to_string())))
                                 .expect("valid HTTP response"));
                             }
                             tokio::time::sleep(std::time::Duration::from_micros(100)).await;
@@ -389,10 +400,7 @@ impl LithairServer {
                                 log::error!("Failed to apply operation: {}", e);
                                 return Ok(hyper::Response::builder()
                                     .status(500)
-                                    .body(boxed_full(Bytes::from(format!(
-                                        r#"{{"error":"Apply failed: {}"}}"#,
-                                        e
-                                    ))))
+                                    .body(boxed_full(Bytes::from(serde_json::json!({"error": format!("Apply failed: {}", e)}).to_string())))
                                     .expect("valid HTTP response"));
                             }
                         }

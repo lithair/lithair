@@ -88,10 +88,10 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"error":"Model '{}' not found"}}"#,
-                            name
-                        ))))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({"error": format!("Model '{}' not found", name)})
+                                .to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -161,10 +161,10 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"error":"Model '{}' not found"}}"#,
-                            name
-                        ))))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({"error": format!("Model '{}' not found", name)})
+                                .to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -187,10 +187,10 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"error":"Model '{}' not found"}}"#,
-                            name
-                        ))))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({"error": format!("Model '{}' not found", name)})
+                                .to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
@@ -258,10 +258,10 @@ impl LithairServer {
                     Ok(hyper::Response::builder()
                         .status(404)
                         .header("Content-Type", "application/json")
-                        .body(boxed_full(Bytes::from(format!(
-                            r#"{{"error":"Model '{}' not found"}}"#,
-                            name
-                        ))))
+                        .body(boxed_full(Bytes::from(
+                            serde_json::json!({"error": format!("Model '{}' not found", name)})
+                                .to_string(),
+                        )))
                         .expect("valid HTTP response"))
                 }
             }
