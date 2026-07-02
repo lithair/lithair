@@ -33,7 +33,8 @@ flowchart LR
     C[Client] --> H[http/ server]
     H --> FW{firewall?}
     FW -->|enabled| F[http/firewall + security/anti_ddos]
-    FW --> G[route guards<br/>RequireAuth / RequireRole]
+    F --> G
+    FW -->|disabled| G[route guards<br/>RequireAuth / RequireRole]
     G -->|session lookup| S[session/ stores]
     G --> D[app/ dispatch]
     D --> M["model_dispatch → http/declarative<br/>(generated CRUD)"]
