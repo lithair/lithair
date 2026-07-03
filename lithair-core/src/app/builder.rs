@@ -2260,7 +2260,6 @@ impl LithairServerBuilder {
     // BUILD
     // ========================================================================
 
-    /// Build the server
     /// Register an additional tracing [`Layer`] (a log/trace provider) to be
     /// composed into Lithair's default subscriber at `serve()` time.
     ///
@@ -2290,6 +2289,7 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Build the server
     pub fn build(self) -> Result<LithairServer> {
         Ok(LithairServer {
             config: self.config,

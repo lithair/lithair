@@ -178,6 +178,10 @@ fn init_default_tracing(extra_layers: Vec<BoxedTracingLayer>) {
         Ok(f) => f,
         Err(_) => std::env::var("LT_LOG_LEVEL")
             .ok()
+            .map(|lvl| lvl.trim().to_owned())
+            // An empty/whitespace value counts as unset — EnvFilter::try_new("")
+            // would silently mean `error` (Gemini #172).
+            .filter(|lvl| !lvl.is_empty())
             .and_then(|lvl| tracing_subscriber::EnvFilter::try_new(&lvl).ok())
             .unwrap_or_else(|| tracing_subscriber::EnvFilter::new(fallback)),
     };
