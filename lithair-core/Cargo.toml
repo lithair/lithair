@@ -81,7 +81,7 @@ totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"], optional 
 utoipa = { version = "5", optional = true }
 thiserror = "2.0.17"
 futures.workspace = true
-lithair-macros = { version = "1.0.0", path = "../lithair-macros", optional = true }
+lithair-macros = { version = "1.1.0", path = "../lithair-macros", optional = true }
 tempfile = "3"
 
 [dev-dependencies]
