@@ -16,8 +16,8 @@ fn test_server_creation() {
 /// `env_logger::try_init()` had.
 #[test]
 fn init_default_tracing_is_idempotent() {
-    init_default_tracing();
-    init_default_tracing();
+    init_default_tracing(Vec::new());
+    init_default_tracing(Vec::new());
 }
 
 // ------------------------------------------------------------------

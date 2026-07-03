@@ -68,13 +68,37 @@ RUST_LOG=info ./my-app                      # everything at info+
 RUST_LOG=warn,lithair_core=debug ./my-app   # per-crate override
 ```
 
-When `RUST_LOG` is unset the fallback is `error` — **except** when
+When `RUST_LOG` is unset, an explicitly set `LT_LOG_LEVEL` (the knob the
+`lithair new` scaffold advertises in `.env`, e.g. `LT_LOG_LEVEL=debug`) is
+used instead. When neither is set the fallback is `error` — **except** when
 `LT_OTEL_ENDPOINT` is set, where the fallback is raised to `info`. The
 five spans are emitted at INFO; under an `error` filter they would be
 discarded before reaching the exporter and an operator who explicitly
 opted into tracing would see zero spans. A set `RUST_LOG` always wins —
 if you export traces with a custom filter, make sure it admits INFO for
 `lithair_core` or your collector stays empty.
+
+## Adding a log provider (custom layers)
+
+The extension point for shipping logs somewhere else — a rolling file, Loki,
+syslog, Sentry, a test capture — is `with_tracing_layer` on the builder. Your
+[`tracing_subscriber::Layer`] is composed into Lithair's default stack, and
+the global `RUST_LOG` / `LT_LOG_LEVEL` filter applies to it like to the
+built-in fmt/otel layers:
+
+```rust
+let file = tracing_appender::rolling::daily("./logs", "app.log");
+LithairServer::new()
+    .with_tracing_layer(tracing_subscriber::fmt::layer().with_writer(file).boxed())
+    .serve()
+    .await?;
+```
+
+First-wins still holds: if you installed your own global subscriber before
+`serve()`, Lithair's stack — including layers registered here — steps aside;
+build your own stack for full control.
+
+[`tracing_subscriber::Layer`]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/layer/trait.Layer.html
 
 ## Log-level policy
 

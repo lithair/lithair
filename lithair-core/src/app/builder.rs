@@ -92,6 +92,7 @@ impl VhostBuilder {
 /// Builder for LithairServer
 pub struct LithairServerBuilder {
     config: LithairConfig,
+    tracing_layers: Vec<super::BoxedTracingLayer>,
     session_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     custom_routes: Vec<CustomRoute>,
@@ -203,6 +204,7 @@ impl LithairServerBuilder {
     pub fn new() -> Self {
         Self {
             config: LithairConfig::load().unwrap_or_default(),
+            tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,
             custom_routes: Vec::new(),
@@ -234,6 +236,7 @@ impl LithairServerBuilder {
     pub fn with_config(config: LithairConfig) -> Self {
         Self {
             config,
+            tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,
             custom_routes: Vec::new(),
@@ -2258,9 +2261,39 @@ impl LithairServerBuilder {
     // ========================================================================
 
     /// Build the server
+    /// Register an additional tracing [`Layer`] (a log/trace provider) to be
+    /// composed into Lithair's default subscriber at `serve()` time.
+    ///
+    /// This is the extension point for shipping logs somewhere else — a file
+    /// appender, Loki, syslog, Sentry, a test capture — without replacing
+    /// Lithair's stack (filter + stderr fmt + optional OTLP). The global
+    /// `RUST_LOG` / `LT_LOG_LEVEL` filter applies to your layer too.
+    ///
+    /// ```rust,ignore
+    /// let file = tracing_appender::rolling::daily("./logs", "app.log");
+    /// LithairServer::new()
+    ///     .with_tracing_layer(tracing_subscriber::fmt::layer().with_writer(file).boxed())
+    ///     .serve().await?;
+    /// ```
+    ///
+    /// First-wins still holds: if a global subscriber was installed before
+    /// `serve()`, Lithair's stack — including layers registered here — steps
+    /// aside (a `warn` is emitted). For full control, build your own
+    /// subscriber instead.
+    ///
+    /// [`Layer`]: tracing_subscriber::Layer
+    pub fn with_tracing_layer<L>(mut self, layer: L) -> Self
+    where
+        L: tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync + 'static,
+    {
+        self.tracing_layers.push(Box::new(layer));
+        self
+    }
+
     pub fn build(self) -> Result<LithairServer> {
         Ok(LithairServer {
             config: self.config,
+            tracing_layers: self.tracing_layers,
             session_manager: self.session_manager,
             custom_routes: self.custom_routes,
             not_found_handler: self.not_found_handler,
