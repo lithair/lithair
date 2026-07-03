@@ -27,7 +27,7 @@ use lithair_core::prelude::*;
 > always-current API is on [docs.rs/lithair-core](https://docs.rs/lithair-core).
 > The stability tier of every public item (stable / unstable / hidden) and the
 > MSRV policy are in [`api-stability.md`](api-stability.md); low-level engine
-> types (`StateEngine`, `RaftstoneApplication`, `EventStore`) are classified
+> types (`StateEngine`, `LithairApplication`, `EventStore`) are classified
 > *unstable* there — most apps only need `LithairServer` and the declarative
 > macros below.
 

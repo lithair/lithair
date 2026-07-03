@@ -92,8 +92,8 @@ cargo check
 
 ### Phase 2: Framework API
 
-- [ ] Complete `#[RaftstoneModel]` macro
-- [ ] Complete `#[RaftstoneApi]` macro
+- [x] `#[derive(DeclarativeModel)]` macro (the supported derive)
+- [x] Declarative attribute parsing (unknown keys are compile errors)
 - [ ] Route generation and handling
 - [ ] Error handling system
 
@@ -209,15 +209,15 @@ mod tests {
 **Example macro structure:**
 
 ```rust
-#[proc_macro_derive(RaftstoneModel)]
-pub fn lithair_model(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DeclarativeModel)]
+pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     // Extract struct information
     let name = &input.ident;
     let fields = match &input.data {
         Data::Struct(DataStruct { fields, .. }) => fields,
-        _ => panic!("RaftstoneModel only works on structs"),
+        _ => panic!("DeclarativeModel only works on structs"),
     };
 
     // Generate event types and implementations

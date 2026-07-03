@@ -4,10 +4,6 @@ use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 
-fn env_var_with_legacy(primary: &str, legacy: &str) -> Option<String> {
-    env::var(primary).ok().or_else(|| env::var(legacy).ok())
-}
-
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -105,11 +101,11 @@ impl ServerConfig {
             }
         }
 
-        if let Some(enabled) = env_var_with_legacy("LT_CORS_ENABLED", "LT_COLT_ENABLED") {
+        if let Ok(enabled) = env::var("LT_CORS_ENABLED") {
             self.cors_enabled = enabled.parse().unwrap_or(false);
         }
 
-        if let Some(origins) = env_var_with_legacy("LT_CORS_ORIGINS", "LT_COLT_ORIGINS") {
+        if let Ok(origins) = env::var("LT_CORS_ORIGINS") {
             self.cors_origins = origins.split(',').map(|s| s.trim().to_string()).collect();
         }
 

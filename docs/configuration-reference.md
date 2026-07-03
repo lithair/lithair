@@ -89,7 +89,7 @@ LT_REQUEST_TIMEOUT=30
 LT_MAX_BODY_SIZE=10485760
 ```
 
-Legacy aliases `LT_COLT_ENABLED` and `LT_COLT_ORIGINS` are still accepted for compatibility.
+The pre-1.0 legacy aliases `LT_COLT_ENABLED`/`LT_COLT_ORIGINS` are no longer accepted — use `LT_CORS_*`.
 
 **Code:**
 

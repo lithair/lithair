@@ -507,7 +507,7 @@ impl lithair_core::engine::EventDeserializer for VersionedArticleCreatedDeserial
 /// Minimal application for using Engine<TestEngineApp> in tests
 pub struct TestEngineApp;
 
-impl lithair_core::RaftstoneApplication for TestEngineApp {
+impl lithair_core::LithairApplication for TestEngineApp {
     type State = TestAppState;
     type Command = ();
     type Event = TestEvent;

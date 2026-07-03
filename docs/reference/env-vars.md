@@ -60,11 +60,9 @@ This page lists the core environment variables supported by Lithair.
 
 - `LT_CORS_ENABLED`
   - Enable CORS support. Default: `false`.
-  - `LT_COLT_ENABLED` is still accepted as a legacy alias.
 
 - `LT_CORS_ORIGINS`
   - Allowed CORS origins (comma-separated). Default: `*`.
-  - `LT_COLT_ORIGINS` is still accepted as a legacy alias.
 
 ## Frontend
 

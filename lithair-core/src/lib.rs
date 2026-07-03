@@ -146,7 +146,7 @@ pub mod __private {
 
 // Re-exports of main types and traits
 pub use app::LithairServer;
-pub use engine::{RaftstoneApplication, StateEngine};
+pub use engine::{LithairApplication, StateEngine};
 pub use http::{HttpServer, Route};
 pub use model_inspect::Inspectable;
 pub use security::{
