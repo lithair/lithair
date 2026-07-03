@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-03
+
+Post-1.0 quality pass: internal reorganization for one-view readability, JSON
+hardening on the write/admin paths, response/log hygiene, and a second dead-
+surface cut. **The stable API surface is unchanged** — the removals below are
+all outside the stable tier of
+[`api-stability.md`](docs/reference/api-stability.md) (a minor, not a patch,
+because the contract scopes unstable-item changes to minors). No on-disk
+format change.
+
+### Fixed
+
+- **Cluster write path panic**: a valid-JSON non-object body (`42`, `"abc"`,
+  `[..]`) panicked the request task via serde_json's `IndexMut`; malformed
+  JSON silently became an empty entity. CREATE/UPDATE now require the body to
+  parse as a JSON **object** (400 otherwise, with the parse error); DELETE is
+  unconstrained (its body is unused).
+- **JSON injection in error responses**: error bodies built with raw `format!`
+  into JSON string literals (model-not-found, WAL/commit/apply errors, the
+  user-controlled resync `target`) could emit malformed JSON or inject fields;
+  all now build via `serde_json::json!` (safe escaping).
+- Several 5xx error responses were sent **without a `Content-Type` header**;
+  the response helpers now add it.
+
+### Changed
+
+- **`app/` split into per-brick files** (internal only, zero public-path
+  change): the 7.5k-line `app/mod.rs` is now `mod.rs` (server lifecycle) +
+  `replication.rs` + `data_admin.rs` + `frontend_admin.rs` +
+  `model_dispatch.rs` + `tests.rs`. A new
+  [code map](docs/architecture/code-map.md) gives the one-view brick ↔ module
+  table (including the bricks that span modules) and the request-flow diagram.
+- **HTTP responses consolidated on the `response::` helpers** (`json` /
+  `json_value` / `json_serialize`): ~90 repeated
+  `Response::builder()…expect(…)` blocks became one-liners; the single audited
+  `expect` lives in `response.rs` where the invariant is provable. Admin JSON
+  output switches pretty → compact (machine consumers unaffected).
+- **Log-level policy** documented in
+  [observability.md](docs/operations/observability.md): `info` is lifecycle-
+  only (never per-request); per-write flow lines (cluster CRUD creation,
+  consensus apply, replicated-item, audited-field traces) demoted to `debug`.
+  Production at `RUST_LOG=info` is quiet and full-speed;
+  `lithair_core=debug` turns the flow back on. Deliberately no compile-time
+  level caps — operators keep runtime verbosity control.
+
 ### Removed
 
 - **Dead surface cut #2** (over-engineering audit). Removed items with zero
@@ -1214,7 +1259,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/lithair/lithair/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/lithair/lithair/compare/v1.0.0-rc.1...v1.0.0
 [1.0.0-rc.1]: https://github.com/lithair/lithair/compare/v0.16.0...v1.0.0-rc.1
 [0.16.0]: https://github.com/lithair/lithair/compare/v0.15.0...v0.16.0
