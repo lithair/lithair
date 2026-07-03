@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`with_tracing_layer(layer)`** — the log-provider extension point. A custom
+  [`tracing_subscriber::Layer`] (rolling file, Loki, syslog, Sentry, test
+  capture…) composes into Lithair's default subscriber at `serve()`; the
+  global `RUST_LOG`/`LT_LOG_LEVEL` filter governs it like the built-in
+  fmt/otel layers. First-wins semantics unchanged.
+
+### Fixed
+
+- **`LT_LOG_LEVEL` now actually works.** The scaffold's `.env` advertises it,
+  config read it — but nothing ever applied it. It is now the filter fallback
+  when `RUST_LOG` is unset (a set `RUST_LOG` still wins; neither set keeps the
+  historical `error` fallback).
+
 ### Removed
 
 - **Dead surface cut #3: the vestigial `logging` module** (~1,150 lines —

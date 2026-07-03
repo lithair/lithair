@@ -5,8 +5,13 @@ This page lists the core environment variables supported by Lithair.
 ## Core
 
 - `RUST_LOG`
-  - Controls logging verbosity (e.g., `error`, `warn`, `info`, `debug`).
+  - Controls logging verbosity with full directive syntax (e.g., `error`,
+    `warn,lithair_core=debug`). Always wins when set.
   - Recommended: `info` for development, `warn` for production.
+- `LT_LOG_LEVEL`
+  - Simple level fallback used when `RUST_LOG` is unset (e.g., `info`,
+    `debug`). This is the knob the `lithair new` scaffold sets in `.env`.
+  - Neither set → the default is `error`.
 
 ## Admin & Frontend Reload
 

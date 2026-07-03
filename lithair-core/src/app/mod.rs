@@ -90,6 +90,14 @@ pub type RouteRequest = hyper::Request<hyper::body::Incoming>;
 pub type RouteResponse =
     hyper::Response<http_body_util::combinators::BoxBody<bytes::Bytes, std::convert::Infallible>>;
 
+/// A user-supplied tracing layer, registered via
+/// [`builder::LithairServerBuilder::with_tracing_layer`] and composed into the
+/// default subscriber at `serve()` time (boxed so the builder can hold a
+/// heterogeneous list). The global `RUST_LOG` / `LT_LOG_LEVEL` filter applies
+/// to these layers too.
+pub type BoxedTracingLayer =
+    Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>;
+
 /// Convenience constructor: wrap a buffered payload in `BoxBody` for use as
 /// a [`RouteResponse`] body.
 ///
@@ -142,7 +150,7 @@ fn boxed_full(
 /// one-time warning is emitted so operators aren't silently confused.
 /// An otel init failure (bad endpoint syntax, tonic error) never aborts
 /// startup — it is logged and the server continues without export.
-fn init_default_tracing() {
+fn init_default_tracing(extra_layers: Vec<BoxedTracingLayer>) {
     use tracing_log::AsLog;
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -162,8 +170,21 @@ fn init_default_tracing() {
     // visibility of the missing-feature warning below — is identical
     // whether or not the `otel` feature is present.
     let fallback = if otel_endpoint_requested() { "info" } else { "error" };
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(fallback));
+    // Precedence: RUST_LOG (full directive syntax) wins; else LT_LOG_LEVEL —
+    // the knob the `lithair new` scaffold advertises in `.env` — when it is
+    // explicitly set and parses as a filter; else the historical fallback.
+    // (LT_LOG_LEVEL was previously read into config but never applied.)
+    let filter = match tracing_subscriber::EnvFilter::try_from_default_env() {
+        Ok(f) => f,
+        Err(_) => std::env::var("LT_LOG_LEVEL")
+            .ok()
+            .map(|lvl| lvl.trim().to_owned())
+            // An empty/whitespace value counts as unset — EnvFilter::try_new("")
+            // would silently mean `error` (Gemini #172).
+            .filter(|lvl| !lvl.is_empty())
+            .and_then(|lvl| tracing_subscriber::EnvFilter::try_new(&lvl).ok())
+            .unwrap_or_else(|| tracing_subscriber::EnvFilter::new(fallback)),
+    };
 
     // Match the old env_logger output as closely as `fmt` allows:
     // millisecond UTC timestamps (`format_timestamp_millis()`), stderr
@@ -187,7 +208,10 @@ fn init_default_tracing() {
     #[cfg(feature = "otel")]
     let (otel_layer, otel_provider, otel_notice) = build_otel_layer_from_env();
 
-    let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
+    // User-supplied layers (with_tracing_layer) attach at the registry level;
+    // the EnvFilter above is a GLOBAL filter, so RUST_LOG / LT_LOG_LEVEL
+    // govern custom providers exactly like the built-in fmt/otel layers.
+    let subscriber = tracing_subscriber::registry().with(extra_layers).with(filter).with(fmt_layer);
     #[cfg(feature = "otel")]
     let subscriber = subscriber.with(otel_layer);
     // Capture the install outcome (otel builds need it to decide the
@@ -590,6 +614,9 @@ pub(crate) type ExternalHandlerSseWiring =
 /// Lithair multi-model server
 pub struct LithairServer {
     config: LithairConfig,
+    /// User-supplied tracing layers, composed into the default subscriber at
+    /// `serve()` (see `with_tracing_layer`). Taken (drained) at init.
+    pub(crate) tracing_layers: Vec<BoxedTracingLayer>,
     session_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
     custom_routes: Vec<CustomRoute>,
     not_found_handler: Option<RouteHandler>,
@@ -1088,7 +1115,7 @@ impl LithairServer {
         // those records would be silently dropped (PR #118 review). Same
         // try-semantics as the historical env_logger init: a logger the
         // caller installed earlier wins untouched.
-        init_default_tracing();
+        init_default_tracing(std::mem::take(&mut self.tracing_layers));
 
         // Load persisted schema history and lock status
         {
@@ -3378,6 +3405,7 @@ impl Default for LithairServer {
     fn default() -> Self {
         Self {
             config: LithairConfig::default(),
+            tracing_layers: Vec::new(),
             session_manager: None,
             custom_routes: Vec::new(),
             not_found_handler: None,
