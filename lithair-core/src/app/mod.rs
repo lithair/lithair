@@ -121,9 +121,8 @@ fn boxed_full(
 ///
 /// Both steps ignore "already initialized" errors, preserving the
 /// first-wins contract the previous `env_logger::try_init()` had: users
-/// who installed their own `log` backend first — e.g. the opt-in
-/// `RaftstoneLogger` from `crate::logging` — keep it, and their `log::*`
-/// records keep flowing to it unchanged (step 2 is then a no-op).
+/// who installed their own `log` backend first keep it, and their
+/// `log::*` records keep flowing to it unchanged (step 2 is then a no-op).
 /// Likewise a user-installed tracing subscriber wins over step 1.
 ///
 /// We deliberately do NOT use `SubscriberInitExt::try_init()`: with
@@ -1088,7 +1087,7 @@ impl LithairServer {
         // those paths must be observable — with no subscriber installed,
         // those records would be silently dropped (PR #118 review). Same
         // try-semantics as the historical env_logger init: a logger the
-        // caller installed earlier (e.g. RaftstoneLogger) wins untouched.
+        // caller installed earlier wins untouched.
         init_default_tracing();
 
         // Load persisted schema history and lock status

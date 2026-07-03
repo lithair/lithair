@@ -93,7 +93,6 @@ pub mod engine;
 pub mod frontend; // Memory-first static file serving
 pub mod http;
 pub mod lifecycle;
-pub mod logging; // Declarative logging system with standard log crate integration
 #[cfg(feature = "mfa")]
 pub mod mfa; // Multi-Factor Authentication (TOTP)
 pub mod model; // Declarative model specifications
