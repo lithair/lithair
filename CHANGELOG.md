@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Dead surface cut #3: the vestigial `logging` module** (~1,150 lines —
+  `RaftstoneLogger`, destinations, rotation, formatter, its own
+  `LoggingConfig`). A parallel logging stack that nothing in the framework
+  ever called: the active pipeline has been the tracing subscriber
+  (`log` bridge → `EnvFilter`/`RUST_LOG` → fmt/otel layers) since #107. It
+  was exactly the decoy someone adding a log provider would mistake for the
+  extension point. The real extension point (a builder hook for custom
+  tracing layers) lands separately. `config::LoggingConfig` (the TOML/env
+  surface) is unrelated and stays.
+
 ## [1.1.0] - 2026-07-03
 
 Post-1.0 quality pass: internal reorganization for one-view readability, JSON
