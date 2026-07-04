@@ -64,7 +64,7 @@ change in any 1.x minor.
 | Item | Why public, why unstable |
 |------|--------------------------|
 | `engine::EventStore` | The `lithair verify` CLI opens it directly to check a backup's hash chain offline, so it must stay public. Its surface is tied to the on-disk format and may evolve with it. |
-| `engine::StateEngine`, `engine::RaftstoneApplication` | Low-level engine traits/types (below the `LithairServer` builder). Most apps should prefer `LithairServer`. |
+| `engine::StateEngine`, `engine::LithairApplication` | Low-level engine traits/types (below the `LithairServer` builder). Most apps should prefer `LithairServer`. |
 | `engine::{MultiFileEventStore, EngineConfig, EngineError, EngineResult}` | Engine configuration/handles exposed for advanced embedding and tests. |
 | `engine::relations::{AutoJoiner, DataSource, RelationRegistry}` | FK auto-join machinery; shape may change as relations evolve. |
 

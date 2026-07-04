@@ -56,7 +56,7 @@ pub use snapshot::{
 pub use state::StateEngine;
 
 /// The core application trait that users must implement
-pub trait RaftstoneApplication: Send + Sync + Sized + 'static {
+pub trait LithairApplication: Send + Sync + Sized + 'static {
     /// The state type managed by the application
     type State: Clone + Send + Sync + Default + Serialize + Inspectable + ModelSpec + 'static;
 
@@ -134,7 +134,7 @@ impl From<crate::Error> for EngineError {
 }
 
 /// The Lithair Engine
-pub struct Engine<A: RaftstoneApplication> {
+pub struct Engine<A: LithairApplication> {
     /// The event store
     event_store: Option<Arc<RwLock<EventStore>>>,
 
@@ -155,7 +155,7 @@ enum StateStorage<S> {
     Scc2(Arc<Scc2Engine<S>>),
 }
 
-impl<A: RaftstoneApplication> Engine<A> {
+impl<A: LithairApplication> Engine<A> {
     /// Create a new Lithair engine
     pub fn new(config: EngineConfig) -> Result<Self> {
         Self::new_with_deserializers(config, vec![])

@@ -48,8 +48,8 @@ pub type CommandSender<A> =
     std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Sender<CommandMessage<A>>>>;
 
 /// Command message sent to the engine worker thread
-pub struct CommandMessage<A: crate::engine::RaftstoneApplication> {
-    pub event: <A as crate::engine::RaftstoneApplication>::Event,
+pub struct CommandMessage<A: crate::engine::LithairApplication> {
+    pub event: <A as crate::engine::LithairApplication>::Event,
     pub response_sender: std::sync::mpsc::Sender<Result<(), String>>,
 }
 
@@ -71,7 +71,7 @@ pub struct AsyncRoute<S> {
 }
 
 /// A command route definition for operations that modify state
-pub struct CommandRoute<A: crate::engine::RaftstoneApplication> {
+pub struct CommandRoute<A: crate::engine::LithairApplication> {
     method: HttpMethod,
     pattern: String,
     handler: CommandRouteHandler<A>,
@@ -254,7 +254,7 @@ impl<S> std::fmt::Debug for Route<S> {
     }
 }
 
-impl<A: crate::engine::RaftstoneApplication> CommandRoute<A> {
+impl<A: crate::engine::LithairApplication> CommandRoute<A> {
     /// Create a new command route for operations that modify state
     pub fn new<F>(method: HttpMethod, pattern: &str, handler: F) -> Self
     where
@@ -334,7 +334,7 @@ pub struct Router<S = ()> {
 }
 
 /// Enhanced Router that supports both read-only routes and command routes
-pub struct EnhancedRouter<A: crate::engine::RaftstoneApplication> {
+pub struct EnhancedRouter<A: crate::engine::LithairApplication> {
     routes: Vec<Route<A::State>>,
     command_routes: Vec<CommandRoute<A>>,
     not_found_handler: Option<RouteHandler<A::State>>,
@@ -607,7 +607,7 @@ impl<S> Default for RouterBuilder<S> {
     }
 }
 
-impl<A: crate::engine::RaftstoneApplication> EnhancedRouter<A> {
+impl<A: crate::engine::LithairApplication> EnhancedRouter<A> {
     /// Create a new enhanced router
     pub fn new() -> Self {
         Self {
@@ -679,7 +679,7 @@ impl<A: crate::engine::RaftstoneApplication> EnhancedRouter<A> {
     }
 }
 
-impl<A: crate::engine::RaftstoneApplication> Default for EnhancedRouter<A> {
+impl<A: crate::engine::LithairApplication> Default for EnhancedRouter<A> {
     fn default() -> Self {
         Self::new()
     }

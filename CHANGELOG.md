@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The legacy "Raftstone" name is fully retired.** The last code remnant, the
+  low-level `engine::RaftstoneApplication` trait (unstable tier — renames
+  allowed in a minor per [api-stability.md](docs/reference/api-stability.md)),
+  is now **`engine::LithairApplication`**; docs and the stability table follow.
+  The undocumented pre-1.0 env aliases `LT_COLT_ENABLED`/`LT_COLT_ORIGINS` are
+  no longer read — use `LT_CORS_*`. (`RS_*` variables, the `RaftstoneModel`/
+  `RaftstoneApi` derives and `RaftstoneLogger` were already gone.) Raft-the-
+  algorithm names (`/_raft/*`, `.raftlog`, `RaftLeadershipState`) are NOT
+  legacy branding and are unchanged — the on-disk names are frozen by the 1.x
+  format promise anyway.
+
 ### Added
 
 - **`with_tracing_layer(layer)`** — the log-provider extension point. A custom

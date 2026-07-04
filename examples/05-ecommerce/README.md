@@ -14,7 +14,7 @@ cargo run -p ecommerce
 - `ModelSpec` trait for field policies (unique, indexed, foreign keys)
 - `RelationRegistry` for cross-model relationships
 - `AutoJoiner` for automatic join queries
-- `RaftstoneApplication` with multiple data sources
+- `LithairApplication` with multiple data sources
 - Custom HTTP routes alongside auto-generated CRUD
 
 ## Models

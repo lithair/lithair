@@ -1,7 +1,7 @@
 # E-commerce Tutorial
 
 > This page replaces an earlier tutorial that was written against a
-> pre-v0.7 API surface (`Lithair`, `RaftstoneApplication`, manual
+> pre-v0.7 API surface (`Lithair`, `RaftstoneApplication` — since renamed `LithairApplication` — manual
 > `Route::post` registration, generic `Request<T>` / `Response<T>`
 > handlers). That shape is no longer how Lithair is used, and
 > following it would not compile against current Lithair.
