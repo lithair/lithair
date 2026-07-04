@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-04
+
+Coherence and extensibility release: the legacy project name is fully retired,
+the logging stack has one honest extension point, and the scaffold's
+`LT_LOG_LEVEL` knob finally does what it says. Stable API surface: one
+addition (`with_tracing_layer`); the removals are unstable-tier. No on-disk
+format change.
+
 ### Changed
 
 - **The legacy "Raftstone" name is fully retired.** The last code remnant, the
@@ -1299,7 +1307,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/lithair/lithair/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/lithair/lithair/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/lithair/lithair/compare/v1.0.0-rc.1...v1.0.0
 [1.0.0-rc.1]: https://github.com/lithair/lithair/compare/v0.16.0...v1.0.0-rc.1
