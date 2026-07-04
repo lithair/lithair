@@ -102,11 +102,16 @@ impl ServerConfig {
         }
 
         if let Ok(enabled) = env::var("LT_CORS_ENABLED") {
-            self.cors_enabled = enabled.parse().unwrap_or(false);
+            // Same convention as LT_ENABLE_BINARY & co.: "1" or "true" (any case).
+            self.cors_enabled = enabled == "1" || enabled.eq_ignore_ascii_case("true");
         }
 
         if let Ok(origins) = env::var("LT_CORS_ORIGINS") {
-            self.cors_origins = origins.split(',').map(|s| s.trim().to_string()).collect();
+            self.cors_origins = origins
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
 
         if let Ok(timeout) = env::var("LT_REQUEST_TIMEOUT") {
