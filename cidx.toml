@@ -26,12 +26,15 @@ containers = ["cargo-build"]
 
 # ─── container overrides ───
 # The full per-PR test pyramid (issue #132):
-#   1. unit: workspace lib + bins (also builds target/release/lithair,
-#      which the scaffolding BDD suite invokes);
+#   1. unit: workspace lib + bins;
 #   2. integration: lithair-core/tests/ — real server boots + HTTP
 #      assertions (~20s execution, compile is the only real cost);
 #   3. behavior BDD: the fast cucumber suites (persistence event-sourcing/
-#      hash-chain/retention, scaffolding CLI, serialization modes).
+#      hash-chain/retention, scaffolding CLI, serialization modes). The
+#      explicit `cargo build -p lithair-cli` produces target/debug/lithair —
+#      `cargo test --bins` only builds test harnesses, not the artifact the
+#      scaffolding steps execute (caught on a cold GH runner; local target
+#      dirs had a stale binary).
 # Performance/stress/cluster BDD suites stay OUT of the per-PR gate —
 # they are long-running by design and run via `task bdd:*` / nightly.
 # Debug profile on purpose: execution is seconds — compile time dominates,
@@ -40,7 +43,7 @@ containers = ["cargo-build"]
 # suite finds target/debug/lithair (lithair_binary() probes both).
 [containers.cargo-test]
 timeout = "50m"
-command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p cucumber-tests --test cucumber_tests --test scaffolding_test --test serialization_test'"
+command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo build -p lithair-cli && cargo test -p cucumber-tests --test cucumber_tests --test scaffolding_test --test serialization_test'"
 
 # Workspace-aware release build.
 [containers.cargo-build]
