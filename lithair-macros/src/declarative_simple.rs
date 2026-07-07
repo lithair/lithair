@@ -6,7 +6,7 @@ struct ModelHttpAttributes {
 }
 
 /// Parse struct-level #[http(...)] attributes
-fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
+fn parse_model_http_attributes(input: &DeriveInput) -> syn::Result<ModelHttpAttributes> {
     let mut http = ModelHttpAttributes::default();
     for attr in &input.attrs {
         if attr.path().is_ident("http") {
@@ -14,6 +14,9 @@ fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
                 let nested_str = meta_list.tokens.to_string();
                 for token in nested_str.split(',') {
                     let token = token.trim();
+                    if token.is_empty() {
+                        continue;
+                    }
                     if token.starts_with("base_path") {
                         if let Some(val) = extract_string_value(token) {
                             // Strip leading slash if present for consistency
@@ -33,12 +36,23 @@ fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
                                 }
                             }
                         }
+                    } else {
+                        // Unknown keys fail the build (gate G2, #128) —
+                        // same contract as every other struct-level parser.
+                        let key = token.split('=').next().unwrap_or(token).trim();
+                        return Err(syn::Error::new_spanned(
+                            attr,
+                            format!(
+                                "unknown key `{key}` in struct-level #[http(...)]; valid keys: \
+                                 base_path, public_if"
+                            ),
+                        ));
                     }
                 }
             }
         }
     }
-    http
+    Ok(http)
 }
 
 // Simplified declarative model macro implementation
@@ -1096,6 +1110,45 @@ fn extract_rule_param<'a>(rule: &'a str, prefix: &str) -> Option<&'a str> {
         .map(|s| s.trim())
 }
 
+/// Struct-level attributes must not appear on fields, and field-level ones
+/// must not appear on the struct (gate G2, #128 follow-up). Both cases were
+/// silently ignored before — a #[retention] on a field configured nothing.
+fn validate_attribute_positions(input: &DeriveInput) -> syn::Result<()> {
+    const STRUCT_ONLY: &[&str] = &["retention", "server", "firewall", "schema"];
+    // NOTE: `http` is dual-position (field: expose/validate; struct:
+    // base_path/public_if — parse_model_http_attributes) so it appears in
+    // neither list (Gemini #179).
+    const FIELD_ONLY: &[&str] =
+        &["db", "permission", "rbac", "lifecycle", "relation", "persistence", "pinned"];
+
+    for attr in &input.attrs {
+        for ident in FIELD_ONLY {
+            if attr.path().is_ident(ident) {
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    format!("#[{ident}(...)] is a field-level attribute; place it on a field, not on the struct"),
+                ));
+            }
+        }
+    }
+    if let syn::Data::Struct(data) = &input.data {
+        for field in &data.fields {
+            let fname = field.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
+            for attr in &field.attrs {
+                for ident in STRUCT_ONLY {
+                    if attr.path().is_ident(ident) {
+                        return Err(syn::Error::new_spanned(
+                            attr,
+                            format!("#[{ident}(...)] is a struct-level attribute; found on field `{fname}` where it is silently ignored — move it above the struct"),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Generate the DeclarativeModel implementation
 #[allow(unreachable_code, unused_variables)]
 pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
@@ -1103,6 +1156,14 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         Ok(input) => input,
         Err(err) => return err.to_compile_error(),
     };
+
+    // Position validation (gate G2, #128 follow-up): a known attribute in
+    // the WRONG position was silently ignored — e.g. #[retention(memory=N)]
+    // on a field compiled fine and configured nothing (no memory budget, no
+    // error: the exact silent-misconfiguration class G2 exists to prevent).
+    if let Err(e) = validate_attribute_positions(&input) {
+        return e.to_compile_error();
+    }
 
     let name = &input.ident;
     let name_str = name.to_string();
@@ -1128,7 +1189,10 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         Ok(c) => c,
         Err(e) => return e.to_compile_error(),
     };
-    let http_model_attrs = parse_model_http_attributes(&input);
+    let http_model_attrs = match parse_model_http_attributes(&input) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error(),
+    };
 
     // Use #[http(base_path = "custom")] if specified, otherwise auto-generate
     let base_path = http_model_attrs

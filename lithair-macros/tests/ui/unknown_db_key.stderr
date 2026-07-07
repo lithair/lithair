@@ -1,0 +1,5 @@
+error: unknown key `primary_kye` in #[db(...)]; valid keys: primary_key, unique, indexed, nullable, fk, default
+ --> tests/ui/unknown_db_key.rs:5:5
+  |
+5 |     #[db(primary_kye)] // typo: unknown key must fail the build
+  |     ^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: #[db(...)] is a field-level attribute; place it on a field, not on the struct
+ --> tests/ui/db_on_struct.rs:5:1
+  |
+5 | #[db(primary_key)]
+  | ^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: unknown key `memroy` in #[retention(...)]; valid keys: memory, max_mb
+ --> tests/ui/unknown_retention_key.rs:4:1
+  |
+4 | #[retention(memroy = 100)] // typo: unknown key must fail the build
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: unknown key `verison` in #[schema(...)]; valid keys: version
+ --> tests/ui/unknown_schema_key.rs:4:1
+  |
+4 | #[schema(verison = 2)] // typo: unknown key must fail the build
+  | ^^^^^^^^^^^^^^^^^^^^^^
