@@ -46,7 +46,6 @@ tasks:
             task docs                 # Show docs pointers
             task bdd:setup            # Install Cucumber dependencies
             task bdd:run              # Run all Cucumber tests
-            task bdd:engine           # Engine + basic server tests
             task bdd:persistence      # Event sourcing + hash chain tests
             task bdd:performance      # Performance + durability benchmarks
             task bdd:scaffolding      # CLI scaffolding tests
