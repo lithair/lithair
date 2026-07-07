@@ -209,5 +209,6 @@ Templates are in `/templates/`, specs go in feature-specific directories.
 - `docs/guides/getting-started.md` - Quick start guide
 - `docs/guides/data-first-philosophy.md` - Core philosophy
 - `docs/CI_WORKFLOW.md` - CI task breakdown
+- `docs/TESTING.md` - Test pyramid: what goes where, the per-PR gate, BDD workflow
 - `docs/development/ai-instructions.md` - Extended AI guidelines
 - `docs/modules/` - Per-module documentation

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Compile-fail tests for the declarative macro surface** (trybuild, gate
+  G2): typo'd attribute keys and — new — known attributes in the wrong
+  position now fail the build with pinned diagnostics. Writing them exposed
+  that `#[retention(...)]` on a *field* was silently ignored (a typo'd
+  memory budget = production OOM, no error); the derive now validates
+  attribute positions both ways (struct-only vs field-only). Example 07's
+  aspirational struct-level `#[rbac(...)]` no-op is commented like its
+  `#[sso]` neighbour.
+- **`docs/TESTING.md`** — the test pyramid: tiers, who runs what, the
+  new-feature/debug workflow, and the five rules distilled from the bugs
+  the resurrected suites caught (#175, #176, #177).
+
 ### Changed
 
 - **BDD coherence pass.** The realistic-model behavior suite (25 scenarios:

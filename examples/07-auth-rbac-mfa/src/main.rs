@@ -113,11 +113,14 @@ fn generate_uuid() -> Uuid {
 /// In the real implementation, the #[sso] attribute would be implemented
 /// For now, we show the intended syntax in comments
 #[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
-#[rbac(
-    enabled = true,
-    roles = "Customer,Employee,StockManager,ProductManager,Administrator",
-    default_role = "Customer"
-)]
+// #[rbac(...)] is a FIELD-level attribute (see docs/reference/declarative-attributes.md).
+// The struct-level form below was aspirational syntax, shown as a comment like
+// #[sso] — the derive now rejects it at compile time instead of ignoring it.
+// #[rbac(
+//     enabled = true,
+//     roles = "Customer,Employee,StockManager,ProductManager,Administrator",
+//     default_role = "Customer"
+// )]
 // #[sso(
 //     providers = "google,github,microsoft,jwt",
 //     google_client_id = env("GOOGLE_CLIENT_ID"),

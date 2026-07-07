@@ -43,7 +43,7 @@ containers = ["cargo-build"]
 # suite finds target/debug/lithair (lithair_binary() probes both).
 [containers.cargo-test]
 timeout = "50m"
-command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo build -p lithair-cli && cargo test -p cucumber-tests --test no_orphan_features --test cucumber_tests --test behavior_models_test --test scaffolding_test --test serialization_test'"
+command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p lithair-macros --tests && cargo build -p lithair-cli && cargo test -p cucumber-tests --test no_orphan_features --test cucumber_tests --test behavior_models_test --test scaffolding_test --test serialization_test'"
 
 # Workspace-aware release build.
 [containers.cargo-build]

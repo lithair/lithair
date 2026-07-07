@@ -1096,6 +1096,50 @@ fn extract_rule_param<'a>(rule: &'a str, prefix: &str) -> Option<&'a str> {
         .map(|s| s.trim())
 }
 
+/// Struct-level attributes must not appear on fields, and field-level ones
+/// must not appear on the struct (gate G2, #128 follow-up). Both cases were
+/// silently ignored before — a #[retention] on a field configured nothing.
+fn validate_attribute_positions(input: &DeriveInput) -> syn::Result<()> {
+    const STRUCT_ONLY: &[&str] = &["retention", "server", "firewall", "schema"];
+    const FIELD_ONLY: &[&str] = &[
+        "db",
+        "http",
+        "permission",
+        "rbac",
+        "lifecycle",
+        "relation",
+        "persistence",
+        "pinned",
+    ];
+
+    for attr in &input.attrs {
+        for ident in FIELD_ONLY {
+            if attr.path().is_ident(ident) {
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    format!("#[{ident}(...)] is a field-level attribute; place it on a field, not on the struct"),
+                ));
+            }
+        }
+    }
+    if let syn::Data::Struct(data) = &input.data {
+        for field in &data.fields {
+            let fname = field.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
+            for attr in &field.attrs {
+                for ident in STRUCT_ONLY {
+                    if attr.path().is_ident(ident) {
+                        return Err(syn::Error::new_spanned(
+                            attr,
+                            format!("#[{ident}(...)] is a struct-level attribute; found on field `{fname}` where it is silently ignored — move it above the struct"),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Generate the DeclarativeModel implementation
 #[allow(unreachable_code, unused_variables)]
 pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
@@ -1103,6 +1147,14 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         Ok(input) => input,
         Err(err) => return err.to_compile_error(),
     };
+
+    // Position validation (gate G2, #128 follow-up): a known attribute in
+    // the WRONG position was silently ignored — e.g. #[retention(memory=N)]
+    // on a field compiled fine and configured nothing (no memory budget, no
+    // error: the exact silent-misconfiguration class G2 exists to prevent).
+    if let Err(e) = validate_attribute_positions(&input) {
+        return e.to_compile_error();
+    }
 
     let name = &input.ident;
     let name_str = name.to_string();
