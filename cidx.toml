@@ -34,8 +34,13 @@ containers = ["cargo-build"]
 #      hash-chain/retention, scaffolding CLI, serialization modes).
 # Performance/stress/cluster BDD suites stay OUT of the per-PR gate —
 # they are long-running by design and run via `task bdd:*` / nightly.
+# Debug profile on purpose: execution is seconds — compile time dominates,
+# and a release test build blew past the 30 min container deadline on
+# GitHub runners (the Build phase still compiles release). The scaffolding
+# suite finds target/debug/lithair (lithair_binary() probes both).
 [containers.cargo-test]
-command = "sh -c 'cargo test --workspace --lib --bins --release && cargo test -p lithair-core --tests --release && cargo test -p cucumber-tests --release --test cucumber_tests --test scaffolding_test --test serialization_test'"
+timeout = "50m"
+command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p cucumber-tests --test cucumber_tests --test scaffolding_test --test serialization_test'"
 
 # Workspace-aware release build.
 [containers.cargo-build]
