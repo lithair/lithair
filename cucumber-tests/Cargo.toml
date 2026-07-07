@@ -79,6 +79,15 @@ path = "tests/serialization_test.rs"
 harness = false
 
 [[test]]
+name = "no_orphan_features"
+path = "tests/no_orphan_features.rs"
+
+[[test]]
+name = "behavior_models_test"
+path = "tests/behavior_models_test.rs"
+harness = false
+
+[[test]]
 name = "scaffolding_test"
 path = "tests/scaffolding_test.rs"
 harness = false

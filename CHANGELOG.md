@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BDD coherence pass.** The realistic-model behavior suite (25 scenarios:
+  user uniqueness, invoice `Decimal`-through-replay, >100KB documents under
+  a retention byte budget) joins the per-PR CI gate via a dedicated serial
+  runner. A new `no_orphan_features` meta-test walks `features/` and fails
+  CI when a `.feature` file has no declared runner — unrun specs rot, and
+  one hid a data-loss bug for months (#176). Deleted: 4 dead step modules
+  (~880 lines testing imaginary APIs — Redis session stores, mock-era
+  declarative steps) and 2 dead features (`basic`, `declarative_engine` —
+  their live promises are covered by the model suite and the
+  event-sourcing features).
+
 ### Removed
 
 - **The `LT_MAX_LOG_FILE_SIZE` single-file log "rotation" — it destroyed

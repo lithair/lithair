@@ -46,7 +46,6 @@ tasks:
             task docs                 # Show docs pointers
             task bdd:setup            # Install Cucumber dependencies
             task bdd:run              # Run all Cucumber tests
-            task bdd:engine           # Engine + basic server tests
             task bdd:persistence      # Event sourcing + hash chain tests
             task bdd:performance      # Performance + durability benchmarks
             task bdd:scaffolding      # CLI scaffolding tests
@@ -476,16 +475,10 @@ tasks:
       - cd cucumber-tests && cargo test --test scaffolding_test
       - echo "🔧 Scaffolding BDD tests completed"
 
-  bdd:engine:
-    desc: "Run engine BDD tests (declarative engine, basic server)"
-    cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/*.feature"
-      - echo "⚙️ Engine BDD tests completed"
 
   bdd:all:
     desc: "Run all BDD tests with comprehensive report"
     cmds:
-      - task: bdd:engine
       - task: bdd:persistence
       - task: bdd:performance
       - task: bdd:scaffolding
