@@ -1,0 +1,5 @@
+error: unknown key `base_pth` in struct-level #[http(...)]; valid keys: base_path, public_if
+ --> tests/ui/unknown_http_struct_key.rs:6:1
+  |
+6 | #[http(base_pth = "shop")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^

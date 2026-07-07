@@ -6,7 +6,7 @@ struct ModelHttpAttributes {
 }
 
 /// Parse struct-level #[http(...)] attributes
-fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
+fn parse_model_http_attributes(input: &DeriveInput) -> syn::Result<ModelHttpAttributes> {
     let mut http = ModelHttpAttributes::default();
     for attr in &input.attrs {
         if attr.path().is_ident("http") {
@@ -14,6 +14,9 @@ fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
                 let nested_str = meta_list.tokens.to_string();
                 for token in nested_str.split(',') {
                     let token = token.trim();
+                    if token.is_empty() {
+                        continue;
+                    }
                     if token.starts_with("base_path") {
                         if let Some(val) = extract_string_value(token) {
                             // Strip leading slash if present for consistency
@@ -33,12 +36,23 @@ fn parse_model_http_attributes(input: &DeriveInput) -> ModelHttpAttributes {
                                 }
                             }
                         }
+                    } else {
+                        // Unknown keys fail the build (gate G2, #128) —
+                        // same contract as every other struct-level parser.
+                        let key = token.split('=').next().unwrap_or(token).trim();
+                        return Err(syn::Error::new_spanned(
+                            attr,
+                            format!(
+                                "unknown key `{key}` in struct-level #[http(...)]; valid keys: \
+                                 base_path, public_if"
+                            ),
+                        ));
                     }
                 }
             }
         }
     }
-    http
+    Ok(http)
 }
 
 // Simplified declarative model macro implementation
@@ -1101,16 +1115,11 @@ fn extract_rule_param<'a>(rule: &'a str, prefix: &str) -> Option<&'a str> {
 /// silently ignored before — a #[retention] on a field configured nothing.
 fn validate_attribute_positions(input: &DeriveInput) -> syn::Result<()> {
     const STRUCT_ONLY: &[&str] = &["retention", "server", "firewall", "schema"];
-    const FIELD_ONLY: &[&str] = &[
-        "db",
-        "http",
-        "permission",
-        "rbac",
-        "lifecycle",
-        "relation",
-        "persistence",
-        "pinned",
-    ];
+    // NOTE: `http` is dual-position (field: expose/validate; struct:
+    // base_path/public_if — parse_model_http_attributes) so it appears in
+    // neither list (Gemini #179).
+    const FIELD_ONLY: &[&str] =
+        &["db", "permission", "rbac", "lifecycle", "relation", "persistence", "pinned"];
 
     for attr in &input.attrs {
         for ident in FIELD_ONLY {
@@ -1180,7 +1189,10 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         Ok(c) => c,
         Err(e) => return e.to_compile_error(),
     };
-    let http_model_attrs = parse_model_http_attributes(&input);
+    let http_model_attrs = match parse_model_http_attributes(&input) {
+        Ok(a) => a,
+        Err(e) => return e.to_compile_error(),
+    };
 
     // Use #[http(base_path = "custom")] if specified, otherwise auto-generate
     let base_path = http_model_attrs
