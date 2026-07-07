@@ -476,11 +476,6 @@ tasks:
       - cd cucumber-tests && cargo test --test scaffolding_test
       - echo "🔧 Scaffolding BDD tests completed"
 
-  bdd:engine:
-    desc: "Run engine BDD tests (declarative engine, basic server)"
-    cmds:
-      - cd cucumber-tests && cargo run --bin cucumber -- -i "features/*.feature"
-      - echo "⚙️ Engine BDD tests completed"
 
   bdd:all:
     desc: "Run all BDD tests with comprehensive report"
