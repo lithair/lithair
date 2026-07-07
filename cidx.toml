@@ -3,7 +3,7 @@
 # Run locally:
 #   cidx run code      # rustfmt + clippy
 #   cidx run security  # cargo-audit + gitleaks + trivy
-#   cidx run test      # workspace unit tests (lib + bins)
+#   cidx run test      # unit + integration + behavior BDD (per-PR pyramid)
 #   cidx run build     # workspace release build
 #   cidx run ci        # full pipeline
 #
@@ -25,11 +25,25 @@ containers = ["cargo-test"]
 containers = ["cargo-build"]
 
 # ─── container overrides ───
-# Workspace-aware test run (matches existing GH Actions intent).
-# Skips cucumber-tests crate: BDD scenarios depend on Task + long-running
-# servers and are exercised separately.
+# The full per-PR test pyramid (issue #132):
+#   1. unit: workspace lib + bins;
+#   2. integration: lithair-core/tests/ — real server boots + HTTP
+#      assertions (~20s execution, compile is the only real cost);
+#   3. behavior BDD: the fast cucumber suites (persistence event-sourcing/
+#      hash-chain/retention, scaffolding CLI, serialization modes). The
+#      explicit `cargo build -p lithair-cli` produces target/debug/lithair —
+#      `cargo test --bins` only builds test harnesses, not the artifact the
+#      scaffolding steps execute (caught on a cold GH runner; local target
+#      dirs had a stale binary).
+# Performance/stress/cluster BDD suites stay OUT of the per-PR gate —
+# they are long-running by design and run via `task bdd:*` / nightly.
+# Debug profile on purpose: execution is seconds — compile time dominates,
+# and a release test build blew past the 30 min container deadline on
+# GitHub runners (the Build phase still compiles release). The scaffolding
+# suite finds target/debug/lithair (lithair_binary() probes both).
 [containers.cargo-test]
-command = "cargo test --workspace --lib --bins --release"
+timeout = "50m"
+command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo build -p lithair-cli && cargo test -p cucumber-tests --test cucumber_tests --test scaffolding_test --test serialization_test'"
 
 # Workspace-aware release build.
 [containers.cargo-build]

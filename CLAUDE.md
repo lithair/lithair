@@ -33,7 +33,7 @@ workspace test/build) use [cidx](https://github.com/cidx-org/cidx):
 ```bash
 cidx run code       # rustfmt + clippy (fast feedback)
 cidx run security   # cargo-audit + gitleaks + trivy
-cidx run test       # cargo test --workspace --lib --bins --release
+cidx run test       # unit + integration (lithair-core/tests) + behavior BDD
 cidx run build      # cargo build --workspace --release
 cidx run ci         # full pipeline
 ```

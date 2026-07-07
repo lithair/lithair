@@ -496,16 +496,30 @@ mod tests {
         // First binary event
         storage.append_binary_event(&Evt { a: 1, b: 2 }).unwrap();
         storage.flush().unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let len1 = std::fs::metadata(format!("{}/events.raftlog", base)).unwrap().len();
+        // Poll instead of a fixed sleep: the async writer's flush cadence
+        // is timing-dependent and a hard 50 ms flaked on loaded CI runners.
+        let len1 = wait_for_growth(&format!("{}/events.raftlog", base), 0);
         assert!(len1 > 0, "file should be non-empty after first binary append");
 
         // Second binary event
         storage.append_binary_event(&Evt { a: 3, b: 4 }).unwrap();
         storage.flush().unwrap();
-        std::thread::sleep(Duration::from_millis(50));
-        let len2 = std::fs::metadata(format!("{}/events.raftlog", base)).unwrap().len();
+        let len2 = wait_for_growth(&format!("{}/events.raftlog", base), len1);
         assert!(len2 > len1, "file should grow after second binary append");
+    }
+
+    /// Poll a file's length until it exceeds `above` or a 5 s deadline
+    /// passes; returns the last observed length either way. Replaces fixed
+    /// sleeps — the async writer's flush timing flaked under CI load.
+    fn wait_for_growth(path: &str, above: u64) -> u64 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            if len > above || std::time::Instant::now() > deadline {
+                return len;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]
