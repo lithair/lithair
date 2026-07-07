@@ -88,7 +88,6 @@ pub struct FileStorage {
     /// Control fsync behavior per append
     pub(crate) fsync_on_append: bool,
     /// Rotate events file when exceeding this size (0 = disabled)
-    pub(crate) max_log_file_size: usize,
     /// Event batch buffer for high-performance writes
     pub(crate) event_batch: Vec<String>,
     /// Current batch size counter
@@ -125,20 +124,12 @@ impl FileStorage {
             binary_writer: None,
             index_writer: None,
             fsync_on_append: true,
-            max_log_file_size: 0,
             event_batch: Vec::new(),
             batch_count: 0,
             max_batch_size: 1000, // Batch 1000 events for optimal performance
             async_writer: None,
             enable_checksums: true, // CRC32 checksums enabled by default for data integrity
         };
-
-        // Optional: enable rotation via environment variable (useful for tests/benchmarks)
-        if let Ok(v) = std::env::var("LT_MAX_LOG_FILE_SIZE") {
-            if let Ok(n) = v.parse::<usize>() {
-                storage.max_log_file_size = n;
-            }
-        }
 
         // Create metadata file if it doesn't exist
         storage.ensure_metadata_file()?;
@@ -333,8 +324,6 @@ impl FileStorage {
         self.event_batch.clear();
         self.batch_count = 0;
 
-        // Rotate if threshold exceeded
-        self.maybe_rotate()?;
         Ok(())
     }
 
@@ -469,47 +458,14 @@ impl FileStorage {
         Ok(())
     }
 
-    /// Rotate events file if size exceeds configured threshold
-    fn maybe_rotate(&mut self) -> EngineResult<()> {
-        if self.max_log_file_size == 0 {
-            return Ok(());
-        }
-        if let Ok(m) = fs::metadata(&self.events_file) {
-            if m.len() as usize >= self.max_log_file_size {
-                // Close writer and rotate to .1
-                self.writer = None;
-                let seg1 = format!("{}.1", &self.events_file);
-                let _ = fs::remove_file(&seg1);
-                fs::rename(&self.events_file, &seg1).map_err(|e| {
-                    EngineError::PersistenceError(format!("Failed to rotate log: {}", e))
-                })?;
-                // Open fresh file
-                let file = fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&self.events_file)
-                    .map_err(|e| {
-                        EngineError::PersistenceError(format!(
-                            "Failed to open new events file: {}",
-                            e
-                        ))
-                    })?;
-                self.writer = Some(BufWriter::new(file));
-                log::info!("Log rotated: {} -> {}", &self.events_file, &seg1);
-            }
-        }
-        Ok(())
-    }
-
-    /// Read all events from the event log (supports simple one-segment rotation)
+    /// Read all events from the event log
     ///
     /// Returns events as JSON strings, one per line
     /// Validates CRC32 checksums if present and rejects corrupted events
     pub fn read_all_events(&self) -> EngineResult<Vec<String>> {
         let mut all = Vec::new();
         let mut corrupted_count = 0;
-        let seg1 = format!("{}.1", &self.events_file);
-        for path in [seg1.as_str(), &self.events_file] {
+        for path in [self.events_file.as_str()] {
             if !Path::new(path).exists() {
                 continue;
             }
@@ -544,12 +500,11 @@ impl FileStorage {
         Ok(all)
     }
 
-    /// Read all event lines as raw bytes (supports simple one-segment rotation)
+    /// Read all event lines as raw bytes
     /// Uses Length-Prefixed Framing (8 bytes length + payload)
     pub fn read_all_event_bytes(&self) -> EngineResult<Vec<Vec<u8>>> {
         let mut all = Vec::new();
-        let seg1 = format!("{}.1", &self.events_file);
-        for path in [seg1.as_str(), &self.events_file] {
+        for path in [self.events_file.as_str()] {
             if !Path::new(path).exists() {
                 continue;
             }

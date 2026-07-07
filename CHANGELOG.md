@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The `LT_MAX_LOG_FILE_SIZE` single-file log "rotation" — it destroyed
+  event history.** Each rotation deleted the previous `.1` segment before
+  renaming, so any history beyond ~2 segments was permanently lost; a
+  restart replayed 1 item out of 50 in the reproduction. The knob was
+  undocumented, env-only, and contradicted the event-sourcing promise
+  (append-only log, hash chain, replay). Bounding file sizes is what the
+  multi-file store (`LT_MULTI_FILE=1`, one append-only log per aggregate)
+  and snapshot compaction are for — a new integration test pins replay +
+  retention on that backend. Three never-wired BDD rotation steps went
+  with it.
+
 ## [1.2.0] - 2026-07-04
 
 Coherence and extensibility release: the legacy project name is fully retired,
