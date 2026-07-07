@@ -86,7 +86,20 @@ async fn when_create_items(world: &mut LithairWorld, count: usize) {
 async fn then_hot_count_is(world: &mut LithairWorld, expected: usize) {
     let handler = handler_slot(world).clone().expect("handler not initialized");
     let hot = handler.storage_count().await;
-    assert_eq!(hot, expected, "expected {} items in hot memory, found {}", expected, hot);
+    let total = handler.total_item_count().await;
+    assert_eq!(
+        hot,
+        expected,
+        "expected {} items in hot memory, found {} (total={}, \
+         LT_RETENTIONTESTEMAIL_MEMORY_RETENTION={:?}, LT_MAX_LOG_FILE_SIZE={:?}, \
+         LT_DEDUP_PERSIST={:?})",
+        expected,
+        hot,
+        total,
+        std::env::var("LT_RETENTIONTESTEMAIL_MEMORY_RETENTION").ok(),
+        std::env::var("LT_MAX_LOG_FILE_SIZE").ok(),
+        std::env::var("LT_DEDUP_PERSIST").ok()
+    );
 }
 
 #[then(expr = "the {int} oldest items should be evicted from full memory")]
