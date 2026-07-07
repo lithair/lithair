@@ -3,7 +3,7 @@
 # Run locally:
 #   cidx run code      # rustfmt + clippy
 #   cidx run security  # cargo-audit + gitleaks + trivy
-#   cidx run test      # workspace unit tests (lib + bins)
+#   cidx run test      # unit + integration + behavior BDD (per-PR pyramid)
 #   cidx run build     # workspace release build
 #   cidx run ci        # full pipeline
 #
@@ -25,11 +25,17 @@ containers = ["cargo-test"]
 containers = ["cargo-build"]
 
 # ─── container overrides ───
-# Workspace-aware test run (matches existing GH Actions intent).
-# Skips cucumber-tests crate: BDD scenarios depend on Task + long-running
-# servers and are exercised separately.
+# The full per-PR test pyramid (issue #132):
+#   1. unit: workspace lib + bins (also builds target/release/lithair,
+#      which the scaffolding BDD suite invokes);
+#   2. integration: lithair-core/tests/ — real server boots + HTTP
+#      assertions (~20s execution, compile is the only real cost);
+#   3. behavior BDD: the fast cucumber suites (persistence event-sourcing/
+#      hash-chain/retention, scaffolding CLI, serialization modes).
+# Performance/stress/cluster BDD suites stay OUT of the per-PR gate —
+# they are long-running by design and run via `task bdd:*` / nightly.
 [containers.cargo-test]
-command = "cargo test --workspace --lib --bins --release"
+command = "sh -c 'cargo test --workspace --lib --bins --release && cargo test -p lithair-core --tests --release && cargo test -p cucumber-tests --release --test cucumber_tests --test scaffolding_test --test serialization_test'"
 
 # Workspace-aware release build.
 [containers.cargo-build]

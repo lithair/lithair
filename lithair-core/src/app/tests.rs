@@ -731,6 +731,8 @@ async fn request_read_body_with_limit_accepts_undersize_end_to_end() {
 struct SlowStatsHandler {
     name: String,
     sleep: std::time::Duration,
+    in_flight: Arc<std::sync::atomic::AtomicUsize>,
+    peak: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[async_trait::async_trait]
@@ -765,9 +767,16 @@ impl crate::app::ModelHandler for SlowStatsHandler {
     }
 
     async fn get_stats(&self, _data_path: &str) -> crate::app::ModelStats {
-        // Deliberate latency. join_all should fire all of these at once,
-        // so total wall-clock time stays ~= `self.sleep`, not N * sleep.
+        // Deliberate latency + concurrency tracking. join_all should fire
+        // all of these at once: every task enters the sleep before any
+        // exits, so `peak` reaches N when collection is concurrent and
+        // stays at 1 when it is sequential — deterministic regardless of
+        // CPU load (a wall-clock bound flaked on starved CI containers).
+        use std::sync::atomic::Ordering;
+        let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(now, Ordering::SeqCst);
         tokio::time::sleep(self.sleep).await;
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
         crate::app::ModelStats {
             model: self.name.clone(),
             item_count: 0,
@@ -837,7 +846,8 @@ async fn metrics_endpoint_collects_per_model_stats_concurrently() {
     // sequential regression (which would be ≥5× SLEEP = 1000 ms).
     const N_MODELS: usize = 5;
     const SLEEP: std::time::Duration = std::time::Duration::from_millis(200);
-    let upper_bound = SLEEP * 2;
+    let in_flight = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
     let server = LithairServer::new().build().expect("build server");
 
@@ -854,6 +864,8 @@ async fn metrics_endpoint_collects_per_model_stats_concurrently() {
                 handler: Arc::new(SlowStatsHandler {
                     name: format!("SlowModel{}", i),
                     sleep: SLEEP,
+                    in_flight: in_flight.clone(),
+                    peak: peak.clone(),
                 }),
                 schema_extractor: None,
             });
@@ -868,9 +880,7 @@ async fn metrics_endpoint_collects_per_model_stats_concurrently() {
     // proxy for the real cost.
     let (base, handle) = spawn_for_test(server).await;
 
-    let start = std::time::Instant::now();
     let resp = reqwest::get(format!("{}/metrics", base)).await.expect("GET /metrics succeeded");
-    let elapsed = start.elapsed();
     assert_eq!(resp.status(), 200, "/metrics should return 200");
 
     // Body sanity check: each slow model must appear in the output. This
@@ -887,15 +897,16 @@ async fn metrics_endpoint_collects_per_model_stats_concurrently() {
         );
     }
 
+    // Sequential collection can never overlap two sleeps (peak == 1);
+    // concurrent collection overlaps all of them (peak == N in practice).
+    // ≥ 2 is the regression boundary and is load-independent.
+    let peak_seen = peak.load(std::sync::atomic::Ordering::SeqCst);
     assert!(
-        elapsed < upper_bound,
-        "metrics collection took {:?}, expected < {:?} (sequential regression: \
-         {} models × {:?} = {:?} would exceed this)",
-        elapsed,
-        upper_bound,
-        N_MODELS,
-        SLEEP,
-        SLEEP * N_MODELS as u32
+        peak_seen >= 2,
+        "metrics collection ran sequentially: peak concurrent get_stats was {} \
+         (expected ≥ 2 of {} models in flight together)",
+        peak_seen,
+        N_MODELS
     );
 
     handle.abort();
