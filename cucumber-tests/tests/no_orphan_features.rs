@@ -88,7 +88,9 @@ fn collect_features(dir: &Path, out: &mut BTreeSet<String>) {
         if path.is_dir() {
             collect_features(&path, out);
         } else if path.extension().is_some_and(|e| e == "feature") {
-            out.insert(path.to_string_lossy().into_owned());
+            // Normalize separators so the CLAIMED map (forward slashes)
+            // matches on Windows too (Gemini #178).
+            out.insert(path.to_string_lossy().replace('\\', "/"));
         }
     }
 }
