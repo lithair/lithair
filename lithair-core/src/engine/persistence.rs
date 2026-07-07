@@ -87,7 +87,6 @@ pub struct FileStorage {
     pub(crate) index_writer: Option<BufWriter<std::fs::File>>,
     /// Control fsync behavior per append
     pub(crate) fsync_on_append: bool,
-    /// Rotate events file when exceeding this size (0 = disabled)
     /// Event batch buffer for high-performance writes
     pub(crate) event_batch: Vec<String>,
     /// Current batch size counter
