@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-08
+
+The test-workflow release: the full per-PR pyramid now runs in CI, and the
+week of resurrecting the dormant suites caught six real bugs — including a
+data-loss one. Stable API surface unchanged (no additions, no removals; the
+one removed env knob was undocumented and destroyed data). No on-disk
+format change.
+
 ### Added
 
 - **Compile-fail tests for the declarative macro surface** (trybuild, gate
@@ -1347,7 +1355,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/lithair/lithair/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/lithair/lithair/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/lithair/lithair/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/lithair/lithair/compare/v1.0.0-rc.1...v1.0.0
