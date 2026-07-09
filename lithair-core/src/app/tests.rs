@@ -2,7 +2,6 @@
 //! mod.rs in the app-module split; behavior unchanged).
 
 use super::*;
-use super::*;
 
 #[test]
 fn test_server_creation() {
