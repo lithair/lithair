@@ -4,7 +4,7 @@ Lithair is a **declarative backend framework** where you define your data models
 
 ## Prerequisites
 
-- Rust 1.70+ installed
+- Rust 1.95+ installed (the toolchain currently pinned by Lithair)
 - Basic knowledge of Rust programming
 - Understanding of web APIs (helpful but not required)
 
@@ -19,6 +19,18 @@ Instead of writing controllers, routes, and database queries, you:
 ## Quick Start: Simple CRUD API
 
 ### 1. Create Your Project
+
+For a new application, prefer the CLI and follow the generated README:
+
+```bash
+cargo install lithair-cli
+lithair new my-app
+cd my-app
+cargo run
+```
+
+The manual setup below is useful when adding Lithair to an existing Cargo
+project.
 
 ```bash
 cargo new my-app
@@ -247,11 +259,11 @@ LithairServer::new()
 
 ## Next Steps
 
-- **[Session Management Guide](../features/security/sessions.md)** - Deep dive
+- **[Session Management Guide](../features/sessions.md)** - Deep dive
   into authentication
 - **[RBAC Guide](./rbac.md)** - Advanced permission patterns
 - **[Event Sourcing](../modules/storage/event-sourcing.md)** - Understanding .raftlog files
-- **[Examples](../../examples/README.md)** - Working reference implementations
+- **[Examples](../examples/README.md)** - Working reference implementations
 - **[Distributed Consensus](../modules/consensus/README.md)** - Multi-node clusters
 
 ## Working Examples

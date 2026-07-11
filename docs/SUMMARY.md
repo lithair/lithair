@@ -7,6 +7,7 @@
 # Getting Started
 
 - [Installation](guides/getting-started.md)
+- [Golden Path](guides/golden-path.md)
 - [Data-First Philosophy](guides/data-first-philosophy.md)
 
 ---

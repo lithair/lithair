@@ -52,7 +52,23 @@ is to offer a simpler default when one coherent binary is the right trade-off.
 Your data model is the starting point. Define a struct, annotate the fields,
 and the framework generates the rest.
 
-## Install
+## Start here
+
+The recommended path uses the CLI to generate a working application and guide
+you through CRUD, restart/replay, and offline data verification:
+
+```bash
+cargo install lithair-cli
+lithair new my-app
+cd my-app
+cargo run
+```
+
+Continue with the generated `README.md` or the
+[golden path](docs/guides/golden-path.md). Start single-node; add auth,
+retention, frontend serving, or clustering only when the application needs it.
+
+To add Lithair manually to an existing project:
 
 ```toml
 [dependencies]
@@ -230,10 +246,13 @@ model and disk compaction — see
 For the durability semantics of the `.raftlog` (fsync mode, crash
 safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
 
-## Quick Start
+## Learn and adopt
 
-See the [Getting Started guide](docs/guides/getting-started.md) for a
-walkthrough including sessions, RBAC, and the builder API.
+Follow the [golden path](docs/guides/golden-path.md) for the shortest supported
+journey from an empty directory to durable data, restart/replay, verification,
+tests, and production preparation. The broader
+[Getting Started guide](docs/guides/getting-started.md) explains the builder
+API and optional sessions and RBAC.
 
 ## Examples
 
