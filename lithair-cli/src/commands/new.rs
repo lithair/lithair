@@ -46,6 +46,8 @@ pub fn run(name: &str, base: &Path, no_frontend: bool) -> Result<(), String> {
     println!();
     println!("  cd {}", name);
     println!("  cargo run");
+    println!();
+    println!("Then follow README.md: create data, restart the server, and verify replay.");
 
     Ok(())
 }
@@ -192,5 +194,21 @@ mod tests {
         assert!(health_rs.contains("RouteRequest"), "health handler takes RouteRequest");
         assert!(!health_rs.contains("http::StatusCode"), "no bare `http` crate dependency");
         assert!(!health_rs.contains("Full<Bytes>"), "no obsolete Full<Bytes> return type");
+    }
+
+    #[test]
+    fn scaffold_readme_teaches_the_golden_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        run("golden", tmp.path(), false).unwrap();
+
+        let readme = fs::read_to_string(tmp.path().join("golden/README.md")).unwrap();
+        for expected in [
+            "cargo run",
+            "curl -X POST",
+            "Restart and prove replay",
+            "lithair verify ./data/items",
+        ] {
+            assert!(readme.contains(expected), "generated README should contain {expected:?}");
+        }
     }
 }

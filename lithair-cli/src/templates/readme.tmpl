@@ -1,19 +1,55 @@
 # {{project_name}}
 
-A [Lithair](https://github.com/lithair/lithair) application.
+A stateful, durable [Lithair](https://github.com/lithair/lithair) application.
 
-## Getting Started
+## 1. Start the application
 
 ```bash
-# Run the server
 cargo run
-
-# The server starts at http://127.0.0.1:3000
 ```
 
-## Project Structure
+The server starts at <http://127.0.0.1:3000>. Keep it running and use a
+second terminal for the next steps.
 
+## 2. Create and read durable data
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/items \
+  -H 'content-type: application/json' \
+  -d '{"id":"first","name":"My first item","description":"Created with Lithair"}'
+
+curl http://127.0.0.1:3000/api/items/first
 ```
+
+The write is now present both in the in-memory view used for reads and in the
+event store under `data/items/`.
+
+## 3. Restart and prove replay
+
+Stop the server with `Ctrl-C`, then start it again:
+
+```bash
+cargo run
+curl http://127.0.0.1:3000/api/items/first
+```
+
+The item is still present: Lithair replayed the event store to reconstruct the
+application state.
+
+## 4. Verify the store
+
+Stop the server before running the offline verifier:
+
+```bash
+cargo install lithair-cli
+lithair verify ./data/items
+```
+
+This checks the event-store hash chain. A valid store exits with status 0.
+
+## Where to make this application yours
+
+```text
 src/
   main.rs          - Server entry point
   models/          - Declarative data models
@@ -22,6 +58,10 @@ src/
 frontend/          - Static assets (HTML/CSS/JS)
 data/              - Runtime event stores (gitignored)
 ```
+
+Start by changing `src/models/item.rs`. Lithair generates the model's CRUD API
+and persists its mutations. Add custom behavior under `src/routes/` when an
+operation represents a business action rather than generic CRUD.
 
 ## Configuration
 
@@ -32,3 +72,6 @@ cp .env.example .env
 ```
 
 Environment variables use the `LT_` prefix.
+
+For the complete adoption path, including fit, tests, backups, and deployment,
+see the [Lithair golden path](https://github.com/lithair/lithair/blob/main/docs/guides/golden-path.md).
