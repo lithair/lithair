@@ -187,6 +187,7 @@ mod tests {
         assert!(item_rs.contains("use lithair_core::prelude::*;"), "item.rs uses the prelude");
         assert!(main_rs.contains("dotenvy::dotenv()"), "main.rs loads its documented .env file");
         assert!(!main_rs.contains(".with_port(3000)"), "LT_PORT must not be hard-coded away");
+        assert!(!main_rs.contains(".with_host(\""), "LT_HOST must not be hard-coded away");
         assert!(cargo.contains("dotenvy = \"0.15\""), "scaffold includes its .env loader");
 
         // 3. The custom-route handler matches the current with_route signature

@@ -88,16 +88,26 @@ fn stop_app(world: &mut ScaffoldingWorld) {
         .args(["-INT", &child.id().to_string()])
         .status()
         .is_ok_and(|status| status.success());
+    let mut force_killed = false;
     if !interrupted {
         let _ = child.kill();
+        force_killed = true;
     }
 
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
+                #[cfg(unix)]
+                let expected_signal = {
+                    use std::os::unix::process::ExitStatusExt;
+                    interrupted && status.signal() == Some(2)
+                };
+                #[cfg(not(unix))]
+                let expected_signal = false;
+
                 assert!(
-                    status.success() || interrupted,
+                    status.success() || expected_signal || force_killed,
                     "generated app exited unsuccessfully: {status}"
                 );
                 break;
@@ -185,36 +195,54 @@ async fn build_generated_app(world: &mut ScaffoldingWorld, name: String) {
 
 #[when(expr = "I start the generated app on an isolated port")]
 async fn start_generated_app(world: &mut ScaffoldingWorld) {
-    let port = world.port.unwrap_or_else(|| {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("reserve isolated port");
-        listener.local_addr().expect("reserved address").port()
-    });
+    const START_ATTEMPTS: usize = 3;
+    const START_TIMEOUT: Duration = Duration::from_secs(10);
 
     let app_dir = world.app_dir.as_ref().expect("generated app was not built");
-    let env_path = app_dir.join(".env");
-    let env = std::fs::read_to_string(&env_path).expect("read generated .env");
-    let env = env.replace("LT_PORT=3000", &format!("LT_PORT={port}"));
-    std::fs::write(&env_path, env).expect("configure isolated port");
+    let app_binary = world.app_binary.as_ref().expect("generated binary path");
 
-    let child = Command::new(world.app_binary.as_ref().expect("generated binary path"))
-        .current_dir(app_dir)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("start generated application");
-    world.app = Some(child);
-    world.port = Some(port);
+    for attempt in 1..=START_ATTEMPTS {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("reserve isolated port");
+        let port = listener.local_addr().expect("reserved address").port();
+        drop(listener);
 
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        if http_request(port, "GET", "/health", None)
-            .is_ok_and(|response| response.starts_with("HTTP/1.1 200"))
+        // An explicit process variable takes precedence over the generated
+        // .env file (dotenvy never overwrites an existing variable).
+        let mut child = match Command::new(app_binary)
+            .current_dir(app_dir)
+            .env("LT_PORT", port.to_string())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
         {
-            break;
+            Ok(child) => child,
+            Err(_) if attempt < START_ATTEMPTS => continue,
+            Err(error) => panic!("start generated application: {error}"),
+        };
+
+        let deadline = Instant::now() + START_TIMEOUT;
+        loop {
+            if http_request(port, "GET", "/health", None)
+                .is_ok_and(|response| response.starts_with("HTTP/1.1 200"))
+            {
+                world.app = Some(child);
+                world.port = Some(port);
+                return;
+            }
+
+            if child.try_wait().expect("poll generated application").is_some() {
+                break;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
         }
-        assert!(Instant::now() < deadline, "generated app did not become healthy on port {port}");
-        std::thread::sleep(Duration::from_millis(50));
     }
+
+    panic!("generated app did not become healthy after {START_ATTEMPTS} attempts");
 }
 
 #[when(expr = "I create item {string} named {string}")]
