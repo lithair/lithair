@@ -185,6 +185,9 @@ mod tests {
         let item_rs = fs::read_to_string(root.join("src/models/item.rs")).unwrap();
         assert!(main_rs.contains("use lithair_core::prelude::*;"), "main.rs uses the prelude");
         assert!(item_rs.contains("use lithair_core::prelude::*;"), "item.rs uses the prelude");
+        assert!(main_rs.contains("dotenvy::dotenv()"), "main.rs loads its documented .env file");
+        assert!(!main_rs.contains(".with_port(3000)"), "LT_PORT must not be hard-coded away");
+        assert!(cargo.contains("dotenvy = \"0.15\""), "scaffold includes its .env loader");
 
         // 3. The custom-route handler matches the current with_route signature
         //    (RouteRequest -> RouteResponse) and drops the removed imports that
