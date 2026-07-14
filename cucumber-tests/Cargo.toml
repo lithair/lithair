@@ -119,6 +119,11 @@ portpicker = "0.1"
 # TOML parsing for scaffolding tests
 toml = "0.8"
 
+# Kept in the outer BDD dependency graph so the generated-project golden-path
+# build can run `--offline` after CI has populated Cargo's normal dependency
+# cache. This is also the dependency emitted by `lithair new` for `.env`.
+dotenvy = "0.15"
+
 # Serialization testing (dual-mode JSON + rkyv)
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing
 rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization

@@ -1,6 +1,9 @@
 use cucumber::{given, then, when, World as CucumberWorld};
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Default, CucumberWorld)]
 pub struct ScaffoldingWorld {
@@ -8,6 +11,19 @@ pub struct ScaffoldingWorld {
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    pub app: Option<Child>,
+    pub app_binary: Option<PathBuf>,
+    pub app_dir: Option<PathBuf>,
+    pub port: Option<u16>,
+}
+
+impl Drop for ScaffoldingWorld {
+    fn drop(&mut self) {
+        if let Some(child) = self.app.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 }
 
 impl ScaffoldingWorld {
@@ -16,14 +32,21 @@ impl ScaffoldingWorld {
     }
 }
 
+fn workspace_root() -> PathBuf {
+    let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    root.pop();
+    root
+}
+
 fn lithair_binary() -> PathBuf {
     // Look for the binary relative to the workspace root
     let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     base.pop(); // cucumber-tests -> workspace root
     let target_dir = base.join("target");
 
-    // Try release and ci profiles first (for CI builds), then debug (for local dev)
-    for profile in &["release", "ci"] {
+    // The per-PR gate explicitly builds the current debug CLI. Prefer it so a
+    // stale release artifact from an earlier version cannot scaffold the app.
+    for profile in &["debug", "ci", "release"] {
         let bin_path = target_dir.join(profile).join("lithair");
         if bin_path.exists() {
             return bin_path;
@@ -31,6 +54,73 @@ fn lithair_binary() -> PathBuf {
     }
 
     target_dir.join("debug").join("lithair")
+}
+
+fn http_request(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let body = body.unwrap_or("");
+    write!(
+        stream,
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )?;
+    stream.flush()?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    Ok(response)
+}
+
+fn stop_app(world: &mut ScaffoldingWorld) {
+    let Some(mut child) = world.app.take() else {
+        return;
+    };
+
+    // Match the user's Ctrl-C journey so Lithair can flush and shut down
+    // gracefully. Fall back to Child::kill if SIGINT is unavailable.
+    let interrupted = Command::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .is_ok_and(|status| status.success());
+    let mut force_killed = false;
+    if !interrupted {
+        let _ = child.kill();
+        force_killed = true;
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                #[cfg(unix)]
+                let expected_signal = {
+                    use std::os::unix::process::ExitStatusExt;
+                    interrupted && status.signal() == Some(2)
+                };
+                #[cfg(not(unix))]
+                let expected_signal = false;
+
+                assert!(
+                    status.success() || expected_signal || force_killed,
+                    "generated app exited unsuccessfully: {status}"
+                );
+                break;
+            }
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("generated app did not stop after SIGINT");
+            }
+            Err(error) => panic!("failed waiting for generated app: {error}"),
+        }
+    }
 }
 
 #[given("a clean temporary directory")]
@@ -71,6 +161,133 @@ async fn run_new_no_frontend(world: &mut ScaffoldingWorld, name: String) {
     world.exit_code = Some(output.status.code().unwrap_or(-1));
     world.stdout = String::from_utf8_lossy(&output.stdout).to_string();
     world.stderr = String::from_utf8_lossy(&output.stderr).to_string();
+}
+
+#[when(expr = "I build generated app {string} against the current workspace")]
+async fn build_generated_app(world: &mut ScaffoldingWorld, name: String) {
+    let app_dir = world.base_dir().join(&name);
+    let manifest = app_dir.join("Cargo.toml");
+    let mut cargo_toml = std::fs::read_to_string(&manifest).expect("read generated Cargo.toml");
+    cargo_toml.push_str(&format!(
+        "\n[patch.crates-io]\nlithair-core = {{ path = {:?} }}\n",
+        workspace_root().join("lithair-core")
+    ));
+    std::fs::write(&manifest, cargo_toml).expect("patch generated app to current workspace");
+
+    // A nested Cargo invocation cannot share the outer test process's target
+    // directory: Cargo keeps its artifact lock while this BDD binary runs.
+    let target_dir = workspace_root().join("target/golden-path-e2e");
+    let output = Command::new("cargo")
+        .arg("build")
+        .arg("--quiet")
+        .arg("--offline")
+        .current_dir(&app_dir)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .expect("build generated application");
+
+    world.exit_code = Some(output.status.code().unwrap_or(-1));
+    world.stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    world.stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    world.app_binary = Some(target_dir.join("debug").join(&name));
+    world.app_dir = Some(app_dir);
+}
+
+#[when(expr = "I start the generated app on an isolated port")]
+async fn start_generated_app(world: &mut ScaffoldingWorld) {
+    const START_ATTEMPTS: usize = 3;
+    const START_TIMEOUT: Duration = Duration::from_secs(10);
+
+    let app_dir = world.app_dir.as_ref().expect("generated app was not built");
+    let app_binary = world.app_binary.as_ref().expect("generated binary path");
+
+    for attempt in 1..=START_ATTEMPTS {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("reserve isolated port");
+        let port = listener.local_addr().expect("reserved address").port();
+        drop(listener);
+
+        // An explicit process variable takes precedence over the generated
+        // .env file (dotenvy never overwrites an existing variable).
+        let mut child = match Command::new(app_binary)
+            .current_dir(app_dir)
+            .env("LT_PORT", port.to_string())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(_) if attempt < START_ATTEMPTS => continue,
+            Err(error) => panic!("start generated application: {error}"),
+        };
+
+        let deadline = Instant::now() + START_TIMEOUT;
+        loop {
+            if http_request(port, "GET", "/health", None)
+                .is_ok_and(|response| response.starts_with("HTTP/1.1 200"))
+            {
+                world.app = Some(child);
+                world.port = Some(port);
+                return;
+            }
+
+            if child.try_wait().expect("poll generated application").is_some() {
+                break;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    panic!("generated app did not become healthy after {START_ATTEMPTS} attempts");
+}
+
+#[when(expr = "I create item {string} named {string}")]
+async fn create_item(world: &mut ScaffoldingWorld, id: String, name: String) {
+    let body = format!(r#"{{"id":"{id}","name":"{name}","description":"golden path"}}"#);
+    let response = http_request(world.port.expect("app port"), "POST", "/api/items", Some(&body))
+        .expect("POST generated model");
+    assert!(
+        response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.1 201"),
+        "item creation failed:\n{response}"
+    );
+}
+
+#[when("I stop the generated app")]
+async fn stop_generated_app(world: &mut ScaffoldingWorld) {
+    stop_app(world);
+}
+
+#[then(expr = "fetching item {string} returns name {string}")]
+async fn fetch_item(world: &mut ScaffoldingWorld, id: String, name: String) {
+    let response =
+        http_request(world.port.expect("app port"), "GET", &format!("/api/items/{id}"), None)
+            .expect("GET generated model");
+    assert!(response.starts_with("HTTP/1.1 200"), "item fetch failed:\n{response}");
+    assert!(
+        response.contains(&format!(r#""name":"{name}""#)),
+        "fetched item has the wrong name:\n{response}"
+    );
+}
+
+#[then("the generated item store passes offline verification")]
+async fn verify_generated_store(world: &mut ScaffoldingWorld) {
+    assert!(world.app.is_none(), "offline verification requires the server to be stopped");
+    let store = world.app_dir.as_ref().expect("generated app dir").join("data/items");
+    let output = Command::new(lithair_binary())
+        .arg("verify")
+        .arg(&store)
+        .output()
+        .expect("run offline verifier");
+    assert!(
+        output.status.success(),
+        "offline verification failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[then("the command should succeed")]

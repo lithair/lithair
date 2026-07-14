@@ -69,3 +69,19 @@ Feature: Project Scaffolding
     And the file "env-test/.env" should contain "LT_LOG_LEVEL"
     And the file "env-test/.env" should contain "LT_DATA_DIR"
     And the file "env-test/.env" should not contain "RS_"
+
+  @golden-path
+  Scenario: Generated application survives restart and verifies its store
+    Given a clean temporary directory
+    When I run lithair new "golden-app"
+    Then the command should succeed
+    When I build generated app "golden-app" against the current workspace
+    Then the command should succeed
+    When I start the generated app on an isolated port
+    And I create item "first" named "My first item"
+    Then fetching item "first" returns name "My first item"
+    When I stop the generated app
+    And I start the generated app on an isolated port
+    Then fetching item "first" returns name "My first item"
+    When I stop the generated app
+    Then the generated item store passes offline verification
