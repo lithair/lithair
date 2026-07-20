@@ -79,8 +79,14 @@ fn stop_app(world: &mut ScaffoldingWorld) {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                use std::os::unix::process::ExitStatusExt;
-                let expected_signal = interrupted && status.signal() == Some(2);
+                #[cfg(unix)]
+                let expected_signal = {
+                    use std::os::unix::process::ExitStatusExt;
+                    interrupted && status.signal() == Some(2)
+                };
+                #[cfg(not(unix))]
+                let expected_signal = false;
+
                 assert!(
                     status.success() || expected_signal || force_killed,
                     "generated app exited unsuccessfully: {status}"
@@ -217,11 +223,9 @@ async fn start_generated_app(world: &mut ScaffoldingWorld) {
 #[when(expr = "I create item {string} named {string}")]
 async fn create_item(world: &mut ScaffoldingWorld, id: String, name: String) {
     let port = world.port.expect("app port");
-    let body = format!(r#"{{"id":"{id}","name":"{name}","description":"golden path"}}"#);
     let response = http_client()
         .post(format!("http://127.0.0.1:{port}/api/items"))
-        .header("content-type", "application/json")
-        .body(body)
+        .json(&serde_json::json!({"id": id, "name": name, "description": "golden path"}))
         .send()
         .await
         .expect("POST generated model");
@@ -242,11 +246,8 @@ async fn fetch_item(world: &mut ScaffoldingWorld, id: String, name: String) {
         .await
         .expect("GET generated model");
     assert!(response.status().is_success(), "item fetch failed: {}", response.status());
-    let body = response.text().await.expect("read fetched item");
-    assert!(
-        body.contains(&format!(r#""name":"{name}""#)),
-        "fetched item has the wrong name:\n{body}"
-    );
+    let item: serde_json::Value = response.json().await.expect("parse fetched item");
+    assert_eq!(item["name"], name.as_str(), "fetched item has the wrong name:\n{item}");
 }
 
 #[then("the generated item store passes offline verification")]
