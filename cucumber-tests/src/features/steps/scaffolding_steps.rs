@@ -1,6 +1,4 @@
 use cucumber::{given, then, when, World as CucumberWorld};
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -39,10 +37,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn lithair_binary() -> PathBuf {
-    // Look for the binary relative to the workspace root
-    let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    base.pop(); // cucumber-tests -> workspace root
-    let target_dir = base.join("target");
+    let target_dir = workspace_root().join("target");
 
     // The per-PR gate explicitly builds the current debug CLI. Prefer it so a
     // stale release artifact from an earlier version cannot scaffold the app.
@@ -56,25 +51,11 @@ fn lithair_binary() -> PathBuf {
     target_dir.join("debug").join("lithair")
 }
 
-fn http_request(
-    port: u16,
-    method: &str,
-    path: &str,
-    body: Option<&str>,
-) -> std::io::Result<String> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-    let body = body.unwrap_or("");
-    write!(
-        stream,
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    )?;
-    stream.flush()?;
-
-    let mut response = String::new();
-    stream.read_to_string(&mut response)?;
-    Ok(response)
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("build http client")
 }
 
 fn stop_app(world: &mut ScaffoldingWorld) {
@@ -98,14 +79,8 @@ fn stop_app(world: &mut ScaffoldingWorld) {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                #[cfg(unix)]
-                let expected_signal = {
-                    use std::os::unix::process::ExitStatusExt;
-                    interrupted && status.signal() == Some(2)
-                };
-                #[cfg(not(unix))]
-                let expected_signal = false;
-
+                use std::os::unix::process::ExitStatusExt;
+                let expected_signal = interrupted && status.signal() == Some(2);
                 assert!(
                     status.success() || expected_signal || force_killed,
                     "generated app exited unsuccessfully: {status}"
@@ -201,30 +176,24 @@ async fn start_generated_app(world: &mut ScaffoldingWorld) {
     let app_dir = world.app_dir.as_ref().expect("generated app was not built");
     let app_binary = world.app_binary.as_ref().expect("generated binary path");
 
-    for attempt in 1..=START_ATTEMPTS {
-        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("reserve isolated port");
-        let port = listener.local_addr().expect("reserved address").port();
-        drop(listener);
+    let client = http_client();
+    for _ in 1..=START_ATTEMPTS {
+        let port = portpicker::pick_unused_port().expect("reserve isolated port");
 
         // An explicit process variable takes precedence over the generated
         // .env file (dotenvy never overwrites an existing variable).
-        let mut child = match Command::new(app_binary)
+        let mut child = Command::new(app_binary)
             .current_dir(app_dir)
             .env("LT_PORT", port.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-        {
-            Ok(child) => child,
-            Err(_) if attempt < START_ATTEMPTS => continue,
-            Err(error) => panic!("start generated application: {error}"),
-        };
+            .expect("start generated application");
 
         let deadline = Instant::now() + START_TIMEOUT;
         loop {
-            if http_request(port, "GET", "/health", None)
-                .is_ok_and(|response| response.starts_with("HTTP/1.1 200"))
-            {
+            let health = client.get(format!("http://127.0.0.1:{port}/health")).send().await;
+            if health.is_ok_and(|response| response.status().is_success()) {
                 world.app = Some(child);
                 world.port = Some(port);
                 return;
@@ -247,13 +216,16 @@ async fn start_generated_app(world: &mut ScaffoldingWorld) {
 
 #[when(expr = "I create item {string} named {string}")]
 async fn create_item(world: &mut ScaffoldingWorld, id: String, name: String) {
+    let port = world.port.expect("app port");
     let body = format!(r#"{{"id":"{id}","name":"{name}","description":"golden path"}}"#);
-    let response = http_request(world.port.expect("app port"), "POST", "/api/items", Some(&body))
+    let response = http_client()
+        .post(format!("http://127.0.0.1:{port}/api/items"))
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
         .expect("POST generated model");
-    assert!(
-        response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.1 201"),
-        "item creation failed:\n{response}"
-    );
+    assert!(response.status().is_success(), "item creation failed: {}", response.status());
 }
 
 #[when("I stop the generated app")]
@@ -263,13 +235,17 @@ async fn stop_generated_app(world: &mut ScaffoldingWorld) {
 
 #[then(expr = "fetching item {string} returns name {string}")]
 async fn fetch_item(world: &mut ScaffoldingWorld, id: String, name: String) {
-    let response =
-        http_request(world.port.expect("app port"), "GET", &format!("/api/items/{id}"), None)
-            .expect("GET generated model");
-    assert!(response.starts_with("HTTP/1.1 200"), "item fetch failed:\n{response}");
+    let port = world.port.expect("app port");
+    let response = http_client()
+        .get(format!("http://127.0.0.1:{port}/api/items/{id}"))
+        .send()
+        .await
+        .expect("GET generated model");
+    assert!(response.status().is_success(), "item fetch failed: {}", response.status());
+    let body = response.text().await.expect("read fetched item");
     assert!(
-        response.contains(&format!(r#""name":"{name}""#)),
-        "fetched item has the wrong name:\n{response}"
+        body.contains(&format!(r#""name":"{name}""#)),
+        "fetched item has the wrong name:\n{body}"
     );
 }
 
