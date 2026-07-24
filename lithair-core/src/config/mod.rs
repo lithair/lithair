@@ -197,6 +197,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let config = LithairConfig::load_from(dir.path().join("absent.toml"))
             .expect("missing config.toml is not an error");
-        assert_eq!(config.server.port, 8080);
+        // load_from applies env vars even without a file, so compare against
+        // defaults with the same process env applied (LT_PORT may be set).
+        let mut expected = LithairConfig::default();
+        expected.apply_env_vars();
+        assert_eq!(config.server.port, expected.server.port);
     }
 }
