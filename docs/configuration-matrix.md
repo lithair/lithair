@@ -52,13 +52,13 @@ Quick reference matrix for all configuration options.
 |                 | `resync_check_interval_ms` | `1000ms` | ✅            | ✅          | ❌   | 🔄         | Env: `LT_RESYNC_CHECK_INTERVAL_MS`                     |
 |                 | `snapshot_send_timeout_secs` | `30s` | ✅             | ✅          | ❌   | 🔄         | Env: `LT_SNAPSHOT_SEND_TIMEOUT_SECS`                   |
 |                 | `resync_cooldown_secs` | `10s`       | ✅             | ✅          | ❌   | 🔄         | Env: `LT_RESYNC_COOLDOWN_SECS`                         |
-| **RAFT**        | ⚠️ legacy `LITHAIR_` prefix |        |                |             |      |            | `[raft]` endpoint section                              |
-|                 | `enabled`              | `true`      | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_ENABLED`                            |
-|                 | `path`                 | `/raft`     | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_PATH`                               |
-|                 | `auth_required`        | `false`     | ✅             | ❌          | ❌   | 🔒         | No own env var — derived from `LITHAIR_RAFT_TOKEN`     |
-|                 | `auth_token`           | `None`      | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_TOKEN` (also sets `auth_required`)  |
-|                 | `heartbeat_interval_secs` | `2s`     | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_HEARTBEAT_INTERVAL`                 |
-|                 | `election_timeout_secs` | `5s`       | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_ELECTION_TIMEOUT`                   |
+| **RAFT**        | `LT_RAFT_*`, legacy `LITHAIR_RAFT_*` accepted |  |             |             |      |            | `[raft]` endpoint section                              |
+|                 | `enabled`              | `true`      | ✅             | ✅          | ❌   | 🔒         | Env: `LT_RAFT_ENABLED` (legacy `LITHAIR_` alias ok)                            |
+|                 | `path`                 | `/raft`     | ✅             | ✅          | ❌   | 🔒         | Env: `LT_RAFT_PATH` (legacy `LITHAIR_` alias ok)                               |
+|                 | `auth_required`        | `false`     | ✅             | ❌          | ❌   | 🔒         | No own env var — derived from `LT_RAFT_TOKEN`     |
+|                 | `auth_token`           | `None`      | ✅             | ✅          | ❌   | 🔒         | Env: `LT_RAFT_TOKEN` (also sets `auth_required`)  |
+|                 | `heartbeat_interval_secs` | `2s`     | ✅             | ✅          | ❌   | 🔒         | Env: `LT_RAFT_HEARTBEAT_INTERVAL`                 |
+|                 | `election_timeout_secs` | `5s`       | ✅             | ✅          | ❌   | 🔒         | Env: `LT_RAFT_ELECTION_TIMEOUT`                   |
 | **ADMIN**       |                        |             |                |             |      |            |                                                        |
 |                 | `enabled`              | `true`      | ✅             | ✅          | ✅   | 🔄         | Enable admin panel                                     |
 |                 | `path`                 | `/admin`    | ✅             | ✅          | ✅   | 🔄         | Admin panel path                                       |
@@ -176,7 +176,8 @@ exist. `LT_SERVER_PORT` or `LT_LOGGING_LEVEL` are silently ignored; the real
 names are `LT_PORT` and `LT_LOG_LEVEL`. When in doubt, check the Env column
 above or [configuration-reference.md](./configuration-reference.md).
 
-Most variables use the `LT_` prefix; the `[raft]` endpoint section and the Raft
+Most variables use the `LT_` prefix. The `[raft]` endpoint section accepts both
+`LT_RAFT_*` and its legacy `LITHAIR_RAFT_*` alias (`LT_RAFT_*` wins); the Raft
 storage roots keep the legacy `LITHAIR_` prefix (see the matrix).
 
 ### Array Values

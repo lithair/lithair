@@ -25,6 +25,19 @@ pub struct RaftConfig {
     pub election_timeout_secs: u64,
 }
 
+/// Read `LT_RAFT_<name>`, falling back to the legacy `LITHAIR_RAFT_<name>`
+/// alias. The `LITHAIR_` names predate the LT_ prefix migration and stay
+/// accepted throughout 1.x — dropping them is a 2.0 change.
+fn raft_env(name: &str) -> Option<String> {
+    match env::var(format!("LT_RAFT_{name}")) {
+        Ok(value) => Some(value),
+        // Fall back only when the LT_ name is truly absent — a present but
+        // non-Unicode LT_ value must not be silently replaced by the alias.
+        Err(env::VarError::NotPresent) => env::var(format!("LITHAIR_RAFT_{name}")).ok(),
+        Err(env::VarError::NotUnicode(_)) => None,
+    }
+}
+
 impl std::fmt::Debug for RaftConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RaftConfig")
@@ -84,28 +97,28 @@ impl RaftConfig {
 
     /// Apply environment variables
     pub fn apply_env_vars(&mut self) {
-        if let Ok(enabled) = env::var("LITHAIR_RAFT_ENABLED") {
+        if let Some(enabled) = raft_env("ENABLED") {
             self.enabled = enabled.parse().unwrap_or(true);
         }
 
-        if let Ok(path) = env::var("LITHAIR_RAFT_PATH") {
+        if let Some(path) = raft_env("PATH") {
             self.path = path;
         }
 
-        if let Ok(token) = env::var("LITHAIR_RAFT_TOKEN") {
+        if let Some(token) = raft_env("TOKEN") {
             if !token.is_empty() {
                 self.auth_required = true;
                 self.auth_token = Some(token);
             }
         }
 
-        if let Ok(interval) = env::var("LITHAIR_RAFT_HEARTBEAT_INTERVAL") {
+        if let Some(interval) = raft_env("HEARTBEAT_INTERVAL") {
             if let Ok(secs) = interval.parse() {
                 self.heartbeat_interval_secs = secs;
             }
         }
 
-        if let Ok(timeout) = env::var("LITHAIR_RAFT_ELECTION_TIMEOUT") {
+        if let Some(timeout) = raft_env("ELECTION_TIMEOUT") {
             if let Ok(secs) = timeout.parse() {
                 self.election_timeout_secs = secs;
             }
@@ -265,6 +278,46 @@ mod tests {
         assert!(config.matches_path("/cluster/raft/leader"));
         assert!(config.matches_path("/cluster/raft/heartbeat"));
         assert!(!config.matches_path("/other/path"));
+    }
+
+    /// Restores the captured variables on drop, so a failing assert cannot
+    /// leak env state into the rest of the in-process test run.
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+    impl EnvGuard {
+        fn capture(names: &[&'static str]) -> Self {
+            Self { saved: names.iter().map(|n| (*n, env::var(n).ok())).collect() }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in &self.saved {
+                match value {
+                    Some(v) => env::set_var(name, v),
+                    None => env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_lt_prefix_wins_over_legacy_alias() {
+        // Env is process-global; these two names are asserted on by no other
+        // test in the suite, and the guard restores them even on panic.
+        let _guard = EnvGuard::capture(&["LT_RAFT_PATH", "LITHAIR_RAFT_PATH"]);
+
+        env::set_var("LT_RAFT_PATH", "/lt-raft");
+        env::set_var("LITHAIR_RAFT_PATH", "/legacy-raft");
+        let mut config = RaftConfig::new();
+        config.apply_env_vars();
+        assert_eq!(config.path, "/lt-raft", "LT_RAFT_* takes precedence");
+
+        // Legacy alias still honored when the LT_ name is unset.
+        env::remove_var("LT_RAFT_PATH");
+        let mut config = RaftConfig::new();
+        config.apply_env_vars();
+        assert_eq!(config.path, "/legacy-raft", "LITHAIR_RAFT_* stays accepted");
     }
 
     #[test]
