@@ -203,7 +203,15 @@ impl LithairServerBuilder {
     /// Create a new builder with default configuration
     pub fn new() -> Self {
         Self {
-            config: LithairConfig::load().unwrap_or_default(),
+            // A broken config.toml must not be silently swallowed, and the
+            // fallback must still honor LT_* vars (load() fails before it
+            // reaches apply_env_vars()).
+            config: LithairConfig::load().unwrap_or_else(|error| {
+                log::warn!("ignoring invalid config.toml, using defaults + env vars: {error:#}");
+                let mut config = LithairConfig::default();
+                config.apply_env_vars();
+                config
+            }),
             tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,

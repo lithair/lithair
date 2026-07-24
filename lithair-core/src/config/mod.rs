@@ -180,4 +180,23 @@ mod tests {
         let config = LithairConfig::default();
         assert!(config.validate().is_ok());
     }
+
+    #[test]
+    fn test_load_from_rejects_invalid_toml() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[server\nport = not a number").expect("write invalid config");
+        assert!(
+            LithairConfig::load_from(&path).is_err(),
+            "an existing but unparseable config.toml must surface an error, not defaults"
+        );
+    }
+
+    #[test]
+    fn test_load_from_missing_file_uses_defaults() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let config = LithairConfig::load_from(dir.path().join("absent.toml"))
+            .expect("missing config.toml is not an error");
+        assert_eq!(config.server.port, 8080);
+    }
 }
