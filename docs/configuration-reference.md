@@ -573,6 +573,7 @@ otherwise.
 
 | Variable                | Default          | Description                                                                  |
 | ----------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| `LT_USE_SCC2`           | on               | SCC2 lock-free state storage backend — set `0`/`false` for the legacy backend |
 | `LT_ENABLE_BINARY`      | off              | Binary (bincode) event log format instead of JSON lines                      |
 | `LT_MULTI_FILE`         | off              | Multi-file event store backend (OR'd with the config flag)                   |
 | `LT_OPT_PERSIST`        | off              | Optimized async event writer path                                            |

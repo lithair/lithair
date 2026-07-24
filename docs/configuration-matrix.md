@@ -85,6 +85,7 @@ Quick reference matrix for all configuration options.
 |                 | `cache_ttl`            | `300s`      | ✅             | ❌          | ❌   | 🔄         | Cache TTL (no env var)                                 |
 |                 | `batch_size`           | `100`       | ✅             | ❌          | ❌   | 🔄         | Batch size (no env var)                                |
 | **ENV-ONLY**    | ⚠️ env vars, no config.toml/builder |  |            |             |      |            | Full semantics: configuration-reference.md             |
+|                 | `LT_USE_SCC2`          | on          | ❌             | ✅ **ONLY** | ❌   | 🔒         | SCC2 state backend (`0`/`false` = legacy backend)      |
 |                 | `LT_ENABLE_BINARY`     | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Binary (bincode) event log format                      |
 |                 | `LT_MULTI_FILE`        | off         | ❌             | ✅          | ✅   | 🔒         | Multi-file event store (OR'd with the engine flag)     |
 |                 | `LT_OPT_PERSIST`       | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Optimized async event writer                           |
