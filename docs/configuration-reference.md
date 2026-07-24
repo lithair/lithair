@@ -301,17 +301,18 @@ LithairServer::new()
 ## Raft Endpoint Configuration
 
 The `[raft]` section configures the Raft HTTP endpoint and its consensus timers.
-It is separate from `[replication]` above. Its environment variables predate the
-`LT_` prefix migration and keep the legacy `LITHAIR_` prefix.
+It is separate from `[replication]` above. Each variable reads its `LT_RAFT_*`
+name first and falls back to the legacy pre-migration `LITHAIR_RAFT_*` alias
+(both stay accepted throughout 1.x; `LT_RAFT_*` wins when both are set).
 
 | Variable                  | Default    | Config File | Env Var                           | Code Builder | Hot-Reload | Description                                      |
 | ------------------------- | ---------- | ----------- | --------------------------------- | ------------ | ---------- | ------------------------------------------------ |
-| `enabled`                 | `true`     |             | `LITHAIR_RAFT_ENABLED`            | -            |            | Enable the Raft HTTP endpoint                    |
-| `path`                    | `"/raft"`  |             | `LITHAIR_RAFT_PATH`               | -            |            | Raft endpoint base path                          |
-| `auth_required`           | `false`    |             | `LITHAIR_RAFT_TOKEN` (see note)   | -            |            | Require authentication on the Raft endpoint      |
-| `auth_token`              | `None`     |             | `LITHAIR_RAFT_TOKEN`              | -            |            | Shared token; setting it enables `auth_required` |
-| `heartbeat_interval_secs` | `2`        |             | `LITHAIR_RAFT_HEARTBEAT_INTERVAL` | -            |            | Heartbeat interval in **seconds**                |
-| `election_timeout_secs`   | `5`        |             | `LITHAIR_RAFT_ELECTION_TIMEOUT`   | -            |            | Election timeout in **seconds**                  |
+| `enabled`                 | `true`     |             | `LT_RAFT_ENABLED`                 | -            |            | Enable the Raft HTTP endpoint                    |
+| `path`                    | `"/raft"`  |             | `LT_RAFT_PATH`                    | -            |            | Raft endpoint base path                          |
+| `auth_required`           | `false`    |             | `LT_RAFT_TOKEN` (see note)        | -            |            | Require authentication on the Raft endpoint      |
+| `auth_token`              | `None`     |             | `LT_RAFT_TOKEN`                   | -            |            | Shared token; setting it enables `auth_required` |
+| `heartbeat_interval_secs` | `2`        |             | `LT_RAFT_HEARTBEAT_INTERVAL`      | -            |            | Heartbeat interval in **seconds**                |
+| `election_timeout_secs`   | `5`        |             | `LT_RAFT_ELECTION_TIMEOUT`        | -            |            | Election timeout in **seconds**                  |
 
 ---
 
