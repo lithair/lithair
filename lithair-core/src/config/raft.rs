@@ -29,9 +29,13 @@ pub struct RaftConfig {
 /// alias. The `LITHAIR_` names predate the LT_ prefix migration and stay
 /// accepted throughout 1.x — dropping them is a 2.0 change.
 fn raft_env(name: &str) -> Option<String> {
-    env::var(format!("LT_RAFT_{name}"))
-        .or_else(|_| env::var(format!("LITHAIR_RAFT_{name}")))
-        .ok()
+    match env::var(format!("LT_RAFT_{name}")) {
+        Ok(value) => Some(value),
+        // Fall back only when the LT_ name is truly absent — a present but
+        // non-Unicode LT_ value must not be silently replaced by the alias.
+        Err(env::VarError::NotPresent) => env::var(format!("LITHAIR_RAFT_{name}")).ok(),
+        Err(env::VarError::NotUnicode(_)) => None,
+    }
 }
 
 impl std::fmt::Debug for RaftConfig {
@@ -276,20 +280,43 @@ mod tests {
         assert!(!config.matches_path("/other/path"));
     }
 
+    /// Restores the captured variables on drop, so a failing assert cannot
+    /// leak env state into the rest of the in-process test run.
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+    impl EnvGuard {
+        fn capture(names: &[&'static str]) -> Self {
+            Self { saved: names.iter().map(|n| (*n, env::var(n).ok())).collect() }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in &self.saved {
+                match value {
+                    Some(v) => env::set_var(name, v),
+                    None => env::remove_var(name),
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_lt_prefix_wins_over_legacy_alias() {
-        // Distinct names from every other test: env is process-global.
+        // Env is process-global; these two names are asserted on by no other
+        // test in the suite, and the guard restores them even on panic.
+        let _guard = EnvGuard::capture(&["LT_RAFT_PATH", "LITHAIR_RAFT_PATH"]);
+
         env::set_var("LT_RAFT_PATH", "/lt-raft");
         env::set_var("LITHAIR_RAFT_PATH", "/legacy-raft");
         let mut config = RaftConfig::new();
         config.apply_env_vars();
-        env::remove_var("LT_RAFT_PATH");
         assert_eq!(config.path, "/lt-raft", "LT_RAFT_* takes precedence");
 
         // Legacy alias still honored when the LT_ name is unset.
+        env::remove_var("LT_RAFT_PATH");
         let mut config = RaftConfig::new();
         config.apply_env_vars();
-        env::remove_var("LITHAIR_RAFT_PATH");
         assert_eq!(config.path, "/legacy-raft", "LITHAIR_RAFT_* stays accepted");
     }
 
