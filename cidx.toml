@@ -62,8 +62,11 @@ command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 # adds `--deny warnings` which would fail on them; override the command
 # to run plain `cargo audit` (still fails on real vulnerabilities, just
 # not on warnings) until upstream replacements ship.
+# `--locked` keeps the install on cargo-audit's shipped Cargo.lock: fresh
+# resolution pulls kstring >=2.0.3 (needs rustc 1.96) which the pinned
+# 1.95 toolchain cannot compile.
 [containers.cargo-audit]
-command = "sh -c 'command -v cargo-audit || cargo install --quiet cargo-audit && cargo audit'"
+command = "sh -c 'command -v cargo-audit || cargo install --quiet --locked cargo-audit && cargo audit'"
 
 # ─── pipelines ───
 [pipelines.ci]
