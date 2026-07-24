@@ -9,12 +9,14 @@ Complete reference for all configuration variables in Lithair.
 - [Sessions Configuration](#sessions-configuration)
 - [RBAC Configuration](#rbac-configuration)
 - [Replication Configuration](#replication-configuration)
+- [Raft Endpoint Configuration](#raft-endpoint-configuration)
 - [Admin Panel Configuration](#admin-panel-configuration)
 - [Development Configuration](#development-configuration)
 - [Logging Configuration](#logging-configuration)
 - [Storage Configuration](#storage-configuration)
 - [Performance Configuration](#performance-configuration)
 - [Frontend Configuration](#frontend-configuration)
+- [Environment-Only Variables](#environment-only-variables)
 - [Hot-Reload Support](#hot-reload-support)
 
 ---
@@ -28,11 +30,13 @@ Lithair uses a layered configuration system with the following priority (lowest 
    ↓
 2. Config File (config.toml)
    ↓
-3. Environment Variables
+3. .env file (loaded by your app — see below)
    ↓
-4. Code (Builder Pattern)
+4. Environment Variables
    ↓
-5. Runtime API (Hot-reload)
+5. Code (Builder Pattern)
+   ↓
+6. Runtime API (Hot-reload)
 ```
 
 **Example:**
@@ -45,6 +49,25 @@ Lithair uses a layered configuration system with the following priority (lowest 
 LithairServer::new()
     .with_port(7000)  // Final value: 7000
 ```
+
+### The `.env` layer
+
+Lithair core never reads `.env` itself. Applications scaffolded with `lithair new`
+call `dotenvy::dotenv().ok()` at the top of `main()`, which loads `.env` into the
+process environment *before* `LithairServer::new()` resolves configuration.
+dotenvy never overwrites a variable that is already set, so a real environment
+variable always wins over the same name in `.env`.
+
+### Resolution notes
+
+- A missing `config.toml` is not an error — defaults apply.
+- An existing but unparseable `config.toml` makes `LithairConfig::load()` /
+  `load_from()` return an error. `LithairServer::new()` catches that error,
+  continues on defaults plus environment variables, and logs a warning once
+  the log bridge is installed at `serve()`.
+- Not every variable participates in the full hierarchy: some are read directly
+  from the environment and cannot be set via `config.toml`. See
+  [Environment-Only Variables](#environment-only-variables).
 
 ---
 
@@ -61,6 +84,8 @@ Core HTTP server settings.
 | `cors_origins`    | `["*"]`       |             | `LT_CORS_ORIGINS`    | `.with_cors_origins(Vec<String>)` |            | Allowed CORS origins (comma-separated in env)     |
 | `request_timeout` | `30`          |             | `LT_REQUEST_TIMEOUT` | `.with_timeout(u64)`              |            | Request timeout in seconds                        |
 | `max_body_size`   | `10485760`    |             | `LT_MAX_BODY_SIZE`   | `.with_max_body_size(usize)`      |            | Maximum request body size in bytes (10MB default) |
+| `tls_cert_path`   | `None`        |             | `LT_TLS_CERT`        | `.with_tls(cert, key)`            |            | Path to the TLS certificate (PEM)                 |
+| `tls_key_path`    | `None`        |             | `LT_TLS_KEY`         | `.with_tls(cert, key)`            |            | Path to the TLS private key (PEM)                 |
 
 ### Example
 
@@ -177,9 +202,9 @@ Role-Based Access Control settings.
 | `enabled`            | `false`   |             | `LT_RBAC_ENABLED`            | `.with_rbac(RbacConfig)`     |            | Enable RBAC system                          |
 | `default_role`       | `"guest"` |             | `LT_RBAC_DEFAULT_ROLE`       | `.with_default_role(String)` |            | Default role for unauthenticated users      |
 | `audit_enabled`      | `true`    |             | `LT_RBAC_AUDIT_ENABLED`      | `.with_audit(bool)`          |            | Enable audit trail for RBAC events          |
-| `rate_limit_enabled` | `false`   |             | `LT_RBAC_RATE_LIMIT`         | `.with_rate_limit(bool)`     |            | Enable rate limiting on login attempts      |
-| `max_login_attempts` | `5`       |             | `LT_RBAC_MAX_LOGIN_ATTEMPTS` | -                            |            | Maximum login attempts before lockout       |
-| `lockout_duration`   | `300`     |             | `LT_RBAC_LOCKOUT_DURATION`   | -                            |            | Account lockout duration in seconds (5 min) |
+| `rate_limit_enabled` | `false`   |             | -                            | `.with_rate_limit(bool)`     |            | Enable rate limiting on login attempts (no env var)      |
+| `max_login_attempts` | `5`       |             | -                            | -                            |            | Maximum login attempts before lockout (no env var)       |
+| `lockout_duration`   | `300`     |             | -                            | -                            |            | Account lockout duration in seconds (5 min) (no env var) |
 
 ### Example
 
@@ -201,9 +226,8 @@ lockout_duration = 300
 LT_RBAC_ENABLED=true
 LT_RBAC_DEFAULT_ROLE=guest
 LT_RBAC_AUDIT_ENABLED=true
-LT_RBAC_RATE_LIMIT=true
-LT_RBAC_MAX_LOGIN_ATTEMPTS=5
-LT_RBAC_LOCKOUT_DURATION=300
+# rate_limit_enabled, max_login_attempts and lockout_duration have no
+# environment variable — set them in config.toml or code.
 ```
 
 **Code:**
@@ -224,12 +248,17 @@ Raft consensus and cluster replication settings.
 
 | Variable             | Default | Config File | Env Var                  | Code Builder                 | Hot-Reload | Description                                    |
 | -------------------- | ------- | ----------- | ------------------------ | ---------------------------- | ---------- | ---------------------------------------------- |
-| `enabled`            | `false` |             | `LT_REPLICATION_ENABLED` | `.with_replication(bool)`    |            | Enable Raft replication                        |
-| `node_id`            | `auto`  |             | `LT_NODE_ID`             | `.with_node_id(String)`      |            | Unique node identifier                         |
-| `cluster_nodes`      | `[]`    |             | `LT_CLUSTER_NODES`       | `.with_cluster(Vec<String>)` |            | List of cluster nodes (comma-separated in env) |
-| `election_timeout`   | `150`   |             | `LT_ELECTION_TIMEOUT`    | -                            |            | Election timeout in milliseconds               |
-| `heartbeat_interval` | `50`    |             | `LT_HEARTBEAT_INTERVAL`  | -                            |            | Heartbeat interval in milliseconds             |
-| `snapshot_threshold` | `1000`  |             | `LT_SNAPSHOT_THRESHOLD`  | -                            |            | Number of log entries before snapshot          |
+| `enabled`                    | `false` |             | `LT_REPLICATION_ENABLED`        | `.with_replication(bool)`    |            | Enable Raft replication                              |
+| `node_id`                    | `auto`  |             | `LT_NODE_ID`                    | `.with_node_id(String)`      |            | Unique node identifier                               |
+| `cluster_nodes`              | `[]`    |             | `LT_CLUSTER_NODES`              | `.with_cluster(Vec<String>)` |            | List of cluster nodes (comma-separated in env)       |
+| `election_timeout`           | `150`   |             | -                               | -                            |            | Election timeout in milliseconds (no env var)        |
+| `heartbeat_interval`         | `50`    |             | -                               | -                            |            | Heartbeat interval in milliseconds (no env var)      |
+| `snapshot_threshold`         | `1000`  |             | -                               | -                            |            | Number of log entries before snapshot (no env var)   |
+| `max_resync_gap`             | `1000`  |             | `LT_MAX_RESYNC_GAP`             | -                            |            | Max index gap before forcing a snapshot resync       |
+| `max_concurrent_resyncs`     | `2`     |             | `LT_MAX_CONCURRENT_RESYNCS`     | -                            |            | Maximum concurrent snapshot resyncs                  |
+| `resync_check_interval_ms`   | `1000`  |             | `LT_RESYNC_CHECK_INTERVAL_MS`   | -                            |            | Resync check interval in milliseconds                |
+| `snapshot_send_timeout_secs` | `30`    |             | `LT_SNAPSHOT_SEND_TIMEOUT_SECS` | -                            |            | Snapshot send timeout in seconds                     |
+| `resync_cooldown_secs`       | `10`    |             | `LT_RESYNC_COOLDOWN_SECS`       | -                            |            | Minimum seconds between resyncs of the same follower |
 
 ### Example
 
@@ -251,9 +280,8 @@ snapshot_threshold = 1000
 LT_REPLICATION_ENABLED=true
 LT_NODE_ID=node-1
 LT_CLUSTER_NODES=node-2:8081,node-3:8082
-LT_ELECTION_TIMEOUT=150
-LT_HEARTBEAT_INTERVAL=50
-LT_SNAPSHOT_THRESHOLD=1000
+# election_timeout, heartbeat_interval and snapshot_threshold have no
+# environment variable — set them in config.toml.
 ```
 
 **Code:**
@@ -270,6 +298,23 @@ LithairServer::new()
 
 ---
 
+## Raft Endpoint Configuration
+
+The `[raft]` section configures the Raft HTTP endpoint and its consensus timers.
+It is separate from `[replication]` above. Its environment variables predate the
+`LT_` prefix migration and keep the legacy `LITHAIR_` prefix.
+
+| Variable                  | Default    | Config File | Env Var                           | Code Builder | Hot-Reload | Description                                      |
+| ------------------------- | ---------- | ----------- | --------------------------------- | ------------ | ---------- | ------------------------------------------------ |
+| `enabled`                 | `true`     |             | `LITHAIR_RAFT_ENABLED`            | -            |            | Enable the Raft HTTP endpoint                    |
+| `path`                    | `"/raft"`  |             | `LITHAIR_RAFT_PATH`               | -            |            | Raft endpoint base path                          |
+| `auth_required`           | `false`    |             | `LITHAIR_RAFT_TOKEN` (see note)   | -            |            | Require authentication on the Raft endpoint      |
+| `auth_token`              | `None`     |             | `LITHAIR_RAFT_TOKEN`              | -            |            | Shared token; setting it enables `auth_required` |
+| `heartbeat_interval_secs` | `2`        |             | `LITHAIR_RAFT_HEARTBEAT_INTERVAL` | -            |            | Heartbeat interval in **seconds**                |
+| `election_timeout_secs`   | `5`        |             | `LITHAIR_RAFT_ELECTION_TIMEOUT`   | -            |            | Election timeout in **seconds**                  |
+
+---
+
 ## Admin Panel Configuration
 
 Administrative interface and monitoring settings.
@@ -278,9 +323,9 @@ Administrative interface and monitoring settings.
 | ----------------- | ------------ | ----------- | ------------------------ | -------------------------- | ---------- | -------------------------------------- |
 | `enabled`         | `true`       |             | `LT_ADMIN_ENABLED`       | `.with_admin_panel(bool)`  |            | Enable admin panel                     |
 | `path`            | `"/admin"`   |             | `LT_ADMIN_PATH`          | `.with_admin_path(String)` |            | Admin panel base path                  |
-| `auth_required`   | `true`       |             | `LT_ADMIN_AUTH_REQUIRED` | `.with_admin_auth(bool)`   |            | Require authentication for admin panel |
-| `metrics_enabled` | `true`       |             | `LT_ADMIN_METRICS`       | `.with_metrics(bool)`      |            | Enable Prometheus metrics endpoint     |
-| `metrics_path`    | `"/metrics"` |             | `LT_ADMIN_METRICS_PATH`  | -                          |            | Prometheus metrics endpoint path       |
+| `auth_required`   | `true`       |             | -                        | `.with_admin_auth(bool)`   |            | Require authentication for admin panel (no env var) |
+| `metrics_enabled` | `true`       |             | -                        | `.with_metrics(bool)`      |            | Enable Prometheus metrics endpoint (no env var)     |
+| `metrics_path`    | `"/metrics"` |             | -                        | -                          |            | Prometheus metrics endpoint path (no env var)       |
 
 ---
 
@@ -366,9 +411,8 @@ metrics_path = "/metrics"
 ```bash
 LT_ADMIN_ENABLED=true
 LT_ADMIN_PATH=/admin
-LT_ADMIN_AUTH_REQUIRED=true
-LT_ADMIN_METRICS=true
-LT_ADMIN_METRICS_PATH=/metrics
+# auth_required, metrics_enabled and metrics_path have no environment
+# variable — set them in config.toml or code.
 ```
 
 **Code:**
@@ -389,12 +433,14 @@ Application logging and observability settings.
 
 | Variable        | Default    | Config File | Env Var                | Code Builder               | Hot-Reload | Description                             |
 | --------------- | ---------- | ----------- | ---------------------- | -------------------------- | ---------- | --------------------------------------- |
-| `level`         | `"info"`   |             | `LT_LOG_LEVEL`         | `.with_log_level(String)`  |            | Log level (trace/debug/info/warn/error) |
-| `format`        | `"json"`   |             | `LT_LOG_FORMAT`        | `.with_log_format(String)` |            | Log format (json/text/pretty)           |
-| `file_enabled`  | `false`    |             | `LT_LOG_FILE_ENABLED`  | `.with_log_file(bool)`     |            | Enable logging to file                  |
-| `file_path`     | `"./logs"` |             | `LT_LOG_FILE_PATH`     | -                          |            | Log file directory path                 |
-| `file_rotation` | `"daily"`  |             | `LT_LOG_FILE_ROTATION` | -                          |            | Log rotation policy (daily/hourly/size) |
-| `file_max_size` | `100`      |             | `LT_LOG_FILE_MAX_SIZE` | -                          |            | Max log file size in MB                 |
+| `level`        | `"info"`   |             | `LT_LOG_LEVEL` | `.with_log_level(String)`  |            | Log level (trace/debug/info/warn/error) |
+| `format`       | `"json"`   |             | -              | `.with_log_format(String)` |            | Log format (json/text/pretty) (no env var) |
+| `file_enabled` | `false`    |             | -              | `.with_log_file(bool)`     |            | Enable logging to file (no env var)     |
+| `file_path`    | `"./logs"` |             | -              | -                          |            | Log file directory path (no env var)    |
+
+> **`RUST_LOG` precedence:** the global log filter honors `RUST_LOG` (full
+> tracing directive syntax) first. `LT_LOG_LEVEL` — the simple knob advertised
+> in the scaffold's `.env` — is only used when `RUST_LOG` is unset.
 
 ### Example
 
@@ -406,19 +452,14 @@ level = "info"
 format = "json"
 file_enabled = true
 file_path = "./logs"
-file_rotation = "daily"
-file_max_size = 100
 ```
 
 **Environment:**
 
 ```bash
 LT_LOG_LEVEL=info
-LT_LOG_FORMAT=json
-LT_LOG_FILE_ENABLED=true
-LT_LOG_FILE_PATH=./logs
-LT_LOG_FILE_ROTATION=daily
-LT_LOG_FILE_MAX_SIZE=100
+# format, file_enabled and file_path have no environment variable —
+# set them in config.toml or code.
 ```
 
 **Code:**
@@ -438,13 +479,12 @@ Data persistence and storage settings.
 
 | Variable               | Default       | Config File | Env Var                   | Code Builder             | Hot-Reload | Description                               |
 | ---------------------- | ------------- | ----------- | ------------------------- | ------------------------ | ---------- | ----------------------------------------- |
-| `data_dir`             | `"./data"`    |             | `LT_DATA_DIR`             | `.with_data_dir(String)` |            | Base directory for data storage           |
-| `snapshot_interval`    | `1000`        |             | `LT_SNAPSHOT_INTERVAL`    | -                        |            | Number of events before creating snapshot |
-| `compaction_enabled`   | `true`        |             | `LT_COMPACTION_ENABLED`   | -                        |            | Enable automatic log compaction           |
-| `compaction_threshold` | `10000`       |             | `LT_COMPACTION_THRESHOLD` | -                        |            | Events threshold for compaction           |
-| `backup_enabled`       | `false`       |             | `LT_BACKUP_ENABLED`       | `.with_backup(bool)`     |            | Enable automatic backups                  |
-| `backup_interval`      | `86400`       |             | `LT_BACKUP_INTERVAL`      | -                        |            | Backup interval in seconds (24h default)  |
-| `backup_path`          | `"./backups"` |             | `LT_BACKUP_PATH`          | -                        |            | Backup directory path                     |
+| `data_dir`                  | `"./data"` |             | `LT_DATA_DIR`             | `.with_data_dir(String)` |            | Base directory for data storage                     |
+| `snapshot_interval`         | `1000`     |             | -                         | -                        |            | Number of events before creating snapshot (no env var) |
+| `compaction_enabled`        | `true`     |             | -                         | -                        |            | Enable automatic log compaction (no env var)        |
+| `backup_enabled`            | `false`    |             | -                         | `.with_backup(bool)`     |            | Enable automatic backups (no env var)               |
+| `schema_validation_enabled` | `true`     |             | `LT_SCHEMA_VALIDATION`    | -                        |            | Validate stored schema against models at startup    |
+| `schema_migration_mode`     | `warn`     |             | `LT_SCHEMA_MIGRATION_MODE` | -                       |            | Schema migration behavior: `warn`, `strict` or `auto` |
 
 ### Example
 
@@ -455,22 +495,18 @@ Data persistence and storage settings.
 data_dir = "./data"
 snapshot_interval = 1000
 compaction_enabled = true
-compaction_threshold = 10000
 backup_enabled = true
-backup_interval = 86400
-backup_path = "./backups"
+schema_validation_enabled = true
 ```
 
 **Environment:**
 
 ```bash
 LT_DATA_DIR=./data
-LT_SNAPSHOT_INTERVAL=1000
-LT_COMPACTION_ENABLED=true
-LT_COMPACTION_THRESHOLD=10000
-LT_BACKUP_ENABLED=true
-LT_BACKUP_INTERVAL=86400
-LT_BACKUP_PATH=./backups
+LT_SCHEMA_VALIDATION=true
+LT_SCHEMA_MIGRATION_MODE=warn
+# snapshot_interval, compaction_enabled and backup_enabled have no
+# environment variable — set them in config.toml or code.
 ```
 
 **Code:**
@@ -489,12 +525,10 @@ Performance tuning and optimization settings.
 
 | Variable               | Default | Config File | Env Var                  | Code Builder        | Hot-Reload | Description                          |
 | ---------------------- | ------- | ----------- | ------------------------ | ------------------- | ---------- | ------------------------------------ |
-| `cache_enabled`        | `true`  |             | `LT_CACHE_ENABLED`       | `.with_cache(bool)` |            | Enable in-memory caching             |
-| `cache_size`           | `1000`  |             | `LT_CACHE_SIZE`          | -                   |            | Maximum number of cached items       |
-| `cache_ttl`            | `300`   |             | `LT_CACHE_TTL`           | -                   |            | Cache TTL in seconds (5 min default) |
-| `connection_pool_size` | `10`    |             | `LT_POOL_SIZE`           | -                   |            | Connection pool size                 |
-| `batch_size`           | `100`   |             | `LT_BATCH_SIZE`          | -                   |            | Default batch size for operations    |
-| `compression_enabled`  | `false` |             | `LT_COMPRESSION_ENABLED` | -                   |            | Enable response compression          |
+| `cache_enabled` | `true` |             | `LT_CACHE_ENABLED` | `.with_cache(bool)` |            | Enable in-memory caching                          |
+| `cache_size`    | `1000` |             | -                  | -                   |            | Maximum number of cached items (no env var)       |
+| `cache_ttl`     | `300`  |             | -                  | -                   |            | Cache TTL in seconds (5 min default) (no env var) |
+| `batch_size`    | `100`  |             | -                  | -                   |            | Default batch size for operations (no env var)    |
 
 ### Example
 
@@ -505,20 +539,15 @@ Performance tuning and optimization settings.
 cache_enabled = true
 cache_size = 1000
 cache_ttl = 300
-connection_pool_size = 10
 batch_size = 100
-compression_enabled = false
 ```
 
 **Environment:**
 
 ```bash
 LT_CACHE_ENABLED=true
-LT_CACHE_SIZE=1000
-LT_CACHE_TTL=300
-LT_POOL_SIZE=10
-LT_BATCH_SIZE=100
-LT_COMPRESSION_ENABLED=false
+# cache_size, cache_ttl and batch_size have no environment variable —
+# set them in config.toml.
 ```
 
 **Code:**
@@ -527,6 +556,66 @@ LT_COMPRESSION_ENABLED=false
 LithairServer::new()
     .with_cache(true)
 ```
+
+---
+
+## Environment-Only Variables
+
+These variables are read **directly from the environment** and cannot be set
+via `config.toml`. Most of them bypass the builder too; the two exceptions —
+`LT_MULTI_FILE` and `LT_HTTP_ACCESS_LOG` — are OR-combined with the equivalent
+config/builder flag (either side can enable the feature). Because a process
+cannot receive new environment variables after it starts, they all require a
+restart to change. Boolean flags accept `1` or `true` (any case) unless noted
+otherwise.
+
+### Engine & persistence
+
+| Variable                | Default          | Description                                                                  |
+| ----------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| `LT_ENABLE_BINARY`      | off              | Binary (bincode) event log format instead of JSON lines                      |
+| `LT_MULTI_FILE`         | off              | Multi-file event store backend (OR'd with the config flag)                   |
+| `LT_OPT_PERSIST`        | off              | Optimized async event writer path                                            |
+| `LT_BUFFER_SIZE`        | writer default   | Write buffer size in bytes (only used with `LT_OPT_PERSIST`)                 |
+| `LT_MAX_EVENTS_BUFFER`  | writer default   | Max buffered events before forced flush (only used with `LT_OPT_PERSIST`)    |
+| `LT_FLUSH_INTERVAL_MS`  | `100`            | Background batch flusher interval in milliseconds                            |
+| `LT_FSYNC_ON_APPEND`    | off              | fsync after each event append                                                |
+| `LT_EVENT_MAX_BATCH`    | `16384`          | Max batch size for event store batching                                      |
+| `LT_DEDUP_PERSIST`      | on               | Persisted dedup state — set `0`/`false` to disable                           |
+| `LT_DISABLE_HASH_CHAIN` | chain on         | Set to disable the tamper-evident event hash chain                           |
+| `LT_DISABLE_INDEX`      | index on         | Set to disable in-memory event indexing                                      |
+| `LT_DISABLE_CONSENSUS`  | off              | Skip Raft consensus during bulk create (local-only writes)                   |
+
+### HTTP & firewall
+
+| Variable                        | Default   | Description                                                  |
+| ------------------------------- | --------- | ------------------------------------------------------------ |
+| `LT_FW_ENABLE`                  | off       | HTTP firewall master switch                                  |
+| `LT_FW_IP_ALLOW`                | empty     | Firewall allowlist (comma-separated IPs/CIDRs)               |
+| `LT_FW_IP_DENY`                 | empty     | Firewall denylist (comma-separated IPs/CIDRs)                |
+| `LT_FW_RATE_GLOBAL_QPS`         | unlimited | Global queries-per-second rate limit                         |
+| `LT_FW_RATE_PERIP_QPS`          | unlimited | Per-IP queries-per-second rate limit                         |
+| `LT_HTTP_ACCESS_LOG`            | off       | In-memory HTTP access-log ring buffer (OR'd with builder flag) |
+| `LT_HTTP_MAX_BODY_BYTES_SINGLE` | 2 MiB     | Max request body in bytes for single-item endpoints          |
+| `LT_HTTP_MAX_BODY_BYTES_BULK`   | 12 MiB    | Max request body in bytes for bulk endpoints                 |
+
+### Observability
+
+| Variable               | Default     | Description                                                       |
+| ---------------------- | ----------- | ------------------------------------------------------------------ |
+| `RUST_LOG`             | unset       | Global tracing filter (full directive syntax); wins over `LT_LOG_LEVEL` |
+| `LT_OTEL_ENDPOINT`     | unset       | OTLP/gRPC trace export endpoint — presence enables export         |
+| `LT_OTEL_SERVICE_NAME` | `"lithair"` | Service name reported to the OTLP collector                       |
+| `LT_VERBOSE`           | off         | Verbose logging in the declarative HTTP handler                   |
+
+### Raft storage roots (legacy names)
+
+| Variable               | Default    | Description                                            |
+| ---------------------- | ---------- | ------------------------------------------------------- |
+| `LITHAIR_DATA_DIR`     | `"./data"` | Base directory for the Raft WAL and snapshots           |
+| `EXPERIMENT_DATA_BASE` | -          | Fallback for `LITHAIR_DATA_DIR` (used by the BDD harness) |
+
+Resolution order: `LITHAIR_DATA_DIR` > `EXPERIMENT_DATA_BASE` > `./data`.
 
 ---
 
