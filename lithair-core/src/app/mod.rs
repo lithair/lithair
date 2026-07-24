@@ -614,6 +614,10 @@ pub(crate) type ExternalHandlerSseWiring =
 /// Lithair multi-model server
 pub struct LithairServer {
     config: LithairConfig,
+    /// Warning produced when config.toml existed but failed to parse.
+    /// Emitted in `serve()` right after the log bridge is installed — at
+    /// builder time no subscriber exists yet and the record would be dropped.
+    pub(crate) config_load_warning: Option<String>,
     /// User-supplied tracing layers, composed into the default subscriber at
     /// `serve()` (see `with_tracing_layer`). Taken (drained) at init.
     pub(crate) tracing_layers: Vec<BoxedTracingLayer>,
@@ -1116,6 +1120,12 @@ impl LithairServer {
         // try-semantics as the historical env_logger init: a logger the
         // caller installed earlier wins untouched.
         init_default_tracing(std::mem::take(&mut self.tracing_layers));
+
+        // Now that records are observable, surface a config.toml that was
+        // ignored at builder time (same rationale as the comment above).
+        if let Some(warning) = self.config_load_warning.take() {
+            log::warn!("{warning}");
+        }
 
         // Load persisted schema history and lock status
         {
@@ -3405,6 +3415,7 @@ impl Default for LithairServer {
     fn default() -> Self {
         Self {
             config: LithairConfig::default(),
+            config_load_warning: None,
             tracing_layers: Vec::new(),
             session_manager: None,
             custom_routes: Vec::new(),

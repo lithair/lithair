@@ -192,6 +192,25 @@ pub struct LithairServerBuilder {
     // crosses `events_threshold`. Default is `None` — feature is off, no
     // observable change for existing consumers.
     auto_compaction: Option<crate::engine::AutoCompactionConfig>,
+    // Deferred until `serve()` installs the log bridge — a `log::warn!` from
+    // `new()` fires before any subscriber exists and would itself be dropped.
+    config_load_warning: Option<String>,
+}
+
+/// Resolve the result of `LithairConfig::load()`: a broken config.toml must
+/// not be silently swallowed, and the fallback must still honor LT_* vars
+/// (load() fails before it reaches apply_env_vars()).
+fn resolve_loaded_config(loaded: anyhow::Result<LithairConfig>) -> (LithairConfig, Option<String>) {
+    match loaded {
+        Ok(config) => (config, None),
+        Err(error) => {
+            let mut config = LithairConfig::default();
+            config.apply_env_vars();
+            let warning =
+                format!("ignoring invalid config.toml, using defaults + env vars: {error:#}");
+            (config, Some(warning))
+        }
+    }
 }
 
 impl LithairServerBuilder {
@@ -202,8 +221,10 @@ impl LithairServerBuilder {
 
     /// Create a new builder with default configuration
     pub fn new() -> Self {
+        let (config, config_load_warning) = resolve_loaded_config(LithairConfig::load());
         Self {
-            config: LithairConfig::load().unwrap_or_default(),
+            config,
+            config_load_warning,
             tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,
@@ -236,6 +257,7 @@ impl LithairServerBuilder {
     pub fn with_config(config: LithairConfig) -> Self {
         Self {
             config,
+            config_load_warning: None,
             tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,
@@ -2293,6 +2315,7 @@ impl LithairServerBuilder {
     pub fn build(self) -> Result<LithairServer> {
         Ok(LithairServer {
             config: self.config,
+            config_load_warning: self.config_load_warning,
             tracing_layers: self.tracing_layers,
             session_manager: self.session_manager,
             custom_routes: self.custom_routes,
@@ -2461,6 +2484,27 @@ impl LithairServerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_config_falls_back_to_defaults_plus_env_and_warns() {
+        let (config, warning) = resolve_loaded_config(Err(anyhow::anyhow!("boom")));
+
+        let warning = warning.expect("a load error must produce a warning");
+        assert!(warning.contains("boom"), "warning carries the parse error: {warning}");
+
+        // Env-independent: compare against defaults with the same process env
+        // applied, not against hardcoded defaults.
+        let mut expected = LithairConfig::default();
+        expected.apply_env_vars();
+        assert_eq!(config.server.port, expected.server.port);
+        assert_eq!(config.server.host, expected.server.host);
+    }
+
+    #[test]
+    fn loaded_config_passes_through_without_warning() {
+        let (_, warning) = resolve_loaded_config(Ok(LithairConfig::default()));
+        assert!(warning.is_none());
+    }
 
     #[test]
     fn path_only_apps_are_unaffected() {
