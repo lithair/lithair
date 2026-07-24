@@ -55,6 +55,7 @@ Quick reference matrix for all configuration options.
 | **RAFT**        | ⚠️ legacy `LITHAIR_` prefix |        |                |             |      |            | `[raft]` endpoint section                              |
 |                 | `enabled`              | `true`      | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_ENABLED`                            |
 |                 | `path`                 | `/raft`     | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_PATH`                               |
+|                 | `auth_required`        | `false`     | ✅             | ❌          | ❌   | 🔒         | No own env var — derived from `LITHAIR_RAFT_TOKEN`     |
 |                 | `auth_token`           | `None`      | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_TOKEN` (also sets `auth_required`)  |
 |                 | `heartbeat_interval_secs` | `2s`     | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_HEARTBEAT_INTERVAL`                 |
 |                 | `election_timeout_secs` | `5s`       | ✅             | ✅          | ❌   | 🔒         | Env: `LITHAIR_RAFT_ELECTION_TIMEOUT`                   |
@@ -85,7 +86,7 @@ Quick reference matrix for all configuration options.
 |                 | `batch_size`           | `100`       | ✅             | ❌          | ❌   | 🔄         | Batch size (no env var)                                |
 | **ENV-ONLY**    | ⚠️ env vars, no config.toml/builder |  |            |             |      |            | Full semantics: configuration-reference.md             |
 |                 | `LT_ENABLE_BINARY`     | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Binary (bincode) event log format                      |
-|                 | `LT_MULTI_FILE`        | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Multi-file event store backend                         |
+|                 | `LT_MULTI_FILE`        | off         | ❌             | ✅          | ✅   | 🔒         | Multi-file event store (OR'd with the engine flag)     |
 |                 | `LT_OPT_PERSIST`       | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Optimized async event writer                           |
 |                 | `LT_BUFFER_SIZE`       | writer default | ❌          | ✅ **ONLY** | ❌   | 🔒         | Writer buffer size (with `LT_OPT_PERSIST`)             |
 |                 | `LT_MAX_EVENTS_BUFFER` | writer default | ❌          | ✅ **ONLY** | ❌   | 🔒         | Max buffered events (with `LT_OPT_PERSIST`)            |

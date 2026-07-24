@@ -60,11 +60,13 @@ variable always wins over the same name in `.env`.
 
 ### Resolution notes
 
-- A missing `config.toml` is not an error — defaults apply. An existing but
-  unparseable `config.toml` is logged as a warning and skipped; defaults and
-  environment variables still apply.
+- A missing `config.toml` is not an error — defaults apply.
+- An existing but unparseable `config.toml` makes `LithairConfig::load()` /
+  `load_from()` return an error. `LithairServer::new()` catches that error,
+  continues on defaults plus environment variables, and logs a warning once
+  the log bridge is installed at `serve()`.
 - Not every variable participates in the full hierarchy: some are read directly
-  from the environment and cannot be set via `config.toml` or the builder. See
+  from the environment and cannot be set via `config.toml`. See
   [Environment-Only Variables](#environment-only-variables).
 
 ---
@@ -559,10 +561,13 @@ LithairServer::new()
 
 ## Environment-Only Variables
 
-These variables are read **directly from the environment** and bypass
-`config.toml` and the builder entirely. Because a process cannot receive new
-environment variables after it starts, they all require a restart to change.
-Boolean flags accept `1` or `true` (any case) unless noted otherwise.
+These variables are read **directly from the environment** and cannot be set
+via `config.toml`. Most of them bypass the builder too; the two exceptions —
+`LT_MULTI_FILE` and `LT_HTTP_ACCESS_LOG` — are OR-combined with the equivalent
+config/builder flag (either side can enable the feature). Because a process
+cannot receive new environment variables after it starts, they all require a
+restart to change. Boolean flags accept `1` or `true` (any case) unless noted
+otherwise.
 
 ### Engine & persistence
 
