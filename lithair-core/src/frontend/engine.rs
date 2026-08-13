@@ -421,6 +421,40 @@ impl FrontendEngine {
     /// # Returns
     /// Result
     pub async fn update_asset(&self, path: &str, content: Vec<u8>) -> Result<()> {
+        self.write_asset(path, content, None).await
+    }
+
+    /// Update asset content with an explicit MIME type (emits AssetUpdated event)
+    ///
+    /// `update_asset` derives the MIME type from the path extension, which
+    /// yields `application/octet-stream` for extensionless clean URLs like
+    /// `/posts/hello` — browsers download instead of rendering (issue #193).
+    /// A caller pushing rendered content knows its real type; this variant
+    /// records it on the asset so `FrontendServer` serves the right
+    /// Content-Type.
+    ///
+    /// # Arguments
+    /// * `path` - Web path
+    /// * `content` - New content
+    /// * `mime_type` - MIME type to serve the asset with (e.g., "text/html")
+    ///
+    /// # Returns
+    /// Result
+    pub async fn update_asset_with_mime(
+        &self,
+        path: &str,
+        content: Vec<u8>,
+        mime_type: &str,
+    ) -> Result<()> {
+        self.write_asset(path, content, Some(mime_type)).await
+    }
+
+    async fn write_asset(
+        &self,
+        path: &str,
+        content: Vec<u8>,
+        mime_type: Option<&str>,
+    ) -> Result<()> {
         let key = format!("{}:{}", self.host_id, path);
 
         // Get existing asset or create new one
@@ -433,6 +467,9 @@ impl FrontendEngine {
         asset.content = content;
         asset.size_bytes = asset.content.len() as u64;
         asset.updated_at = Some(chrono::Utc::now());
+        if let Some(mime) = mime_type {
+            asset.set_mime_type(mime);
+        }
 
         // Write back (emits event)
         self.engine.apply_event(key, asset, true).await?;

@@ -353,6 +353,39 @@ async fn static_file_head_rss_xml_returns_200_with_xml_content_type() {
 }
 
 #[tokio::test]
+async fn extensionless_asset_with_explicit_mime_serves_declared_content_type() {
+    // Issue #193: `/posts/hello` has no extension, so `update_asset`'s
+    // extension-based detection lands on `application/octet-stream` and
+    // browsers download the page instead of rendering it. A caller that
+    // rendered the HTML knows its type; `update_asset_with_mime` must
+    // carry that through to the served Content-Type.
+    let tmp = tempfile::tempdir().expect("tempdir for frontend event store");
+    let engine = crate::frontend::FrontendEngine::new("test_static", tmp.path())
+        .await
+        .expect("create FrontendEngine");
+    engine
+        .update_asset_with_mime("/posts/hello", b"<h1>hello</h1>".to_vec(), "text/html")
+        .await
+        .expect("insert asset");
+
+    let mut server = LithairServer::new().build().expect("build server");
+    server.frontend_engines.insert("/".to_string(), std::sync::Arc::new(engine));
+    let (base, handle) = spawn_for_test(server).await;
+
+    let resp = reqwest::get(format!("{}/posts/hello", base)).await.expect("GET /posts/hello");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or(""),
+        "text/html",
+        "explicit MIME must override extension detection"
+    );
+    let body = resp.text().await.expect("body");
+    assert_eq!(body, "<h1>hello</h1>");
+
+    handle.abort();
+}
+
+#[tokio::test]
 async fn unknown_route_returns_404_with_json_error_negative_case() {
     // The negative case from #56's acceptance criteria: when no
     // frontend (and no other handler) matches, the default

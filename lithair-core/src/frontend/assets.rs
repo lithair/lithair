@@ -108,6 +108,21 @@ impl StaticAsset {
         }
     }
 
+    /// Override the extension-derived MIME type with one the caller knows.
+    ///
+    /// `StaticAsset::new` derives `mime_type` from the path extension, so an
+    /// extensionless clean URL (`/posts/hello`) lands on
+    /// `application/octet-stream` and browsers download it instead of
+    /// rendering (issue #193). A caller that rendered the content knows its
+    /// real type; this setter records it and recomputes the mime-derived
+    /// defaults (compression, cache TTL) so they stay consistent with what
+    /// `new` would have produced for that type.
+    pub fn set_mime_type(&mut self, mime_type: &str) {
+        self.compression_enabled = should_compress(mime_type);
+        self.cache_ttl_seconds = default_cache_ttl(mime_type);
+        self.mime_type = mime_type.to_string();
+    }
+
     pub fn http_headers(&self) -> Vec<(String, String)> {
         vec![
             ("Content-Type".to_string(), self.mime_type.clone()),
@@ -238,6 +253,22 @@ mod tests {
         // imported from external sources. The lookup must normalize.
         assert_eq!(detect_mime_type("/MAP.XML"), "application/xml");
         assert_eq!(detect_mime_type("/INDEX.HTML"), "text/html");
+    }
+
+    #[test]
+    fn set_mime_type_overrides_extension_detection_and_recomputes_defaults() {
+        // Issue #193: an extensionless clean URL gets octet-stream from
+        // extension detection, which also disables compression and picks the
+        // generic TTL. The override must fix all three, matching what `new`
+        // would produce for the declared type.
+        let mut asset = StaticAsset::new("/posts/hello".to_string(), b"<h1>hi</h1>".to_vec());
+        assert_eq!(asset.mime_type, "application/octet-stream");
+        assert!(!asset.compression_enabled);
+
+        asset.set_mime_type("text/html");
+        assert_eq!(asset.mime_type, "text/html");
+        assert!(asset.compression_enabled);
+        assert_eq!(asset.cache_ttl_seconds, 300);
     }
 
     #[test]
