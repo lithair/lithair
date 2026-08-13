@@ -353,7 +353,7 @@ impl ReplicationBatcher {
         let followers = self.followers.read().await;
         let mut stats = Vec::new();
 
-        for (_, follower) in followers.iter() {
+        for follower in followers.values() {
             let health = *follower.health.read().await;
             let pending_count = follower.pending_count().await;
 
