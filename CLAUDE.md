@@ -40,7 +40,7 @@ cidx run ci         # full pipeline
 
 Sub-agents and automation should prefer `cidx run code` over waiting on GitHub
 Actions for tight loops. CI runs the same phases via `.github/workflows/cidx.yml`
-(pinned to cidx v1.7.0).
+(installs cidx `@latest`).
 
 ### Build & Test
 
