@@ -1,0 +1,40 @@
+# lithair — probatum black-box golden path
+#
+#   probatum run
+#
+# Boots the real hello-world server binary and asserts the wire contract of
+# the built-in ops endpoints (/health, /ready, /info). Complements the cidx
+# cargo-test phase: cargo tests assert the code, this asserts the running
+# binary over HTTP. Port 18499 to stay clear of dev defaults (8080, 18321).
+
+[[check]]
+name = "hello-world example builds"
+run = "cargo build -p hello-world"
+timeout = 600
+
+[[check]]
+name = "server boots and answers /health"
+run = "PORT=18499 ./target/debug/hello-world"
+ready = "http://127.0.0.1:18499/health"
+timeout = 30
+
+[[check]]
+name = "/health is the canonical monitoring shape"
+get = "http://127.0.0.1:18499/health"
+expect = 200
+contains = ['"status":"healthy"']
+max_ms = 2000
+
+[[check]]
+name = "/ready reports status and crate version"
+get = "http://127.0.0.1:18499/ready"
+expect = 200
+contains = ['"status":"ready"', '"version"']
+max_ms = 2000
+
+[[check]]
+name = "/info documents the wired surface"
+get = "http://127.0.0.1:18499/info"
+expect = 200
+contains = ['"health":"/health"', '"ready":"/ready"', '"info":"/info"']
+max_ms = 2000
