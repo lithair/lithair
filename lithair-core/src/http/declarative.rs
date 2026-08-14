@@ -283,18 +283,31 @@ where
 
         let event_store = Arc::new(tokio::sync::RwLock::new(event_store));
 
-        // Spawn a lightweight background flusher to persist batches periodically
+        // Spawn a lightweight background flusher to persist batches
+        // periodically. The task holds only a `Weak` to the store (issue
+        // #115): with a strong `Arc` the flusher kept the store — and
+        // itself — alive forever, orphaning one infinite task per handler
+        // ever constructed (servers restarted in-process, every test).
+        // With `Weak`, the task exits within one flush interval of the
+        // last strong reference dropping, so its lifetime is exactly the
+        // store's lifetime. No shutdown signal to thread through `new()`.
         let flush_interval_ms: u64 = std::env::var("LT_FLUSH_INTERVAL_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(100);
-        let store_clone = Arc::clone(&event_store);
+        let store_weak = Arc::downgrade(&event_store);
         tokio::spawn(async move {
             let interval = std::time::Duration::from_millis(flush_interval_ms);
             loop {
-                {
-                    let mut store = store_clone.write().await;
-                    let _ = store.flush_events();
+                // The strong ref is scoped to the flush and dropped before
+                // the sleep — the task never extends the store's lifetime
+                // across an idle interval.
+                match store_weak.upgrade() {
+                    Some(store) => {
+                        let mut store = store.write().await;
+                        let _ = store.flush_events();
+                    }
+                    None => break,
                 }
                 tokio::time::sleep(interval).await;
             }

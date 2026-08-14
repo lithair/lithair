@@ -741,12 +741,18 @@ pub struct LithairServer {
     // `serve()` spawns one tokio task per registered model that
     // periodically inspects the model's `EventStore::event_count()` and
     // triggers `EventStore::truncate_events()` once the count crosses
-    // `events_threshold`. The spawned tasks are fire-and-forget — runtime
-    // shutdown aborts them, matching the existing background-flusher
-    // lifecycle in `DeclarativeHttpHandler::new`.
+    // `events_threshold`. Since issue #115 the spawned tasks are tracked
+    // in a `JoinSet`, signaled via a `watch` channel on graceful shutdown,
+    // and joined under the shutdown grace deadline.
     //
     // `None` = feature off (default, no observable behavior change).
     auto_compaction: Option<crate::engine::AutoCompactionConfig>,
+
+    // Issue #115: deadline granted on graceful shutdown to drain in-flight
+    // connections and internal background tasks before stragglers are
+    // aborted. Defaults to `GRACEFUL_DRAIN_GRACE`; configurable via
+    // `LithairServerBuilder::with_shutdown_grace`.
+    shutdown_grace: std::time::Duration,
 }
 
 /// A CRUD operation to be submitted through Raft consensus
@@ -1107,14 +1113,18 @@ impl LithairServer {
     ///
     /// Mirrors `axum::serve(...).with_graceful_shutdown(f)` and hyper's
     /// pattern. When `shutdown` completes, the server stops accepting new
-    /// connections, gives already-accepted connections a bounded grace window
-    /// to drain (see [`GRACEFUL_DRAIN_GRACE`]), then returns `Ok(())`.
+    /// connections, signals every in-flight connection (hyper per-connection
+    /// `graceful_shutdown`: finish the current request, close) and every
+    /// internal background task (auto-compaction, Raft monitors), joins them
+    /// under the configured grace deadline (default 5s, see
+    /// [`LithairServerBuilder::with_shutdown_grace`]), aborts any straggler,
+    /// then returns `Ok(())`. No internal task outlives the returned future.
     ///
     /// Downstream apps can pass a `watch`/`oneshot`/`CancellationToken`-driven
     /// future flipped on `ctrl_c`/SIGTERM, then join their own background
     /// workers after `.await` returns.
     ///
-    /// [`GRACEFUL_DRAIN_GRACE`]: Self::GRACEFUL_DRAIN_GRACE
+    /// [`LithairServerBuilder::with_shutdown_grace`]: crate::app::LithairServerBuilder::with_shutdown_grace
     pub async fn serve_with_graceful_shutdown<F>(mut self, shutdown: F) -> Result<()>
     where
         F: std::future::Future<Output = ()> + Send + 'static,
@@ -1384,25 +1394,25 @@ impl LithairServer {
         // covered in `tests/auto_compaction_test.rs::spawn_auto_compaction`
         // — keep them in sync if either is touched.
         //
-        // Lifecycle matches the existing background-flusher pattern in
-        // `DeclarativeHttpHandler::new` (line ~180): spawned and forgotten,
-        // runtime shutdown aborts. We deliberately do NOT hold JoinHandles
-        // on `LithairServer` — that would diverge from the flusher's
-        // lifecycle and touch async writers across several files.
-        //
-        // A graceful shutdown signal now exists
-        // (`serve_with_graceful_shutdown`, issue #112): the accept loop stops
-        // and in-flight HTTP connections get a grace window. Draining these
-        // *internal* tasks (auto-compaction, the WAL flusher, async writers)
-        // via tracked JoinHandles is still deferred — it spans 3+ files and
-        // is tracked as a follow-up. Both code paths should grow JoinHandle
-        // tracking together when that lands.
+        // Issue #115 (follow-up to #112): internal background tasks spawned
+        // by this function (auto-compaction below, the Raft heartbeat /
+        // election monitors further down) are tracked in `background_tasks`
+        // and watch `bg_shutdown_rx`. On graceful shutdown they are signaled
+        // and joined under the shutdown grace deadline, so a host that
+        // restarts the server in-process (or a test suite) is not left with
+        // orphaned infinite loops. The per-model WAL flusher in
+        // `DeclarativeHttpHandler::new` is lifetime-tied to its `EventStore`
+        // via `Weak` instead — it exits within one flush interval of its
+        // handler dropping, covering every construction site (not just
+        // `serve()`).
         //
         // Tracing init happens at the very top of this function (PR #118
         // review) so logs emitted by the tasks spawned below — and by every
         // boot step above — are always observable (issue #69 follow-up
         // originally pinned the init before this spawn loop; moving it
         // earlier preserves that property a fortiori).
+        let (bg_shutdown_tx, bg_shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut background_tasks = tokio::task::JoinSet::new();
 
         if let Some(cfg) = self.auto_compaction {
             let models = self.models.read().await;
@@ -1427,7 +1437,8 @@ impl LithairServer {
                     cfg.events_threshold,
                     cfg.check_interval
                 );
-                tokio::spawn(async move {
+                let mut bg_rx = bg_shutdown_rx.clone();
+                background_tasks.spawn(async move {
                     let mut ticker = tokio::time::interval(cfg.check_interval);
                     // `MissedTickBehavior::Skip` — if the system is under
                     // load and several check intervals elapse between
@@ -1441,7 +1452,13 @@ impl LithairServer {
                     // be a spurious read of an empty just-started store.
                     ticker.tick().await;
                     loop {
-                        ticker.tick().await;
+                        // Stop between ticks on graceful shutdown (issue
+                        // #115). `changed()` also resolves (Err) if the
+                        // sender is dropped — treat both as shutdown.
+                        tokio::select! {
+                            _ = ticker.tick() => {}
+                            _ = bg_rx.changed() => break,
+                        }
                         let needs_compaction = {
                             let store = event_store.read().await;
                             store.event_count() > cfg.events_threshold
@@ -2211,7 +2228,8 @@ impl LithairServer {
 
             if raft_state.is_leader() {
                 // Leader: send heartbeats to followers
-                tokio::spawn(async move {
+                let mut bg_rx = bg_shutdown_rx.clone();
+                background_tasks.spawn(async move {
                     use reqwest::Client as HttpClient;
                     use std::time::Duration;
                     use tokio::time::sleep;
@@ -2225,7 +2243,12 @@ impl LithairServer {
                         Duration::from_secs(raft_config.heartbeat_interval_secs);
 
                     loop {
-                        sleep(heartbeat_interval).await;
+                        // Stop between heartbeats on graceful shutdown
+                        // (issue #115).
+                        tokio::select! {
+                            _ = sleep(heartbeat_interval) => {}
+                            _ = bg_rx.changed() => break,
+                        }
 
                         if !state_clone.is_leader() {
                             log::info!("No longer leader, stopping heartbeat sender");
@@ -2252,12 +2275,17 @@ impl LithairServer {
                 });
             } else {
                 // Follower: monitor heartbeats and trigger election if timeout
-                tokio::spawn(async move {
+                let mut bg_rx = bg_shutdown_rx.clone();
+                background_tasks.spawn(async move {
                     use std::time::Duration;
                     use tokio::time::sleep;
 
                     loop {
-                        sleep(Duration::from_secs(1)).await;
+                        // Stop between checks on graceful shutdown (#115).
+                        tokio::select! {
+                            _ = sleep(Duration::from_secs(1)) => {}
+                            _ = bg_rx.changed() => break,
+                        }
 
                         if state_clone.should_start_election() {
                             log::info!("⏰ Heartbeat timeout detected! Starting election...");
@@ -2279,6 +2307,7 @@ impl LithairServer {
         // Extract config values before moving self into Arc
         let request_timeout = self.config.server.request_timeout;
         let max_body_size = self.config.server.max_body_size;
+        let shutdown_grace = self.shutdown_grace;
 
         // Materialize firewall from config (builder > env)
         let firewall = Arc::new(crate::http::Firewall::new(
@@ -2315,8 +2344,21 @@ impl LithairServer {
         // `loop { listener.accept().await? }`.
         tokio::pin!(shutdown);
 
+        // Per-connection tracking (issue #115, approach (a) from #112):
+        // connection tasks live in a `JoinSet` and watch `conn_shutdown_rx`.
+        // On shutdown each task asks hyper for a per-connection
+        // `graceful_shutdown()` (finish the in-flight request, disable
+        // keep-alive, close), and the set is joined under the configured
+        // grace deadline — stragglers are aborted, never orphaned.
+        let (conn_shutdown_tx, conn_shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut connections = tokio::task::JoinSet::new();
+
         // Accept connections until shutdown is signaled.
         loop {
+            // Reap finished connection tasks so the JoinSet doesn't
+            // accumulate completed entries for the server's lifetime.
+            while connections.try_join_next().is_some() {}
+
             let (stream, remote_addr) = tokio::select! {
                 // `biased`: poll the shutdown branch first so a signal wins
                 // deterministically over a connection already sitting in the
@@ -2346,8 +2388,9 @@ impl LithairServer {
             let anti_ddos = anti_ddos.clone();
             #[cfg(feature = "tls")]
             let tls_acceptor = tls_acceptor.clone();
+            let mut conn_rx = conn_shutdown_rx.clone();
 
-            tokio::spawn(async move {
+            connections.spawn(async move {
                 // TLS handshake (if configured) or plain TCP
                 #[cfg(feature = "tls")]
                 let io = {
@@ -2515,13 +2558,28 @@ impl LithairServer {
                     },
                 );
 
-                if let Err(err) = hyper::server::conn::http1::Builder::new()
+                let conn = hyper::server::conn::http1::Builder::new()
                     .timer(hyper_util::rt::TokioTimer::new())
                     .header_read_timeout(std::time::Duration::from_secs(request_timeout))
                     .keep_alive(true)
-                    .serve_connection(io, service)
-                    .await
-                {
+                    .serve_connection(io, service);
+                tokio::pin!(conn);
+
+                // Drive the connection, but on the shutdown signal hand it
+                // to hyper's per-connection `graceful_shutdown()`: the
+                // in-flight request (if any) finishes, keep-alive is
+                // disabled, and the connection closes — idle keep-alive
+                // connections close immediately instead of lingering
+                // (issue #115). `changed()` also resolves (Err) when the
+                // sender drops; both cases mean shutdown.
+                let result = tokio::select! {
+                    r = conn.as_mut() => r,
+                    _ = conn_rx.changed() => {
+                        conn.as_mut().graceful_shutdown();
+                        conn.as_mut().await
+                    }
+                };
+                if let Err(err) = result {
                     // `header_read_timeout` reaps idle keep-alive connections
                     // with a "read header from client timeout" error
                     // (`hyper::Error::is_timeout()`). That is routine
@@ -2538,33 +2596,47 @@ impl LithairServer {
             });
         }
 
-        // In-flight connection drain (approach (b) from issue #112).
-        //
-        // Per-connection handlers above are `tokio::spawn`ed and forgotten —
-        // we do not currently track their `JoinHandle`s, so we cannot join
-        // them precisely. Instead, once the accept loop has stopped, we give
-        // already-accepted connections a fixed grace window to finish before
-        // returning (after which the runtime drops any stragglers).
-        //
-        // This is the zero-new-dependency option: `tokio-util` is not a
-        // declared dependency of this crate, so a `CancellationToken` +
-        // JoinHandle join-with-timeout (approach (a)) would mean pulling it in
-        // just for this. Precise join-based draining is left as a follow-up.
+        // Precise, bounded drain (issue #115, approach (a) from #112).
         //
         // For the `serve()` delegate this code is unreachable: its shutdown
         // future is `std::future::pending()`, so the loop above never breaks.
         //
-        // Close the listening socket before the grace window so new TCP
-        // handshakes fail fast instead of completing into the accept backlog
-        // (where they'd never be serviced). This tightens the shutdown
-        // boundary: no connection accepted after the signal. Note this still
-        // does NOT signal the already-spawned per-connection tasks — a
-        // keep-alive connection accepted before shutdown can keep serving
-        // within the grace window; precise per-connection draining is the
-        // deferred approach-(a) follow-up.
+        // Close the listening socket first so new TCP handshakes fail fast
+        // instead of completing into the accept backlog (where they'd never
+        // be serviced): no connection is accepted after the signal.
         drop(listener);
-        log::info!("Draining in-flight connections for up to {:?}", Self::GRACEFUL_DRAIN_GRACE);
-        tokio::time::sleep(Self::GRACEFUL_DRAIN_GRACE).await;
+
+        // Signal both groups — per-connection tasks (hyper per-connection
+        // graceful_shutdown above) and internal background tasks
+        // (auto-compaction, Raft monitors) — then join them concurrently
+        // under one grace deadline. `send` only errs when every receiver is
+        // already gone, which just means there is nothing left to drain.
+        let _ = conn_shutdown_tx.send(true);
+        let _ = bg_shutdown_tx.send(true);
+        log::info!(
+            "Draining {} in-flight connection(s) and {} background task(s) for up to {:?}",
+            connections.len(),
+            background_tasks.len(),
+            shutdown_grace
+        );
+        let drained = tokio::time::timeout(shutdown_grace, async {
+            tokio::join!(async { while connections.join_next().await.is_some() {} }, async {
+                while background_tasks.join_next().await.is_some() {}
+            },);
+        })
+        .await;
+        if drained.is_err() {
+            log::warn!(
+                "Shutdown grace {:?} elapsed; aborting {} connection(s) and {} background task(s)",
+                shutdown_grace,
+                connections.len(),
+                background_tasks.len()
+            );
+            // `JoinSet::shutdown` aborts every remaining task and awaits
+            // their termination — nothing is left running on the runtime.
+            connections.shutdown().await;
+            background_tasks.shutdown().await;
+        }
 
         // OTLP exporters batch spans; flush AFTER the drain window so the
         // spans of the last in-flight requests are exported too (issue #107
@@ -2577,13 +2649,13 @@ impl LithairServer {
         Ok(())
     }
 
-    /// Grace period granted to already-accepted connections to drain after a
-    /// graceful shutdown signal, before [`serve_with_graceful_shutdown`]
-    /// returns. Currently a fixed constant; making it configurable and
-    /// switching to precise join-based draining is a follow-up to issue #112.
+    /// Default grace period granted on graceful shutdown to drain in-flight
+    /// connections and internal background tasks before stragglers are
+    /// aborted (issue #115). Configurable per server via
+    /// [`LithairServerBuilder::with_shutdown_grace`].
     ///
-    /// [`serve_with_graceful_shutdown`]: Self::serve_with_graceful_shutdown
-    const GRACEFUL_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+    /// [`LithairServerBuilder::with_shutdown_grace`]: crate::app::LithairServerBuilder::with_shutdown_grace
+    pub(crate) const GRACEFUL_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
     /// Add security headers to a response.
     /// Uses `entry().or_insert()` so handlers that explicitly set a header are not overridden.
@@ -3478,6 +3550,7 @@ impl Default for LithairServer {
             openapi_spec_cache: std::sync::OnceLock::new(),
             sse_broadcaster: None,
             auto_compaction: None,
+            shutdown_grace: Self::GRACEFUL_DRAIN_GRACE,
         }
     }
 }
