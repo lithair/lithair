@@ -67,3 +67,6 @@ backups/
 __pycache__/
 *.pyc
 site-packages/
+
+# Probatum run evidence (committed checks live in probatum.toml / .probatum/*.toml)
+.probatum/runs/
