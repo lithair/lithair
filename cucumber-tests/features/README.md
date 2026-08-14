@@ -48,7 +48,7 @@ task bdd:observability  # Observability tests
 
 ### CI/CD with BDD
 ```bash
-task ci:bdd    # Full CI with BDD tests
+task bdd:all   # All BDD test suites
 task bdd:ci    # CI mode (JSON output)
 ```
 
@@ -139,7 +139,7 @@ task bdd:ci
 BDD tests integrate perfectly into the CI pipeline:
 ```yaml
 - name: Run BDD Tests
-  run: task ci:bdd
+  run: task bdd:all
 ```
 
 ## 🎯 Benefits of BDD for Lithair

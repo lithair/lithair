@@ -209,8 +209,8 @@ shows a `ModifyFieldType` or `RemoveField`.
    cargo build --release
    ```
 
-4. **Run your tests / CI.** `task ci:full` runs fmt + clippy (`-D
-   warnings`) + tests; `cidx run code` gives the same rustfmt + clippy
+4. **Run your tests / CI.** `task check` runs fmt + clippy (`-D
+   warnings`), `task test` the workspace tests; `cidx run code` gives the same rustfmt + clippy
    feedback in a container matching CI (see project `CLAUDE.md`).
 
 5. **Stage against a copy of prod data.** Restore the backup from step 1
@@ -305,7 +305,7 @@ lets you catch problems without ever needing a production rollback.
    `Cargo.toml`.
 5. **`cargo build`** — clears the Rust-API surface; breaking API changes
    fail here.
-6. **Run `task ci:full` / `cidx run code`** and your tests.
+6. **Run `task check` / `cidx run code`** and your tests.
 7. **Stage against a copy of prod data**: replay, `/health`, and
    `/_admin/schema/diff` all clean.
 8. **Promote**, then re-verify `/health` and a data spot-check.
