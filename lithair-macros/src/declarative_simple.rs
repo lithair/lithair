@@ -227,8 +227,10 @@ fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes>
         ..Default::default()
     };
 
+    let mut server_attr_span: Option<&syn::Attribute> = None;
     for attr in &input.attrs {
         if attr.path().is_ident("server") {
+            server_attr_span = Some(attr);
             if let Meta::List(meta_list) = &attr.meta {
                 // Parse server(...) tokens
                 let nested_str = meta_list.tokens.to_string();
@@ -286,6 +288,20 @@ fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes>
                     }
                 }
             }
+        }
+    }
+
+    // `distributed` gets node_id/data_dir from the clap-generated CLI; the
+    // non-CLI main() has no way to carry them, so the combination would
+    // silently generate a single-node binary. Reject it instead (PR #203
+    // review finding).
+    if server_attrs.distributed && !server_attrs.cli {
+        if let Some(attr) = server_attr_span {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "`distributed` in #[server(...)] requires `cli` \
+                 (node_id and data_dir come from CLI args)",
+            ));
         }
     }
 
@@ -1925,7 +1941,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         let single_node_serve = |port_expr: proc_macro2::TokenStream| {
             quote! {
                 let event_store_path = format!("./data/{}.events", #name_str.to_lowercase());
-                ::std::fs::create_dir_all("./data").ok();
+                ::std::fs::create_dir_all("./data")?;
                 let base_path = format!(
                     "/api/{}",
                     <#name as lithair_core::http::HttpExposable>::http_base_path()

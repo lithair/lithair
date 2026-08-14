@@ -1,0 +1,5 @@
+error: `distributed` in #[server(...)] requires `cli` (node_id and data_dir come from CLI args)
+ --> tests/ui/server_distributed_without_cli.rs:6:1
+  |
+6 | #[server(main, distributed)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
