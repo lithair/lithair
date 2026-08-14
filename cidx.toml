@@ -65,8 +65,13 @@ command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 # `--locked` keeps the install on cargo-audit's shipped Cargo.lock: fresh
 # resolution pulls kstring >=2.0.3 (needs rustc 1.96) which the pinned
 # 1.95 toolchain cannot compile.
+# The trailing `cargo tree` guard polices the RUSTSEC-2026-0235 ignore in
+# .cargo/audit.toml: rkyv 0.7 sits in Cargo.lock as a never-enabled optional
+# dep of rust_decimal, so the audit ignore is safe ONLY while it stays out of
+# the build graph. If a future feature change enables it, `cargo tree -i`
+# starts printing dependents and the phase fails instead of staying silent.
 [containers.cargo-audit]
-command = "sh -c 'command -v cargo-audit || cargo install --quiet --locked cargo-audit && cargo audit'"
+command = "sh -c 'command -v cargo-audit || cargo install --quiet --locked cargo-audit && cargo audit && test -z \"$(cargo tree -i rkyv@0.7.46 --target all 2>/dev/null)\"'"
 
 # ─── pipelines ───
 [pipelines.ci]
