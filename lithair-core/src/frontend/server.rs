@@ -449,6 +449,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn not_found_respects_the_stored_mime_override() {
+        // A `/404.html` whose MIME was set explicitly (set_mime_type, #197)
+        // must be served with that exact Content-Type, not re-detected.
+        let state = legacy_state_with(&[("/404.html", b"<h1>gone</h1>")]);
+        {
+            let mut s = state.write().await;
+            let host = s.virtual_hosts.get_mut("main").unwrap();
+            let id = host.path_index["/404.html"];
+            host.assets.get_mut(&id).unwrap().set_mime_type("text/html; charset=utf-8");
+        }
+        let server = FrontendServer::new(state);
+
+        let resp = server.not_found(false).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(resp.headers()["Content-Type"], "text/html; charset=utf-8");
+    }
+
+    #[tokio::test]
     async fn not_found_falls_back_to_the_built_in_page() {
         let server = FrontendServer::new(legacy_state_with(&[("/index.html", b"home")]));
 
