@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-14
+
+The configuration-honesty release: an invalid `config.toml` now surfaces
+instead of silently booting on defaults, the configuration docs were audited
+against what the code actually reads — and a meta-test keeps them honest —
+and the last env-var family joins the `LT_` prefix. Around the code, the dev
+tooling consolidates: cidx becomes the single CI source of truth and
+probatum boots the real binary to check the wire contract. API surface
+additive only (`FrontendEngine::update_asset_with_mime`,
+`StaticAsset::set_mime_type`); no breaking change, no on-disk format change.
+
+### Added
+
+- **Canonical `LT_RAFT_*` env vars** (#190): the `[raft]` section was the
+  last config family outside the `LT_` prefix convention. Each variable now
+  reads `LT_RAFT_<X>` first and falls back to the legacy `LITHAIR_RAFT_<X>`
+  alias — purely additive, `LT_RAFT_*` wins when both are set, and the
+  legacy names stay accepted throughout 1.x.
+- **Probatum black-box golden path** (#196): `probatum run` boots the real
+  hello-world binary and asserts the wire contract of `/health`, `/ready`
+  and `/info` over HTTP — what cargo tests can't see.
+- **`task setup`** (#199): idempotent dev-environment bootstrap (rustup with
+  the pinned toolchain, go-task, cidx, probatum, Docker check), callable
+  directly via `scripts/setup.sh` when `task` itself is missing.
+
+### Fixed
+
+- **Invalid `config.toml` no longer silently ignored** (#188): the builder
+  swallowed parse errors via `unwrap_or_default()`, silently starting on
+  defaults — and a broken file also dropped every `LT_*` variable. The
+  parse error is now surfaced (warning emitted once the log bridge exists),
+  env vars are re-applied in the fallback, and unit tests pin both
+  contracts: unparseable file errors, missing file stays silent defaults.
+- **Extensionless clean URLs no longer download as `octet-stream`** (#197,
+  closes #193): MIME detection derives the Content-Type from the path
+  extension, so a clean URL like `/posts/hello` was served as
+  `application/octet-stream` and browsers downloaded the page. New API:
+  `FrontendEngine::update_asset_with_mime` and `StaticAsset::set_mime_type`
+  let the caller declare the type explicitly (compression and cache TTL
+  defaults recompute accordingly); extension-based detection is unchanged
+  for all existing callers.
+
+### Changed
+
+- **CI single source of truth.** The Taskfile no longer duplicates pipeline
+  definitions: `task ci` / `task pr` delegate to cidx (`cidx.toml` is the
+  one place phases are defined), and a host-native `task check`
+  (fmt + clippy `-D warnings`) covers the seconds-fast inner loop (#199).
+- **Config docs/code parity, machine-enforced** (#189, #191): a full audit
+  removed 34 documented env vars that no code reads and documented the 26
+  env-only variables that were missing; a `no_orphan_features`-style
+  meta-test now fails CI when a documented variable is unread or a read
+  variable is undocumented — its first run already caught one drift
+  (`LT_USE_SCC2`).
+- **Pinned toolchain bumped to 1.97.1** to match the cidx CI image — the
+  exact local/CI drift the pin exists to prevent (#195).
+- **RUSTSEC-2026-0235 (rkyv 0.7) ignored with a guard** (#198): the
+  vulnerable version enters `Cargo.lock` only as a never-enabled optional
+  dependency of `rust_decimal`; the ignore is documented in
+  `.cargo/audit.toml` and a `cargo tree` guard turns any future enablement
+  into a red Security phase instead of a silent pass.
+- **Golden path enforced end to end** (#183, #185, #186): the documented
+  `lithair new` scaffold is now booted and exercised over HTTP by a BDD
+  suite in the per-PR gate.
+
 ## [1.3.0] - 2026-07-08
 
 The test-workflow release: the full per-PR pyramid now runs in CI, and the
@@ -1355,7 +1420,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/lithair/lithair/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/lithair/lithair/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/lithair/lithair/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/lithair/lithair/compare/v1.0.0...v1.1.0
