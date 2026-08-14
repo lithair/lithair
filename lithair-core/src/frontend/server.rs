@@ -201,9 +201,37 @@ impl FrontendServer {
                             .body(body_from(body_bytes))
                             .unwrap())
                     }
-                    None => {
-                        // Return beautiful 404 HTML page with terminal style
-                        let html_404 = r#"<!DOCTYPE html>
+                    None => Ok(self.not_found(is_head).await),
+                }
+            }
+            _ => Ok(Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .body(body_from("Method not allowed"))
+                .unwrap()),
+        }
+    }
+
+    /// Build the 404 response.
+    ///
+    /// A site that shipped its own `/404.html` gets that back, with its own
+    /// MIME type and its own design — convention rather than configuration, so
+    /// there is nothing to switch on and a site without one is unaffected.
+    /// Otherwise the built-in page, which is a framework default and may look
+    /// like one.
+    async fn not_found(&self, is_head: bool) -> Resp {
+        if let Some((content, mime_type)) = self.asset_server.serve_asset("/404.html").await {
+            let content_length = content.len();
+            let body_bytes: Bytes = if is_head { Bytes::new() } else { Bytes::from(content) };
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", mime_type)
+                .header("Content-Length", content_length)
+                .header("X-Served-From", "Lithair-Memory")
+                .body(body_from(body_bytes))
+                .unwrap();
+        }
+
+        let html_404 = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -238,22 +266,13 @@ impl FrontendServer {
     </div>
 </body>
 </html>"#;
-                        let body_bytes: Bytes =
-                            if is_head { Bytes::new() } else { Bytes::from(html_404) };
-                        Ok(Response::builder()
-                            .status(StatusCode::NOT_FOUND)
-                            .header("Content-Type", "text/html; charset=utf-8")
-                            .header("Content-Length", html_404.len())
-                            .body(body_from(body_bytes))
-                            .unwrap())
-                    }
-                }
-            }
-            _ => Ok(Response::builder()
-                .status(StatusCode::METHOD_NOT_ALLOWED)
-                .body(body_from("Method not allowed"))
-                .unwrap()),
-        }
+        let body_bytes: Bytes = if is_head { Bytes::new() } else { Bytes::from(html_404) };
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header("Content-Type", "text/html; charset=utf-8")
+            .header("Content-Length", html_404.len())
+            .body(body_from(body_bytes))
+            .unwrap()
     }
 
     /// Handle admin requests completely automatically using Lithair declarative approach
@@ -391,5 +410,62 @@ mod tests {
         let served = server.serve_asset("/missing.txt").await;
 
         assert!(served.is_none());
+    }
+
+    fn legacy_state_with(assets: &[(&str, &[u8])]) -> Arc<RwLock<FrontendState>> {
+        let mut state = FrontendState::default();
+        let mut host = VirtualHostLocation {
+            host_id: "main".to_string(),
+            base_path: "/".to_string(),
+            assets: HashMap::new(),
+            path_index: HashMap::new(),
+            static_root: String::new(),
+            active: true,
+        };
+        for (path, content) in assets {
+            let a = asset(path, content);
+            host.path_index.insert(path.to_string(), a.id);
+            host.assets.insert(a.id, a);
+        }
+        state.virtual_hosts.insert("main".to_string(), host);
+        Arc::new(RwLock::new(state))
+    }
+
+    async fn body_string(resp: Resp) -> String {
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        String::from_utf8_lossy(&bytes).to_string()
+    }
+
+    #[tokio::test]
+    async fn not_found_prefers_the_site_own_404_asset() {
+        let server =
+            FrontendServer::new(legacy_state_with(&[("/404.html", b"<h1>nothing here</h1>")]));
+
+        let resp = server.not_found(false).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(resp.headers()["Content-Type"], "text/html");
+        assert_eq!(body_string(resp).await, "<h1>nothing here</h1>");
+    }
+
+    #[tokio::test]
+    async fn not_found_falls_back_to_the_built_in_page() {
+        let server = FrontendServer::new(legacy_state_with(&[("/index.html", b"home")]));
+
+        let resp = server.not_found(false).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert!(body_string(resp).await.contains("404 - Page Not Found"));
+    }
+
+    #[tokio::test]
+    async fn not_found_head_keeps_the_headers_and_drops_the_body() {
+        let server = FrontendServer::new(legacy_state_with(&[("/404.html", b"<h1>gone</h1>")]));
+
+        let resp = server.not_found(true).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(resp.headers()["Content-Length"], "13");
+        assert_eq!(body_string(resp).await, "");
     }
 }
