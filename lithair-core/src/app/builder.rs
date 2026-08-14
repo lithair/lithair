@@ -135,6 +135,12 @@ pub struct LithairServerBuilder {
     // inspect; the `HostRouter` is materialized in `build()`.
     host_redirects: Vec<(String, String)>, // (from_host_normalized, to_host_normalized)
 
+    // Issue #33: when true and vhosts are declared, requests whose `Host:`
+    // header matches no registered vhost (and no default vhost is set) are
+    // answered with `421 Misdirected Request` instead of falling through
+    // to the host-agnostic routing pipeline. Defaults to false.
+    strict_host_routing: bool,
+
     // Cluster/Raft configuration
     cluster_peers: Vec<String>,
     node_id: Option<u64>,
@@ -241,6 +247,7 @@ impl LithairServerBuilder {
             frontend_configs: Vec::new(),
             vhost_frontend_configs: Vec::new(),
             host_redirects: Vec::new(),
+            strict_host_routing: false,
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
@@ -274,6 +281,7 @@ impl LithairServerBuilder {
             frontend_configs: Vec::new(),
             vhost_frontend_configs: Vec::new(),
             host_redirects: Vec::new(),
+            strict_host_routing: false,
             cluster_peers: Vec::new(),
             node_id: None,
             schema_vote_policy: None,
@@ -1065,6 +1073,49 @@ impl LithairServerBuilder {
         for (prefix, dir) in vhost.frontend_configs {
             self.vhost_frontend_configs.push((VhostScope::Default, prefix, dir));
         }
+        self
+    }
+
+    /// Reject requests for unregistered hosts with `421 Misdirected
+    /// Request` instead of falling through to host-agnostic routing.
+    ///
+    /// By default (flag off), when vhosts are declared and a request's
+    /// `Host:` header matches none of them (and no default vhost is
+    /// set), the request falls through to the host-agnostic pipeline —
+    /// `.with_frontend_at(...)` frontends, models, custom routes — and
+    /// ultimately `404 Not Found` if nothing matches. That preserves
+    /// backward compatibility for path-only apps.
+    ///
+    /// With this flag on, such requests are answered immediately with
+    /// `421 Misdirected Request` (RFC 9110 §15.5.20), the status defined
+    /// for a server that is not configured to serve the request's
+    /// authority. Useful to surface CDN/DNS host misconfigurations
+    /// instead of silently serving fallback content.
+    ///
+    /// Notes:
+    ///
+    /// - No-op unless vhosts are declared via [`Self::with_vhost`].
+    /// - Never fires when a default vhost
+    ///   ([`Self::with_default_vhost`]) is set — the default always
+    ///   matches.
+    /// - Applies to the whole pipeline, including `/health` and
+    ///   `/ready`: load-balancer probes hitting the server by IP will
+    ///   receive 421 unless you register that IP as a vhost or declare
+    ///   a default vhost.
+    /// - Host redirects ([`Self::with_redirect`]) are evaluated first
+    ///   and still apply.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_vhost("arcker.org", |v| v.with_frontend_at("/", "sites/arcker.org"))
+    ///     .strict_host_routing() // unknown Host: -> 421
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn strict_host_routing(mut self) -> Self {
+        self.strict_host_routing = true;
         self
     }
 
@@ -2330,6 +2381,7 @@ impl LithairServerBuilder {
             frontend_engines: std::collections::HashMap::new(), // Will be populated in serve()
             vhost_frontend_configs: self.vhost_frontend_configs,
             vhost_frontend_router: crate::http::HostRouter::new(), // populated in serve()
+            strict_host_routing: self.strict_host_routing,
             host_redirects: {
                 // Materialize the declared (from, to) pairs into a HostRouter
                 // for O(1) lookup at dispatch time. `with_redirect` already
@@ -2479,6 +2531,11 @@ impl LithairServerBuilder {
     pub(crate) fn host_redirects_for_test(&self) -> &[(String, String)] {
         &self.host_redirects
     }
+
+    #[cfg(test)]
+    pub(crate) fn strict_host_routing_for_test(&self) -> bool {
+        self.strict_host_routing
+    }
 }
 
 #[cfg(test)]
@@ -2513,6 +2570,17 @@ mod tests {
             .with_frontend_at("/admin", "admin-ui");
         assert_eq!(builder.frontend_configs_for_test().len(), 2);
         assert!(builder.vhost_frontend_configs_for_test().is_empty());
+    }
+
+    #[test]
+    fn strict_host_routing_defaults_off_and_setter_enables_it() {
+        let builder = LithairServerBuilder::new();
+        assert!(!builder.strict_host_routing_for_test(), "strict mode must be opt-in");
+
+        let builder = builder
+            .with_vhost("arcker.org", |v| v.with_frontend_at("/", "sites/arcker.org"))
+            .strict_host_routing();
+        assert!(builder.strict_host_routing_for_test());
     }
 
     #[test]

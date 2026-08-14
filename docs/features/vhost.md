@@ -31,6 +31,27 @@ async fn main() -> anyhow::Result<()> {
 matches none of the declared vhosts (including IP-only access and health
 probes from load balancers that don't set a hostname).
 
+## Strict host routing (421)
+
+By default, requests whose `Host` header matches no declared vhost (and no
+default vhost) fall through to the host-agnostic pipeline and end up as
+`404 Not Found`. Opt into `421 Misdirected Request` (RFC 9110 §15.5.20)
+instead with `.strict_host_routing()`:
+
+```rust
+LithairServer::new()
+    .with_vhost("arcker.org", |v| v.with_frontend_at("/", "sites/arcker.org"))
+    .strict_host_routing() // unknown Host -> 421 instead of 404 fallthrough
+    .serve()
+    .await
+```
+
+Useful to surface CDN/DNS host misconfigurations instead of silently serving
+fallback content. Notes: it never fires when a default vhost is set (the
+default always matches), and it applies to the whole pipeline including
+`/health` — register your probe host (or keep a default vhost) if load
+balancers reach the server by IP.
+
 ## Host-to-host redirects
 
 For canonical-URL enforcement (e.g. forcing `www.` to the bare domain), use
