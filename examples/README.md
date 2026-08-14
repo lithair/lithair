@@ -36,6 +36,12 @@ Same Notes CRUD backend, different frontend framework. `npm run build` -> `dist/
 |----|------|---------------|
 | 11 | [frontend-integrations](11-frontend-integrations/) | Same Notes CRUD with React, Angular, Vue, Svelte, or Astro |
 
+### Compile Guards
+
+| #  | Name | What it guards |
+|----|------|----------------|
+| 12 | [server-main-cli](12-server-main-cli/) | `#[server(main, cli)]` full expansion compiles end to end (issue #68) — no hand-written `main()` |
+
 ### Advanced
 
 | Name | Purpose |

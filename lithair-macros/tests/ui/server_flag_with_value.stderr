@@ -1,0 +1,5 @@
+error: `main` in #[server(...)] is a flag and takes no value
+ --> tests/ui/server_flag_with_value.rs:6:1
+  |
+6 | #[server(main = false)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^

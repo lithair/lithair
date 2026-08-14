@@ -1,0 +1,5 @@
+error: unknown key `clii` in #[server(...)]; valid keys: main, distributed, cli, port, default_port
+ --> tests/ui/unknown_server_key.rs:4:1
+  |
+4 | #[server(main, clii)] // typo: unknown key must fail the build
+  | ^^^^^^^^^^^^^^^^^^^^^

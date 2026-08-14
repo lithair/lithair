@@ -21,6 +21,9 @@ members = [
     # Frontend framework integrations
     "examples/11-frontend-integrations",
 
+    # End-to-end compile coverage for #[server(main, cli)] (issue #68)
+    "examples/12-server-main-cli",
+
     # Advanced examples
     "examples/advanced/datatable",
     "examples/advanced/stress-test",
