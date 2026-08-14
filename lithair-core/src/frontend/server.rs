@@ -126,6 +126,28 @@ impl AssetServer {
         }
     }
 
+    /// Base path of the virtual host that owns `request_path`.
+    ///
+    /// `None` for the SCC2 variant, which serves a single host. Uses the same
+    /// longest-base-path-first matching as `serve_asset`, so the host returned
+    /// here is the one that would have served the request had it hit.
+    async fn owning_base_path(&self, request_path: &str) -> Option<String> {
+        match self {
+            AssetServer::Scc2 { .. } => None,
+            AssetServer::Legacy { state, .. } => {
+                let clean_path = Self::clean_path_static(request_path);
+                let state = state.read().await;
+                let mut vhosts: Vec<_> =
+                    state.virtual_hosts.values().filter(|vh| vh.active).collect();
+                vhosts.sort_by_key(|vh| std::cmp::Reverse(vh.base_path.len()));
+                vhosts
+                    .into_iter()
+                    .find(|vh| clean_path.starts_with(&vh.base_path) || vh.base_path == "/")
+                    .map(|vh| vh.base_path.clone())
+            }
+        }
+    }
+
     fn clean_path_static(path: &str) -> String {
         if path.starts_with('/') {
             path.to_string()
@@ -201,7 +223,7 @@ impl FrontendServer {
                             .body(body_from(body_bytes))
                             .unwrap())
                     }
-                    None => Ok(self.not_found(is_head).await),
+                    None => Ok(self.not_found(&path, is_head).await),
                 }
             }
             _ => Ok(Response::builder()
@@ -218,17 +240,32 @@ impl FrontendServer {
     /// there is nothing to switch on and a site without one is unaffected.
     /// Otherwise the built-in page, which is a framework default and may look
     /// like one.
-    async fn not_found(&self, is_head: bool) -> Resp {
-        if let Some((content, mime_type)) = self.asset_server.serve_asset("/404.html").await {
-            let content_length = content.len();
-            let body_bytes: Bytes = if is_head { Bytes::new() } else { Bytes::from(content) };
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .header("Content-Type", mime_type)
-                .header("Content-Length", content_length)
-                .header("X-Served-From", "Lithair-Memory")
-                .body(body_from(body_bytes))
-                .unwrap();
+    ///
+    /// The `/404.html` is resolved in the virtual host that owns
+    /// `request_path`, so a site mounted at `/docs` serves its own page; the
+    /// root host's `/404.html` is the site-wide fallback when the owning host
+    /// has none.
+    async fn not_found(&self, request_path: &str, is_head: bool) -> Resp {
+        let mut candidates: Vec<String> = Vec::new();
+        if let Some(base) = self.asset_server.owning_base_path(request_path).await {
+            if base != "/" {
+                candidates.push(format!("{}/404.html", base.trim_end_matches('/')));
+            }
+        }
+        candidates.push("/404.html".to_string());
+
+        for candidate in candidates {
+            if let Some((content, mime_type)) = self.asset_server.serve_asset(&candidate).await {
+                let content_length = content.len();
+                let body_bytes: Bytes = if is_head { Bytes::new() } else { Bytes::from(content) };
+                return Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .header("Content-Type", mime_type)
+                    .header("Content-Length", content_length)
+                    .header("X-Served-From", "Lithair-Memory")
+                    .body(body_from(body_bytes))
+                    .unwrap();
+            }
         }
 
         let html_404 = r#"<!DOCTYPE html>
@@ -441,7 +478,7 @@ mod tests {
         let server =
             FrontendServer::new(legacy_state_with(&[("/404.html", b"<h1>nothing here</h1>")]));
 
-        let resp = server.not_found(false).await;
+        let resp = server.not_found("/missing", false).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(resp.headers()["Content-Type"], "text/html");
@@ -461,7 +498,7 @@ mod tests {
         }
         let server = FrontendServer::new(state);
 
-        let resp = server.not_found(false).await;
+        let resp = server.not_found("/missing", false).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(resp.headers()["Content-Type"], "text/html; charset=utf-8");
@@ -471,17 +508,75 @@ mod tests {
     async fn not_found_falls_back_to_the_built_in_page() {
         let server = FrontendServer::new(legacy_state_with(&[("/index.html", b"home")]));
 
-        let resp = server.not_found(false).await;
+        let resp = server.not_found("/missing", false).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert!(body_string(resp).await.contains("404 - Page Not Found"));
     }
 
     #[tokio::test]
+    async fn not_found_uses_the_owning_virtual_host_404() {
+        // A miss under a mounted vhost serves that vhost's own /404.html,
+        // not the root site's.
+        let state = legacy_state_with(&[("/404.html", b"root 404")]);
+        {
+            let mut s = state.write().await;
+            let docs_404 = asset("/404.html", b"docs 404");
+            let mut docs_host = VirtualHostLocation {
+                host_id: "docs".to_string(),
+                base_path: "/docs".to_string(),
+                assets: HashMap::new(),
+                path_index: HashMap::new(),
+                static_root: String::new(),
+                active: true,
+            };
+            docs_host.path_index.insert("/404.html".to_string(), docs_404.id);
+            docs_host.assets.insert(docs_404.id, docs_404);
+            s.virtual_hosts.insert("docs".to_string(), docs_host);
+        }
+        let server = FrontendServer::new(state);
+
+        let docs_resp = server.not_found("/docs/missing", false).await;
+        assert_eq!(docs_resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body_string(docs_resp).await, "docs 404");
+
+        let root_resp = server.not_found("/missing", false).await;
+        assert_eq!(body_string(root_resp).await, "root 404");
+    }
+
+    #[tokio::test]
+    async fn not_found_under_a_vhost_falls_back_to_the_root_404() {
+        // The owning vhost ships no /404.html of its own: the root site's
+        // page is the site-wide fallback.
+        let state = legacy_state_with(&[("/404.html", b"root 404")]);
+        {
+            let mut s = state.write().await;
+            let docs_index = asset("/index.html", b"docs home");
+            let mut docs_host = VirtualHostLocation {
+                host_id: "docs".to_string(),
+                base_path: "/docs".to_string(),
+                assets: HashMap::new(),
+                path_index: HashMap::new(),
+                static_root: String::new(),
+                active: true,
+            };
+            docs_host.path_index.insert("/index.html".to_string(), docs_index.id);
+            docs_host.assets.insert(docs_index.id, docs_index);
+            s.virtual_hosts.insert("docs".to_string(), docs_host);
+        }
+        let server = FrontendServer::new(state);
+
+        let resp = server.not_found("/docs/missing", false).await;
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body_string(resp).await, "root 404");
+    }
+
+    #[tokio::test]
     async fn not_found_head_keeps_the_headers_and_drops_the_body() {
         let server = FrontendServer::new(legacy_state_with(&[("/404.html", b"<h1>gone</h1>")]));
 
-        let resp = server.not_found(true).await;
+        let resp = server.not_found("/missing", true).await;
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(resp.headers()["Content-Length"], "13");
