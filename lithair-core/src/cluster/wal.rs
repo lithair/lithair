@@ -47,7 +47,7 @@ use super::consensus_log::{CrudOperation, LogEntry, LogId};
 const WAL_HEADER_SIZE: usize = 16; // 8 bytes length + 8 bytes checksum
 
 /// WAL file magic number
-const WAL_MAGIC: [u8; 4] = [b'L', b'W', b'A', b'L']; // Lithair WAL
+const WAL_MAGIC: [u8; 4] = *b"LWAL"; // Lithair WAL
 
 /// WAL version for compatibility
 const WAL_VERSION: u32 = 1;

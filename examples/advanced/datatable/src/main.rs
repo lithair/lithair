@@ -345,8 +345,8 @@ fn generate_product(rng: &mut impl Rng) -> Product {
         stock: rng.gen_range(0..1000),
         sku: format!(
             "{}-{}-{:06}",
-            &brand[0..3].to_uppercase(),
-            &category[0..2].to_uppercase(),
+            brand[0..3].to_uppercase(),
+            category[0..2].to_uppercase(),
             rng.gen_range(0..999999)
         ),
         brand: brand.to_string(),

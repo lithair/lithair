@@ -1659,7 +1659,7 @@ async fn when_replay_versioned_article_events(world: &mut LithairWorld) {
         "aggregate_id": "articles",
     });
 
-    let events_path = format!("{}/events.raftlog", &base_path);
+    let events_path = format!("{}/events.raftlog", base_path);
     let content = format!(
         "{}\n{}\n",
         serde_json::to_string(&envelope_v1).expect("Serialization envelope v1"),

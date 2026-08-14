@@ -1,7 +1,7 @@
 [toolchain]
-# Pinned to match CI (cidx uses rust:1.95.0). Avoid drift between local fmt/
+# Pinned to match CI (cidx uses rust:1.97.1-slim). Avoid drift between local fmt/
 # clippy and CI — rustfmt and clippy gain new behaviors across versions.
-channel = "1.95.0"
+channel = "1.97.1"
 components = ["rustfmt", "clippy", "rust-analyzer"]
 targets = ["x86_64-unknown-linux-gnu"]
 profile = "minimal"

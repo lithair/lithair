@@ -62,9 +62,9 @@ command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 # adds `--deny warnings` which would fail on them; override the command
 # to run plain `cargo audit` (still fails on real vulnerabilities, just
 # not on warnings) until upstream replacements ship.
-# `--locked` keeps the install on cargo-audit's shipped Cargo.lock: fresh
-# resolution pulls kstring >=2.0.3 (needs rustc 1.96) which the pinned
-# 1.95 toolchain cannot compile.
+# `--locked` keeps the install on cargo-audit's shipped Cargo.lock —
+# reproducible install, immune to fresh-resolution MSRV surprises
+# (kstring >=2.0.3 once broke the build on an older pinned toolchain).
 # The trailing `cargo tree` guard polices the RUSTSEC-2026-0235 ignore in
 # .cargo/audit.toml: rkyv 0.7 sits in Cargo.lock as a never-enabled optional
 # dep of rust_decimal, so the audit ignore is safe ONLY while it stays out of
