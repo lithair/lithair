@@ -1,0 +1,19 @@
+# End-to-end compile coverage for #[server(main, cli)] (issue #68).
+#
+# Deliberately minimal dependencies: the generated main() must reach
+# clap/tokio/anyhow/serde_json through lithair_core::__private, so this
+# crate must NOT declare them directly (issue #66 contract).
+[package]
+name = "server-main-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "server-main-cli"
+path = "src/main.rs"
+
+[dependencies]
+lithair-core = { path = "../../lithair-core" }
+lithair-macros = { path = "../../lithair-macros" }
+serde = { version = "1.0", features = ["derive"] }

@@ -227,8 +227,10 @@ fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes>
         ..Default::default()
     };
 
+    let mut server_attr_span: Option<&syn::Attribute> = None;
     for attr in &input.attrs {
         if attr.path().is_ident("server") {
+            server_attr_span = Some(attr);
             if let Meta::List(meta_list) = &attr.meta {
                 // Parse server(...) tokens
                 let nested_str = meta_list.tokens.to_string();
@@ -286,6 +288,20 @@ fn parse_server_attributes(input: &DeriveInput) -> syn::Result<ServerAttributes>
                     }
                 }
             }
+        }
+    }
+
+    // `distributed` gets node_id/data_dir from the clap-generated CLI; the
+    // non-CLI main() has no way to carry them, so the combination would
+    // silently generate a single-node binary. Reject it instead (PR #203
+    // review finding).
+    if server_attrs.distributed && !server_attrs.cli {
+        if let Some(attr) = server_attr_span {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "`distributed` in #[server(...)] requires `cli` \
+                 (node_id and data_dir come from CLI args)",
+            ));
         }
     }
 
@@ -1892,6 +1908,11 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                 // clean while still importing the trait's associated fns.
                 use ::lithair_core::__private::clap::Parser as _;
 
+                // clap's derive expands to relative `clap::…` paths, so the
+                // NAME `clap` must resolve in this module even when the
+                // consumer doesn't depend on clap directly (issue #66/#68).
+                use ::lithair_core::__private::clap;
+
                 #[derive(::lithair_core::__private::clap::Parser, Debug)]
                 #[command(name = "lithair-app")]
                 #[command(about = "Lithair Generated Application - One Model = One App!")]
@@ -1909,6 +1930,31 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         } else {
             quote! {}
         };
+
+        // Single-node serving body, inlined at every call site. This used to
+        // be `#name::serve_on_port(port)`, but the `DeclarativeServe` trait
+        // hosting that fn was cut in #163 (zero in-tree consumers) while the
+        // macro kept emitting the call — so `#[server(main)]` could never
+        // compile for a real consumer. Caught by issue #68's end-to-end
+        // compile coverage (examples/12-server-main-cli). Behavior matches
+        // the retired trait: auto event-store path + `/api/{base_path}`.
+        let single_node_serve = |port_expr: proc_macro2::TokenStream| {
+            quote! {
+                let event_store_path = format!("./data/{}.events", #name_str.to_lowercase());
+                ::std::fs::create_dir_all("./data")?;
+                let base_path = format!(
+                    "/api/{}",
+                    <#name as lithair_core::http::HttpExposable>::http_base_path()
+                );
+                lithair_core::app::LithairServer::new()
+                    .with_port(#port_expr)
+                    .with_declarative_model::<#name>(event_store_path, base_path)
+                    .serve()
+                    .await?;
+            }
+        };
+        let single_node_fallback = single_node_serve(quote! { args.port });
+        let single_node_fixed_port = single_node_serve(quote! { port });
 
         let server_logic = if server_attrs.distributed {
             quote! {
@@ -1940,7 +1986,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                         .await?;
                 } else {
                     println!("🚀 Lithair Single Node (auto EventStore path)");
-                    #name::serve_on_port(args.port).await?;
+                    #single_node_fallback
                 }
             }
         } else {
@@ -1951,7 +1997,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                 println!("   Port: {}", args.port);
                 println!("   One Model = One Complete Backend!");
 
-                #name::serve_on_port(args.port).await?;
+                #single_node_fallback
             }
         };
 
@@ -1959,7 +2005,12 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             quote! {
                 #cli_args
 
-                #[::lithair_core::__private::tokio::main]
+                // `#[tokio::main]` expands to relative `tokio::…` paths, so
+                // the NAME `tokio` must resolve here even when the consumer
+                // doesn't depend on tokio directly (issue #66/#68).
+                use ::lithair_core::__private::tokio;
+
+                #[tokio::main]
                 async fn main() -> ::lithair_core::__private::anyhow::Result<()> {
                     let args = Args::parse();
                     #server_logic
@@ -1968,7 +2019,12 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-                #[::lithair_core::__private::tokio::main]
+                // `#[tokio::main]` expands to relative `tokio::…` paths, so
+                // the NAME `tokio` must resolve here even when the consumer
+                // doesn't depend on tokio directly (issue #66/#68).
+                use ::lithair_core::__private::tokio;
+
+                #[tokio::main]
                 async fn main() -> ::lithair_core::__private::anyhow::Result<()> {
                     let port = #default_port;
 
@@ -1977,7 +2033,7 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                     println!("   Port: {}", port);
                     println!("   One Model = One Complete Backend!");
 
-                    #name::serve_on_port(port).await?;
+                    #single_node_fixed_port
                     Ok(())
                 }
             }
@@ -2070,12 +2126,13 @@ mod tests {
         );
     }
 
-    /// Sanity: the simple (non-distributed) generated `main()` keeps using
-    /// `serve_on_port` (defined on the `DeclarativeServe` trait, now living
-    /// in `lithair_core::app::declarative_serve`). The trait surface is part
-    /// of the macro's public contract, so we lock it in here.
+    /// Issue #68: the simple (non-distributed) generated `main()` must inline
+    /// `LithairServer` wiring. It previously emitted `serve_on_port`, but the
+    /// `DeclarativeServe` trait hosting that fn was removed in #163, so the
+    /// call could never compile for a consumer. The real compile guard is
+    /// examples/12-server-main-cli; this token test only pins the emission.
     #[test]
-    fn server_main_single_node_still_uses_serve_on_port() {
+    fn server_main_single_node_inlines_lithair_server() {
         let input = quote! {
             #[derive(DeclarativeModel)]
             #[server(main, cli, port = 8080)]
@@ -2088,8 +2145,13 @@ mod tests {
         let output = derive_declarative_model(input).to_string();
 
         assert!(
-            output.contains("serve_on_port"),
-            "single-node branch should keep emitting serve_on_port; got:\n{}",
+            !output.contains("serve_on_port"),
+            "serve_on_port no longer exists anywhere (removed in #163); got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("with_declarative_model"),
+            "single-node branch must inline LithairServer wiring; got:\n{}",
             output
         );
     }
