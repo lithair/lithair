@@ -43,6 +43,7 @@ tasks:
             task bench:json-small     # Preset: JSON 1KB
             task bench:json-large     # Preset: JSON 64KB
             task bench:echo-large     # Preset: ECHO 1MB
+            task bench:host-router    # Criterion: HostRouter vhost lookup
             task raft:consistency     # Raft consistency test (3-node auto)
             task raft:consistency:heavy # Heavy load consistency test
             task docs                 # Show docs pointers
@@ -236,6 +237,11 @@ tasks:
     cmds:
       - task: loadgen:echo
         vars: { BYTES: '1048576', TOTAL: '10000', CONC: '256' }
+
+  bench:host-router:
+    desc: Criterion micro-benchmark - HostRouter vhost lookup (issue #34)
+    cmds:
+      - cargo bench -p lithair-core --bench host_router
 
   bench:baselines:
     desc: "G4: CRUD throughput/latency, Lithair vs Axum+SQLite (docs/performance/baselines.md)"

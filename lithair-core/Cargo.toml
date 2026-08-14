@@ -95,6 +95,12 @@ urlencoding = "2.1" # tests URL-encode attack probes (per_model_stats_test)
 # `test-util` feature. The main `tokio = { features = ["full"] }` import
 # does NOT include test-util, so we add it here scoped to tests only.
 tokio = { version = "1", features = ["test-util", "macros", "rt"] }
+# Host-router lookup benchmark (issue #34). Benches only — never in release.
+criterion = "0.7"
+
+[[bench]]
+name = "host_router"
+harness = false
 
 [features]
 default = ["macros"]
