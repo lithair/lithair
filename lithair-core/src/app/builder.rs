@@ -198,6 +198,9 @@ pub struct LithairServerBuilder {
     // crosses `events_threshold`. Default is `None` — feature is off, no
     // observable change for existing consumers.
     auto_compaction: Option<crate::engine::AutoCompactionConfig>,
+    // Issue #115: grace deadline for draining connections + internal
+    // background tasks on graceful shutdown. `None` = default (5s).
+    shutdown_grace: Option<std::time::Duration>,
     // Deferred until `serve()` installs the log bridge — a `log::warn!` from
     // `new()` fires before any subscriber exists and would itself be dropped.
     config_load_warning: Option<String>,
@@ -257,6 +260,7 @@ impl LithairServerBuilder {
             external_handler_gates: Vec::new(),
             external_handler_sse_wirings: Vec::new(),
             auto_compaction: None,
+            shutdown_grace: None,
         }
     }
 
@@ -291,6 +295,7 @@ impl LithairServerBuilder {
             external_handler_gates: Vec::new(),
             external_handler_sse_wirings: Vec::new(),
             auto_compaction: None,
+            shutdown_grace: None,
         }
     }
 
@@ -438,6 +443,19 @@ impl LithairServerBuilder {
     /// method.
     pub fn with_auto_compaction_config(mut self, cfg: crate::engine::AutoCompactionConfig) -> Self {
         self.auto_compaction = Some(cfg);
+        self
+    }
+
+    /// Set the graceful-shutdown grace deadline (issue #115).
+    ///
+    /// When the future passed to
+    /// [`LithairServer::serve_with_graceful_shutdown`] resolves, in-flight
+    /// connections and internal background tasks get up to this long to
+    /// drain before stragglers are aborted. Default: 5s.
+    ///
+    /// [`LithairServer::serve_with_graceful_shutdown`]: crate::app::LithairServer::serve_with_graceful_shutdown
+    pub fn with_shutdown_grace(mut self, grace: std::time::Duration) -> Self {
+        self.shutdown_grace = Some(grace);
         self
     }
 
@@ -2488,6 +2506,8 @@ impl LithairServerBuilder {
             },
             // Issue #69: auto-compaction config (None = feature off).
             auto_compaction: self.auto_compaction,
+            // Issue #115: graceful-shutdown drain deadline.
+            shutdown_grace: self.shutdown_grace.unwrap_or(LithairServer::GRACEFUL_DRAIN_GRACE),
         })
     }
 
