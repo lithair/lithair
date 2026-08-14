@@ -41,9 +41,11 @@
 //!   to translate this into either `404 Not Found` or the more specific
 //!   `421 Misdirected Request`. `lithair-core`'s integration layer uses
 //!   `404` for backward compatibility with the existing behaviour when
-//!   no route matches; see
-//!   [`NoMatch`] for a helper that produces `421` when that is what the
-//!   caller wants.
+//!   no route matches, unless
+//!   [`crate::app::LithairServerBuilder::strict_host_routing`] is set,
+//!   in which case it answers `421 Misdirected Request`. See
+//!   [`NoMatch`] (returned by [`HostRouter::lookup_strict`]) for the
+//!   sentinel that drives that decision.
 //!
 //! # Example
 //!

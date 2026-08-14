@@ -679,6 +679,13 @@ pub struct LithairServer {
         std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
     >,
 
+    // Issue #33: opt-in strict host routing declared via
+    // [`crate::app::LithairServerBuilder::strict_host_routing`]. When true
+    // and vhosts are declared, a request whose `Host:` matches no vhost
+    // (and no default vhost is set) is answered with `421 Misdirected
+    // Request` instead of falling through to host-agnostic routing.
+    strict_host_routing: bool,
+
     // Host-to-host 301 redirects declared via
     // [`crate::app::LithairServerBuilder::with_redirect`]. Looked up by
     // the request's normalized `Host:` header *before* any vhost frontend
@@ -2758,10 +2765,28 @@ impl LithairServer {
         // consume `req` later in the pipeline. If no vhosts are
         // declared, `vhost_engines` is `None` and the server behaves as
         // before (host-agnostic path routing).
+        //
+        // Issue #33: in strict host routing mode, a lookup miss (unknown
+        // host, no default vhost) is answered with `421 Misdirected
+        // Request` (RFC 9110 §15.5.20) instead of falling through to the
+        // host-agnostic pipeline. Opt-in via
+        // `LithairServerBuilder::strict_host_routing`; the default stays
+        // the backward-compatible fallthrough (ultimately 404).
         let vhost_engines: Option<
             &std::collections::HashMap<String, Arc<crate::frontend::FrontendEngine>>,
         > = if self.vhost_frontend_router.has_entries() {
-            self.vhost_frontend_router.lookup(&req_host)
+            match self.vhost_frontend_router.lookup_strict(&req_host) {
+                Ok(engines) => Some(engines),
+                Err(crate::http::NoMatch) if self.strict_host_routing => {
+                    log::debug!("421 misdirected request: unknown host '{}'", req_host);
+                    return Ok(hyper::Response::builder()
+                        .status(hyper::StatusCode::MISDIRECTED_REQUEST)
+                        .header("Content-Type", "text/plain; charset=utf-8")
+                        .body(boxed_full(Bytes::from_static(b"Misdirected Request")))
+                        .expect("static body + valid status never fails"));
+                }
+                Err(crate::http::NoMatch) => None,
+            }
         } else {
             None
         };
@@ -3430,6 +3455,7 @@ impl Default for LithairServer {
             frontend_engines: std::collections::HashMap::new(),
             vhost_frontend_configs: Vec::new(),
             vhost_frontend_router: crate::http::HostRouter::new(),
+            strict_host_routing: false,
             host_redirects: crate::http::HostRouter::new(),
             firewall_config: None,
             anti_ddos_config: None,
