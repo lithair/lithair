@@ -1,0 +1,14 @@
+# cargo-audit configuration (read from .cargo/audit.toml at the workspace root).
+#
+# Ignored advisories must stay justified here; remove the entry as soon as
+# the upstream fix lands.
+
+[advisories]
+# RUSTSEC-2026-0235 (rkyv 0.7.46, OOB reads): rkyv 0.7 enters Cargo.lock only
+# as an optional, never-enabled dependency of rust_decimal (cucumber-tests
+# uses features = ["serde"] only). It is absent from the build graph —
+# `cargo tree -i rkyv@0.7.46` prints nothing — so no artifact compiles it.
+# The workspace itself uses rkyv 0.8.18 (fixed line). rust_decimal 1.42.1
+# (latest) still pins the optional dep to ^0.7.46; drop this ignore once
+# rust_decimal moves it to >=0.8.17.
+ignore = ["RUSTSEC-2026-0235"]
