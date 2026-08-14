@@ -26,8 +26,10 @@ tasks:
             task fmt:check            # Check rustfmt (no changes)
             task lint                 # Run clippy with -D warnings
             task test                 # Run all tests
-            task ci                   # fmt:check + lint + test
-            task ci:full              # Full CI pipeline (simulates GitHub CI)
+            task check                # Fast host-native check (fmt:check + clippy)
+            task ci                   # Full CI pipeline via cidx (containerized)
+            task pr                   # PR validation via cidx (code + test)
+            task setup                # Bootstrap the dev environment
             task examples:list        # List current workspace examples
             task examples:test        # Compile all root examples
             task examples:hello-world # Run the minimal example
@@ -58,22 +60,17 @@ tasks:
           Example:
             task loadgen:json PORT=18321 CONC=1024 BYTES=65536 ACCEPT_ENCODING=gzip
 
-          📋 CI/Testing Tasks:
-          task ci           - Quick CI (fmt + clippy + test) ~30s
-          task ci:full      - Fast CI: fmt + clippy + unit tests (~30s cached)
-          task ci:bdd       - ci:full + BDD tests (~5-6min)
+          📋 CI/Testing Tasks (cidx.toml is the single source of truth for CI):
+          task check        - Host-native fmt:check + clippy -D warnings (seconds)
+          task pr           - cidx run pr (code + test, containerized)
+          task ci           - cidx run ci (security + code + test + build, full GitHub parity)
+          task smoke        - Functional validation (firewall/hardening demos) ~5-10min
           task bdd:all      - Run all BDD test suites
           task bdd:setup    - Install Cucumber dependencies
-          task ci:smoke     - Functional validation (firewall demos, benchmarks) ~5-10min
-          task ci:github    - Complete pipeline: ci:full + ci:smoke (~10-15min)
           task docs:lint    - Lint Markdown documentation files
           task docs:lint:fix - Auto-fix Markdown documentation files
 
-          🔍 CI Task Differences:
-          • ci:full    = fmt + clippy(-D warnings) + unit tests (fast, no BDD/stress)
-          • ci:github  = ci:full + smoke tests (mirrors GitHub Actions)
-
-          💡 Use 'task ci:full' for fast dev, 'task ci:github' before pushing!
+          💡 Use 'task check' for the inner loop, 'task ci' before pushing!
           EOF
 
   default:
@@ -106,38 +103,31 @@ tasks:
     cmds:
       - cargo test --workspace --all-features
 
-  ci:
-    desc: CI pipeline (fmt:check + lint + test)
+  check:
+    desc: Fast host-native check (fmt:check + clippy -D warnings, no container)
     cmds:
       - task: fmt:check
       - task: lint
-      - task: test
 
-  ci:full:
-    desc: "Fast CI pipeline: fmt + clippy (includes build) + unit tests (~30s cached, ~2min clean)"
+  ci:
+    desc: Full CI pipeline via cidx (security + code + test + build — GitHub parity)
     cmds:
-      - echo "🚀 Lithair CI Pipeline Starting..."
-      - echo "✅ Code formatting check..."
-      - cargo fmt -- --check >/dev/null 2>&1 && echo "   ✓ Formatting OK" || (echo "   ✗ Formatting failed" && exit 1)
-      - echo "🔍 Clippy analysis (includes build) with -D warnings..."
-      - cargo clippy --workspace --all-targets --quiet -- -D warnings && echo "   ✓ Clippy OK" || (echo "   ✗ Clippy failed" && exit 1)
-      - echo "🧪 Unit tests (core + macros)..."
-      - |
-        TEST_OUTPUT=$(cargo test -p lithair-core -p lithair-macros --quiet 2>&1)
-        if [ $? -eq 0 ]; then
-          TOTAL_TESTS=$(echo "$TEST_OUTPUT" | grep -E "test result:" | sed 's/.*ok\. \([0-9]*\) passed.*/\1/' | paste -sd+ | bc 2>/dev/null || echo "0")
-          echo "   ✓ All tests passed ($TOTAL_TESTS tests)"
-        else
-          echo "   ✗ Tests failed"
-          echo "$TEST_OUTPUT"
-          exit 1
-        fi
-      - echo "🎉 CI pipeline completed successfully!"
+      - cidx run ci
 
-  ci:smoke:
-    desc: Smoke tests that mirror GitHub CI exactly (functional validation)
+  pr:
+    desc: PR validation via cidx (code + test, no build artifacts)
     cmds:
-      - echo "🚀 Running smoke tests (same as GitHub CI)..."
+      - cidx run pr
+
+  setup:
+    desc: Bootstrap the dev environment (rustup, go-task, cidx, probatum)
+    cmds:
+      - bash scripts/setup.sh
+
+  smoke:
+    desc: Functional smoke tests (firewall + hardening demos, example suites)
+    cmds:
+      - echo "🚀 Running smoke tests..."
       - echo "🔧 Ensuring demo scripts are executable..."
       - chmod +x examples/advanced/http-firewall/run_demo.sh
       - chmod +x examples/advanced/http-firewall/run_declarative_demo.sh
@@ -151,14 +141,6 @@ tasks:
       - echo "💨 Smoke - Example test suites..."
       - bash scripts/test-examples.sh
       - echo "🎉 All smoke tests completed successfully!"
-
-  ci:github:
-    desc: Complete CI pipeline that exactly mirrors GitHub Actions
-    cmds:
-      - echo "🚀 GitHub-equivalent CI Pipeline Starting..."
-      - task: ci:full
-      - task: ci:smoke
-      - echo "🎉 GitHub-equivalent CI completed successfully!"
 
   build:release:
     desc: Build release binaries for root examples and replication load generator

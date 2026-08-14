@@ -65,7 +65,8 @@ found in this repository the week the suites joined the CI gate (#177):
 ## Commands
 
 ```bash
-task ci:full           # fmt + clippy -D warnings + tests (fast local loop)
+task check             # fmt + clippy -D warnings (fast local loop)
+task test              # all workspace tests
 cidx run test          # the exact per-PR CI gate, in the CI container
 cargo test -p lithair-core --tests                 # integration tier only
 cargo test -p lithair-macros --test compile_fail   # macro surface (trybuild)

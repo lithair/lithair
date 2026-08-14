@@ -37,11 +37,12 @@ cidx locally is what guarantees your push won't bounce on formatting drift.
 For tighter dev loops without a container, use the Taskfile entry points:
 
 ```bash
-task ci:full        # ~2-3min: fmt + build + clippy + tests with -D warnings
-task ci:github      # ~10-15min: ci:full + smoke tests — run before pushing
+task check          # seconds: fmt --check + clippy -D warnings, host-native
+task test           # all workspace tests
+task ci             # cidx run ci — full containerized pipeline, run before pushing
 ```
 
-`task ci:full` is the minimum bar for a commit. `task ci:github` is the
+`task check` + `task test` is the minimum bar for a commit. `task ci` is the
 recommended bar before opening a PR. See [`CLAUDE.md`](./CLAUDE.md) and
 [`Taskfile.yml`](./Taskfile.yml) for the full command reference.
 
@@ -139,7 +140,7 @@ for the current style.
 
 Honest version: the maintainer is solo and reviews are best-effort. Expect a
 first response within **1–7 days**. Smaller, well-scoped PRs that pass
-`task ci:github` locally land faster. If a PR sits for more than a week
+`task ci` locally land faster. If a PR sits for more than a week
 without a response, a polite ping on the PR is welcome.
 
 ## Code style and conventions

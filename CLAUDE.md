@@ -23,8 +23,11 @@ Uses [Taskfile](https://taskfile.dev). See all tasks: `task help`
 ### Development Cycle
 
 ```bash
-task ci:full        # Fast CI (~2-3min): fmt + build + clippy + tests with -D warnings
-task ci:github      # Complete validation (~10-15min): ci:full + smoke tests - run before push
+task setup          # Bootstrap the dev environment (or ./scripts/setup.sh if task is missing)
+task check          # Host-native fmt + clippy -D warnings (seconds — inner loop)
+task test           # All workspace tests
+task ci             # cidx run ci — full containerized pipeline, GitHub parity (run before push)
+task pr             # cidx run pr — code + test phases only
 ```
 
 For containerized parity with CI (rustfmt, clippy, cargo-audit, gitleaks, trivy,
@@ -146,7 +149,7 @@ git checkout -b feat/my-feature
 
 # 2. Work, commit incrementally
 #    Run CI before each push:
-task ci:full
+task check && task test
 git add <files>
 git commit -m "feat: description of change"
 
@@ -162,7 +165,7 @@ gh pr merge --squash --delete-branch
 
 - **Never push directly to `main`** -- always go through a PR
 - **One concern per PR** -- keep PRs small and focused
-- **CI must pass** before merge (`task ci:full` at minimum)
+- **CI must pass** before merge (`task check && task test` at minimum)
 - **Short-lived branches** -- merge within hours/days, not weeks
 - **Squash merge** -- keeps `main` history clean and linear
 - **Delete branch after merge** -- no stale branches
@@ -181,9 +184,9 @@ refactor: extract PEM loading helpers
 
 ### Pre-Push Checklist
 
-1. `task ci:full` passes (fmt + clippy -D warnings + tests)
+1. `task check` and `task test` pass (fmt + clippy -D warnings + tests)
 2. Ensure new or modified behavior is covered by tests
-3. `task ci:github` for final validation before requesting review
+3. `task ci` (cidx full pipeline) for final validation before requesting review
 
 ### Pre-Merge Checklist
 

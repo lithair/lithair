@@ -370,7 +370,7 @@ git checkout -b feat/my-feature
 
 # 3. Work in small, focused commits
 #    Always validate before pushing:
-task ci:full                          # fmt + clippy -D warnings + tests
+task check && task test               # fmt + clippy -D warnings + tests
 git add <specific-files>              # use explicit file names, not git add -p
                                       # (interactive staging is incompatible with AI agents)
 git commit -m "feat: concise description"
@@ -382,7 +382,7 @@ gh pr create --title "feat: concise title" --body "$(cat <<'EOF'
 - What this PR does and why
 
 ## Test plan
-- [ ] `task ci:full` passes
+- [ ] `task check` and `task test` pass
 - [ ] Manual verification of ...
 EOF
 )"
@@ -400,7 +400,7 @@ git checkout main && git pull origin main
 | ----------------------------- | -------------------------------------- |
 | Never push directly to `main` | Protected branch -- all changes via PR |
 | One concern per PR            | Easier review, safer rollback          |
-| CI must pass before merge     | `task ci:full` at minimum              |
+| CI must pass before merge     | `task check` + `task test` at minimum  |
 | Short-lived branches          | Merge within hours/days, not weeks     |
 | Squash merge                  | Keeps `main` history clean and linear  |
 | Delete branch after merge     | No stale branches                      |
@@ -424,13 +424,13 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
 1. `cargo fmt -- --check` (or `task fmt:check`)
 2. `cargo clippy --workspace --all-targets -- -D warnings` (or `task lint`)
 3. `cargo test -p lithair-core -p lithair-macros`
-4. All three combined: **`task ci:full`**
-5. Before requesting review: **`task ci:github`** (includes smoke tests)
+4. Format + clippy combined: **`task check`** (then `task test`)
+5. Before requesting review: **`task ci`** (full containerized pipeline via cidx)
 
 ### Code Review Checklist
 
 - [ ] Code follows existing Rust idioms and project conventions
-- [ ] All tests pass (`task ci:full`)
+- [ ] All tests pass (`task test`)
 - [ ] New behavior has test coverage
 - [ ] Documentation is updated if public API changed
 - [ ] No security regressions (OWASP top 10)

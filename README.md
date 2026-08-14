@@ -294,8 +294,9 @@ lithair-core/src/
 Requires [Task](https://taskfile.dev) for build commands:
 
 ```bash
-task ci:full       # Format + build + clippy + tests (~2-3 min)
-task ci:github     # Full validation with smoke tests (~10-15 min)
+task setup         # Bootstrap the dev environment (./scripts/setup.sh)
+task check         # Format check + clippy -D warnings (seconds)
+task ci            # Full containerized CI pipeline via cidx
 task test          # Run all workspace tests
 task lint          # Clippy with -D warnings
 task fmt           # Format code
