@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-14
+
+The usable-from-crates.io release: `#[server(main)]` — the framework's
+front door — did not compile for any external consumer, and now it does,
+locked down on three layers of tests so it can never silently regress
+again. The graceful-shutdown promise from #112 also becomes real:
+background tasks are drained, connections joined within a configurable
+deadline, and handlers no longer leak an orphan task each. API surface
+additive only (`strict_host_routing`, `with_shutdown_grace`); no breaking
+change, no on-disk format change. One hardening worth naming honestly:
+`#[server(distributed)]` without `cli` now fails at compile time with a
+clear diagnostic instead of silently generating a single-node binary — a
+compile error replacing a broken artifact, not a breaking change.
+
+### Added
+
+- **`LithairServerBuilder::strict_host_routing()`** (#202): opt-in
+  strict host routing — when virtual hosts are declared without a default
+  and the request's Host matches none of them, the server answers
+  421 Misdirected Request (RFC 9110) instead of falling through to a 404.
+- **`LithairServerBuilder::with_shutdown_grace(Duration)`** (#204):
+  configurable drain deadline for graceful shutdown (default 5s).
+- **First Criterion benchmark** (#201): `task bench:host-router` measures
+  vhost lookup — confirmed O(1), ~33-50 ns/lookup from 1 to 1000 vhosts.
+
+### Fixed
+
+- **`#[server(main)]` / `#[server(main, cli)]` compiles for external
+  consumers** (#203): the generated `main()` still called
+  `serve_on_port()` from a trait removed in #163, and emitted relative
+  `clap::` / `tokio::` paths that broke the zero-direct-dependency
+  contract (#66) — no crates.io consumer could compile it. The macro now
+  inlines the `LithairServer` wiring directly and resolves its
+  dependencies through `::lithair_core::__private::{clap, tokio}`
+  aliases. Locked down on three layers: token-level macro tests, trybuild
+  compile-fail cases with pinned `.stderr`, and an end-to-end workspace
+  example (`examples/12-server-main-cli`). Also: `distributed` without
+  `cli` is now rejected at compile time with a clear diagnostic (before:
+  a single-node binary was silently generated).
+- **Graceful shutdown actually drains** (#204, follow-up to #112):
+  internal background tasks (flushers, auto-compaction) are tracked in a
+  `JoinSet` and signalled through a `watch` channel, in-flight
+  connections are joined within the grace deadline, and the declarative
+  handler's flusher now holds only a `Weak` reference to its store —
+  previously every handler built leaked one infinite orphan task.
+
 ## [1.4.0] - 2026-08-14
 
 The configuration-honesty release: an invalid `config.toml` now surfaces
@@ -1420,7 +1466,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/lithair/lithair/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/lithair/lithair/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/lithair/lithair/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/lithair/lithair/compare/v1.1.0...v1.2.0
