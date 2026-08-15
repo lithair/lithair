@@ -191,6 +191,12 @@ pub struct LithairServerBuilder {
     // user called `.with_sse(true)`).
     external_handler_sse_wirings: Vec<super::ExternalHandlerSseWiring>,
 
+    // Issue #70: native mutation hooks registered via `on_mutation(...)`.
+    // (model base path, callback) pairs; drained into background dispatch
+    // tasks at `serve()` time. Their presence forces broadcaster creation
+    // in `build()` even without `with_sse(true)`.
+    mutation_hooks: Vec<(String, super::MutationHook)>,
+
     // Issue #69: opt-in auto-compaction of the `.raftlog` for every
     // registered model. When `Some`, `LithairServer::serve()` spawns one
     // tokio task per model that periodically checks the model's event
@@ -259,6 +265,7 @@ impl LithairServerBuilder {
             models_require_session: false,
             external_handler_gates: Vec::new(),
             external_handler_sse_wirings: Vec::new(),
+            mutation_hooks: Vec::new(),
             auto_compaction: None,
             shutdown_grace: None,
         }
@@ -294,6 +301,7 @@ impl LithairServerBuilder {
             models_require_session: false,
             external_handler_gates: Vec::new(),
             external_handler_sse_wirings: Vec::new(),
+            mutation_hooks: Vec::new(),
             auto_compaction: None,
             shutdown_grace: None,
         }
@@ -606,6 +614,47 @@ impl LithairServerBuilder {
     /// that streams create/update/delete events via Server-Sent Events.
     pub fn with_sse(mut self, enabled: bool) -> Self {
         self.sse_enabled = enabled;
+        self
+    }
+
+    /// Register a native Rust hook invoked on every mutation of a model
+    /// (issue #70).
+    ///
+    /// `model` is the model's HTTP base path — the same channel name the SSE
+    /// route uses, i.e. `T::http_base_path()` (e.g. `"articles"` for an
+    /// `Article` model). The hook receives the exact
+    /// [`ModelChangeEvent`](crate::http::ModelChangeEvent) that SSE
+    /// subscribers see (`operation` is `"create"`, `"update"`, `"patched"`
+    /// or `"delete"`, `data` is the full item as JSON), fanned out from the
+    /// same broadcast channel — there is a single event path, this is just a
+    /// second, in-process sink. Events are emitted after the mutation has
+    /// been applied to storage and appended to the event store.
+    ///
+    /// Delivery runs on a dedicated background task per hook:
+    /// - the write path never blocks on a hook (it only does a non-blocking
+    ///   broadcast send; a slow hook lags and drops its own events, capacity
+    ///   1000 per model),
+    /// - a panicking hook is caught, logged, and the hook stays subscribed,
+    /// - hooks work without `with_sse(true)` — registering one does *not*
+    ///   expose the `GET /api/{model}/stream` HTTP endpoint.
+    ///
+    /// The hook is a plain `Fn` executed on its dispatch task, i.e. on a
+    /// tokio runtime worker: keep it short, and hand off async or blocking
+    /// work (`tokio::spawn` / `tokio::task::spawn_blocking`) instead of
+    /// waiting inside the hook.
+    ///
+    /// ```no_run
+    /// # use lithair_core::app::LithairServer;
+    /// let server = LithairServer::new()
+    ///     .on_mutation("articles", |event| {
+    ///         println!("{} on {}: {}", event.operation, event.model_name, event.data);
+    ///     });
+    /// ```
+    pub fn on_mutation<F>(mut self, model: impl Into<String>, hook: F) -> Self
+    where
+        F: Fn(crate::http::ModelChangeEvent) + Send + Sync + 'static,
+    {
+        self.mutation_hooks.push((model.into(), Box::new(hook)));
         self
     }
 
@@ -1362,14 +1411,20 @@ impl LithairServerBuilder {
         // the streaming response. Verified by the end-to-end test in
         // `tests/issue_91_with_handler_sse_e2e_test.rs`.
         let sse_handler = handler.clone();
-        self.external_handler_sse_wirings.push(Box::new(move |broadcaster| {
-            // Idempotent — if a broadcaster was somehow already installed
-            // (e.g. the caller used `with_sse_broadcaster` before passing
-            // the handler in), the `OnceLock` keeps the first one and
-            // this call is a silent no-op. That's the right semantics:
-            // one broadcaster per handler, lifetime-of-process.
-            let _ = sse_handler.set_sse_broadcaster_shared(broadcaster);
-        }));
+        self.external_handler_sse_wirings
+            .push(Box::new(move |broadcaster, stream_route| {
+                // Idempotent — if a broadcaster was somehow already installed
+                // (e.g. the caller used `with_sse_broadcaster` before passing
+                // the handler in), the `OnceLock` keeps the first one and
+                // this call is a silent no-op. That's the right semantics:
+                // one broadcaster per handler, lifetime-of-process.
+                let _ = sse_handler.set_sse_broadcaster_shared(broadcaster);
+                // Issue #70: a broadcaster wired only for native mutation hooks
+                // must not expose the /stream HTTP route.
+                if !stream_route {
+                    sse_handler.set_sse_stream_route_enabled(false);
+                }
+            }));
 
         // GET /base_path - List all
         let handler_list = handler.clone();
@@ -2498,12 +2553,17 @@ impl LithairServerBuilder {
                     .map(crate::schema::SchemaSyncState::with_policy)
                     .unwrap_or_default(),
             )),
-            // SSE broadcaster (shared across all model handlers)
-            sse_broadcaster: if self.sse_enabled {
+            // SSE broadcaster (shared across all model handlers). Also
+            // created when native mutation hooks are registered (issue #70)
+            // — hooks consume the same channels; `sse_http_enabled` keeps
+            // the /stream HTTP route gated on `with_sse(true)` alone.
+            sse_broadcaster: if self.sse_enabled || !self.mutation_hooks.is_empty() {
                 Some(crate::http::create_broadcaster())
             } else {
                 None
             },
+            sse_http_enabled: self.sse_enabled,
+            mutation_hooks: self.mutation_hooks,
             // Issue #69: auto-compaction config (None = feature off).
             auto_compaction: self.auto_compaction,
             // Issue #115: graceful-shutdown drain deadline.

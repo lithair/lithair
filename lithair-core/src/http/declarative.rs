@@ -181,6 +181,16 @@ where
     /// which matches the production lifecycle (one broadcaster per server,
     /// installed at `serve()` time, never replaced).
     pub(crate) sse_broadcaster: OnceLock<Arc<crate::http::sse::SseEventBroadcaster>>,
+    /// When `false`, `GET /api/{model}/stream` returns 404 even though a
+    /// broadcaster is installed. Issue #70: native mutation hooks
+    /// (`LithairServerBuilder::on_mutation`) need the broadcaster wired for
+    /// in-process delivery *without* implicitly exposing the mutation stream
+    /// over HTTP. Defaults to `true` (a wired broadcaster serves the route,
+    /// preserving `with_sse(true)` and direct `with_sse_broadcaster` behavior);
+    /// `serve()` flips it to `false` when the broadcaster exists only because
+    /// hooks are registered. `AtomicBool` for the same shared-Arc reason as
+    /// `require_session` below.
+    pub(crate) sse_stream_route_enabled: std::sync::atomic::AtomicBool,
     /// When `true`, every non-OPTIONS request to this model's auto-generated
     /// CRUD endpoints must carry a valid (non-expired) session in the
     /// `Authorization: Bearer <session-id>` header — otherwise the handler
@@ -348,6 +358,7 @@ where
             permission_extractor: None,
             session_store: None,
             sse_broadcaster: OnceLock::new(),
+            sse_stream_route_enabled: std::sync::atomic::AtomicBool::new(true),
             require_session: std::sync::atomic::AtomicBool::new(false),
         };
 
@@ -551,6 +562,16 @@ where
     /// Idempotent: if a broadcaster is already installed, the call silently
     /// no-ops. Returns `true` if this call performed the install, `false` if
     /// a broadcaster was already present.
+    /// Enable/disable the `GET /api/{model}/stream` HTTP route (issue #70).
+    ///
+    /// The broadcaster stays wired either way — this only gates the HTTP
+    /// surface, so native mutation hooks keep receiving events while the
+    /// stream endpoint returns 404 unless `with_sse(true)` was set.
+    pub(crate) fn set_sse_stream_route_enabled(&self, enabled: bool) {
+        self.sse_stream_route_enabled
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub(crate) fn set_sse_broadcaster_shared(
         &self,
         broadcaster: Arc<crate::http::sse::SseEventBroadcaster>,
@@ -1477,6 +1498,15 @@ where
 
     /// GET /api/{model}/stream - SSE real-time change subscription
     async fn handle_sse_stream(&self) -> Result<Resp, Infallible> {
+        // Issue #70: a broadcaster wired only for native mutation hooks must
+        // not implicitly expose the mutation stream over HTTP.
+        if !self.sse_stream_route_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("content-type", "application/json")
+                .body(body_from(r#"{"error":"SSE not enabled"}"#))
+                .unwrap());
+        }
         match self.sse_broadcaster.get() {
             Some(broadcaster) => {
                 let model_name = T::http_base_path();
