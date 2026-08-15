@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-15
+
+The self-publishing release: pushing a `v*` tag now ships everything —
+GitHub Release and crates.io — with no manual step left. No library code
+changes; the 1.7.0 crates are behaviorally identical to 1.6.0. This
+release exists to exercise the new pipeline end to end.
+
+### Added
+
+- **crates.io publishing from the release workflow** (#209): a tag-gated
+  `publish` job in `release.yml` publishes `lithair-macros` →
+  `lithair-core` → `lithair-cli` in dependency order from the clean tag
+  checkout. Idempotent — versions already in the sparse index are skipped,
+  so a rerun after a partial failure finishes cleanly. Checkout uses
+  `persist-credentials: false`; the token lives only in the
+  `CARGO_REGISTRY_TOKEN` secret.
+
+### Changed
+
+- **Multi-agent & release discipline documented in CLAUDE.md** (#210):
+  process rules from the v1.6.0 release retrospective — terminal state
+  operations belong to one owner, agents report rather than instruct, and
+  external-state claims are verified at the source.
+
 ## [1.6.0] - 2026-08-15
 
 A single-feature release for real-world consumers: a site can now own its
@@ -1486,7 +1510,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/lithair/lithair/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/lithair/lithair/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/lithair/lithair/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/lithair/lithair/compare/v1.3.0...v1.4.0
