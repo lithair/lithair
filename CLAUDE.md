@@ -197,6 +197,31 @@ Before merging any PR, always:
 3. **Address critical/major findings** — don't merge with unresolved issues
 4. **Fix nits in a follow-up or same PR** — don't ignore them
 
+## Multi-Agent & Release Discipline
+
+Rules encoded after the v1.6.0 release incident, where a resumed sub-agent
+handed out instructions based on stale state (told the user to publish an
+already-published release, then theorized a phantom publisher):
+
+- **The main session owns terminal state operations** — `cargo publish`, tag
+  pushes, GitHub secrets. Sub-agents prepare and report; they must never
+  instruct the user to run state-changing commands themselves.
+- **Stop agents once their mission is complete.** A resumable agent's
+  knowledge freezes at its last transcript entry; every later resume replays
+  that stale state as if it were current.
+- **Resuming an agent? Open with a state snapshot** of everything that
+  changed since its last report.
+- **Verify before relaying**: any agent claim about external state (CI
+  status, secrets, published versions) gets checked at the source first
+  (`gh secret list`, the crates.io index, `gh pr checks`).
+- **Surprising external state has a boring explanation first** — check the
+  main session's own recent actions before theorizing about phantom
+  automation or advising credential revocation.
+- **Releases**: the tag-triggered `publish` job in `release.yml` is the only
+  automated publish path; it is idempotent (already-published versions are
+  skipped). Manual publishes, when needed, run from a clean checkout of the
+  tag — never from a working tree.
+
 ## Spec-Driven Development Workflow
 
 The project uses slash commands for feature development:
