@@ -356,11 +356,24 @@ impl LithairServerBuilder {
     /// or [`Self::with_handler`].
     ///
     /// When `require == true`, the model handler rejects every non-OPTIONS
-    /// request lacking a valid (non-expired) session in the
-    /// `Authorization: Bearer <session-id>` header with HTTP 401
+    /// request lacking a valid (non-expired) session with HTTP 401
     /// `{"error":"Authentication required"}` before any business logic runs.
     /// OPTIONS preflight requests are exempt by design (CORS preflight does
     /// not carry credentials).
+    ///
+    /// The session is read by the shared extractor in `http::declarative`,
+    /// which accepts **either** transport:
+    ///
+    /// - `Authorization: Bearer <session-id>` (scheme match is
+    ///   case-insensitive), tried first — the shape a script or a headless
+    ///   client sends;
+    /// - `Cookie: session_token=<session-id>` as a fallback — the shape a
+    ///   browser sends after a login that answered with `Set-Cookie`.
+    ///
+    /// Both are equally valid, and the cookie form is what makes a browser
+    /// session work against these endpoints without any extra wiring. The same
+    /// extractor backs [`Self::with_route_guard`], so a session opened once is
+    /// accepted by the model gate and the route guards alike.
     ///
     /// This is the simple "logged-in or not" gate for the common case. For
     /// per-role / per-permission gating, use [`Self::with_model_full`] with a
