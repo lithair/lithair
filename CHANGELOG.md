@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-15
+
+A single-feature release for real-world consumers: a site can now own its
+404 page. Motivated by the first production consumer (a blog engine), which
+had to bypass `FrontendServer` entirely to serve its own 404. Additive only —
+the new miss behavior is opted into by the mere presence of the asset; no
+breaking change, no on-disk format change.
+
+### Added
+
+- **`FrontendServer` serves the site's own `/404.html` on a miss** (#206):
+  GitHub-Pages-style convention — a site that stores an asset at `/404.html`
+  gets it back on any miss, with the 404 status preserved and the asset's own
+  MIME type respected (including an explicit `set_mime_type` from #197).
+  Resolution is vhost-aware: the `/404.html` of the virtual host that owns
+  the request wins (via a new internal `AssetServer::owning_base_path`), with
+  the root site's page as the site-wide fallback. The built-in fallback page
+  is unchanged when no `/404.html` exists, and a direct `GET /404.html`
+  still answers 200.
+
 ## [1.5.0] - 2026-08-14
 
 The usable-from-crates.io release: `#[server(main)]` — the framework's
@@ -1466,7 +1486,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/lithair/lithair/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/lithair/lithair/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/lithair/lithair/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/lithair/lithair/compare/v1.2.0...v1.3.0
