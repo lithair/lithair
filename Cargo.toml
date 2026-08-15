@@ -50,12 +50,16 @@ description = "Lithair - Solid as stone, light as air. High-performance event-so
 [workspace.lints.rust]
 unused_must_use = "warn"
 
-# Performance optimizations for benchmarking
+# Performance optimizations. Deliberately NO `panic = "abort"`: the server
+# isolates panics at runtime (tokio task boundaries, and the mutation-hook
+# catch_unwind from #213) — abort would turn any isolated panic into a
+# whole-process crash in release only, invisible to the (dev-profile) test
+# suite. Locked by lithair-core/tests/release_profile_test.rs. If a
+# benchmark wants abort, give [profile.bench] its own `panic` key instead.
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = "abort"
 
 # Fast release profile for CI - no LTO, more codegen units
 [profile.ci]
