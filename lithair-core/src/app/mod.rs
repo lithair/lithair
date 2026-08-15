@@ -608,8 +608,17 @@ pub(crate) type ExternalHandlerGate = Box<dyn Fn(bool) + Send + Sync>;
 /// bypass the `model_infos` pipeline; invoked at `serve()` time to install the
 /// builder-level SSE broadcaster onto externally-constructed handlers through
 /// `OnceLock` interior mutability on `DeclarativeHttpHandler`. Issue #91.
+/// Second parameter: whether the `GET /api/{model}/stream` HTTP route stays
+/// enabled (`false` when the broadcaster exists only to feed native mutation
+/// hooks — issue #70).
 pub(crate) type ExternalHandlerSseWiring =
-    Box<dyn Fn(Arc<crate::http::sse::SseEventBroadcaster>) + Send + Sync>;
+    Box<dyn Fn(Arc<crate::http::sse::SseEventBroadcaster>, bool) + Send + Sync>;
+
+/// Native mutation hook registered via `LithairServerBuilder::on_mutation`
+/// (issue #70). Invoked from a dedicated background task for every
+/// `ModelChangeEvent` broadcast on the hook's model channel — the same
+/// channel the SSE route consumes, so there is exactly one event path.
+pub(crate) type MutationHook = Box<dyn Fn(crate::http::sse::ModelChangeEvent) + Send + Sync>;
 
 /// Lithair multi-model server
 pub struct LithairServer {
@@ -736,6 +745,15 @@ pub struct LithairServer {
 
     // SSE real-time subscriptions broadcaster (shared across all model handlers)
     sse_broadcaster: Option<Arc<crate::http::sse::SseEventBroadcaster>>,
+
+    /// Whether `GET /api/{model}/stream` is served over HTTP (`with_sse(true)`).
+    /// The broadcaster above may exist with this `false` when only native
+    /// mutation hooks are registered (issue #70).
+    sse_http_enabled: bool,
+
+    /// Issue #70: native mutation hooks, drained in `serve()` into one
+    /// background dispatch task per hook.
+    mutation_hooks: Vec<(String, MutationHook)>,
 
     // Issue #69: builder-driven auto-compaction config. When `Some`,
     // `serve()` spawns one tokio task per registered model that
@@ -1267,6 +1285,11 @@ impl LithairServer {
                     // shared Arc still receives the broadcaster cleanly.
                     if let Some(ref broadcaster) = self.sse_broadcaster {
                         handler.set_sse_broadcaster(Arc::clone(broadcaster));
+                        // Issue #70: broadcaster wired only for native
+                        // mutation hooks must not expose /stream over HTTP.
+                        if !self.sse_http_enabled {
+                            handler.set_sse_stream_route_enabled(false);
+                        }
                     }
 
                     // Wire the session store into every model handler.
@@ -1385,7 +1408,7 @@ impl LithairServer {
         let sse_wirings = std::mem::take(&mut self.external_handler_sse_wirings);
         if let Some(ref broadcaster) = self.sse_broadcaster {
             for wire in &sse_wirings {
-                wire(Arc::clone(broadcaster));
+                wire(Arc::clone(broadcaster), self.sse_http_enabled);
             }
         }
 
@@ -1413,6 +1436,56 @@ impl LithairServer {
         // earlier preserves that property a fortiori).
         let (bg_shutdown_tx, bg_shutdown_rx) = tokio::sync::watch::channel(false);
         let mut background_tasks = tokio::task::JoinSet::new();
+
+        // Issue #70: native mutation hooks. Each hook subscribes to the same
+        // per-model broadcast channel the SSE route consumes — one event
+        // path, two kinds of sink. Dispatch runs on its own background task:
+        // the write path only does a non-blocking `broadcast::Sender::send`,
+        // so a slow hook can never stall a request (it lags and drops its
+        // own events instead), and a panicking hook is caught and logged
+        // without affecting the server or other hooks.
+        let mutation_hooks = std::mem::take(&mut self.mutation_hooks);
+        if let Some(ref broadcaster) = self.sse_broadcaster {
+            for (model, hook) in mutation_hooks {
+                let mut rx = broadcaster.subscribe(&model).await;
+                let mut bg_rx = bg_shutdown_rx.clone();
+                log::info!("Native mutation hook registered for model '{}'", model);
+                background_tasks.spawn(async move {
+                    loop {
+                        tokio::select! {
+                            _ = bg_rx.changed() => break,
+                            result = rx.recv() => match result {
+                                Ok(event) => {
+                                    let caught = std::panic::catch_unwind(
+                                        std::panic::AssertUnwindSafe(|| hook(event)),
+                                    );
+                                    if let Err(panic) = caught {
+                                        let msg = panic
+                                            .downcast_ref::<&str>()
+                                            .map(|s| s.to_string())
+                                            .or_else(|| panic.downcast_ref::<String>().cloned())
+                                            .unwrap_or_else(|| "non-string panic".to_string());
+                                        log::error!(
+                                            "Mutation hook for model '{}' panicked (event dropped, hook stays active): {}",
+                                            model,
+                                            msg
+                                        );
+                                    }
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                    log::warn!(
+                                        "Mutation hook for model '{}' lagged, {} events dropped",
+                                        model,
+                                        n
+                                    );
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                            }
+                        }
+                    }
+                });
+            }
+        }
 
         if let Some(cfg) = self.auto_compaction {
             let models = self.models.read().await;
@@ -3549,6 +3622,8 @@ impl Default for LithairServer {
             openapi_enabled: false,
             openapi_spec_cache: std::sync::OnceLock::new(),
             sse_broadcaster: None,
+            sse_http_enabled: false,
+            mutation_hooks: Vec::new(),
             auto_compaction: None,
             shutdown_grace: Self::GRACEFUL_DRAIN_GRACE,
         }

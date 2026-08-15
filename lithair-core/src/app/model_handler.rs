@@ -212,6 +212,12 @@ pub trait ModelHandler: Send + Sync {
     /// Set the SSE broadcaster for real-time change notifications (no-op by default)
     fn set_sse_broadcaster(&self, _broadcaster: Arc<crate::http::sse::SseEventBroadcaster>) {}
 
+    /// Enable/disable the `GET /api/{model}/stream` HTTP route (issue #70).
+    /// Called by `serve()` with `false` when the broadcaster exists only to
+    /// feed native mutation hooks (no `with_sse(true)`), so wiring hooks does
+    /// not implicitly expose the mutation stream over HTTP. No-op by default.
+    fn set_sse_stream_route_enabled(&self, _enabled: bool) {}
+
     /// Enable or disable the session-presence gate for this model's
     /// auto-generated `/api/{model}` endpoints (issue #78).
     ///
@@ -494,6 +500,10 @@ where
         // matching the production lifecycle (one broadcaster per server,
         // installed at `serve()` time, never replaced). See issue #91.
         let _ = self.handler.sse_broadcaster.set(broadcaster);
+    }
+
+    fn set_sse_stream_route_enabled(&self, enabled: bool) {
+        self.handler.set_sse_stream_route_enabled(enabled);
     }
 
     fn set_require_session(&mut self, require: bool) {
