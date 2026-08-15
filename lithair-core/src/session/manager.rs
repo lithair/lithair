@@ -72,8 +72,9 @@ impl SessionManagerConfig {
 ///
 /// Picking the wrong one used to silently produce a double-`Arc` shape
 /// that the `with_models_require_session(true)` gate could not recognize,
-/// causing 100% of authenticated requests to 401. Picking [`from_arc`] in
-/// the Arc-already-in-hand case avoids that footgun (issue #80).
+/// causing 100% of authenticated requests to 401. Picking
+/// [`SessionManager::from_arc`] in the Arc-already-in-hand case avoids that
+/// footgun (issue #80).
 ///
 /// # Example — owned store
 ///
