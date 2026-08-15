@@ -363,7 +363,7 @@ impl FrontendEngine {
         self.version.read().map(|g| g.clone()).unwrap_or_default()
     }
 
-    /// Public wrapper over [`compute_version`](Self::compute_version) for
+    /// Public wrapper over the private `compute_version` for
     /// callers (e.g. the admin API) that already hold an asset snapshot and
     /// want to avoid a second `list_assets` scan.
     pub fn compute_version_pub(assets: &[StaticAsset]) -> String {
