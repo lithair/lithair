@@ -53,18 +53,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The publish job needs no GitHub credentials after checkout.
+          persist-credentials: false
 
       # Explicit crate list, dependency order: the workspace also contains
       # the examples and cucumber-tests, which are not publishable, so
       # `cargo publish --workspace` cannot be used. cargo waits for each
       # crate to be available in the index before the next publish.
-      # ponytail: a partial failure (e.g. core rejected after macros went
-      # through) needs a manual finish — add per-crate "already published"
-      # checks only if that ever actually happens.
+      #
+      # Idempotent: crate versions are immutable, so a rerun after a
+      # partial failure (say, core rejected after macros went through)
+      # must skip what already published. The sparse index needs no auth;
+      # the li/th prefix path is shared by all three lithair-* crates.
       - name: Publish crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo publish -p lithair-macros
-          cargo publish -p lithair-core
-          cargo publish -p lithair-cli
+          VERSION="${GITHUB_REF_NAME#v}"
+          for crate in lithair-macros lithair-core lithair-cli; do
+            if curl -fsSL "https://index.crates.io/li/th/$crate" \
+                | grep -q "\"vers\":\"$VERSION\""; then
+              echo "$crate $VERSION already on crates.io, skipping"
+              continue
+            fi
+            cargo publish -p "$crate"
+          done
