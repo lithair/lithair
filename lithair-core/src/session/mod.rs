@@ -38,6 +38,13 @@ pub use middleware::SessionMiddleware;
 pub use persistent_store::PersistentSessionStore;
 pub use store::{Session, SessionStore};
 
+/// Name of the cookie carrying the RBAC session id.
+///
+/// Set by the login route, cleared by the logout route, and read by the
+/// session gate / route guards (`http::declarative::extract_session_token`).
+/// One constant so the emitted and expected names can never drift (issue #219).
+pub const SESSION_COOKIE_NAME: &str = "session_token";
+
 use chrono::Duration;
 use std::sync::Arc;
 

@@ -74,6 +74,14 @@ GET  /api/articles                              # cookie carried by browser
 GET  /api/articles  Authorization: Bearer <id>  # token carried by SPA / CLI
 ```
 
+The login answers with the id in the JSON body **and** sets it as a
+`session_token` cookie (`Path=/; HttpOnly; SameSite=Strict; Secure;
+Max-Age=<session_duration>`), so a browser is authenticated without any
+JavaScript touching the token — `Secure` is unconditional; `localhost` counts
+as a secure context, anything else belongs behind TLS. The logout accepts the
+Bearer header or that cookie, and clears the cookie with `Max-Age=0` and the
+same attributes.
+
 `/auth` is only the default prefix. A login endpoint at a well-known path is an
 unauthenticated oracle for wordlists (the `/wp-admin` problem), so
 `.with_auth_path("/secure-a7f3k29")` — called *before* `with_rbac_config` /

@@ -922,26 +922,12 @@ impl LithairServerBuilder {
                     .downcast()
                     .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
 
-                // Extract token from Authorization header or Cookie
-                let token = req
-                    .headers()
-                    .get(hyper::header::AUTHORIZATION)
-                    .and_then(|h| h.to_str().ok())
-                    .and_then(|h| h.strip_prefix("Bearer "))
-                    .or_else(|| {
-                        req.headers()
-                            .get(hyper::header::COOKIE)
-                            .and_then(|h| h.to_str().ok())
-                            .and_then(|cookies| {
-                                cookies
-                                    .split(';')
-                                    .find(|c| c.trim().starts_with("session_token="))
-                                    .and_then(|c| c.split('=').nth(1))
-                            })
-                    });
+                // Extract token from Authorization header or Cookie — the
+                // same canonical extractor the gate and route guards use.
+                let token = crate::http::declarative::extract_session_token(&req);
 
                 let is_valid = if let Some(token) = token {
-                    session_store.get(token).await.ok().flatten().is_some()
+                    session_store.get(&token).await.ok().flatten().is_some()
                 } else {
                     false
                 };
