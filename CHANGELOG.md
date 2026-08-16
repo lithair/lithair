@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-16
+
+The consumer-driven release: everything here came from building a real
+site on Lithair. Applications can now react to model mutations in native
+Rust, move the login surface off its guessable default path, and count on
+panic isolation holding in release builds — plus a docstring that finally
+tells the truth about browser sessions. API surface is additive only
+(`on_mutation`, `with_auth_path`); no breaking change, no on-disk format
+change.
+
+### Added
+
+- **Native Rust hook for model mutation events** (#213, closes #70):
+  `LithairServerBuilder::on_mutation(model, hook)` registers a
+  `Fn(ModelChangeEvent) + Send + Sync` callback that receives the same
+  create/update/patched/delete payload as the SSE stream, from the same
+  per-model broadcast channel — one event path, a second (native) sink.
+  Hooks run on their own background tasks (drained on graceful shutdown
+  via the #115 machinery): the write path only performs the pre-existing
+  non-blocking `broadcast::send`, so a slow hook lags and drops its own
+  events rather than stalling a request, and a panicking hook is caught,
+  logged and kept alive. Registering a hook does **not** expose the HTTP
+  `GET /api/{model}/stream` route — that still requires `with_sse(true)`.
+- **Configurable authentication path** (#217, closes #216):
+  `LithairServerBuilder::with_auth_path(prefix)` moves all eight auth
+  routes — `login`/`logout`/`validate` from `with_rbac_config` and
+  `mfa/{status,setup,enable,disable,verify}` from `with_mfa_totp` — off
+  their well-known `/auth` default (an unauthenticated oracle for
+  wordlists, the `/wp-admin` shape). Default stays `/auth`; a trailing
+  slash is normalized. The routes register as `with_rbac_config` /
+  `with_mfa_totp` run, so call `with_auth_path` first: a late call is not
+  a silent no-op — the builder warns, naming the prefix the routes
+  actually live at. Builder-time warnings are now deferred to `serve()`
+  (`deferred_warnings`, generalizing the former config-load warning).
+
+### Fixed
+
+- **Panic isolation now holds in release builds** (#215): the release
+  profile set `panic = "abort"`, which silently turned every isolated
+  panic — tokio task boundaries, the new mutation-hook `catch_unwind` —
+  into a whole-process crash in production while the dev-profile test
+  suite stayed green. The setting is removed, and a meta-test
+  (`release_profile_test`) locks the invariant at its source, failing if
+  `panic = "abort"` reappears in `[profile.release]` or `[profile.ci]`.
+  Found by the verification review of #213.
+- **Session gate docs name both transports** (#214, closes #212): the
+  `with_models_require_session` docstring claimed Bearer-only; the shared
+  extractor also accepts `Cookie: session_token=<id>` (tried after
+  Bearer), which is what lets a browser drive gated `/api/*` endpoints
+  with no extra wiring. `cargo doc -p lithair-core` is warning-free again
+  (a dangling `[from_arc]` link and a private-item link fixed).
+
 ## [1.7.0] - 2026-08-15
 
 The self-publishing release: pushing a `v*` tag now ships everything —
@@ -1510,7 +1562,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/lithair/lithair/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/lithair/lithair/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/lithair/lithair/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/lithair/lithair/compare/v1.4.0...v1.5.0
