@@ -74,6 +74,12 @@ GET  /api/articles                              # cookie carried by browser
 GET  /api/articles  Authorization: Bearer <id>  # token carried by SPA / CLI
 ```
 
+`/auth` is only the default prefix. A login endpoint at a well-known path is an
+unauthenticated oracle for wordlists (the `/wp-admin` problem), so
+`.with_auth_path("/secure-a7f3k29")` — called *before* `with_rbac_config` /
+`with_mfa_totp` — moves all eight auth routes (`login`, `logout`, `validate`,
+`mfa/*`) under a caller-chosen prefix.
+
 ## See also
 
 - [`examples/06-auth-sessions/`](https://github.com/lithair/lithair/tree/main/examples/06-auth-sessions) — minimal sessions + auth flow.

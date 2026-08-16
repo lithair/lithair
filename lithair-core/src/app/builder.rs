@@ -208,8 +208,15 @@ pub struct LithairServerBuilder {
     // background tasks on graceful shutdown. `None` = default (5s).
     shutdown_grace: Option<std::time::Duration>,
     // Deferred until `serve()` installs the log bridge — a `log::warn!` from
-    // `new()` fires before any subscriber exists and would itself be dropped.
-    config_load_warning: Option<String>,
+    // a builder method fires before any subscriber exists and would itself
+    // be dropped (config.toml load errors, late `with_auth_path` calls).
+    deferred_warnings: Vec<String>,
+    // Issue #216: prefix for the auth routes registered by `with_rbac_config`
+    // and `with_mfa_totp`; normalized, no trailing slash. Once those routes
+    // are up, `auth_routes_mounted` makes a later `with_auth_path` warn
+    // instead of silently doing nothing.
+    auth_path: String,
+    auth_routes_mounted: bool,
 }
 
 /// Resolve the result of `LithairConfig::load()`: a broken config.toml must
@@ -228,6 +235,24 @@ fn resolve_loaded_config(loaded: anyhow::Result<LithairConfig>) -> (LithairConfi
     }
 }
 
+/// Default prefix of the auth routes (`/auth/login`, `/auth/mfa/*`, ...).
+pub const DEFAULT_AUTH_PATH: &str = "/auth";
+
+/// Normalize a user-supplied auth prefix: leading slash guaranteed, trailing
+/// slashes dropped so joining `"/login"` never yields `//login`. An empty or
+/// `/`-only input falls back to the default.
+fn normalize_auth_path(path: &str) -> String {
+    let trimmed = path.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return DEFAULT_AUTH_PATH.to_string();
+    }
+    if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{trimmed}")
+    }
+}
+
 impl LithairServerBuilder {
     /// Get the session manager (for custom routes that need session validation)
     pub fn session_manager(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
@@ -239,7 +264,9 @@ impl LithairServerBuilder {
         let (config, config_load_warning) = resolve_loaded_config(LithairConfig::load());
         Self {
             config,
-            config_load_warning,
+            deferred_warnings: config_load_warning.into_iter().collect(),
+            auth_path: DEFAULT_AUTH_PATH.to_string(),
+            auth_routes_mounted: false,
             tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,
@@ -275,7 +302,9 @@ impl LithairServerBuilder {
     pub fn with_config(config: LithairConfig) -> Self {
         Self {
             config,
-            config_load_warning: None,
+            deferred_warnings: Vec::new(),
+            auth_path: DEFAULT_AUTH_PATH.to_string(),
+            auth_routes_mounted: false,
             tracing_layers: Vec::new(),
             session_manager: None,
             permission_checker: None,
@@ -690,6 +719,52 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Set the prefix under which the authentication routes are registered.
+    ///
+    /// `with_rbac_config` mounts `login`, `logout` and `validate`, and
+    /// `with_mfa_totp` mounts `mfa/{status,setup,enable,disable,verify}`,
+    /// all under this prefix. Defaults to [`DEFAULT_AUTH_PATH`] (`/auth`), so
+    /// existing deployments are unchanged.
+    ///
+    /// A login endpoint at a fixed, well-known path is an unauthenticated
+    /// oracle: anyone can point a wordlist at it while knowing nothing else
+    /// about the deployment (the reason `/wp-admin` is scanned around the
+    /// clock). Moving it off `/auth` closes that, the same way
+    /// [`with_admin_path`](Self::with_admin_path) and
+    /// [`with_data_admin_ui`](Self::with_data_admin_ui) let the admin surface
+    /// move.
+    ///
+    /// A trailing slash is normalized away (`"/secure/"` mounts
+    /// `/secure/login`, not `/secure//login`).
+    ///
+    /// **Ordering**: the routes are registered when `with_rbac_config` /
+    /// `with_mfa_totp` run, so this must be called *before* them. A later
+    /// call does not move anything; the builder emits a `log::warn!` at
+    /// `serve()` time naming the prefix the routes actually live at.
+    ///
+    /// # Example
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_auth_path("/secure-a7f3k29")
+    ///     .with_rbac_config(rbac)   // login is now /secure-a7f3k29/login
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_auth_path(mut self, path: impl Into<String>) -> Self {
+        let raw = path.into();
+        if self.auth_routes_mounted {
+            self.deferred_warnings.push(format!(
+                "with_auth_path({raw:?}) was called after with_rbac_config/with_mfa_totp; \
+                 the auth routes are already registered at {:?} and will not move. \
+                 Call it first.",
+                self.auth_path
+            ));
+            return self;
+        }
+        self.auth_path = normalize_auth_path(&raw);
+        self
+    }
+
     /// Configure RBAC with automatic auth routes generation
     ///
     /// This method automatically:
@@ -698,6 +773,10 @@ impl LithairServerBuilder {
     /// - Registers POST /auth/logout handler
     /// - Registers GET /auth/validate handler (session validation)
     /// - Returns PermissionChecker for use with models
+    ///
+    /// The `/auth` prefix is the default; call
+    /// [`with_auth_path`](Self::with_auth_path) *before* this method to move
+    /// these routes elsewhere.
     ///
     /// # Example
     /// ```ignore
@@ -721,6 +800,9 @@ impl LithairServerBuilder {
     pub fn with_rbac_config(mut self, config: crate::rbac::ServerRbacConfig) -> Self {
         use crate::rbac::{handle_rbac_login, handle_rbac_logout};
         use std::sync::Arc;
+
+        self.auth_routes_mounted = true;
+        let auth_path = self.auth_path.clone();
 
         // Create session store path (default if not provided)
         let session_path = config
@@ -762,7 +844,7 @@ impl LithairServerBuilder {
         let mfa_storage_login = self.mfa_storage.clone();
         #[cfg(not(feature = "mfa"))]
         let mfa_storage_login: Option<()> = None;
-        self = self.with_route(http::Method::POST, "/auth/login", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_path}/login"), move |req| {
             let users = users_login.clone();
             let duration = session_duration;
             let store_clone = session_store_login.clone();
@@ -797,7 +879,7 @@ impl LithairServerBuilder {
 
         // Add logout route
         let session_store_logout = session_store_shared.clone();
-        self = self.with_route(http::Method::POST, "/auth/logout", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_path}/logout"), move |req| {
             let store_clone = session_store_logout.clone();
 
             Box::pin(async move {
@@ -828,7 +910,7 @@ impl LithairServerBuilder {
 
         // Add validate route (GET endpoint for session validation)
         let session_store_validate = session_store_shared.clone();
-        self = self.with_route(http::Method::GET, "/auth/validate", move |req| {
+        self = self.with_route(http::Method::GET, format!("{auth_path}/validate"), move |req| {
             let store_clone = session_store_validate.clone();
 
             Box::pin(async move {
@@ -894,6 +976,10 @@ impl LithairServerBuilder {
     /// - Registers POST /auth/mfa/disable - Deactivate MFA
     /// - Registers POST /auth/mfa/verify - Validate TOTP code
     ///
+    /// The `/auth` prefix is the default; call
+    /// [`with_auth_path`](Self::with_auth_path) *before* this method to move
+    /// these routes elsewhere.
+    ///
     /// # Example
     /// ```ignore
     /// use lithair_core::mfa::MfaConfig;
@@ -913,6 +999,9 @@ impl LithairServerBuilder {
         use crate::mfa::{handlers, MfaStorage};
         use std::sync::Arc;
 
+        self.auth_routes_mounted = true;
+        let auth_path = self.auth_path.clone();
+
         // Create MFA storage
         let storage = MfaStorage::new(&config.storage_path).expect("Failed to create MFA storage");
         let storage_arc = Arc::new(storage);
@@ -927,7 +1016,7 @@ impl LithairServerBuilder {
         // GET /auth/mfa/status
         let storage_status = storage_arc.clone();
         let config_status = config_arc.clone();
-        self = self.with_route(http::Method::GET, "/auth/mfa/status", move |req| {
+        self = self.with_route(http::Method::GET, format!("{auth_path}/mfa/status"), move |req| {
             let storage = storage_status.clone();
             let config = config_status.clone();
             Box::pin(async move {
@@ -944,7 +1033,7 @@ impl LithairServerBuilder {
         // POST /auth/mfa/setup
         let storage_setup = storage_arc.clone();
         let config_setup = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/setup", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_path}/mfa/setup"), move |req| {
             let storage = storage_setup.clone();
             let config = config_setup.clone();
             Box::pin(async move {
@@ -961,7 +1050,7 @@ impl LithairServerBuilder {
         // POST /auth/mfa/enable
         let storage_enable = storage_arc.clone();
         let config_enable = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/enable", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_path}/mfa/enable"), move |req| {
             let storage = storage_enable.clone();
             let config = config_enable.clone();
             Box::pin(async move {
@@ -978,24 +1067,25 @@ impl LithairServerBuilder {
         // POST /auth/mfa/disable
         let storage_disable = storage_arc.clone();
         let config_disable = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/disable", move |req| {
-            let storage = storage_disable.clone();
-            let config = config_disable.clone();
-            Box::pin(async move {
-                handlers::handle_mfa_disable(storage, config, req)
-                    .await
-                    .map(|resp| {
-                        use http_body_util::BodyExt;
-                        resp.map(|b| b.boxed())
-                    })
-                    .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
-            })
-        });
+        self =
+            self.with_route(http::Method::POST, format!("{auth_path}/mfa/disable"), move |req| {
+                let storage = storage_disable.clone();
+                let config = config_disable.clone();
+                Box::pin(async move {
+                    handlers::handle_mfa_disable(storage, config, req)
+                        .await
+                        .map(|resp| {
+                            use http_body_util::BodyExt;
+                            resp.map(|b| b.boxed())
+                        })
+                        .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
+                })
+            });
 
         // POST /auth/mfa/verify
         let storage_verify = storage_arc.clone();
         let config_verify = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/verify", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_path}/mfa/verify"), move |req| {
             let storage = storage_verify.clone();
             let config = config_verify.clone();
             Box::pin(async move {
@@ -2443,7 +2533,7 @@ impl LithairServerBuilder {
     pub fn build(self) -> Result<LithairServer> {
         Ok(LithairServer {
             config: self.config,
-            config_load_warning: self.config_load_warning,
+            deferred_warnings: self.deferred_warnings,
             tracing_layers: self.tracing_layers,
             session_manager: self.session_manager,
             custom_routes: self.custom_routes,
@@ -2619,6 +2709,21 @@ impl LithairServerBuilder {
     #[cfg(test)]
     pub(crate) fn strict_host_routing_for_test(&self) -> bool {
         self.strict_host_routing
+    }
+
+    /// Test-only view of the (method, path) pairs registered via `with_route`.
+    pub(crate) fn custom_route_paths_for_test(&self) -> Vec<(http::Method, String)> {
+        self.custom_routes.iter().map(|r| (r.method.clone(), r.path.clone())).collect()
+    }
+
+    /// Test-only view of the auth prefix.
+    pub(crate) fn auth_path_for_test(&self) -> &str {
+        &self.auth_path
+    }
+
+    /// Test-only view of the warnings deferred to `serve()`.
+    pub(crate) fn deferred_warnings_for_test(&self) -> &[String] {
+        &self.deferred_warnings
     }
 }
 
@@ -2814,5 +2919,97 @@ mod tests {
             builder.host_redirects_for_test().is_empty(),
             "redirects with empty (post-normalization) endpoints must be rejected"
         );
+    }
+
+    // ---- Issue #216: configurable auth prefix ----------------------------
+
+    fn rbac_in(dir: &std::path::Path) -> crate::rbac::ServerRbacConfig {
+        crate::rbac::ServerRbacConfig::new()
+            .with_session_store(dir.join("sessions").to_string_lossy().to_string())
+    }
+
+    fn has_route(builder: &LithairServerBuilder, method: http::Method, path: &str) -> bool {
+        builder
+            .custom_route_paths_for_test()
+            .iter()
+            .any(|(m, p)| *m == method && p == path)
+    }
+
+    #[test]
+    fn auth_path_defaults_to_auth() {
+        let dir = tempfile::tempdir().unwrap();
+        let builder = LithairServerBuilder::new().with_rbac_config(rbac_in(dir.path()));
+        assert_eq!(builder.auth_path_for_test(), "/auth");
+        assert!(has_route(&builder, http::Method::POST, "/auth/login"));
+        assert!(has_route(&builder, http::Method::POST, "/auth/logout"));
+        assert!(has_route(&builder, http::Method::GET, "/auth/validate"));
+    }
+
+    #[test]
+    fn with_auth_path_moves_all_auth_routes() {
+        let dir = tempfile::tempdir().unwrap();
+        #[allow(unused_mut)]
+        let mut builder = LithairServerBuilder::new()
+            .with_auth_path("/secure-a7f3k29")
+            .with_rbac_config(rbac_in(dir.path()));
+        #[allow(unused_mut)]
+        let mut expected = vec![
+            (http::Method::POST, "/secure-a7f3k29/login"),
+            (http::Method::POST, "/secure-a7f3k29/logout"),
+            (http::Method::GET, "/secure-a7f3k29/validate"),
+        ];
+        #[cfg(feature = "mfa")]
+        {
+            builder = builder.with_mfa_totp(crate::mfa::MfaConfig {
+                storage_path: dir.path().join("mfa").to_string_lossy().to_string(),
+                ..Default::default()
+            });
+            expected.extend([
+                (http::Method::GET, "/secure-a7f3k29/mfa/status"),
+                (http::Method::POST, "/secure-a7f3k29/mfa/setup"),
+                (http::Method::POST, "/secure-a7f3k29/mfa/enable"),
+                (http::Method::POST, "/secure-a7f3k29/mfa/disable"),
+                (http::Method::POST, "/secure-a7f3k29/mfa/verify"),
+            ]);
+        }
+        for (m, p) in expected {
+            assert!(has_route(&builder, m.clone(), p), "missing {m} {p}");
+        }
+        let leftovers: Vec<_> = builder
+            .custom_route_paths_for_test()
+            .into_iter()
+            .filter(|(_, p)| p.starts_with("/auth"))
+            .collect();
+        assert!(leftovers.is_empty(), "nothing may remain under /auth: {leftovers:?}");
+    }
+
+    #[test]
+    fn with_auth_path_normalizes_trailing_slash() {
+        let dir = tempfile::tempdir().unwrap();
+        let builder = LithairServerBuilder::new()
+            .with_auth_path("/secure/")
+            .with_rbac_config(rbac_in(dir.path()));
+        assert_eq!(builder.auth_path_for_test(), "/secure");
+        assert!(has_route(&builder, http::Method::POST, "/secure/login"));
+        assert!(!has_route(&builder, http::Method::POST, "/secure//login"));
+        // Missing leading slash and empty input are repaired too.
+        assert_eq!(normalize_auth_path("secure"), "/secure");
+        assert_eq!(normalize_auth_path(""), "/auth");
+        assert_eq!(normalize_auth_path("/"), "/auth");
+    }
+
+    #[test]
+    fn with_auth_path_after_rbac_config_warns_and_does_not_move_routes() {
+        let dir = tempfile::tempdir().unwrap();
+        let builder = LithairServerBuilder::new()
+            .with_rbac_config(rbac_in(dir.path()))
+            .with_auth_path("/too-late");
+        assert_eq!(builder.auth_path_for_test(), "/auth");
+        assert!(has_route(&builder, http::Method::POST, "/auth/login"));
+        assert!(!has_route(&builder, http::Method::POST, "/too-late/login"));
+        let warnings = builder.deferred_warnings_for_test();
+        assert_eq!(warnings.len(), 1, "exactly one deferred warning: {warnings:?}");
+        assert!(warnings[0].contains("/too-late") && warnings[0].contains("\"/auth\""));
+        assert!(warnings[0].contains("Call it first"));
     }
 }

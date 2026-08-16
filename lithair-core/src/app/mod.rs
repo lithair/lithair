@@ -623,10 +623,11 @@ pub(crate) type MutationHook = Box<dyn Fn(crate::http::sse::ModelChangeEvent) + 
 /// Lithair multi-model server
 pub struct LithairServer {
     config: LithairConfig,
-    /// Warning produced when config.toml existed but failed to parse.
-    /// Emitted in `serve()` right after the log bridge is installed — at
-    /// builder time no subscriber exists yet and the record would be dropped.
-    pub(crate) config_load_warning: Option<String>,
+    /// Warnings produced at builder time (config.toml failed to parse, a
+    /// late `with_auth_path`). Emitted in `serve()` right after the log
+    /// bridge is installed — before that no subscriber exists and the
+    /// records would be dropped.
+    pub(crate) deferred_warnings: Vec<String>,
     /// User-supplied tracing layers, composed into the default subscriber at
     /// `serve()` (see `with_tracing_layer`). Taken (drained) at init.
     pub(crate) tracing_layers: Vec<BoxedTracingLayer>,
@@ -1158,7 +1159,7 @@ impl LithairServer {
 
         // Now that records are observable, surface a config.toml that was
         // ignored at builder time (same rationale as the comment above).
-        if let Some(warning) = self.config_load_warning.take() {
+        for warning in std::mem::take(&mut self.deferred_warnings) {
             log::warn!("{warning}");
         }
 
@@ -3585,7 +3586,7 @@ impl Default for LithairServer {
     fn default() -> Self {
         Self {
             config: LithairConfig::default(),
-            config_load_warning: None,
+            deferred_warnings: Vec::new(),
             tracing_layers: Vec::new(),
             session_manager: None,
             custom_routes: Vec::new(),
