@@ -37,6 +37,10 @@ Méthode `.with_rbac_config()` qui génère automatiquement :
 - PersistentSessionStore
 - PermissionChecker
 
+Le préfixe `/auth` est le défaut : `.with_auth_path("/secure-a7f3k29")`, appelé
+**avant** `.with_rbac_config()` / `.with_mfa_totp()`, déplace toutes les routes
+d'authentification (login, logout, validate, mfa/*).
+
 ---
 
 ##  Utilisation
