@@ -101,6 +101,16 @@ pub struct LithairServerBuilder {
 
     // HTTP Features
     route_guards: Vec<crate::http::RouteGuardMatcher>, // Declarative route protection
+    // Where the auth routes answer. Set by `with_rbac_config` from
+    // `ServerRbacConfig::auth_prefix`, and reused by `with_mfa_totp` so both
+    // families land under the same prefix. MFA is configured by role, so it
+    // already presupposes RBAC and therefore a `with_rbac_config` call before
+    // it — which is exactly the order this needs.
+    auth_prefix: String,
+    // Set once `with_rbac_config` has registered its routes, so a later
+    // `with_auth_path` can say it arrived too late instead of silently doing
+    // nothing.
+    rbac_routes_registered: bool,
     firewall_config: Option<crate::http::FirewallConfig>,
     anti_ddos_config: Option<crate::security::anti_ddos::AntiDDoSConfig>,
     #[cfg(feature = "mfa")]
@@ -247,6 +257,8 @@ impl LithairServerBuilder {
             not_found_handler: None,
             model_infos: Vec::new(),
             route_guards: Vec::new(),
+            auth_prefix: "/auth".to_string(),
+            rbac_routes_registered: false,
             firewall_config: None,
             anti_ddos_config: None,
             #[cfg(feature = "mfa")]
@@ -283,6 +295,8 @@ impl LithairServerBuilder {
             not_found_handler: None,
             model_infos: Vec::new(),
             route_guards: Vec::new(),
+            auth_prefix: "/auth".to_string(),
+            rbac_routes_registered: false,
             firewall_config: None,
             anti_ddos_config: None,
             #[cfg(feature = "mfa")]
@@ -570,6 +584,51 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Move the authentication routes off `/auth`.
+    ///
+    /// `with_rbac_config` registers `login`, `logout` and `validate`, and
+    /// `with_mfa_totp` registers the `mfa/*` family. Both default to `/auth`,
+    /// which is where every release before this one put them unconditionally.
+    ///
+    /// A login at a fixed, well-known path is an unauthenticated oracle anyone
+    /// can point a wordlist at while knowing nothing else about the deployment
+    /// — the reason `/wp-admin` is scanned around the clock. Everything else
+    /// administrative here can already be moved ([`Self::with_admin_path`],
+    /// `with_data_admin_ui`); this makes the auth routes consistent with that.
+    ///
+    /// A secret path is defence in depth, never authentication: URLs leak
+    /// through Referer headers, browser history and proxy logs. It shrinks what
+    /// an untargeted scan can find; it does not replace the session gate.
+    ///
+    /// **Call this before [`Self::with_rbac_config`].** Those routes are
+    /// registered as that method runs, so a later call cannot move them — it
+    /// logs a warning rather than failing quietly.
+    ///
+    /// # Example
+    /// ```ignore
+    /// LithairServer::new()
+    ///     .with_auth_path("/secure-a7f3k29")
+    ///     .with_rbac_config(rbac)   // login now answers at /secure-a7f3k29/login
+    ///     .serve()
+    ///     .await?;
+    /// ```
+    pub fn with_auth_path(mut self, path: impl Into<String>) -> Self {
+        let path = path.into();
+        let normalised = path.trim_end_matches('/').to_string();
+
+        if self.rbac_routes_registered {
+            log::warn!(
+                "with_auth_path({normalised:?}) was called after with_rbac_config; the auth \
+                 routes are already registered at {:?} and will not move. Call it first.",
+                self.auth_prefix
+            );
+            return self;
+        }
+
+        self.auth_prefix = normalised;
+        self
+    }
+
     /// Enable/disable admin authentication
     pub fn with_admin_auth(mut self, enabled: bool) -> Self {
         self.config.admin.auth_required = enabled;
@@ -752,6 +811,11 @@ impl LithairServerBuilder {
             }
         };
 
+        // Resolved once: the routes below are registered immediately, so the
+        // prefix has to come from the config rather than a later builder call.
+        let auth_prefix = self.auth_prefix.clone();
+        self.rbac_routes_registered = true;
+
         // Store session manager AND permission checker for use by models
         self.session_manager = Some(session_store_shared.clone());
         self.permission_checker = Some(permission_checker);
@@ -762,7 +826,7 @@ impl LithairServerBuilder {
         let mfa_storage_login = self.mfa_storage.clone();
         #[cfg(not(feature = "mfa"))]
         let mfa_storage_login: Option<()> = None;
-        self = self.with_route(http::Method::POST, "/auth/login", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_prefix}/login"), move |req| {
             let users = users_login.clone();
             let duration = session_duration;
             let store_clone = session_store_login.clone();
@@ -797,7 +861,7 @@ impl LithairServerBuilder {
 
         // Add logout route
         let session_store_logout = session_store_shared.clone();
-        self = self.with_route(http::Method::POST, "/auth/logout", move |req| {
+        self = self.with_route(http::Method::POST, format!("{auth_prefix}/logout"), move |req| {
             let store_clone = session_store_logout.clone();
 
             Box::pin(async move {
@@ -828,7 +892,7 @@ impl LithairServerBuilder {
 
         // Add validate route (GET endpoint for session validation)
         let session_store_validate = session_store_shared.clone();
-        self = self.with_route(http::Method::GET, "/auth/validate", move |req| {
+        self = self.with_route(http::Method::GET, format!("{auth_prefix}/validate"), move |req| {
             let store_clone = session_store_validate.clone();
 
             Box::pin(async move {
@@ -910,6 +974,9 @@ impl LithairServerBuilder {
     /// ```
     #[cfg(feature = "mfa")]
     pub fn with_mfa_totp(mut self, config: crate::mfa::MfaConfig) -> Self {
+        // Cloned up front: `self` is moved into each `with_route` below, so it
+        // cannot also be borrowed for the path argument.
+        let auth_prefix = self.auth_prefix.clone();
         use crate::mfa::{handlers, MfaStorage};
         use std::sync::Arc;
 
@@ -927,87 +994,92 @@ impl LithairServerBuilder {
         // GET /auth/mfa/status
         let storage_status = storage_arc.clone();
         let config_status = config_arc.clone();
-        self = self.with_route(http::Method::GET, "/auth/mfa/status", move |req| {
-            let storage = storage_status.clone();
-            let config = config_status.clone();
-            Box::pin(async move {
-                handlers::handle_mfa_status(storage, config, req)
-                    .await
-                    .map(|resp| {
-                        use http_body_util::BodyExt;
-                        resp.map(|b| b.boxed())
-                    })
-                    .map_err(|e| anyhow::anyhow!("MFA status error: {}", e))
-            })
-        });
+        self =
+            self.with_route(http::Method::GET, format!("{auth_prefix}/mfa/status"), move |req| {
+                let storage = storage_status.clone();
+                let config = config_status.clone();
+                Box::pin(async move {
+                    handlers::handle_mfa_status(storage, config, req)
+                        .await
+                        .map(|resp| {
+                            use http_body_util::BodyExt;
+                            resp.map(|b| b.boxed())
+                        })
+                        .map_err(|e| anyhow::anyhow!("MFA status error: {}", e))
+                })
+            });
 
         // POST /auth/mfa/setup
         let storage_setup = storage_arc.clone();
         let config_setup = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/setup", move |req| {
-            let storage = storage_setup.clone();
-            let config = config_setup.clone();
-            Box::pin(async move {
-                handlers::handle_mfa_setup(storage, config, req)
-                    .await
-                    .map(|resp| {
-                        use http_body_util::BodyExt;
-                        resp.map(|b| b.boxed())
-                    })
-                    .map_err(|e| anyhow::anyhow!("MFA setup error: {}", e))
-            })
-        });
+        self =
+            self.with_route(http::Method::POST, format!("{auth_prefix}/mfa/setup"), move |req| {
+                let storage = storage_setup.clone();
+                let config = config_setup.clone();
+                Box::pin(async move {
+                    handlers::handle_mfa_setup(storage, config, req)
+                        .await
+                        .map(|resp| {
+                            use http_body_util::BodyExt;
+                            resp.map(|b| b.boxed())
+                        })
+                        .map_err(|e| anyhow::anyhow!("MFA setup error: {}", e))
+                })
+            });
 
         // POST /auth/mfa/enable
         let storage_enable = storage_arc.clone();
         let config_enable = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/enable", move |req| {
-            let storage = storage_enable.clone();
-            let config = config_enable.clone();
-            Box::pin(async move {
-                handlers::handle_mfa_enable(storage, config, req)
-                    .await
-                    .map(|resp| {
-                        use http_body_util::BodyExt;
-                        resp.map(|b| b.boxed())
-                    })
-                    .map_err(|e| anyhow::anyhow!("MFA enable error: {}", e))
-            })
-        });
+        self =
+            self.with_route(http::Method::POST, format!("{auth_prefix}/mfa/enable"), move |req| {
+                let storage = storage_enable.clone();
+                let config = config_enable.clone();
+                Box::pin(async move {
+                    handlers::handle_mfa_enable(storage, config, req)
+                        .await
+                        .map(|resp| {
+                            use http_body_util::BodyExt;
+                            resp.map(|b| b.boxed())
+                        })
+                        .map_err(|e| anyhow::anyhow!("MFA enable error: {}", e))
+                })
+            });
 
         // POST /auth/mfa/disable
         let storage_disable = storage_arc.clone();
         let config_disable = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/disable", move |req| {
-            let storage = storage_disable.clone();
-            let config = config_disable.clone();
-            Box::pin(async move {
-                handlers::handle_mfa_disable(storage, config, req)
-                    .await
-                    .map(|resp| {
-                        use http_body_util::BodyExt;
-                        resp.map(|b| b.boxed())
-                    })
-                    .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
-            })
-        });
+        self =
+            self.with_route(http::Method::POST, format!("{auth_prefix}/mfa/disable"), move |req| {
+                let storage = storage_disable.clone();
+                let config = config_disable.clone();
+                Box::pin(async move {
+                    handlers::handle_mfa_disable(storage, config, req)
+                        .await
+                        .map(|resp| {
+                            use http_body_util::BodyExt;
+                            resp.map(|b| b.boxed())
+                        })
+                        .map_err(|e| anyhow::anyhow!("MFA disable error: {}", e))
+                })
+            });
 
         // POST /auth/mfa/verify
         let storage_verify = storage_arc.clone();
         let config_verify = config_arc.clone();
-        self = self.with_route(http::Method::POST, "/auth/mfa/verify", move |req| {
-            let storage = storage_verify.clone();
-            let config = config_verify.clone();
-            Box::pin(async move {
-                handlers::handle_mfa_verify(storage, config, req)
-                    .await
-                    .map(|resp| {
-                        use http_body_util::BodyExt;
-                        resp.map(|b| b.boxed())
-                    })
-                    .map_err(|e| anyhow::anyhow!("MFA verify error: {}", e))
-            })
-        });
+        self =
+            self.with_route(http::Method::POST, format!("{auth_prefix}/mfa/verify"), move |req| {
+                let storage = storage_verify.clone();
+                let config = config_verify.clone();
+                Box::pin(async move {
+                    handlers::handle_mfa_verify(storage, config, req)
+                        .await
+                        .map(|resp| {
+                            use http_body_util::BodyExt;
+                            resp.map(|b| b.boxed())
+                        })
+                        .map_err(|e| anyhow::anyhow!("MFA verify error: {}", e))
+                })
+            });
 
         log::info!("MFA/TOTP configured");
         log::info!("   Issuer: {}", config.issuer);
@@ -2814,5 +2886,37 @@ mod tests {
             builder.host_redirects_for_test().is_empty(),
             "redirects with empty (post-normalization) endpoints must be rejected"
         );
+    }
+
+    #[test]
+    fn auth_path_defaults_to_the_historical_location() {
+        let builder = LithairServerBuilder::new();
+        assert_eq!(builder.auth_prefix, "/auth");
+    }
+
+    #[test]
+    fn auth_path_moves_the_prefix() {
+        let builder = LithairServerBuilder::new().with_auth_path("/secure-a7f3k29");
+        assert_eq!(builder.auth_prefix, "/secure-a7f3k29");
+    }
+
+    #[test]
+    fn auth_path_drops_a_trailing_slash() {
+        // Callers assemble these by hand; "/x/" would yield "/x//login", a 404
+        // nobody enjoys tracking down.
+        let builder = LithairServerBuilder::new().with_auth_path("/secure/");
+        assert_eq!(builder.auth_prefix, "/secure");
+    }
+
+    #[test]
+    fn auth_path_after_rbac_leaves_the_registered_routes_alone() {
+        // The routes are registered while with_rbac_config runs, so a later
+        // call cannot move them. It must not silently pretend otherwise.
+        let mut builder = LithairServerBuilder::new();
+        builder.rbac_routes_registered = true;
+
+        let builder = builder.with_auth_path("/too-late");
+
+        assert_eq!(builder.auth_prefix, "/auth");
     }
 }
