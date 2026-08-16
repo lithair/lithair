@@ -74,7 +74,7 @@ fn serialized_size<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 ///
 /// `pub(crate)` so the route guards (`route_guard.rs`) share this one canonical
 /// extractor rather than duplicating it (issue #149 review).
-pub(crate) fn extract_session_token(req: &Req) -> Option<String> {
+pub(crate) fn extract_session_token<B>(req: &Request<B>) -> Option<String> {
     // 1) Authorization: Bearer <token>  (case-insensitive scheme)
     if let Some(auth_header) = req.headers().get(http::header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
@@ -87,13 +87,16 @@ pub(crate) fn extract_session_token(req: &Req) -> Option<String> {
         }
     }
 
-    // 2) Cookie: session_token=<id>  (matches the pattern used by
-    //    `LithairServerBuilder` line 642 and `route_guard.rs` line 167)
+    // 2) Cookie: session_token=<id>  (the cookie the RBAC login route sets;
+    //    name shared through `session::SESSION_COOKIE_NAME`)
     if let Some(cookie_header) = req.headers().get(http::header::COOKIE) {
         if let Ok(cookie_str) = cookie_header.to_str() {
             for part in cookie_str.split(';') {
                 let part = part.trim();
-                if let Some(value) = part.strip_prefix("session_token=") {
+                if let Some(value) = part
+                    .strip_prefix(crate::session::SESSION_COOKIE_NAME)
+                    .and_then(|rest| rest.strip_prefix('='))
+                {
                     let token = value.trim();
                     if !token.is_empty() {
                         return Some(token.to_string());
