@@ -3,7 +3,9 @@
 //! This module provides automatically generated /auth/login and /auth/logout handlers
 
 use super::RbacUser;
-use crate::session::{PersistentSessionStore, Session, SessionStore, SESSION_COOKIE_NAME};
+use crate::session::{
+    effective_cookie_config, PersistentSessionStore, Session, SessionCookie, SessionStore,
+};
 use anyhow::Result;
 use bytes::Bytes;
 use chrono::Duration;
@@ -131,7 +133,9 @@ pub async fn handle_rbac_login(
     log::info!("User logged in: {} as {}", user.username, user.role);
 
     // Return session token in the body (Bearer clients) and as a cookie
-    // (browsers) — see issue #219.
+    // (browsers) — see issue #219. The cookie's attributes come from the
+    // effective `CookieConfig` (TOML/env/`with_session_cookie`); its Max-Age
+    // is the session's own lifetime so the two expire together.
     let mut resp = json_response(
         StatusCode::OK,
         serde_json::json!({
@@ -142,21 +146,17 @@ pub async fn handle_rbac_login(
     );
     resp.headers_mut().insert(
         hyper::header::SET_COOKIE,
-        session_cookie(&session_id, session_duration).parse()?,
+        session_set_cookie(&req, &session_id, session_duration).parse()?,
     );
     Ok(resp)
 }
 
-/// Build the `Set-Cookie` value for the session cookie.
-///
-/// `Secure` is unconditional: browsers treat `localhost` as a secure context,
-/// anything else belongs behind TLS. Clearing (`session_cookie("", 0)`) keeps
-/// the identical attributes on purpose — a browser only drops a cookie when
-/// they match the ones it was set with.
-pub(crate) fn session_cookie(value: &str, max_age: u64) -> String {
-    format!(
-        "{SESSION_COOKIE_NAME}={value}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age={max_age}"
-    )
+/// `Set-Cookie` value the login emits: the request's effective cookie config
+/// with `Max-Age` = the session duration.
+fn session_set_cookie<B>(req: &Request<B>, session_id: &str, session_duration: u64) -> String {
+    let mut config = (*effective_cookie_config(req)).clone();
+    config.max_age = Some(session_duration as i64);
+    SessionCookie::new(config).build_set_cookie(session_id, None)
 }
 
 /// Generate logout handler
@@ -203,8 +203,9 @@ pub async fn handle_rbac_logout(
             "message": "Logged out successfully"
         }),
     );
-    resp.headers_mut()
-        .insert(hyper::header::SET_COOKIE, session_cookie("", 0).parse()?);
+    // Same scope/flags as the login's Set-Cookie, Max-Age=0.
+    let clear = SessionCookie::new((*effective_cookie_config(&req)).clone()).build_delete_cookie();
+    resp.headers_mut().insert(hyper::header::SET_COOKIE, clear.parse()?);
     Ok(resp)
 }
 
@@ -220,49 +221,68 @@ fn json_response(status: StatusCode, body: serde_json::Value) -> Response<Full<B
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::{CookieConfig, MemorySessionStore, SessionConfig, SessionMiddleware};
 
     #[test]
-    fn set_cookie_carries_the_hardening_attributes_and_the_session_duration() {
-        let cookie = session_cookie("abc123", 3600);
+    fn set_cookie_uses_the_effective_config_and_the_session_duration() {
+        // No server in the loop → defaults.
+        let req = Request::builder().body(()).expect("request");
         assert_eq!(
-            cookie,
-            "session_token=abc123; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=3600"
+            session_set_cookie(&req, "abc123", 3600),
+            "session_token=abc123; Path=/; Max-Age=3600; Secure; HttpOnly; SameSite=Lax"
+        );
+
+        // A server-injected config (what `LithairServer` does at dispatch).
+        let mut req = Request::builder().body(()).expect("request");
+        req.extensions_mut().insert(Arc::new(CookieConfig {
+            name: "sid".to_string(),
+            secure: false,
+            ..CookieConfig::default()
+        }));
+        assert_eq!(
+            session_set_cookie(&req, "abc123", 60),
+            "sid=abc123; Path=/; Max-Age=60; HttpOnly; SameSite=Lax"
         );
     }
 
-    #[test]
-    fn clear_cookie_keeps_the_same_attributes_with_max_age_zero() {
-        let set = session_cookie("abc123", 3600);
-        let clear = session_cookie("", 0);
-        assert_eq!(clear, "session_token=; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=0");
-        // Identical attribute set — a browser only drops the cookie on a match.
-        let attrs = |c: &str| {
-            c.split("; ")
-                .skip(1)
-                .filter(|a| !a.starts_with("Max-Age="))
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(attrs(&set), attrs(&clear));
-    }
+    /// D12(a): the cookie the login emits is the one BOTH extractors read
+    /// back — the gate/guards' `extract_session_token` and
+    /// `SessionMiddleware` — under the default and under an override.
+    #[tokio::test]
+    async fn issued_cookie_is_read_back_by_both_extractors() {
+        for config in [
+            CookieConfig::default(),
+            CookieConfig { name: "sid".to_string(), ..CookieConfig::default() },
+            CookieConfig { host_prefix: true, ..CookieConfig::default() },
+        ] {
+            let shared = Arc::new(config.clone());
+            let mut login_req = Request::builder().body(()).expect("request");
+            login_req.extensions_mut().insert(Arc::clone(&shared));
+            let set_cookie = session_set_cookie(&login_req, "tok-42", 60);
+            let cookie_pair = set_cookie.split(';').next().expect("name=value pair");
+            assert_eq!(cookie_pair, format!("{}=tok-42", config.effective_name()));
 
-    /// The cookie the login emits must be the one the gate reads back. If the
-    /// two names drift, browsers get a cookie the gate ignores and every
-    /// request 401s with nothing obviously wrong (issue #219).
-    #[test]
-    fn issued_cookie_name_matches_what_the_session_gate_extracts() {
-        let cookie = session_cookie("tok-42", 60);
-        let cookie_pair = cookie.split(';').next().expect("name=value pair");
-        assert_eq!(cookie_pair, format!("{SESSION_COOKIE_NAME}=tok-42"));
-        assert_eq!(cookie_pair.split('=').next(), Some(SESSION_COOKIE_NAME));
+            // 1) gate / guards / validate / logout extractor.
+            let mut req = Request::builder()
+                .header(hyper::header::COOKIE, format!("other=1; {cookie_pair}"))
+                .body(())
+                .expect("request");
+            req.extensions_mut().insert(Arc::clone(&shared));
+            assert_eq!(
+                crate::http::declarative::extract_session_token(&req).as_deref(),
+                Some("tok-42"),
+                "config={config:?}"
+            );
 
-        let req = Request::builder()
-            .header(hyper::header::COOKIE, format!("other=1; {cookie_pair}"))
-            .body(())
-            .expect("request");
-        assert_eq!(
-            crate::http::declarative::extract_session_token(&req).as_deref(),
-            Some("tok-42")
-        );
+            // 2) SessionMiddleware built on the same CookieConfig.
+            let store = Arc::new(MemorySessionStore::new());
+            let expires_at = chrono::Utc::now() + Duration::hours(1);
+            store.set(Session::new("tok-42".to_string(), expires_at)).await.unwrap();
+            let mut session_config = SessionConfig::cookie_only();
+            session_config.cookie_config = config.clone();
+            let middleware = SessionMiddleware::new(store, session_config);
+            let session = middleware.extract_session(&req).await.expect("store ok");
+            assert_eq!(session.map(|s| s.id).as_deref(), Some("tok-42"), "config={config:?}");
+        }
     }
 }

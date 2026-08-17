@@ -138,15 +138,21 @@ LithairServer::new()
 
 Session management and authentication settings.
 
-| Variable           | Default | Config File | Env Var                       | Code Builder                     | Hot-Reload | Description                                   |
-| ------------------ | ------- | ----------- | ----------------------------- | -------------------------------- | ---------- | --------------------------------------------- |
-| `enabled`          | `true`  |             | `LT_SESSION_ENABLED`          | `.with_sessions(SessionManager)` |            | Enable session management                     |
-| `cleanup_interval` | `300`   |             | `LT_SESSION_CLEANUP_INTERVAL` | `.with_session_cleanup(u64)`     |            | Cleanup interval in seconds (5 min default)   |
-| `max_age`          | `3600`  |             | `LT_SESSION_MAX_AGE`          | `.with_session_max_age(u64)`     |            | Session lifetime in seconds (1 hour default)  |
-| `cookie_enabled`   | `true`  |             | `LT_SESSION_COOKIE_ENABLED`   | `.with_session_cookie(bool)`     |            | Enable cookie-based sessions                  |
-| `cookie_secure`    | `true`  |             | `LT_SESSION_COOKIE_SECURE`    | -                                |            | Set Secure flag on cookies (HTTPS only)       |
-| `cookie_httponly`  | `true`  |             | `LT_SESSION_COOKIE_HTTPONLY`  | -                                |            | Set HttpOnly flag on cookies (XSS protection) |
-| `cookie_samesite`  | `"Lax"` |             | `LT_SESSION_COOKIE_SAMESITE`  | -                                |            | SameSite policy (Strict/Lax/None)             |
+| Variable           | Default | Config File | Env Var                       | Code Builder                                        | Hot-Reload | Description                                                    |
+| ------------------ | ------- | ----------- | ----------------------------- | --------------------------------------------------- | ---------- | -------------------------------------------------------------- |
+| `enabled`          | `true`  |             | `LT_SESSION_ENABLED`          | `.with_sessions(SessionManager)`                    |            | Enable session management                                      |
+| `cleanup_interval` | `300`   |             | `LT_SESSION_CLEANUP_INTERVAL` | `SessionManagerConfig::with_cleanup_interval(Duration)` |            | Cleanup interval in seconds (5 min default)                    |
+| `max_age`          | `3600`  |             | `LT_SESSION_MAX_AGE`          | `ServerRbacConfig::with_session_duration(u64)`      |            | Session lifetime in seconds (1 hour default)                   |
+| `cookie_enabled`   | `true`  |             | `LT_SESSION_COOKIE_ENABLED`   | `SessionConfig::with_cookie_auth(bool)`             |            | Enable cookie-based sessions                                   |
+| `cookie_secure`    | `true`  |             | `LT_SESSION_COOKIE_SECURE`    | `.with_session_cookie(CookieConfig)`                |            | `Secure` flag on the session cookie (HTTPS only)               |
+| `cookie_httponly`  | `true`  |             | `LT_SESSION_COOKIE_HTTPONLY`  | `.with_session_cookie(CookieConfig)`                |            | `HttpOnly` flag on the session cookie (XSS protection)         |
+| `cookie_samesite`  | `"Lax"` |             | `LT_SESSION_COOKIE_SAMESITE`  | `.with_session_cookie(CookieConfig)`                |            | `SameSite` policy on the session cookie (Strict/Lax/None)      |
+
+The three `cookie_*` values seed the `CookieConfig` the RBAC login emits and
+every extractor (model gate, route guards, `/auth/validate`, logout,
+`SessionMiddleware`) reads. `.with_session_cookie(CookieConfig { .. })` on
+the builder overrides them (name, `Path`, `Domain`, `host_prefix` for a
+`__Host-` cookie); precedence is builder > env > TOML > defaults.
 
 ### Example
 

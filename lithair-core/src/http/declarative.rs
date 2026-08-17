@@ -61,23 +61,38 @@ fn serialized_size<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 }
 
 /// Extract a session token from the request, trying the `Authorization`
-/// header first then falling back to the `session_token=` cookie.
+/// header first then falling back to the session cookie — under the name of
+/// the cookie configuration in force for this request
+/// ([`crate::session::effective_cookie_config`]: TOML/env/`with_session_cookie`,
+/// injected by `LithairServer` at dispatch; defaults otherwise).
 ///
 /// Bearer scheme matching is case-insensitive per common practice (the RFC
-/// only mandates `Bearer` but many clients send `bearer`; route_guard.rs
-/// and the `/auth/validate` route both already accept the cookie form).
+/// only mandates `Bearer` but many clients send `bearer`).
 /// Used by [`DeclarativeHttpHandler::has_valid_session`] to gate
 /// auto-generated `/api/{model}` endpoints when
-/// `with_models_require_session(true)` is on (issue #78).
+/// `with_models_require_session(true)` is on (issue #78), by the route
+/// guards, `/auth/validate` and the logout route.
 ///
 /// Returns `None` if no usable token is found.
-///
-/// `pub(crate)` so the route guards (`route_guard.rs`) share this one canonical
-/// extractor rather than duplicating it (issue #149 review).
 pub(crate) fn extract_session_token<B>(req: &Request<B>) -> Option<String> {
-    // 1) Authorization: Bearer <token>  (case-insensitive scheme)
-    if let Some(auth_header) = req.headers().get(http::header::AUTHORIZATION) {
-        if let Ok(auth_str) = auth_header.to_str() {
+    let cookie = crate::session::effective_cookie_config(req);
+    extract_session_token_from(req, true, Some(&cookie.effective_name()))
+}
+
+/// The one token extractor: `Authorization: Bearer <token>` (when
+/// `accept_bearer`) first, then the `cookie_name` cookie (when `Some`).
+/// `SessionMiddleware` delegates here with its own flags so both paths agree
+/// on priority and parsing (issue #219 follow-up).
+pub(crate) fn extract_session_token_from<B>(
+    req: &Request<B>,
+    accept_bearer: bool,
+    cookie_name: Option<&str>,
+) -> Option<String> {
+    if accept_bearer {
+        if let Some(auth_str) =
+            req.headers().get(http::header::AUTHORIZATION).and_then(|h| h.to_str().ok())
+        {
+            // `to_str` only succeeds for visible ASCII, so byte 7 is a char boundary.
             if auth_str.len() >= 7 && auth_str[..7].eq_ignore_ascii_case("bearer ") {
                 let token = auth_str[7..].trim();
                 if !token.is_empty() {
@@ -87,26 +102,11 @@ pub(crate) fn extract_session_token<B>(req: &Request<B>) -> Option<String> {
         }
     }
 
-    // 2) Cookie: session_token=<id>  (the cookie the RBAC login route sets;
-    //    name shared through `session::SESSION_COOKIE_NAME`)
-    if let Some(cookie_header) = req.headers().get(http::header::COOKIE) {
-        if let Ok(cookie_str) = cookie_header.to_str() {
-            for part in cookie_str.split(';') {
-                let part = part.trim();
-                if let Some(value) = part
-                    .strip_prefix(crate::session::SESSION_COOKIE_NAME)
-                    .and_then(|rest| rest.strip_prefix('='))
-                {
-                    let token = value.trim();
-                    if !token.is_empty() {
-                        return Some(token.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    None
+    let name = cookie_name?;
+    req.headers()
+        .get(http::header::COOKIE)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|header| crate::session::cookie_value(header, name))
 }
 
 /// Trait for models that can be exposed via HTTP

@@ -75,12 +75,24 @@ GET  /api/articles  Authorization: Bearer <id>  # token carried by SPA / CLI
 ```
 
 The login answers with the id in the JSON body **and** sets it as a
-`session_token` cookie (`Path=/; HttpOnly; SameSite=Strict; Secure;
-Max-Age=<session_duration>`), so a browser is authenticated without any
-JavaScript touching the token — `Secure` is unconditional; `localhost` counts
-as a secure context, anything else belongs behind TLS. The logout accepts the
-Bearer header or that cookie, and clears the cookie with `Max-Age=0` and the
-same attributes.
+`session_token` cookie (`Path=/; Max-Age=<session_duration>; Secure;
+HttpOnly; SameSite=Lax` by default), so a browser is authenticated without any
+JavaScript touching the token. The logout accepts the Bearer header or that
+cookie, and clears the cookie with `Max-Age=0` and exactly the same
+attributes (a browser only drops a cookie whose scope matches).
+
+One struct, `lithair_core::session::CookieConfig`, is the authority for that
+cookie: the login/logout emit it, and the model gate, the route guards,
+`/auth/validate` and `SessionMiddleware` all read the cookie under its name.
+Its attributes come from `[sessions]` in `config.toml` or the
+`LT_SESSION_COOKIE_SECURE` / `LT_SESSION_COOKIE_HTTPONLY` /
+`LT_SESSION_COOKIE_SAMESITE` env vars (`secure=false` for a plain-HTTP LAN
+deployment behind no TLS, for instance), and `.with_session_cookie(CookieConfig
+{ .. })` on the builder wins over both — including `host_prefix: true`, which
+emits `__Host-session_token` (Secure forced, `Path=/`, no `Domain`; the build
+refuses a `Domain` with it). `SessionMiddleware` uses the same default name;
+an app that relied on the old `session_id` default sets
+`SessionConfig::default().with_cookie_name("session_id")` explicitly.
 
 `/auth` is only the default prefix. A login endpoint at a well-known path is an
 unauthenticated oracle for wordlists (the `/wp-admin` problem), so

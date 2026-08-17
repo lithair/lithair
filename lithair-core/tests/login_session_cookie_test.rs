@@ -84,7 +84,7 @@ async fn login_sets_cookie_gate_accepts_it_logout_clears_it() {
     let token = body["session_token"].as_str().expect("token in body").to_string();
     assert_eq!(
         set_cookie,
-        format!("session_token={token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=1234")
+        format!("session_token={token}; Path=/; Max-Age=1234; Secure; HttpOnly; SameSite=Lax")
     );
     let cookie_pair = set_cookie.split(';').next().expect("pair").to_string();
 
@@ -108,7 +108,7 @@ async fn login_sets_cookie_gate_accepts_it_logout_clears_it() {
     let clear = resp.headers().get("set-cookie").expect("logout must clear the cookie");
     assert_eq!(
         clear.to_str().expect("ascii"),
-        "session_token=; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=0"
+        "session_token=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
     );
 
     // The session is gone: same cookie now 401s.
