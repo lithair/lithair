@@ -64,19 +64,39 @@ fn serialized_size<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 /// header first then falling back to the session cookie — under the name of
 /// the cookie configuration in force for this request
 /// ([`crate::session::effective_cookie_config`]: TOML/env/`with_session_cookie`,
-/// injected by `LithairServer` at dispatch; defaults otherwise).
+/// injected by `LithairServer` at dispatch; defaults otherwise). When that
+/// config has `enabled: false` (`LT_SESSION_COOKIE_ENABLED=false`, Bearer-only
+/// mode) the cookie is not read at all.
 ///
 /// Bearer scheme matching is case-insensitive per common practice (the RFC
 /// only mandates `Bearer` but many clients send `bearer`).
 /// Used by [`DeclarativeHttpHandler::has_valid_session`] to gate
 /// auto-generated `/api/{model}` endpoints when
 /// `with_models_require_session(true)` is on (issue #78), by the route
-/// guards, `/auth/validate` and the logout route.
+/// guards and `/auth/validate`. The logout reads both transports through
+/// [`session_token_candidates`] so it can end both sessions.
 ///
 /// Returns `None` if no usable token is found.
 pub(crate) fn extract_session_token<B>(req: &Request<B>) -> Option<String> {
     let cookie = crate::session::effective_cookie_config(req);
-    extract_session_token_from(req, true, Some(&cookie.effective_name()))
+    let name = cookie.enabled.then(|| cookie.effective_name());
+    extract_session_token_from(req, true, name.as_deref())
+}
+
+/// Every session token the request carries, Bearer first then cookie,
+/// de-duplicated: a browser that also sends a stale `Authorization` header
+/// (or the reverse) names two sessions, and the logout must end both.
+pub(crate) fn session_token_candidates<B>(req: &Request<B>) -> Vec<String> {
+    let cookie = crate::session::effective_cookie_config(req);
+    let mut out: Vec<String> = bearer_token(req).into_iter().collect();
+    if cookie.enabled {
+        if let Some(c) = cookie_token(req, &cookie.effective_name()) {
+            if !out.contains(&c) {
+                out.push(c);
+            }
+        }
+    }
+    out
 }
 
 /// The one token extractor: `Authorization: Bearer <token>` (when
@@ -89,20 +109,26 @@ pub(crate) fn extract_session_token_from<B>(
     cookie_name: Option<&str>,
 ) -> Option<String> {
     if accept_bearer {
-        if let Some(auth_str) =
-            req.headers().get(http::header::AUTHORIZATION).and_then(|h| h.to_str().ok())
-        {
-            // `to_str` only succeeds for visible ASCII, so byte 7 is a char boundary.
-            if auth_str.len() >= 7 && auth_str[..7].eq_ignore_ascii_case("bearer ") {
-                let token = auth_str[7..].trim();
-                if !token.is_empty() {
-                    return Some(token.to_string());
-                }
-            }
+        if let Some(token) = bearer_token(req) {
+            return Some(token);
         }
     }
+    cookie_token(req, cookie_name?)
+}
 
-    let name = cookie_name?;
+/// `Authorization: Bearer <token>` (scheme case-insensitive), trimmed, non-empty.
+fn bearer_token<B>(req: &Request<B>) -> Option<String> {
+    let auth_str = req.headers().get(http::header::AUTHORIZATION)?.to_str().ok()?;
+    // `to_str` only succeeds for visible ASCII, so byte 7 is a char boundary.
+    if auth_str.len() < 7 || !auth_str[..7].eq_ignore_ascii_case("bearer ") {
+        return None;
+    }
+    let token = auth_str[7..].trim();
+    (!token.is_empty()).then(|| token.to_string())
+}
+
+/// The `name` cookie of the `Cookie:` header, non-empty.
+fn cookie_token<B>(req: &Request<B>, name: &str) -> Option<String> {
     req.headers()
         .get(http::header::COOKIE)
         .and_then(|h| h.to_str().ok())

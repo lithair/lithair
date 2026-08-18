@@ -77,9 +77,28 @@ GET  /api/articles  Authorization: Bearer <id>  # token carried by SPA / CLI
 The login answers with the id in the JSON body **and** sets it as a
 `session_token` cookie (`Path=/; Max-Age=<session_duration>; Secure;
 HttpOnly; SameSite=Lax` by default), so a browser is authenticated without any
-JavaScript touching the token. The logout accepts the Bearer header or that
-cookie, and clears the cookie with `Max-Age=0` and exactly the same
-attributes (a browser only drops a cookie whose scope matches).
+JavaScript touching the token. `ServerRbacConfig::session_duration` is the
+lifetime of both the session and its cookie on this path (`[sessions]
+max_age` only concerns `with_sessions` / `SessionMiddleware`).
+
+The logout is idempotent and expiry-aware. It ends every session the request
+names — the Bearer header **and** the cookie when both are present with
+different values — and always answers with the clearing `Set-Cookie`
+(`Max-Age=0`, exactly the login's attributes: a browser only drops a cookie
+whose scope matches), on the 401 paths too, so a browser holding a dead or
+expired cookie leaves clean. It is 200 when at least one of those sessions
+was live, 401 otherwise (no token, or only unknown/expired ones — which are
+deleted from the store anyway). `/auth/validate` applies the same liveness
+rule as the gate: an expired session answers `{"valid":false}`.
+
+`with_rbac_config` wraps its store in a `SessionManager`, so expired sessions
+are swept from the store every `[sessions] cleanup_interval` seconds
+(`LT_SESSION_CLEANUP_INTERVAL`, 300 by default).
+
+`[sessions] cookie_enabled = false` (`LT_SESSION_COOKIE_ENABLED=false`) is
+Bearer-only mode: the login sends no `Set-Cookie`, the logout no clear, and
+nothing reads the `Cookie:` header — the token travels in the JSON body and
+the `Authorization: Bearer` header only.
 
 One struct, `lithair_core::session::CookieConfig`, is the authority for that
 cookie: the login/logout emit it, and the model gate, the route guards,

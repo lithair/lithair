@@ -141,14 +141,14 @@ Session management and authentication settings.
 | Variable           | Default | Config File | Env Var                       | Code Builder                                        | Hot-Reload | Description                                                    |
 | ------------------ | ------- | ----------- | ----------------------------- | --------------------------------------------------- | ---------- | -------------------------------------------------------------- |
 | `enabled`          | `true`  |             | `LT_SESSION_ENABLED`          | `.with_sessions(SessionManager)`                    |            | Enable session management                                      |
-| `cleanup_interval` | `300`   |             | `LT_SESSION_CLEANUP_INTERVAL` | `SessionManagerConfig::with_cleanup_interval(Duration)` |            | Cleanup interval in seconds (5 min default)                    |
-| `max_age`          | `3600`  |             | `LT_SESSION_MAX_AGE`          | `ServerRbacConfig::with_session_duration(u64)`      |            | Session lifetime in seconds (1 hour default)                   |
-| `cookie_enabled`   | `true`  |             | `LT_SESSION_COOKIE_ENABLED`   | `SessionConfig::with_cookie_auth(bool)`             |            | Enable cookie-based sessions                                   |
+| `cleanup_interval` | `300`   |             | `LT_SESSION_CLEANUP_INTERVAL` | `SessionManagerConfig::with_cleanup_interval(Duration)` |            | Expired-session sweep interval in seconds, for the `SessionManager` `with_rbac_config` builds (5 min default) |
+| `max_age`          | `3600`  |             | `LT_SESSION_MAX_AGE`          | `SessionConfig::with_max_age(Duration)`             |            | Session lifetime in seconds for the `with_sessions`/`SessionMiddleware` path (1 hour default). The RBAC path uses `ServerRbacConfig::with_session_duration(u64)` for both the session and its cookie |
+| `cookie_enabled`   | `true`  |             | `LT_SESSION_COOKIE_ENABLED`   | `.with_session_cookie(CookieConfig { enabled, .. })` |            | Emit/read the session cookie; `false` = Bearer-only (no `Set-Cookie` at login, no clear at logout, `Cookie:` ignored) |
 | `cookie_secure`    | `true`  |             | `LT_SESSION_COOKIE_SECURE`    | `.with_session_cookie(CookieConfig)`                |            | `Secure` flag on the session cookie (HTTPS only)               |
 | `cookie_httponly`  | `true`  |             | `LT_SESSION_COOKIE_HTTPONLY`  | `.with_session_cookie(CookieConfig)`                |            | `HttpOnly` flag on the session cookie (XSS protection)         |
 | `cookie_samesite`  | `"Lax"` |             | `LT_SESSION_COOKIE_SAMESITE`  | `.with_session_cookie(CookieConfig)`                |            | `SameSite` policy on the session cookie (Strict/Lax/None)      |
 
-The three `cookie_*` values seed the `CookieConfig` the RBAC login emits and
+The four `cookie_*` values seed the `CookieConfig` the RBAC login emits and
 every extractor (model gate, route guards, `/auth/validate`, logout,
 `SessionMiddleware`) reads. `.with_session_cookie(CookieConfig { .. })` on
 the builder overrides them (name, `Path`, `Domain`, `host_prefix` for a

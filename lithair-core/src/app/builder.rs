@@ -796,7 +796,10 @@ impl LithairServerBuilder {
     /// Configure RBAC with automatic auth routes generation
     ///
     /// This method automatically:
-    /// - Creates PersistentSessionStore for sessions
+    /// - Creates a `PersistentSessionStore` for sessions, wrapped in a
+    ///   `SessionManager` whose cleanup task sweeps expired sessions every
+    ///   `[sessions] cleanup_interval` seconds (`LT_SESSION_CLEANUP_INTERVAL`)
+    ///   — it spawns that task, so call this inside the tokio runtime
     /// - Registers POST /auth/login handler
     /// - Registers POST /auth/logout handler
     /// - Registers GET /auth/validate handler (session validation)
@@ -848,26 +851,39 @@ impl LithairServerBuilder {
         // Create permission checker from config
         let permission_checker = config.create_permission_checker();
 
-        // CRITICAL: Create SHARED session store for login AND models
-        // This ensures all components use the SAME session storage
-        let session_store_shared = {
+        // CRITICAL: one SHARED session store for login/logout/validate AND the
+        // model gate. It is wrapped in a `SessionManager` so the expired
+        // sessions get swept at `[sessions] cleanup_interval`
+        // (`LT_SESSION_CLEANUP_INTERVAL`); the manager is what the builder
+        // registers (`Arc<SessionManager<PersistentSessionStore>>`, the
+        // `RecognizedSessionStore::Manager` shape the gate/guards/fail-fast
+        // know) and it lives in the server state, so the cleanup task runs
+        // for the server's whole lifetime.
+        let session_store: Arc<PersistentSessionStore> = {
             let path = std::path::PathBuf::from(session_path.clone());
             // Create it synchronously here (PersistentSessionStore::new is sync)
             match PersistentSessionStore::new(path) {
-                Ok(store) => Arc::new(store) as Arc<dyn std::any::Any + Send + Sync>,
+                Ok(store) => Arc::new(store),
                 Err(e) => {
                     log::error!("Failed to create session store: {}", e);
                     panic!("Cannot start without session store: {}", e);
                 }
             }
         };
+        let manager_config = crate::session::SessionManagerConfig::new().with_cleanup_interval(
+            std::time::Duration::from_secs(self.config.sessions.cleanup_interval),
+        );
+        let session_manager = Arc::new(SessionManager::from_arc_with_config(
+            Arc::clone(&session_store),
+            manager_config,
+        ));
 
         // Store session manager AND permission checker for use by models
-        self.session_manager = Some(session_store_shared.clone());
+        self.session_manager = Some(session_manager);
         self.permission_checker = Some(permission_checker);
 
         // Add login route
-        let session_store_login = session_store_shared.clone();
+        let session_store_login = Arc::clone(&session_store);
         #[cfg(feature = "mfa")]
         let mfa_storage_login = self.mfa_storage.clone();
         #[cfg(not(feature = "mfa"))]
@@ -875,16 +891,11 @@ impl LithairServerBuilder {
         self = self.with_route(http::Method::POST, format!("{auth_path}/login"), move |req| {
             let users = users_login.clone();
             let duration = session_duration;
-            let store_clone = session_store_login.clone();
+            let session_store = Arc::clone(&session_store_login);
             #[allow(clippy::clone_on_copy)] // Type changes based on feature flag
             let mfa_clone = mfa_storage_login.clone();
 
             Box::pin(async move {
-                // Use shared session store (already created above)
-                let session_store: Arc<PersistentSessionStore> = store_clone
-                    .downcast()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
-
                 match handle_rbac_login(req, session_store, &users, duration, mfa_clone).await {
                     Ok(resp) => {
                         use http_body_util::BodyExt;
@@ -906,16 +917,11 @@ impl LithairServerBuilder {
         });
 
         // Add logout route
-        let session_store_logout = session_store_shared.clone();
+        let session_store_logout = Arc::clone(&session_store);
         self = self.with_route(http::Method::POST, format!("{auth_path}/logout"), move |req| {
-            let store_clone = session_store_logout.clone();
+            let session_store = Arc::clone(&session_store_logout);
 
             Box::pin(async move {
-                // Use shared session store
-                let session_store: Arc<PersistentSessionStore> = store_clone
-                    .downcast()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
-
                 match handle_rbac_logout(req, session_store).await {
                     Ok(resp) => {
                         use http_body_util::BodyExt;
@@ -937,27 +943,24 @@ impl LithairServerBuilder {
         });
 
         // Add validate route (GET endpoint for session validation)
-        let session_store_validate = session_store_shared.clone();
+        let session_store_validate = Arc::clone(&session_store);
         self = self.with_route(http::Method::GET, format!("{auth_path}/validate"), move |req| {
-            let store_clone = session_store_validate.clone();
+            let session_store = Arc::clone(&session_store_validate);
 
             Box::pin(async move {
-                use crate::session::SessionStore;
                 use bytes::Bytes;
 
-                // Use shared session store
-                let session_store: Arc<PersistentSessionStore> = store_clone
-                    .downcast()
-                    .map_err(|_| anyhow::anyhow!("Failed to downcast session store"))?;
-
                 // Extract token from Authorization header or Cookie — the
-                // same canonical extractor the gate and route guards use.
-                let token = crate::http::declarative::extract_session_token(&req);
-
-                let is_valid = if let Some(token) = token {
-                    session_store.get(&token).await.ok().flatten().is_some()
-                } else {
-                    false
+                // same canonical extractor the gate and route guards use —
+                // and apply the same liveness check: expired = no session.
+                let is_valid = match crate::http::declarative::extract_session_token(&req) {
+                    Some(token) => {
+                        crate::session::RecognizedSessionStore::Persistent(session_store)
+                            .get_live_session(&token)
+                            .await
+                            .is_some()
+                    }
+                    None => false,
                 };
 
                 Ok(hyper::Response::builder()
@@ -2991,8 +2994,8 @@ mod tests {
             .any(|(m, p)| *m == method && p == path)
     }
 
-    #[test]
-    fn auth_path_defaults_to_auth() {
+    #[tokio::test]
+    async fn auth_path_defaults_to_auth() {
         let dir = tempfile::tempdir().unwrap();
         let builder = LithairServerBuilder::new().with_rbac_config(rbac_in(dir.path()));
         assert_eq!(builder.auth_path_for_test(), "/auth");
@@ -3001,8 +3004,8 @@ mod tests {
         assert!(has_route(&builder, http::Method::GET, "/auth/validate"));
     }
 
-    #[test]
-    fn with_auth_path_moves_all_auth_routes() {
+    #[tokio::test]
+    async fn with_auth_path_moves_all_auth_routes() {
         let dir = tempfile::tempdir().unwrap();
         #[allow(unused_mut)]
         let mut builder = LithairServerBuilder::new()
@@ -3039,8 +3042,8 @@ mod tests {
         assert!(leftovers.is_empty(), "nothing may remain under /auth: {leftovers:?}");
     }
 
-    #[test]
-    fn with_auth_path_normalizes_trailing_slash() {
+    #[tokio::test]
+    async fn with_auth_path_normalizes_trailing_slash() {
         let dir = tempfile::tempdir().unwrap();
         let builder = LithairServerBuilder::new()
             .with_auth_path("/secure/")
@@ -3054,8 +3057,8 @@ mod tests {
         assert_eq!(normalize_auth_path("/"), "/auth");
     }
 
-    #[test]
-    fn with_auth_path_after_rbac_config_warns_and_does_not_move_routes() {
+    #[tokio::test]
+    async fn with_auth_path_after_rbac_config_warns_and_does_not_move_routes() {
         let dir = tempfile::tempdir().unwrap();
         let builder = LithairServerBuilder::new()
             .with_rbac_config(rbac_in(dir.path()))
