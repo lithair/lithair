@@ -32,7 +32,7 @@ impl<S: SessionStore> SessionMiddleware<S> {
 
     /// Extract session from HTTP request
     ///
-    /// Tries Cookie first (if enabled), then Bearer token (if enabled)
+    /// Tries the Bearer token first (if enabled), then the cookie (if enabled)
     pub async fn extract_session<B>(&self, req: &Request<B>) -> Result<Option<Session>> {
         // Try to extract session ID
         let session_id = self.extract_session_id(req);
@@ -58,44 +58,16 @@ impl<S: SessionStore> SessionMiddleware<S> {
         Ok(None)
     }
 
-    /// Extract session ID from request
-    ///
-    /// Priority: Cookie > Bearer token
+    /// Extract session ID from request — the same extractor as the session
+    /// gate / route guards (Bearer first, then the configured cookie), gated
+    /// by this middleware's `bearer_enabled` / `cookie_enabled` flags.
     fn extract_session_id<B>(&self, req: &Request<B>) -> Option<String> {
-        // 1. Try Cookie (if enabled)
-        if let Some(ref cookie) = self.cookie {
-            if let Some(id) = self.extract_from_cookie(req, cookie) {
-                log::debug!("Session ID extracted from cookie");
-                return Some(id);
-            }
-        }
-
-        // 2. Try Bearer token (if enabled)
-        if self.bearer_enabled {
-            if let Some(id) = self.extract_from_bearer(req) {
-                log::debug!("Session ID extracted from Bearer token");
-                return Some(id);
-            }
-        }
-
-        None
-    }
-
-    /// Extract session ID from Cookie header
-    fn extract_from_cookie<B>(&self, req: &Request<B>, cookie: &SessionCookie) -> Option<String> {
-        req.headers()
-            .get("cookie")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|header| cookie.extract_from_header(header))
-    }
-
-    /// Extract session ID from Authorization Bearer header
-    fn extract_from_bearer<B>(&self, req: &Request<B>) -> Option<String> {
-        req.headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "))
-            .map(|s| s.trim().to_string())
+        let cookie_name = self.cookie.as_ref().map(|c| c.config().effective_name());
+        crate::http::declarative::extract_session_token_from(
+            req,
+            self.bearer_enabled,
+            cookie_name.as_deref(),
+        )
     }
 
     /// Get the session store
@@ -157,7 +129,7 @@ mod tests {
 
         // Build request with cookie
         let req = Request::builder()
-            .header("cookie", "session_id=cookie-session-123")
+            .header("cookie", "session_token=cookie-session-123")
             .body(Full::new(Bytes::new()))
             .unwrap();
 
@@ -216,17 +188,41 @@ mod tests {
 
         // Request with BOTH cookie and bearer
         let req = Request::builder()
-            .header("cookie", "session_id=cookie-session")
+            .header("cookie", "session_token=cookie-session")
             .header("authorization", "Bearer bearer-session")
             .body(Full::new(Bytes::new()))
             .unwrap();
 
-        // Cookie should have priority
+        // Bearer wins — same priority as the session gate and route guards.
         let extracted = middleware.extract_session(&req).await.unwrap();
         assert!(extracted.is_some());
 
         let extracted = extracted.unwrap();
-        assert_eq!(extracted.get::<String>("source"), Some("cookie".to_string()));
+        assert_eq!(extracted.get::<String>("source"), Some("bearer".to_string()));
+    }
+
+    /// The `bearer_enabled` / `cookie_enabled` flags still gate each source.
+    #[tokio::test]
+    async fn disabled_sources_are_ignored() {
+        let store = Arc::new(MemorySessionStore::new());
+        let expires_at = Utc::now() + Duration::hours(1);
+        store.set(Session::new("s1".to_string(), expires_at)).await.unwrap();
+
+        let cookie_only = SessionMiddleware::new(store.clone(), SessionConfig::cookie_only());
+        let bearer_req = Request::builder()
+            .header("authorization", "bearer s1")
+            .body(Full::new(Bytes::new()))
+            .unwrap();
+        assert!(cookie_only.extract_session(&bearer_req).await.unwrap().is_none());
+
+        let bearer_only = SessionMiddleware::new(store.clone(), SessionConfig::bearer_only());
+        let cookie_req = Request::builder()
+            .header("cookie", "session_token=s1")
+            .body(Full::new(Bytes::new()))
+            .unwrap();
+        assert!(bearer_only.extract_session(&cookie_req).await.unwrap().is_none());
+        // Lower-case scheme is accepted (harmonized with the gate).
+        assert!(bearer_only.extract_session(&bearer_req).await.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -242,7 +238,7 @@ mod tests {
 
         // Request with expired session
         let req = Request::builder()
-            .header("cookie", "session_id=expired-session")
+            .header("cookie", "session_token=expired-session")
             .body(Full::new(Bytes::new()))
             .unwrap();
 

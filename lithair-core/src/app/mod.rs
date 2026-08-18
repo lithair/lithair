@@ -772,6 +772,12 @@ pub struct LithairServer {
     // aborted. Defaults to `GRACEFUL_DRAIN_GRACE`; configurable via
     // `LithairServerBuilder::with_shutdown_grace`.
     shutdown_grace: std::time::Duration,
+
+    // Effective session cookie config (TOML/env, then `with_session_cookie`).
+    // Attached to every request's extensions in `handle_request` so the
+    // login/logout emitters and all token extractors read one authority
+    // (`session::effective_cookie_config`).
+    session_cookie: Arc<crate::session::CookieConfig>,
 }
 
 /// A CRUD operation to be submitted through Raft consensus
@@ -2840,9 +2846,13 @@ impl LithairServer {
     /// Handle incoming HTTP request
     async fn handle_request(
         &self,
-        req: hyper::Request<hyper::body::Incoming>,
+        mut req: hyper::Request<hyper::body::Incoming>,
     ) -> Result<RouteResponse> {
         use bytes::Bytes;
+
+        // The session cookie authority for everything downstream (auth
+        // routes, model gate, route guards, custom routes).
+        req.extensions_mut().insert(Arc::clone(&self.session_cookie));
 
         let method = req.method().clone();
         let path = req.uri().path().to_string();
@@ -3627,6 +3637,7 @@ impl Default for LithairServer {
             mutation_hooks: Vec::new(),
             auto_compaction: None,
             shutdown_grace: Self::GRACEFUL_DRAIN_GRACE,
+            session_cookie: Arc::new(crate::session::CookieConfig::default()),
         }
     }
 }

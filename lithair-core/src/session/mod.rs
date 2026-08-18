@@ -32,17 +32,21 @@ mod store;
 #[cfg(test)]
 mod security_tests;
 
+pub(crate) use cookie::cookie_value;
+pub use cookie::{effective_cookie_config, CookieConfig, SessionCookie};
 pub use manager::{SessionManager, SessionManagerConfig};
 pub use memory::MemorySessionStore;
 pub use middleware::SessionMiddleware;
 pub use persistent_store::PersistentSessionStore;
 pub use store::{Session, SessionStore};
 
-/// Name of the cookie carrying the RBAC session id.
+/// Default name of the cookie carrying the session id
+/// ([`CookieConfig::default`]).
 ///
-/// Set by the login route, cleared by the logout route, and read by the
-/// session gate / route guards (`http::declarative::extract_session_token`).
-/// One constant so the emitted and expected names can never drift (issue #219).
+/// The effective name — this default, a `with_session_cookie(...)` override,
+/// or its `__Host-`-prefixed form — is what the login route sets, the logout
+/// route clears, and the session gate / route guards / `SessionMiddleware`
+/// read (issue #219).
 pub const SESSION_COOKIE_NAME: &str = "session_token";
 
 use chrono::Duration;
@@ -141,16 +145,28 @@ pub struct SessionConfig {
 }
 
 /// SameSite cookie policy
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SameSitePolicy {
     /// Strict - cookie only sent to same site
     Strict,
 
-    /// Lax - cookie sent on top-level navigation
+    /// Lax - cookie sent on top-level navigation (the framework default)
+    #[default]
     Lax,
 
     /// None - cookie sent on all requests (requires Secure)
     None,
+}
+
+impl SameSitePolicy {
+    /// The attribute value as it appears in `Set-Cookie`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "Strict",
+            Self::Lax => "Lax",
+            Self::None => "None",
+        }
+    }
 }
 
 impl Default for SessionConfig {
@@ -230,5 +246,13 @@ mod tests {
         assert_eq!(config.max_age, Duration::hours(1));
         assert!(config.cookie_config.secure);
         assert_eq!(config.cookie_config.same_site, SameSitePolicy::Strict);
+    }
+
+    /// D1: the middleware default and the RBAC login share one cookie name.
+    #[test]
+    fn default_cookie_name_is_the_canonical_session_token() {
+        assert_eq!(SessionConfig::default().cookie_config.name, SESSION_COOKIE_NAME);
+        assert_eq!(CookieConfig::default().name, "session_token");
+        assert_eq!(SameSitePolicy::default(), SameSitePolicy::Lax);
     }
 }

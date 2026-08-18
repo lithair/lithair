@@ -207,6 +207,10 @@ pub struct LithairServerBuilder {
     // Issue #115: grace deadline for draining connections + internal
     // background tasks on graceful shutdown. `None` = default (5s).
     shutdown_grace: Option<std::time::Duration>,
+    // The session cookie the login emits and every extractor reads. Seeded
+    // from `[sessions]` (TOML + `LT_SESSION_COOKIE_*`), overridden by
+    // `with_session_cookie`; validated in `build()`.
+    session_cookie: crate::session::CookieConfig,
     // Deferred until `serve()` installs the log bridge — a `log::warn!` from
     // a builder method fires before any subscriber exists and would itself
     // be dropped (config.toml load errors, late `with_auth_path` calls).
@@ -263,6 +267,7 @@ impl LithairServerBuilder {
     pub fn new() -> Self {
         let (config, config_load_warning) = resolve_loaded_config(LithairConfig::load());
         Self {
+            session_cookie: crate::session::CookieConfig::from(&config.sessions),
             config,
             deferred_warnings: config_load_warning.into_iter().collect(),
             auth_path: DEFAULT_AUTH_PATH.to_string(),
@@ -301,6 +306,7 @@ impl LithairServerBuilder {
     /// Create a builder with custom configuration
     pub fn with_config(config: LithairConfig) -> Self {
         Self {
+            session_cookie: crate::session::CookieConfig::from(&config.sessions),
             config,
             deferred_warnings: Vec::new(),
             auth_path: DEFAULT_AUTH_PATH.to_string(),
@@ -385,6 +391,28 @@ impl LithairServerBuilder {
     {
         self.config.sessions.enabled = true;
         self.session_manager = Some(Arc::new(manager));
+        self
+    }
+
+    /// Override the session cookie (name, `Secure`, `HttpOnly`, `SameSite`,
+    /// `Path`, `Domain`, `__Host-` prefix) the RBAC login emits and every
+    /// extractor — model gate, route guards, `/auth/validate`, logout — reads.
+    ///
+    /// Defaults come from `[sessions]` in `config.toml` and the
+    /// `LT_SESSION_COOKIE_SECURE` / `LT_SESSION_COOKIE_HTTPONLY` /
+    /// `LT_SESSION_COOKIE_SAMESITE` env vars (`Secure; HttpOnly; SameSite=Lax;
+    /// Path=/` out of the box); this call wins over both. Order-independent:
+    /// the effective config is attached to each request at dispatch, so it
+    /// may be called before or after `with_rbac_config`.
+    ///
+    /// ```ignore
+    /// use lithair_core::session::CookieConfig;
+    /// LithairServer::new()
+    ///     .with_session_cookie(CookieConfig { host_prefix: true, ..Default::default() })
+    ///     .with_rbac_config(rbac)
+    /// ```
+    pub fn with_session_cookie(mut self, cookie: crate::session::CookieConfig) -> Self {
+        self.session_cookie = cookie;
         self
     }
 
@@ -2517,7 +2545,9 @@ impl LithairServerBuilder {
 
     /// Build the server
     pub fn build(self) -> Result<LithairServer> {
+        self.session_cookie.validate()?;
         Ok(LithairServer {
+            session_cookie: Arc::new(self.session_cookie),
             config: self.config,
             deferred_warnings: self.deferred_warnings,
             tracing_layers: self.tracing_layers,
@@ -2736,6 +2766,46 @@ mod tests {
     fn loaded_config_passes_through_without_warning() {
         let (_, warning) = resolve_loaded_config(Ok(LithairConfig::default()));
         assert!(warning.is_none());
+    }
+
+    /// D4 precedence: `[sessions]` (TOML/env, already merged into
+    /// `LithairConfig` by `load()`) seeds the cookie; `with_session_cookie`
+    /// wins over it; `build()` seals the result on the server.
+    #[test]
+    fn session_cookie_is_seeded_from_config_and_overridden_by_the_builder() {
+        use crate::session::{CookieConfig, SameSitePolicy};
+
+        let mut config = LithairConfig::default();
+        config.sessions.cookie_secure = false;
+        config.sessions.cookie_httponly = false;
+        config.sessions.cookie_samesite = "Strict".to_string();
+
+        let builder = LithairServerBuilder::with_config(config);
+        assert!(!builder.session_cookie.secure);
+        assert!(!builder.session_cookie.http_only);
+        assert_eq!(builder.session_cookie.same_site, SameSitePolicy::Strict);
+        assert_eq!(builder.session_cookie.name, "session_token");
+
+        let override_cookie = CookieConfig { name: "sid".to_string(), ..CookieConfig::default() };
+        let builder = builder.with_session_cookie(override_cookie.clone());
+        assert_eq!(builder.session_cookie, override_cookie);
+        let server = builder.build().expect("valid cookie builds");
+        assert_eq!(*server.session_cookie, override_cookie);
+    }
+
+    #[test]
+    fn build_refuses_host_prefix_with_a_domain() {
+        use crate::session::CookieConfig;
+        let err = LithairServerBuilder::with_config(LithairConfig::default())
+            .with_session_cookie(CookieConfig {
+                host_prefix: true,
+                domain: Some("example.com".to_string()),
+                ..CookieConfig::default()
+            })
+            .build()
+            .err()
+            .expect("__Host- + Domain must not build");
+        assert!(err.to_string().contains("__Host-session_token"), "{err}");
     }
 
     #[test]
