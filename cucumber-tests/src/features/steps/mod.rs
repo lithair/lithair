@@ -21,3 +21,6 @@ pub mod stress_snapshot_steps;
 
 // Scaffolding
 pub mod scaffolding_steps;
+
+// Sessions (own SessionsWorld, runner: tests/sessions_test.rs)
+pub mod sessions_steps;

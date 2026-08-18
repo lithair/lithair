@@ -24,6 +24,7 @@ const CLAIMED: &[(&str, &str)] = &[
     ("features/models/invoice.feature", "test:behavior_models_test"),
     ("features/models/document.feature", "test:behavior_models_test"),
     ("features/core/scaffolding.feature", "test:scaffolding_test"),
+    ("features/core/sessions.feature", "test:sessions_test"),
     ("features/performance/serialization_modes.feature", "test:serialization_test"),
     // — dedicated long-running binaries (task bdd:* / nightly) —
     ("features/performance/bench_isolated.feature", "test:bench_isolated"),
