@@ -833,6 +833,11 @@ impl LithairServerBuilder {
         use std::sync::Arc;
 
         self.auth_routes_mounted = true;
+        // The startup banner reports `config.rbac.enabled`; nothing set it
+        // before, so a server with login/logout/validate and a permission
+        // checker mounted still announced "RBAC: disabled" (found by the
+        // sessions BDD in #223).
+        self.config.rbac.enabled = true;
         let auth_path = self.auth_path.clone();
 
         // Create session store path (default if not provided)
@@ -3001,6 +3006,17 @@ mod tests {
             .custom_route_paths_for_test()
             .iter()
             .any(|(m, p)| *m == method && p == path)
+    }
+
+    #[tokio::test]
+    async fn with_rbac_config_marks_rbac_enabled_for_the_banner() {
+        let builder = LithairServerBuilder::new();
+        assert!(!builder.config.rbac.enabled, "off until RBAC is wired");
+        let builder = builder.with_rbac_config(crate::rbac::ServerRbacConfig::default());
+        assert!(
+            builder.config.rbac.enabled,
+            "with_rbac_config must flip the flag the banner reads"
+        );
     }
 
     #[tokio::test]
