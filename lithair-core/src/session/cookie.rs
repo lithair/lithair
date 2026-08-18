@@ -15,6 +15,15 @@ use std::sync::Arc;
 /// Cookie configuration
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CookieConfig {
+    /// Emit and read the session cookie at all (default: `true`).
+    ///
+    /// `false` (`[sessions] cookie_enabled = false` / `LT_SESSION_COOKIE_ENABLED=false`)
+    /// is Bearer-only mode: the RBAC login answers with the token in the JSON
+    /// body only (no `Set-Cookie`), the logout emits no clear, and no
+    /// extractor (gate, guards, `/auth/validate`, logout, `SessionMiddleware`)
+    /// looks at the `Cookie:` header.
+    pub enabled: bool,
+
     /// Cookie name (default: [`SESSION_COOKIE_NAME`])
     pub name: String,
 
@@ -48,6 +57,7 @@ pub struct CookieConfig {
 impl Default for CookieConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             name: SESSION_COOKIE_NAME.to_string(),
             domain: None,
             path: "/".to_string(),
@@ -91,6 +101,7 @@ impl CookieConfig {
 impl From<&SessionsConfig> for CookieConfig {
     fn from(sessions: &SessionsConfig) -> Self {
         Self {
+            enabled: sessions.cookie_enabled,
             secure: sessions.cookie_secure,
             http_only: sessions.cookie_httponly,
             same_site: match sessions.cookie_samesite.as_str() {
@@ -216,6 +227,7 @@ mod tests {
     #[test]
     fn test_build_set_cookie() {
         let config = CookieConfig {
+            enabled: true,
             name: "session_id".to_string(),
             domain: Some("example.com".to_string()),
             path: "/app".to_string(),

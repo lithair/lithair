@@ -21,7 +21,7 @@ pub struct SessionMiddleware<S: SessionStore> {
 impl<S: SessionStore> SessionMiddleware<S> {
     /// Create a new session middleware
     pub fn new(store: Arc<S>, config: SessionConfig) -> Self {
-        let cookie = if config.cookie_enabled {
+        let cookie = if config.cookie_enabled && config.cookie_config.enabled {
             Some(SessionCookie::new(config.cookie_config.clone()))
         } else {
             None

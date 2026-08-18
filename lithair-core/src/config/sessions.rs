@@ -12,17 +12,25 @@ pub struct SessionsConfig {
     /// Default: true
     pub enabled: bool,
 
-    /// Session cleanup interval in seconds
+    /// Session cleanup interval in seconds — how often the `SessionManager`
+    /// that `with_rbac_config` builds sweeps expired sessions out of the
+    /// store. (`with_sessions` takes its own `SessionManagerConfig`.)
     /// Env: LT_SESSION_CLEANUP_INTERVAL
     /// Default: 300 (5 minutes)
     pub cleanup_interval: u64,
 
-    /// Session maximum age in seconds
+    /// Session maximum age in seconds, for the `with_sessions` /
+    /// `SessionMiddleware` path. The RBAC path (`with_rbac_config`) does NOT
+    /// read it: there `ServerRbacConfig::session_duration` is the lifetime
+    /// of both the session and its cookie.
     /// Env: LT_SESSION_MAX_AGE
     /// Default: 3600 (1 hour)
     pub max_age: u64,
 
-    /// Enable cookie-based sessions
+    /// Enable the session cookie. `false` = Bearer-only mode: the RBAC login
+    /// returns the token in the JSON body only (no `Set-Cookie`), the logout
+    /// emits no clear, and no extractor reads the `Cookie:` header
+    /// (`CookieConfig::enabled`).
     /// Env: LT_SESSION_COOKIE_ENABLED
     /// Default: true
     pub cookie_enabled: bool,

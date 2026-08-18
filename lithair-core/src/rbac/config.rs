@@ -90,7 +90,14 @@ pub struct ServerRbacConfig {
     /// Session store directory path
     pub session_store_path: Option<String>,
 
-    /// Session duration in seconds (default: 8 hours)
+    /// Session duration in seconds (default: 8 hours).
+    ///
+    /// The single authority for the RBAC path (`with_rbac_config`): it is
+    /// the lifetime of the session the login creates AND the `Max-Age` of
+    /// the cookie that carries it, so the two expire together. Independent
+    /// of `[sessions] max_age` (`LT_SESSION_MAX_AGE`), which only concerns
+    /// the `with_sessions` / `SessionMiddleware` path — there is deliberately
+    /// no mapping between them.
     pub session_duration: u64,
 }
 
