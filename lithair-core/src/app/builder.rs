@@ -870,6 +870,15 @@ impl LithairServerBuilder {
                 }
             }
         };
+        // The manager spawns its cleanup task on the current tokio runtime;
+        // outside one, tokio panics with an opaque "no reactor running".
+        // Fail with the actual cause instead (same requirement as
+        // `with_sessions(SessionManager::new(..))`, which spawns too).
+        assert!(
+            tokio::runtime::Handle::try_current().is_ok(),
+            "with_rbac_config must be called inside a tokio runtime (e.g. under \
+             #[tokio::main] or #[tokio::test]): it starts the session cleanup task"
+        );
         let manager_config = crate::session::SessionManagerConfig::new().with_cleanup_interval(
             std::time::Duration::from_secs(self.config.sessions.cleanup_interval),
         );
