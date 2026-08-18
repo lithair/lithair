@@ -759,7 +759,7 @@ impl LithairServerBuilder {
     /// about the deployment (the reason `/wp-admin` is scanned around the
     /// clock). Moving it off `/auth` closes that, the same way
     /// [`with_admin_path`](Self::with_admin_path) and
-    /// [`with_data_admin_ui`](Self::with_data_admin_ui) let the admin surface
+    /// `with_data_admin_ui` (feature `admin-ui`) let the admin surface
     /// move.
     ///
     /// A trailing slash is normalized away (`"/secure/"` mounts
