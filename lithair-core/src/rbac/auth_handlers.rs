@@ -11,24 +11,18 @@ use bytes::Bytes;
 use chrono::Duration;
 use http_body_util::Full;
 use hyper::{Request, Response, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+    /// Only read when the `mfa` feature is on; still accepted otherwise so
+    /// the request shape is the same for both builds.
+    #[cfg_attr(not(feature = "mfa"), allow(dead_code))]
     pub totp_code: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct LoginResponse {
-    pub session_token: String,
-    pub role: String,
-    pub expires_in: i64,
 }
 
 /// Opaque MFA storage type used when the `mfa` feature is disabled.

@@ -1,7 +1,7 @@
 //! Session events for event sourcing
 
 use super::Session;
-use crate::engine::{Event, EventDeserializer};
+use crate::engine::Event;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -184,78 +184,5 @@ impl From<SessionData> for Session {
         let mut session = Session::new(data.id, data.expires_at);
         session.data = data.data;
         session
-    }
-}
-
-#[derive(Default)]
-#[allow(dead_code)]
-pub struct SessionCreatedDeserializer;
-
-impl EventDeserializer for SessionCreatedDeserializer {
-    type State = SessionState;
-
-    fn event_type(&self) -> &str {
-        std::any::type_name::<SessionCreated>()
-    }
-
-    fn apply_from_json(&self, state: &mut Self::State, payload_json: &str) -> Result<(), String> {
-        let mut event: SessionCreated = serde_json::from_str(payload_json)
-            .map_err(|e| format!("Failed to deserialize SessionCreated payload: {}", e))?;
-
-        // Internal upcasting example: normalize old unversioned event_type values
-        if event.event_type.is_empty() || event.event_type == "SessionCreated" {
-            event.event_type = "SessionCreated.v1".to_string();
-        }
-
-        event.apply(state);
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-#[allow(dead_code)]
-pub struct SessionUpdatedDeserializer;
-
-impl EventDeserializer for SessionUpdatedDeserializer {
-    type State = SessionState;
-
-    fn event_type(&self) -> &str {
-        std::any::type_name::<SessionUpdated>()
-    }
-
-    fn apply_from_json(&self, state: &mut Self::State, payload_json: &str) -> Result<(), String> {
-        let mut event: SessionUpdated = serde_json::from_str(payload_json)
-            .map_err(|e| format!("Failed to deserialize SessionUpdated payload: {}", e))?;
-
-        if event.event_type.is_empty() || event.event_type == "SessionUpdated" {
-            event.event_type = "SessionUpdated.v1".to_string();
-        }
-
-        event.apply(state);
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-#[allow(dead_code)]
-pub struct SessionDeletedDeserializer;
-
-impl EventDeserializer for SessionDeletedDeserializer {
-    type State = SessionState;
-
-    fn event_type(&self) -> &str {
-        std::any::type_name::<SessionDeleted>()
-    }
-
-    fn apply_from_json(&self, state: &mut Self::State, payload_json: &str) -> Result<(), String> {
-        let mut event: SessionDeleted = serde_json::from_str(payload_json)
-            .map_err(|e| format!("Failed to deserialize SessionDeleted payload: {}", e))?;
-
-        if event.event_type.is_empty() || event.event_type == "SessionDeleted" {
-            event.event_type = "SessionDeleted.v1".to_string();
-        }
-
-        event.apply(state);
-        Ok(())
     }
 }

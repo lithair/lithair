@@ -1,5 +1,11 @@
 # 🔐 Lithair RBAC Implementation Plan
 
+> **Historique.** Plan de conception d'octobre 2025, conservé pour référence.
+> Il ne décrit plus le comportement courant (pas de JWT / `auth_token` : la
+> session est un cookie `session_token` ou un Bearer opaque). Voir
+> [docs/features/sessions.md](../features/sessions.md) et
+> [docs/modules/rbac/declarative-patterns.md](../modules/rbac/declarative-patterns.md).
+
 **Date Started:** 2025-10-01  
 **Status:** 🚧 In Progress  
 **Goal:** Implement a complete, extensible RBAC system in Lithair core

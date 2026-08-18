@@ -122,39 +122,90 @@ You wrote **zero** lines for any of this infrastructure!
 
 ## Add Sessions and Authentication
 
+The shortest path is `with_rbac_config`: it creates the event-sourced
+session store, mounts `POST /auth/login`, `POST /auth/logout` and
+`GET /auth/validate`, and issues the session cookie at login.
+`with_models_require_session(true)` then gates every auto-generated
+`/api/*` route behind a valid session (401 otherwise).
+
 ```rust
 use lithair_core::app::LithairServer;
+use lithair_core::rbac::{RbacUser, ServerRbacConfig};
 use lithair_core::DeclarativeModel;
-use lithair_core::session::{SessionManager, PersistentSessionStore};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+
+#[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
+struct Product {
+    id: String,
+    name: String,
+    price: f64,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Create session store with event sourcing
-    let session_store = Arc::new(
-        PersistentSessionStore::new("./data/sessions").await?
-    );
-
-    let session_manager = SessionManager::new(session_store.clone())
-        .with_max_age(3600) // 1 hour
-        .with_cookie_name("session_id");
-
     LithairServer::new()
         .with_port(3000)
-        .with_sessions(session_manager)
+        .with_rbac_config(
+            ServerRbacConfig::new()
+                .with_role("Admin", vec!["*".to_string()])
+                .with_user(RbacUser::new("admin", "password123", "Admin"))
+                .with_session_store("./data/sessions"),
+        )
+        .with_models_require_session(true)
         .with_model::<Product>("./data/products", "/api/products")
         .serve()
         .await
 }
 ```
 
-Now your endpoints require authentication! Sessions are persisted via event sourcing.
+Login once, then use either transport — the same session is accepted by
+both:
+
+```bash
+# Login: the body carries the token, and Set-Cookie: session_token=... too
+curl -c jar.txt -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"password123"}'
+
+# Browser style: the cookie alone is enough
+curl -b jar.txt http://localhost:3000/api/products
+
+# API style: Authorization: Bearer <session_token from the login body>
+curl http://localhost:3000/api/products -H "Authorization: Bearer $TOKEN"
+
+# Logout clears the cookie (Max-Age=0) and destroys the session
+curl -b jar.txt -X POST http://localhost:3000/auth/logout
+```
+
+The cookie's attributes (`Secure; HttpOnly; SameSite=Lax; Path=/` by
+default) come from `[sessions]` in `config.toml` / the `LT_SESSION_COOKIE_*`
+env vars, or from `.with_session_cookie(CookieConfig { .. })` on the builder.
+Sessions are persisted via event sourcing.
+
+If you would rather bring your own login handler, wire the store yourself
+with `.with_sessions(SessionManager::from_arc(store))` — see
+[docs/features/sessions.md](../features/sessions.md).
 
 ## Add RBAC (Role-Based Access Control)
 
+`with_rbac_config` already derives a `PermissionChecker` from the roles you
+declare, and the model gate checks it. To plug in your own checker instead,
+register the model with `with_model_full`:
+
 ```rust
+use lithair_core::app::LithairServer;
 use lithair_core::rbac::PermissionChecker;
+use lithair_core::session::{PersistentSessionStore, SessionManager};
+use lithair_core::DeclarativeModel;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+#[derive(DeclarativeModel, Serialize, Deserialize, Clone, Debug)]
+struct Product {
+    id: String,
+    name: String,
+    price: f64,
+}
 
 // Define your permission rules
 struct RolePermissionChecker;
@@ -172,18 +223,14 @@ impl PermissionChecker for RolePermissionChecker {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let session_store = Arc::new(
-        PersistentSessionStore::new("./data/sessions").await?
-    );
-
-    let session_manager = SessionManager::new(session_store.clone())
-        .with_max_age(3600);
-
+    // PersistentSessionStore::new is synchronous and takes a PathBuf.
+    let session_store = Arc::new(PersistentSessionStore::new("./data/sessions".into())?);
     let permission_checker = Arc::new(RolePermissionChecker);
 
     LithairServer::new()
         .with_port(3000)
-        .with_sessions(session_manager)
+        // from_arc: the store is shared with the model below (issue #80)
+        .with_sessions(SessionManager::from_arc(session_store.clone()))
         .with_model_full::<Product>(
             "./data/products",
             "/api/products",
@@ -197,7 +244,7 @@ async fn main() -> anyhow::Result<()> {
 
 **Lithair now automatically:**
 
-- Extracts role from Bearer token
+- Extracts the role from the session (Bearer token or `session_token` cookie)
 - Checks permissions before CREATE, UPDATE, DELETE
 - Returns `403 Forbidden` if unauthorized
 - Allows READ for all authenticated users
