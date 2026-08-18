@@ -12,8 +12,6 @@ use std::sync::Arc;
 /// and loads the session from the store.
 pub struct SessionMiddleware<S: SessionStore> {
     store: Arc<S>,
-    #[allow(dead_code)]
-    config: SessionConfig,
     cookie: Option<SessionCookie>,
     bearer_enabled: bool,
 }
@@ -27,7 +25,7 @@ impl<S: SessionStore> SessionMiddleware<S> {
             None
         };
 
-        Self { store, config: config.clone(), cookie, bearer_enabled: config.bearer_enabled }
+        Self { store, cookie, bearer_enabled: config.bearer_enabled }
     }
 
     /// Extract session from HTTP request

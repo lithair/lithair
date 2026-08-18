@@ -123,7 +123,8 @@ LithairServer::new()
   "password": "password123"
 }
 
-// Response
+// Response (body pour les clients Bearer, cookie pour les navigateurs)
+Set-Cookie: session_token=uuid-v4-token; Path=/; Max-Age=28800; Secure; HttpOnly; SameSite=Lax
 {
   "session_token": "uuid-v4-token",
   "role": "Admin",
@@ -131,15 +132,21 @@ LithairServer::new()
 }
 ```
 
+Les attributs du cookie viennent de `[sessions]` (config.toml /
+`LT_SESSION_COOKIE_*`) ou de `.with_session_cookie(CookieConfig { .. })`.
+
  **POST /auth/logout**
 ```
-Authorization: Bearer <session_token>
+Authorization: Bearer <session_token>   // ou Cookie: session_token=<session_token>
 
-// Response
+// Response — Set-Cookie: session_token=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax (le cookie est effacé)
 {
   "message": "Logged out successfully"
 }
 ```
+
+Idempotent : sans session valide (absente, expirée ou déjà détruite) la
+réponse est 401 mais le cookie est effacé quand même.
 
 ### Infrastructure créée
 

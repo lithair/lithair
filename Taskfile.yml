@@ -52,6 +52,7 @@ tasks:
             task bdd:persistence      # Event sourcing + hash chain tests
             task bdd:performance      # Performance + durability benchmarks
             task bdd:scaffolding      # CLI scaffolding tests
+            task bdd:sessions         # Session cookie journey
             task bdd:distribution     # Cluster replication tests
             task bdd:all              # Run all BDD tests
 
@@ -464,12 +465,20 @@ tasks:
       - echo "🔧 Scaffolding BDD tests completed"
 
 
+  bdd:sessions:
+    desc: "Run session BDD tests (login cookie, gated route, logout)"
+    cmds:
+      # Uses its own SessionsWorld runner, not the main cucumber binary
+      - cd cucumber-tests && cargo test --test sessions_test
+      - echo "🍪 Session BDD tests completed"
+
   bdd:all:
     desc: "Run all BDD tests with comprehensive report"
     cmds:
       - task: bdd:persistence
       - task: bdd:performance
       - task: bdd:scaffolding
+      - task: bdd:sessions
       - task: bdd:distribution
       - echo "🎉 All BDD test suites passed successfully!"
 

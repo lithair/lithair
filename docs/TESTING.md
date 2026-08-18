@@ -12,7 +12,7 @@ bug this suite caught.
 | **Unit** | internal invariants (~400 tests) | `#[cfg(test)]` modules in `lithair-core/src/` | every PR (CI) |
 | **Integration** | the real API: server boot + HTTP + assertions (23 suites) | `lithair-core/tests/*.rs` | every PR (CI) |
 | **Compile-fail** | the declarative macro surface: typos and wrong positions fail the build (gate G2) | `lithair-macros/tests/ui/*.rs` (trybuild) | every PR (CI) |
-| **Behavior BDD** | user-visible promises as executable Gherkin specs | `cucumber-tests/features/{persistence,models,core/scaffolding}` | every PR (CI) |
+| **Behavior BDD** | user-visible promises as executable Gherkin specs | `cucumber-tests/features/{persistence,models,core/{scaffolding,sessions}}` | every PR (CI) |
 | **Performance / durability BDD** | throughput, 1M-event stress, snapshot/durability drills | `cucumber-tests/features/performance/` | `task bdd:performance` (manual/nightly) |
 | **Cluster** | real 3-node replication, leader election | `cucumber-tests/features/core/*cluster*` | `task bdd:distribution` (manual/nightly) |
 | **Load / benchmarks** | published baselines vs Axum+SQLite | `benchmarks/run.sh`, `tools/loadgen` | manual ([baselines](performance/baselines.md)) |
@@ -71,6 +71,7 @@ cidx run test          # the exact per-PR CI gate, in the CI container
 cargo test -p lithair-core --tests                 # integration tier only
 cargo test -p lithair-macros --test compile_fail   # macro surface (trybuild)
 cd cucumber-tests && cargo test --test cucumber_tests   # persistence BDD
+cd cucumber-tests && cargo test --test sessions_test    # session cookie journey BDD
 task bdd:performance   # long-running perf/durability suites
 task bdd:distribution  # real-cluster suites
 ```

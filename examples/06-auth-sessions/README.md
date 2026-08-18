@@ -77,7 +77,7 @@ The session token can also be sent as a cookie:
 
 ```bash
 curl http://localhost:3000/api/products \
-  -H "Cookie: session_id=$TOKEN"
+  -H "Cookie: session_token=$TOKEN"
 ```
 
 ## 👥 Demo Users

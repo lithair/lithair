@@ -79,6 +79,11 @@ path = "tests/serialization_test.rs"
 harness = false
 
 [[test]]
+name = "sessions_test"
+path = "tests/sessions_test.rs"
+harness = false
+
+[[test]]
 name = "no_orphan_features"
 path = "tests/no_orphan_features.rs"
 
