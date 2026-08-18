@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-17
+
+The browser-session release. The framework's own login now works from a
+browser the way a project built on Lithair expects — the login sets a
+session cookie, the gate and guards accept it, logout clears it — and the
+session layer that this exposed as a pile of fragments (seven authorities
+for the cookie name, config knobs read but never applied, a cleanup task
+that never ran on the RBAC path) is unified around one source of truth.
+Every session/cookie option now does what its documentation says.
+
+### Breaking (minor, with migration)
+
+- **The default session cookie name is `session_token` everywhere.**
+  `CookieConfig::default().name` (used by `SessionMiddleware`) was
+  `session_id` while the RBAC login, the model gate and the route guards
+  already used `session_token`; a project combining both had a split-brain
+  session. Apps that relied on the old middleware default and cannot
+  change their clients set it back explicitly:
+  `SessionConfig::default().with_cookie_name("session_id")`.
+- **`SessionMiddleware` now prefers `Authorization: Bearer` over the
+  cookie when both are present** (it delegates to the same extractor as
+  the gate and guards, which always had that order).
+- **`with_rbac_config` must be called inside a tokio runtime** (it now
+  starts the session cleanup task, like `with_sessions(SessionManager::new(..))`
+  always did). Outside one it fails fast with a message naming the fix
+  instead of tokio's opaque "no reactor running". Every `#[tokio::main]`
+  / `#[tokio::test]` caller is unaffected.
+
+### Added
+
+- **The RBAC login issues a session cookie, and logout accepts one**
+  (#220, closes #219): `POST {auth}/login` still returns the token in the
+  JSON body and now also sets `Set-Cookie: session_token=<id>; Path=/;
+  Max-Age=<session_duration>; Secure; HttpOnly; SameSite=Lax`. Logout
+  reads the Bearer header *or* the cookie and clears it with identical
+  attributes and `Max-Age=0`. Bearer clients ignore `Set-Cookie`; nothing
+  that worked before stops working.
+- **`CookieConfig` is the single cookie authority** (#221):
+  re-exported as `lithair_core::session::CookieConfig`, it drives both
+  emission (login/logout via `SessionCookie::build_set_cookie` /
+  `build_delete_cookie`, previously dead code) and extraction (one
+  extractor for the model gate, route guards, `/auth/validate`, logout
+  and `SessionMiddleware`). Configurable via TOML `[sessions]` / env
+  (`LT_SESSION_COOKIE_SECURE`, `_HTTPONLY`, `_SAMESITE`, `_ENABLED` — all
+  read before, none applied) and programmatically via the new
+  `LithairServerBuilder::with_session_cookie(CookieConfig)`; precedence
+  builder > env > TOML > defaults (`Secure`, `HttpOnly`, `SameSite=Lax`,
+  `Path=/`). `SameSitePolicy` gains `Default` (`Lax`).
+- **`__Host-` cookie prefix, opt-in** (#221): `CookieConfig { host_prefix:
+  true, .. }` names the cookie `__Host-session_token`, forces `Secure` and
+  `Path=/`, and refuses a `Domain` at build time — closes same-name cookie
+  shadowing from sibling subdomains and slot-sharing between servers on
+  one host. Candidate default for 2.0.
+- **Bearer-only mode**: `LT_SESSION_COOKIE_ENABLED=false` (or
+  `CookieConfig { enabled: false }`) makes the login skip `Set-Cookie`
+  and the extractors ignore cookies.
+- **Sessions BDD suite** (#223): `cucumber-tests/features/core/sessions.feature`
+  — browser login → cookie-only gated request → logout → 401 — runs in the
+  per-PR cidx test phase (`task bdd:sessions`). The repo had no
+  session/cookie scenario before.
+
+### Fixed
+
+- **Logout is idempotent and expiry-aware** (#222): the clearing
+  `Set-Cookie` is sent on every response, including the 401s (a browser
+  holding a dead `HttpOnly` cookie can now log out of it); when Bearer and
+  cookie carry different tokens both sessions are deleted; `/auth/validate`
+  and logout use `get_live_session`, so an expired session is no longer
+  reported `valid: true` — expired entries are swept opportunistically.
+- **RBAC sessions are cleaned up** (#222): `with_rbac_config` wraps its
+  store in a `SessionManager`, so `cleanup_expired` finally runs on that
+  path and `LT_SESSION_CLEANUP_INTERVAL` takes effect (it was read and
+  inert). `ServerRbacConfig::session_duration` remains the single truth
+  for the RBAC path — session lifetime and cookie `Max-Age` — while
+  `SessionsConfig::max_age` applies to the `with_sessions` /
+  `SessionMiddleware` path; both are documented as such.
+- **Startup banner reported `RBAC: disabled` with RBAC mounted**: nothing
+  ever set `config.rbac.enabled`; `with_rbac_config` now does (found by
+  the sessions BDD).
+- **Docs that did not compile or matched nothing** (#223): the
+  getting-started session/RBAC snippets called methods that do not exist
+  on `SessionManager` and awaited a sync constructor — rewritten and
+  compiled; `docs/configuration-reference.md` cited three phantom builder
+  methods; example 06's README told the browser to send `session_id`;
+  the RBAC patterns doc described a Bearer-only logout. `cargo doc
+  -p lithair-core` is warning-free again.
+
+### Removed
+
+- Dead session code (#223): `session/lithair_store.rs` (444 lines never
+  compiled — no `mod` declaration anywhere), three unused event
+  deserializers, `LoginResponse`, `SessionMiddleware.config`. Net −253
+  lines across the PR; no `#[allow(dead_code)]` left in `session/` or
+  `rbac/`.
+
 ## [1.8.0] - 2026-08-16
 
 The consumer-driven release: everything here came from building a real
@@ -1562,7 +1657,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/lithair/lithair/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/lithair/lithair/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/lithair/lithair/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/lithair/lithair/compare/v1.5.0...v1.6.0
