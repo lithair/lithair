@@ -147,10 +147,11 @@ Session management and authentication settings.
 | `cookie_secure`    | `true`  |             | `LT_SESSION_COOKIE_SECURE`    | `.with_session_cookie(CookieConfig)`                |            | `Secure` flag on the session cookie (HTTPS only)               |
 | `cookie_httponly`  | `true`  |             | `LT_SESSION_COOKIE_HTTPONLY`  | `.with_session_cookie(CookieConfig)`                |            | `HttpOnly` flag on the session cookie (XSS protection)         |
 | `cookie_samesite`  | `"Lax"` |             | `LT_SESSION_COOKIE_SAMESITE`  | `.with_session_cookie(CookieConfig)`                |            | `SameSite` policy on the session cookie (Strict/Lax/None)      |
+| `cross_site_check` | `"Enforce"` |         | `LT_SESSION_CROSS_SITE_CHECK` | `.with_session_cookie(CookieConfig { cross_site_check, .. })` |            | Reject cookie-authenticated cross-site mutations with 403 (`Enforce`) or skip the check (`Off`) — CSRF defense, issue #225 |
 
-The four `cookie_*` values seed the `CookieConfig` the RBAC login emits and
-every extractor (model gate, route guards, `/auth/validate`, logout,
-`SessionMiddleware`) reads. `.with_session_cookie(CookieConfig { .. })` on
+The four `cookie_*` values and `cross_site_check` seed the `CookieConfig`
+the RBAC login emits and every extractor (model gate, route guards,
+`/auth/validate`, logout, `SessionMiddleware`) reads. `.with_session_cookie(CookieConfig { .. })` on
 the builder overrides them (name, `Path`, `Domain`, `host_prefix` for a
 `__Host-` cookie); precedence is builder > env > TOML > defaults.
 
@@ -167,6 +168,7 @@ cookie_enabled = true
 cookie_secure = true
 cookie_httponly = true
 cookie_samesite = "Lax"
+cross_site_check = "Enforce"
 ```
 
 **Environment:**
@@ -179,6 +181,7 @@ LT_SESSION_COOKIE_ENABLED=true
 LT_SESSION_COOKIE_SECURE=true
 LT_SESSION_COOKIE_HTTPONLY=true
 LT_SESSION_COOKIE_SAMESITE=Lax
+LT_SESSION_CROSS_SITE_CHECK=Enforce
 ```
 
 **Code:**

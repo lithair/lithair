@@ -134,6 +134,28 @@ async fn when_logout_with_cookie(world: &mut SessionsWorld) {
     world.record(resp);
 }
 
+#[when(expr = "I POST \\/auth\\/logout with the session cookie from a cross-site page")]
+async fn when_logout_cross_site(world: &mut SessionsWorld) {
+    // A forged cross-site POST: the browser sends the cookie along with
+    // `Sec-Fetch-Site: cross-site` (issue #225 — forced-logout DoS attempt).
+    let resp = SessionsWorld::client()
+        .post(format!("{}/auth/logout", world.base_url))
+        .header("cookie", world.cookie_header())
+        .header("sec-fetch-site", "cross-site")
+        .send()
+        .await
+        .expect("logout sent");
+    world.record(resp);
+}
+
+#[then(expr = "the response should not touch any cookie")]
+async fn then_no_set_cookie(world: &mut SessionsWorld) {
+    assert_eq!(
+        world.last_set_cookie, None,
+        "a rejected cross-site logout must not emit any Set-Cookie"
+    );
+}
+
 #[then(expr = "the response status should be {int}")]
 async fn then_status(world: &mut SessionsWorld, expected: u16) {
     assert_eq!(world.last_status, Some(expected), "unexpected status");

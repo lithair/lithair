@@ -176,6 +176,17 @@ pub async fn handle_rbac_logout(
     req: Request<hyper::body::Incoming>,
     session_store: Arc<PersistentSessionStore>,
 ) -> Result<Response<Full<Bytes>>> {
+    // Cross-site check (issue #225): a cross-site POST riding the victim's
+    // cookie is a forced-logout DoS. Reject BEFORE touching the store and
+    // WITHOUT the clearing Set-Cookie — the 403 itself must not log the
+    // victim out either.
+    if crate::http::declarative::cookie_auth_cross_site_blocked(&req) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(crate::http::declarative::CROSS_SITE_REJECTED)))?);
+    }
+
     let candidates = crate::http::declarative::session_token_candidates(&req);
 
     let mut live = 0usize;

@@ -78,10 +78,52 @@ fn serialized_size<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 ///
 /// Returns `None` if no usable token is found.
 pub(crate) fn extract_session_token<B>(req: &Request<B>) -> Option<String> {
-    let cookie = crate::session::effective_cookie_config(req);
-    let name = cookie.enabled.then(|| cookie.effective_name());
-    extract_session_token_from(req, true, name.as_deref())
+    extract_session_token_with_source(req).map(|(token, _)| token)
 }
+
+/// Where [`extract_session_token`] found the token — the cross-site check
+/// (issue #225) only applies to cookie-borne credentials: an attacker cannot
+/// forge the `Authorization` header cross-site, a cookie rides along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TokenSource {
+    Bearer,
+    Cookie,
+}
+
+/// [`extract_session_token`] plus the transport that matched: Bearer first,
+/// then the session cookie (same priority as `extract_session_token_from`).
+pub(crate) fn extract_session_token_with_source<B>(
+    req: &Request<B>,
+) -> Option<(String, TokenSource)> {
+    if let Some(token) = bearer_token(req) {
+        return Some((token, TokenSource::Bearer));
+    }
+    let cookie = crate::session::effective_cookie_config(req);
+    if !cookie.enabled {
+        return None;
+    }
+    cookie_token(req, &cookie.effective_name()).map(|token| (token, TokenSource::Cookie))
+}
+
+/// The one cross-site gate (issue #225): `true` when this request must be
+/// rejected with `403 {"error":"cross-site request rejected"}` — i.e. its
+/// credential is the session cookie (not Bearer) AND
+/// [`crate::session::cross_site_request_blocked`] flags it (unsafe method,
+/// `cross_site_check: Enforce`, and `Sec-Fetch-Site: cross-site` or a
+/// mismatching `Origin`/`Referer`). Called by the model gate, the route
+/// guards, the RBAC logout and the MFA mutation handlers.
+pub(crate) fn cookie_auth_cross_site_blocked<B>(req: &Request<B>) -> bool {
+    match extract_session_token_with_source(req) {
+        Some((_, TokenSource::Cookie)) => {
+            let cookie = crate::session::effective_cookie_config(req);
+            crate::session::cross_site_request_blocked(req, &cookie)
+        }
+        _ => false,
+    }
+}
+
+/// Body of every cross-site 403, verbatim from issue #225.
+pub(crate) const CROSS_SITE_REJECTED: &str = r#"{"error":"cross-site request rejected"}"#;
 
 /// Every session token the request carries, Bearer first then cookie,
 /// de-duplicated: a browser that also sends a stale `Authorization` header
@@ -1301,11 +1343,20 @@ where
         // ====================================================================
         if self.require_session.load(std::sync::atomic::Ordering::Acquire)
             && method != Method::OPTIONS
-            && !self.has_valid_session(&req).await
         {
-            return Ok(
-                self.json_error_response(StatusCode::UNAUTHORIZED, "Authentication required")
-            );
+            // Cross-site check first (issue #225): a cookie-authenticated
+            // unsafe method from another site is rejected before the session
+            // store is even consulted. Bearer requests are never blocked.
+            if cookie_auth_cross_site_blocked(&req) {
+                return Ok(
+                    self.json_error_response(StatusCode::FORBIDDEN, "cross-site request rejected")
+                );
+            }
+            if !self.has_valid_session(&req).await {
+                return Ok(
+                    self.json_error_response(StatusCode::UNAUTHORIZED, "Authentication required")
+                );
+            }
         }
 
         match (method, path_segments.len()) {

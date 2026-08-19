@@ -52,6 +52,30 @@ pub struct CookieConfig {
     /// attacks. Lithair forces those three attributes when this is on and
     /// [`CookieConfig::validate`] rejects an explicit `domain`. Opt-in in 1.x.
     pub host_prefix: bool,
+
+    /// Reject cross-site state-changing requests that authenticate with the
+    /// session cookie (CSRF defense, issue #225). See [`CrossSiteCheck`].
+    pub cross_site_check: CrossSiteCheck,
+}
+
+/// Cross-site request policy for cookie-authenticated unsafe methods
+/// (`POST`/`PUT`/`PATCH`/`DELETE`), issue #225.
+///
+/// A cookie rides along on cross-site requests, so every state-changing
+/// endpoint that accepts it is CSRF-relevant. Under `Enforce` (the default)
+/// such a request is rejected with `403` when `Sec-Fetch-Site: cross-site`
+/// is present — falling back to an `Origin`/`Referer` vs `Host` comparison
+/// when the header is absent; a request carrying none of those headers is
+/// allowed (curl, native clients). Bearer-authenticated requests are never
+/// checked: an attacker cannot forge the `Authorization` header cross-site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CrossSiteCheck {
+    /// Reject cookie-authenticated cross-site mutations with `403` (default).
+    #[default]
+    Enforce,
+    /// Skip the check — for setups that legitimately POST cross-site
+    /// (separate front domain) until they configure CORS properly.
+    Off,
 }
 
 impl Default for CookieConfig {
@@ -66,6 +90,7 @@ impl Default for CookieConfig {
             same_site: SameSitePolicy::Lax,
             max_age: Some(86400), // 24 hours
             host_prefix: false,
+            cross_site_check: CrossSiteCheck::Enforce,
         }
     }
 }
@@ -109,6 +134,10 @@ impl From<&SessionsConfig> for CookieConfig {
                 "None" => SameSitePolicy::None,
                 _ => SameSitePolicy::Lax,
             },
+            cross_site_check: match sessions.cross_site_check.as_str() {
+                "Off" => CrossSiteCheck::Off,
+                _ => CrossSiteCheck::Enforce,
+            },
             ..Self::default()
         }
     }
@@ -122,6 +151,90 @@ impl From<&SessionsConfig> for CookieConfig {
 /// handler calls) fall back to [`CookieConfig::default`].
 pub fn effective_cookie_config<B>(req: &Request<B>) -> Arc<CookieConfig> {
     req.extensions().get::<Arc<CookieConfig>>().cloned().unwrap_or_default()
+}
+
+/// Cross-site check for a cookie-authenticated state-changing request
+/// (issue #225). Returns `true` when the request must be rejected with 403.
+///
+/// The CALLER establishes that the credential is cookie-borne (a Bearer
+/// request is not CSRF-forgeable and is never passed here — see
+/// `crate::http::declarative::cookie_auth_cross_site_blocked`). This function
+/// then applies the fetch-metadata-first policy:
+///
+/// - safe method (`GET`/`HEAD`/`OPTIONS`/...) or `cross_site_check: Off`
+///   → allow;
+/// - `Sec-Fetch-Site: same-origin` / `same-site` / `none` → allow,
+///   `cross-site` → block;
+/// - header absent (older browser, curl, native app): compare the `Origin`
+///   header's host (and port, when it names one) against `Host`; absent that,
+///   the `Referer`'s host; mismatch → block;
+/// - none of the three headers present → allow (non-browser clients).
+pub(crate) fn cross_site_request_blocked<B>(req: &Request<B>, config: &CookieConfig) -> bool {
+    use http::Method;
+    if config.cross_site_check == CrossSiteCheck::Off {
+        return false;
+    }
+    if !matches!(*req.method(), Method::POST | Method::PUT | Method::PATCH | Method::DELETE) {
+        return false;
+    }
+
+    let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
+
+    let (checked, origin) = if let Some(site) = header("sec-fetch-site") {
+        (site.eq_ignore_ascii_case("cross-site"), format!("Sec-Fetch-Site: {site}"))
+    } else {
+        // Fallback: Origin first, else Referer, against the Host header.
+        // `authority_of` also swallows `Origin: null` (opaque origin, e.g. a
+        // sandboxed iframe): "null" never matches a real Host → block.
+        let host = header("host");
+        let claimed = header("origin").or_else(|| header("referer"));
+        match (claimed, host) {
+            (Some(claimed), Some(host)) => (
+                !authority_matches_host(authority_of(claimed), host),
+                format!("origin: {claimed}"),
+            ),
+            _ => (false, String::new()),
+        }
+    };
+
+    if checked {
+        log::warn!(
+            "cross-site request rejected: {} {} ({})",
+            req.method(),
+            req.uri().path(),
+            origin
+        );
+    }
+    checked
+}
+
+/// `host[:port]` part of an `Origin`/`Referer` value: scheme stripped, cut at
+/// the first `/`. `Origin: null` comes back as `"null"`.
+fn authority_of(value: &str) -> &str {
+    let rest = value.split_once("://").map_or(value, |(_, rest)| rest);
+    rest.split(['/', '?', '#']).next().unwrap_or(rest)
+}
+
+/// Case-insensitive host comparison: the host parts must match, and when the
+/// claimed authority names a port it must match `Host`'s too (a claimed
+/// authority without a port matches any — scheme-default ports are the
+/// browser's business).
+fn authority_matches_host(claimed: &str, host: &str) -> bool {
+    let (claimed_host, claimed_port) = split_port(claimed);
+    let (host_host, host_port) = split_port(host);
+    claimed_host.eq_ignore_ascii_case(host_host)
+        && claimed_port.is_none_or(|p| host_port == Some(p))
+}
+
+/// `host[:port]` → `(host, Some(port))` when the suffix after the last `:` is
+/// numeric — which leaves bare IPv6 literals (`[::1]`) whole.
+fn split_port(authority: &str) -> (&str, Option<&str>) {
+    match authority.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
+            (host, Some(port))
+        }
+        _ => (authority, None),
+    }
 }
 
 /// Value of the `name` cookie in a `Cookie:` header, if present and non-empty.
@@ -236,6 +349,7 @@ mod tests {
             same_site: SameSitePolicy::Strict,
             max_age: Some(3600),
             host_prefix: false,
+            cross_site_check: CrossSiteCheck::Enforce,
         };
 
         let cookie = SessionCookie::new(config);
@@ -327,6 +441,125 @@ mod tests {
         assert_eq!(cookie.extract_from_header("other=value"), None);
         assert_eq!(cookie.extract_from_header("session_token="), None);
         assert_eq!(cookie.extract_from_header("session_tokenx=1"), None);
+    }
+
+    /// Issue #225 — the cross-site check semantics, case by case.
+    #[test]
+    fn cross_site_check_semantics() {
+        let config = CookieConfig::default(); // Enforce
+        let req = |method: &str, headers: &[(&str, &str)]| {
+            let mut b = Request::builder().method(method).uri("/api/accounts");
+            for (k, v) in headers {
+                b = b.header(*k, *v);
+            }
+            b.body(()).unwrap()
+        };
+
+        // Safe methods are never blocked, even declared cross-site.
+        for method in ["GET", "HEAD", "OPTIONS"] {
+            let r = req(method, &[("sec-fetch-site", "cross-site")]);
+            assert!(!cross_site_request_blocked(&r, &config), "{method}");
+        }
+
+        // Sec-Fetch-Site decides when present.
+        for (site, blocked) in [
+            ("same-origin", false),
+            ("same-site", false),
+            ("none", false),
+            ("cross-site", true),
+        ] {
+            let r = req("POST", &[("sec-fetch-site", site)]);
+            assert_eq!(cross_site_request_blocked(&r, &config), blocked, "{site}");
+        }
+
+        // Absent → Origin vs Host fallback (port compared when Origin has one).
+        for (origin, host, blocked) in [
+            ("https://app.example.com", "app.example.com", false),
+            ("https://APP.example.COM", "app.example.com", false),
+            ("http://app.example.com:8080", "app.example.com:8080", false),
+            ("http://app.example.com", "app.example.com:8080", false), // no claimed port
+            ("http://app.example.com:9999", "app.example.com:8080", true),
+            ("https://evil.example.net", "app.example.com", true),
+            ("null", "app.example.com", true), // opaque origin (sandboxed iframe)
+            ("http://[::1]:8080", "[::1]:8080", false),
+        ] {
+            let r = req("POST", &[("origin", origin), ("host", host)]);
+            assert_eq!(cross_site_request_blocked(&r, &config), blocked, "{origin} vs {host}");
+        }
+
+        // No Origin → Referer fallback, host part of the full URL.
+        let r = req("POST", &[("referer", "https://evil.example.net/page"), ("host", "app.io")]);
+        assert!(cross_site_request_blocked(&r, &config));
+        let r = req("POST", &[("referer", "https://app.io/form?x=1"), ("host", "app.io")]);
+        assert!(!cross_site_request_blocked(&r, &config));
+
+        // No Sec-Fetch-Site, no Origin, no Referer → allow (curl, native apps).
+        let r = req("DELETE", &[("host", "app.io")]);
+        assert!(!cross_site_request_blocked(&r, &config));
+
+        // Off disarms everything.
+        let off = CookieConfig { cross_site_check: CrossSiteCheck::Off, ..Default::default() };
+        let r = req("POST", &[("sec-fetch-site", "cross-site")]);
+        assert!(!cross_site_request_blocked(&r, &off));
+    }
+
+    /// Issue #225 — the caller-side gate only fires for cookie-borne tokens.
+    #[test]
+    fn cross_site_gate_ignores_bearer_and_anonymous_requests() {
+        use crate::http::declarative::cookie_auth_cross_site_blocked;
+        let cross_site = ("sec-fetch-site", "cross-site");
+
+        // Cookie credential + cross-site → blocked.
+        let req = Request::builder()
+            .method("POST")
+            .header("cookie", "session_token=tok")
+            .header(cross_site.0, cross_site.1)
+            .body(())
+            .unwrap();
+        assert!(cookie_auth_cross_site_blocked(&req));
+
+        // Bearer wins the extraction even when the cookie rides along → allowed.
+        let req = Request::builder()
+            .method("POST")
+            .header("authorization", "Bearer tok")
+            .header("cookie", "session_token=tok")
+            .header(cross_site.0, cross_site.1)
+            .body(())
+            .unwrap();
+        assert!(!cookie_auth_cross_site_blocked(&req));
+
+        // No credential at all → nothing to protect.
+        let req = Request::builder()
+            .method("POST")
+            .header(cross_site.0, cross_site.1)
+            .body(())
+            .unwrap();
+        assert!(!cookie_auth_cross_site_blocked(&req));
+
+        // Off via the request's effective config.
+        let mut req = Request::builder()
+            .method("POST")
+            .header("cookie", "session_token=tok")
+            .header(cross_site.0, cross_site.1)
+            .body(())
+            .unwrap();
+        req.extensions_mut().insert(Arc::new(CookieConfig {
+            cross_site_check: CrossSiteCheck::Off,
+            ..Default::default()
+        }));
+        assert!(!cookie_auth_cross_site_blocked(&req));
+    }
+
+    /// The `[sessions] cross_site_check` string reaches the CookieConfig.
+    #[test]
+    fn sessions_config_drives_the_cross_site_check() {
+        let sessions =
+            SessionsConfig { cross_site_check: "Off".to_string(), ..SessionsConfig::default() };
+        assert_eq!(CookieConfig::from(&sessions).cross_site_check, CrossSiteCheck::Off);
+        assert_eq!(
+            CookieConfig::from(&SessionsConfig::default()).cross_site_check,
+            CrossSiteCheck::Enforce
+        );
     }
 
     #[test]

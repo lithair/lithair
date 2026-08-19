@@ -96,6 +96,15 @@ pub async fn handle_mfa_setup(
 ) -> Result<Response<Full<Bytes>>> {
     use http_body_util::BodyExt;
 
+    // Cross-site check (issue #225): these are state-changing routes a
+    // cross-site page could drive with the victim's session cookie.
+    if crate::http::declarative::cookie_auth_cross_site_blocked(&req) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(crate::http::declarative::CROSS_SITE_REJECTED)))?);
+    }
+
     // Parse request body
     let body_bytes = req.collect().await?.to_bytes();
     let setup_req: MfaSetupRequest = serde_json::from_slice(&body_bytes)?;
@@ -143,6 +152,15 @@ pub async fn handle_mfa_enable(
     req: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>> {
     use http_body_util::BodyExt;
+
+    // Cross-site check (issue #225): these are state-changing routes a
+    // cross-site page could drive with the victim's session cookie.
+    if crate::http::declarative::cookie_auth_cross_site_blocked(&req) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(crate::http::declarative::CROSS_SITE_REJECTED)))?);
+    }
 
     // Parse request body
     let body_bytes = req.collect().await?.to_bytes();
@@ -195,6 +213,15 @@ pub async fn handle_mfa_disable(
 ) -> Result<Response<Full<Bytes>>> {
     use http_body_util::BodyExt;
 
+    // Cross-site check (issue #225): these are state-changing routes a
+    // cross-site page could drive with the victim's session cookie.
+    if crate::http::declarative::cookie_auth_cross_site_blocked(&req) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(crate::http::declarative::CROSS_SITE_REJECTED)))?);
+    }
+
     // Parse request body
     let body_bytes = req.collect().await?.to_bytes();
     let disable_req: MfaVerifyRequest = serde_json::from_slice(&body_bytes)?;
@@ -243,6 +270,15 @@ pub async fn handle_mfa_verify(
     req: Request<hyper::body::Incoming>,
 ) -> Result<Response<Full<Bytes>>> {
     use http_body_util::BodyExt;
+
+    // Cross-site check (issue #225): these are state-changing routes a
+    // cross-site page could drive with the victim's session cookie.
+    if crate::http::declarative::cookie_auth_cross_site_blocked(&req) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(crate::http::declarative::CROSS_SITE_REJECTED)))?);
+    }
 
     // Parse request body
     let body_bytes = req.collect().await?.to_bytes();

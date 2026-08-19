@@ -103,6 +103,13 @@ impl RouteGuard {
             }
         }
 
+        // Cross-site check (issue #225): a cookie-authenticated unsafe method
+        // from another site is denied outright — 403, never a login redirect
+        // (the request is forged, not unauthenticated).
+        if super::declarative::cookie_auth_cross_site_blocked(req) {
+            return Ok(deny_cross_site());
+        }
+
         // Resolve the session store via the shared recognizer so this guard
         // honors BOTH a raw `Arc<PersistentSessionStore>` (the RBAC builder
         // path) AND an `Arc<SessionManager<…>>` (the `with_sessions(...)` API).
@@ -171,6 +178,11 @@ impl RouteGuard {
         // Fail CLOSED: unlike RequireAuth (which allows when no session store is
         // configured, i.e. no auth at all), an authz guard with no way to read a
         // role denies — an unverifiable role must not pass.
+
+        // Cross-site check (issue #225), same rule as RequireAuth.
+        if super::declarative::cookie_auth_cross_site_blocked(req) {
+            return Ok(deny_cross_site());
+        }
         let Some(store_any) = session_store else {
             return Ok(deny_role(redirect_to));
         };
@@ -196,6 +208,17 @@ impl RouteGuard {
             Ok(deny_role(redirect_to))
         }
     }
+}
+
+/// `403` for a cookie-authenticated cross-site mutation (issue #225).
+fn deny_cross_site() -> GuardResult {
+    GuardResult::Deny(
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(super::declarative::CROSS_SITE_REJECTED)))
+            .unwrap(),
+    )
 }
 
 /// Build the denial response for a failed role check: a redirect when one is

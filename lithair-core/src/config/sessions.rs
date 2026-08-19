@@ -49,6 +49,19 @@ pub struct SessionsConfig {
     /// Env: LT_SESSION_COOKIE_SAMESITE
     /// Default: "Lax"
     pub cookie_samesite: String,
+
+    /// Cross-site request check on cookie-authenticated state-changing
+    /// requests: "Enforce" (reject with 403) or "Off" (CSRF defense,
+    /// `CookieConfig::cross_site_check`, issue #225).
+    /// Env: LT_SESSION_CROSS_SITE_CHECK
+    /// Default: "Enforce"
+    #[serde(default = "default_cross_site_check")]
+    pub cross_site_check: String,
+}
+
+/// Serde default: pre-1.10 TOML files omit the field.
+fn default_cross_site_check() -> String {
+    "Enforce".to_string()
 }
 
 impl Default for SessionsConfig {
@@ -61,6 +74,7 @@ impl Default for SessionsConfig {
             cookie_secure: true,
             cookie_httponly: true,
             cookie_samesite: "Lax".to_string(),
+            cross_site_check: "Enforce".to_string(),
         }
     }
 }
@@ -74,6 +88,7 @@ impl SessionsConfig {
         self.cookie_secure = other.cookie_secure;
         self.cookie_httponly = other.cookie_httponly;
         self.cookie_samesite = other.cookie_samesite;
+        self.cross_site_check = other.cross_site_check;
     }
 
     pub fn apply_env_vars(&mut self) {
@@ -108,6 +123,10 @@ impl SessionsConfig {
         if let Ok(samesite) = env::var("LT_SESSION_COOKIE_SAMESITE") {
             self.cookie_samesite = samesite;
         }
+
+        if let Ok(check) = env::var("LT_SESSION_CROSS_SITE_CHECK") {
+            self.cross_site_check = check;
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -121,6 +140,10 @@ impl SessionsConfig {
 
         if !["Strict", "Lax", "None"].contains(&self.cookie_samesite.as_str()) {
             bail!("Invalid cookie_samesite: must be Strict, Lax, or None");
+        }
+
+        if !["Enforce", "Off"].contains(&self.cross_site_check.as_str()) {
+            bail!("Invalid cross_site_check: must be Enforce or Off");
         }
 
         Ok(())
