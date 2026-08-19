@@ -32,8 +32,8 @@ mod store;
 #[cfg(test)]
 mod security_tests;
 
-pub(crate) use cookie::cookie_value;
-pub use cookie::{effective_cookie_config, CookieConfig, SessionCookie};
+pub(crate) use cookie::{cookie_value, cross_site_request_blocked};
+pub use cookie::{effective_cookie_config, CookieConfig, CrossSiteCheck, SessionCookie};
 pub use manager::{SessionManager, SessionManagerConfig};
 pub use memory::MemorySessionStore;
 pub use middleware::SessionMiddleware;

@@ -113,6 +113,45 @@ refuses a `Domain` with it). `SessionMiddleware` uses the same default name;
 an app that relied on the old `session_id` default sets
 `SessionConfig::default().with_cookie_name("session_id")` explicitly.
 
+## Cross-site request check (CSRF)
+
+A cookie rides along on cross-site requests, so every state-changing endpoint
+that accepts the session cookie is CSRF-relevant: a page on another site
+could drive `POST {auth}/logout` (forced-logout DoS), the session-gated
+`POST/PUT/PATCH/DELETE /api/{model}` writes, or the `{auth}/mfa/*` mutation
+routes with the victim's cookie. `SameSite=Lax` on the cookie Lithair issues
+already blocks that — but it is a property of *our* cookie, not of the
+endpoint: the extractor honors any same-name cookie however it was set, and
+one config flip to `SameSite=None` would silently drop the shield. The
+cross-site check (issue #225) makes the protection endpoint-owned.
+
+For **unsafe methods** (`POST`/`PUT`/`PATCH`/`DELETE`) whose credential is
+the **session cookie** — a Bearer request is never checked, the
+`Authorization` header is not forgeable cross-site — the server reads the
+browser's fetch metadata first:
+
+- `Sec-Fetch-Site: same-origin` / `same-site` / `none` → allowed;
+- `Sec-Fetch-Site: cross-site` → `403 {"error":"cross-site request
+  rejected"}` (one `warn` log line per rejection);
+- header absent (older browser, curl, native app) → fallback: the `Origin`
+  header's host — and port, when it names one — is compared against `Host`;
+  absent that, the `Referer`'s host; a mismatch (including `Origin: null`)
+  is rejected;
+- none of the three headers present → allowed: non-browser clients (curl,
+  scripts, native apps) don't send fetch metadata and keep working.
+
+The rejected logout deletes no session and emits no clearing `Set-Cookie` —
+the 403 must not be a forced-logout vector itself. `OPTIONS` stays exempt
+(CORS preflight carries no credentials). No synchronizer tokens: fetch
+metadata plus the origin fallback covers every current browser without
+per-session state or template plumbing.
+
+One knob turns it off, for setups that legitimately POST cross-site (a
+separate front domain) until CORS is configured properly: `[sessions]
+cross_site_check = "Off"` in `config.toml`, `LT_SESSION_CROSS_SITE_CHECK=Off`
+in the environment, or `.with_session_cookie(CookieConfig { cross_site_check:
+CrossSiteCheck::Off, .. })` on the builder. The default is `"Enforce"`.
+
 `/auth` is only the default prefix. A login endpoint at a well-known path is an
 unauthenticated oracle for wordlists (the `/wp-admin` problem), so
 `.with_auth_path("/secure-a7f3k29")` — called *before* `with_rbac_config` /
