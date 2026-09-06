@@ -13,9 +13,24 @@ use super::assets::StaticAsset;
 use crate::engine::{EventStore, Scc2Engine, Scc2EngineConfig};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
+
+// Keep the original bare StaticAsset representation readable (and writable).
+// Tombstones carry a distinct tag so they cannot be mistaken for an upsert.
+#[derive(Serialize, Deserialize)]
+enum AssetMutation {
+    AssetDeleted { path: String },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum StoredAssetEvent {
+    Mutation(AssetMutation),
+    Asset(Box<StaticAsset>),
+}
 
 /// Summary of a single hot reload of a [`FrontendEngine`].
 ///
@@ -52,12 +67,12 @@ pub struct FrontendEngine {
     last_reload_at: RwLock<Option<DateTime<Utc>>>,
 
     /// Cached SHA-256 fingerprint of the loaded asset set, computed once at
-    /// load/reload. `version()` returns this instead of re-hashing every
+    /// mutation/replay. `version()` returns this instead of re-hashing every
     /// asset's content on each `GET /_admin/frontend` (PR #138 review:
     /// the previous per-request compute cloned + hashed all asset bytes).
     version: RwLock<String>,
 
-    /// Cached sum of asset content sizes, updated at load/reload, so
+    /// Cached sum of asset content sizes, updated at mutation/replay, so
     /// `total_bytes()` is an O(1) atomic load instead of iterating + cloning
     /// every asset on each call.
     total_bytes: std::sync::atomic::AtomicU64,
@@ -72,12 +87,17 @@ impl FrontendEngine {
     ///
     /// # Returns
     /// Lock-free frontend engine with event sourcing
+    ///
+    /// Replays persisted assets and deletion tombstones before returning.
+    /// Invalid events fail startup rather than silently restoring partial state.
     pub async fn new(host_id: impl Into<String>, data_dir: impl AsRef<Path>) -> Result<Self> {
         let host_id = host_id.into();
         let data_path = data_dir.as_ref().join(format!("frontend_{}", host_id));
 
         // Create event store for persistence
         let event_store = EventStore::new(data_path.to_string_lossy().as_ref())?;
+        let events = event_store.get_all_events()?;
+        let has_events = !events.is_empty();
         let event_store_arc = Arc::new(RwLock::new(event_store));
 
         // Configure SCC2 engine for frontend assets
@@ -93,14 +113,67 @@ impl FrontendEngine {
         // Create SCC2 engine
         let engine = Scc2Engine::new(event_store_arc, config)?;
 
-        Ok(Self {
+        let frontend = Self {
             engine: Arc::new(engine),
             host_id,
             source_dir: RwLock::new(String::new()),
             last_reload_at: RwLock::new(None),
             version: RwLock::new(String::new()),
             total_bytes: std::sync::atomic::AtomicU64::new(0),
-        })
+        };
+        for json in events {
+            let event: StoredAssetEvent = serde_json::from_str(&json).map_err(|e| {
+                anyhow::anyhow!("invalid frontend event for {}: {}", frontend.host_id, e)
+            })?;
+            frontend.apply_stored_event(event);
+        }
+        if has_events {
+            frontend.refresh_version_cache();
+        }
+        Ok(frontend)
+    }
+
+    /// Apply an already durable event. Blocking SCC entry operations ensure a
+    /// concurrent reader cannot cause a successful mutation to be skipped.
+    fn apply_stored_event(&self, event: StoredAssetEvent) {
+        match event {
+            StoredAssetEvent::Asset(asset) => {
+                let key = format!("{}:{}", self.host_id, asset.path);
+                let entry = crate::engine::VersionedEntry {
+                    version: 1,
+                    last_updated: Utc::now().timestamp().max(0) as u64,
+                    data: *asset,
+                };
+                match self.engine.internal_map().entry_sync(key) {
+                    scc::hash_map::Entry::Occupied(mut occupied) => {
+                        let version = occupied.get().version + 1;
+                        *occupied.get_mut() = crate::engine::VersionedEntry { version, ..entry };
+                    }
+                    scc::hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert_entry(entry);
+                    }
+                }
+            }
+            StoredAssetEvent::Mutation(AssetMutation::AssetDeleted { path }) => {
+                self.engine.internal_map().remove_sync(&format!("{}:{}", self.host_id, path));
+            }
+        }
+    }
+
+    fn persist_asset_event(&self, event: StoredAssetEvent, refresh_cache: bool) -> Result<()> {
+        let json = serde_json::to_string(&event)?;
+        let store = self.engine.event_store();
+        // Serialize log order and memory publication for all frontend mutations.
+        // Persist before publishing, and propagate append/flush failures.
+        let mut store =
+            store.write().map_err(|_| anyhow::anyhow!("frontend event store poisoned"))?;
+        store.append_raw_line(&json)?;
+        store.force_flush()?;
+        self.apply_stored_event(event);
+        if refresh_cache {
+            self.refresh_version_cache();
+        }
+        Ok(())
     }
 
     /// Load static directory into memory with event sourcing
@@ -125,7 +198,6 @@ impl FrontendEngine {
         // Store each asset in SCC2 engine with event sourcing
         for (web_path, content) in assets_vec {
             let asset = StaticAsset::new(web_path.clone(), content);
-            let key = format!("{}:{}", self.host_id, web_path);
 
             log::info!(
                 "📄 [{}] {} ({} bytes, {})",
@@ -135,9 +207,8 @@ impl FrontendEngine {
                 asset.mime_type
             );
 
-            // Write to SCC2 engine (emits event + persists to .raftlog)
-            // Use apply_event now that StaticAsset implements Event
-            self.engine.apply_event(key, asset, true).await?;
+            // Persist before publishing to SCC2; refresh the cache once below.
+            self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)), false)?;
             loaded_count += 1;
         }
 
@@ -157,7 +228,7 @@ impl FrontendEngine {
     }
 
     /// Recompute and store the cached `version` and `total_bytes` from the
-    /// currently-loaded asset set. Called at the end of load/reload — never
+    /// currently-loaded asset set. Called after mutations/replay — never
     /// on a read path. Hashing/summing happens here once, not per request.
     fn refresh_version_cache(&self) {
         let assets = self.list_assets();
@@ -264,12 +335,19 @@ impl FrontendEngine {
         let existing_keys: Vec<String> =
             self.engine.iter_all_sync().into_iter().map(|(k, _)| k).collect();
 
-        for (key, asset) in new_assets {
-            self.engine.insert_sync(key, asset);
+        for (_key, asset) in new_assets {
+            self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)), false)?;
         }
         for key in existing_keys {
             if !new_keys.contains(&key) {
-                self.engine.remove_sync(&key);
+                if let Some(path) = key.strip_prefix(&format!("{}:", self.host_id)) {
+                    self.persist_asset_event(
+                        StoredAssetEvent::Mutation(AssetMutation::AssetDeleted {
+                            path: path.to_string(),
+                        }),
+                        false,
+                    )?;
+                }
             }
         }
 
@@ -327,7 +405,7 @@ impl FrontendEngine {
 
     /// Sum of all asset content sizes currently held in memory.
     ///
-    /// O(1) read of the cache populated at load/reload — does not iterate or
+    /// O(1) read of the cache populated at mutation/replay — does not iterate or
     /// clone assets (PR #138 review).
     pub fn total_bytes(&self) -> u64 {
         self.total_bytes.load(std::sync::atomic::Ordering::SeqCst)
@@ -356,9 +434,9 @@ impl FrontendEngine {
     /// added, removed, or modified file changes it. The string is prefixed
     /// `sha256:` and rendered as lowercase hex.
     ///
-    /// O(1) read of the cache populated at load/reload — does not re-hash
+    /// O(1) read of the cache populated at mutation/replay — does not re-hash
     /// asset content per call (PR #138 review). Empty string before the
-    /// first load.
+    /// first mutation or replay.
     pub fn version(&self) -> String {
         self.version.read().map(|g| g.clone()).unwrap_or_default()
     }
@@ -472,18 +550,22 @@ impl FrontendEngine {
         }
 
         // Write back (emits event)
-        self.engine.apply_event(key, asset, true).await?;
+        self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)), true)?;
         Ok(())
     }
 
-    /// Delete asset (not yet implemented for SCC2)
+    /// Durably delete an asset. Deleting a missing path is idempotent.
+    ///
+    /// A tombstone is flushed before removing the in-memory asset, so replay
+    /// cannot resurrect it. A later update can recreate the same path.
     ///
     /// # Arguments
     /// * `path` - Web path
     pub async fn delete_asset(&self, path: &str) -> Result<()> {
-        // Note: delete with event sourcing is not yet supported; assets are immutable once loaded
-        let _key = format!("{}:{}", self.host_id, path);
-        Ok(())
+        self.persist_asset_event(
+            StoredAssetEvent::Mutation(AssetMutation::AssetDeleted { path: path.to_string() }),
+            true,
+        )
     }
 
     /// Get engine reference for advanced operations
