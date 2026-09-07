@@ -6,13 +6,14 @@ green.
 
 ## Development environment
 
-- **Rust toolchain**: pinned to `1.95.0` via [`rust-toolchain.toml`](./rust-toolchain.toml).
+- **Rust toolchain**: pinned to `1.97.1` via [`rust-toolchain.toml`](./rust-toolchain.toml).
   `rustup` will pick this up automatically the first time you run `cargo` in
   the repo. Don't override the channel — CI uses the same version.
 - **Components**: `rustfmt`, `clippy`, `rust-analyzer` (declared in
   `rust-toolchain.toml`).
-- **Task runner**: [Taskfile](https://taskfile.dev). Install `task` and run
-  `task help` to see the full menu.
+- **Optional project helpers**: [Task](https://taskfile.dev) runs examples, demos,
+  benchmarks and documentation tools. Install with `./scripts/setup.sh --with-task`
+  and run `task help`; the CI/PR workflow does not require Task.
 - **CI parity tool**: [cidx](https://github.com/cidx-org/cidx) runs the same
   containerized phases (rustfmt, clippy, cargo-audit, gitleaks, trivy,
   workspace test/build) that GitHub Actions runs. See
@@ -24,27 +25,23 @@ green.
 **Run `cidx run code` before every commit.** This is the authoritative gate.
 
 ```bash
-cidx run code       # rustfmt + clippy in the Rust 1.95 image used by CI
+cidx run code       # rustfmt + clippy in the Rust 1.97.1 image used by CI
 cidx run security   # cargo-audit + gitleaks + trivy
-cidx run test       # cargo test --workspace --lib --bins --release
+cidx run test       # unit, integration, macro and behavior BDD gate
 cidx run ci         # full pipeline
 ```
 
 Local `cargo fmt` / `cargo clippy` is not sufficient. rustfmt and clippy gain
-new behaviors between releases, and CI runs the pinned 1.95 image — running
+new behaviors between releases, and CI runs the pinned 1.97.1 image — running
 cidx locally is what guarantees your push won't bounce on formatting drift.
 
-For tighter dev loops without a container, use the Taskfile entry points:
+Use `cidx run code` during development and `cidx run test` for the test gate.
+Run `cidx run ci` for full validation before requesting review. Formatting edits
+can use `task fmt` (or `cargo fmt`), but they do not replace the cidx code gate.
+Bootstrap without Task using `./scripts/setup.sh`.
 
-```bash
-task check          # seconds: fmt --check + clippy -D warnings, host-native
-task test           # all workspace tests
-task ci             # cidx run ci — full containerized pipeline, run before pushing
-```
-
-`task check` + `task test` is the minimum bar for a commit. `task ci` is the
-recommended bar before opening a PR. See [`CLAUDE.md`](./CLAUDE.md) and
-[`Taskfile.yml`](./Taskfile.yml) for the full command reference.
+See [`cidx.toml`](./cidx.toml) for the phase definitions and the
+[CI workflow guide](docs/internal/CI_WORKFLOW.md) for the Task command migration.
 
 ## Pull request workflow
 
@@ -64,23 +61,32 @@ refactor/<short-description>  # code restructuring with no behavior change
 
 ### Flow
 
+Open a **draft PR before implementation**, using cidx from a clean working tree.
+It creates and pushes the branch and initial commit. Omit `--issue` for work
+without an issue; issue-linked branches use cidx's `issue-NUMBER` naming.
+
 ```bash
-# 1. Branch from a fresh main
-git checkout main && git pull origin main
-git checkout -b feat/my-change
+# 1. Create the branch and draft PR before writing the fix
+cidx repo pr create --issue NUMBER 'fix: describe the change'
 
-# 2. Commit incrementally; run the gate before each push
-cidx run code
-git commit -m "feat: describe the change"
+# 2. Implement, validate and publish incremental commits
+cidx run test
+cidx repo cpw -m 'fix: describe the change'  # code gate + commit + push + CI watch
 
-# 3. Push and open a PR
-git push -u origin feat/my-change
-gh pr create --title "feat: describe the change" \
-             --body "## Summary\n- ...\n\n## Test plan\n- ..."
+# 3. Keep the description current and verify checks/reviews
+cidx repo pr edit --title 'fix: final description' --body 'Behavior and validation'
+cidx repo pr status
+cidx repo pr watch
+cidx run ci
 
-# 4. Wait for CI, address review comments, then squash-merge
-gh pr merge --squash --delete-branch
+# 4. Once checks pass and review findings are addressed
+cidx repo pr ready
+cidx repo pr merge --method squash
 ```
+
+Never bypass validation with `--no-verify` or `--skip-checks`. Read all review
+comments before merging; cidx status summarizes reviews but does not show their
+full text, which is available on GitHub.
 
 ### Rules
 
@@ -108,7 +114,7 @@ changelog.
 ## Tests
 
 Unit and integration tests live next to the code they cover and run under
-`task test` (or `cargo test --workspace`).
+`cidx run test` (the complete per-PR test gate).
 
 ### BDD suite
 
@@ -118,7 +124,7 @@ Each sub-directory is a suite that maps to a `task bdd:*` target:
 ```bash
 task bdd:setup        # install Cucumber dependencies (first run)
 task bdd:all          # run every suite
-task bdd:engine       # engine + basic server scenarios
+task bdd:sessions     # session cookie journey
 task bdd:persistence  # event sourcing + hash chain
 task bdd:performance  # performance + durability benchmarks
 task bdd:scaffolding  # CLI scaffolding
@@ -140,7 +146,7 @@ for the current style.
 
 Honest version: the maintainer is solo and reviews are best-effort. Expect a
 first response within **1–7 days**. Smaller, well-scoped PRs that pass
-`task ci` locally land faster. If a PR sits for more than a week
+`cidx run ci` locally land faster. If a PR sits for more than a week
 without a response, a polite ping on the PR is welcome.
 
 ## Code style and conventions

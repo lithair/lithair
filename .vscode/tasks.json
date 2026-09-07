@@ -1,41 +1,65 @@
 {
   "version": "2.0.0",
   "tasks": [
-    // Build Tasks
     {
       "label": "Lithair: Build Debug",
       "type": "shell",
       "command": "task",
-      "args": ["build"],
+      "args": [
+        "build"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "silent",
         "panel": "shared"
       },
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "Lithair: Build Release",
       "type": "shell",
       "command": "task",
-      "args": ["build:release"],
+      "args": [
+        "build:release"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "Lithair: Build Workspace (CI)",
+      "type": "shell",
+      "command": "cidx",
+      "args": [
+        "run",
+        "build"
+      ],
       "group": {
         "kind": "build",
         "isDefault": true
       },
       "presentation": {
-        "reveal": "silent",
+        "reveal": "always",
         "panel": "shared"
       },
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
-    
-    // Code Quality Tasks
     {
       "label": "Lithair: Format",
       "type": "shell",
       "command": "task",
-      "args": ["fmt"],
+      "args": [
+        "fmt"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "silent",
@@ -43,10 +67,13 @@
       }
     },
     {
-      "label": "Lithair: Format Check",
+      "label": "Lithair: Code Check",
       "type": "shell",
-      "command": "task",
-      "args": ["fmt:check"],
+      "command": "cidx",
+      "args": [
+        "run",
+        "code"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -54,24 +81,13 @@
       }
     },
     {
-      "label": "Lithair: Lint",
+      "label": "Lithair: Test Gate",
       "type": "shell",
-      "command": "task",
-      "args": ["lint"],
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      },
-      "problemMatcher": ["$rustc"]
-    },
-    
-    // Test Tasks
-    {
-      "label": "Lithair: Test All",
-      "type": "shell",
-      "command": "task",
-      "args": ["test"],
+      "command": "cidx",
+      "args": [
+        "run",
+        "test"
+      ],
       "group": {
         "kind": "test",
         "isDefault": true
@@ -80,53 +96,69 @@
         "reveal": "always",
         "panel": "shared"
       },
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
-    
-    // CI Tasks
     {
-      "label": "Lithair: CI Fast",
+      "label": "Lithair: CI PR",
       "type": "shell",
-      "command": "task",
-      "args": ["ci"],
+      "command": "cidx",
+      "args": [
+        "run",
+        "pr"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
         "panel": "shared"
       },
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "Lithair: CI Full",
       "type": "shell",
-      "command": "task",
-      "args": ["ci:full"],
+      "command": "cidx",
+      "args": [
+        "run",
+        "ci"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
         "panel": "shared"
       },
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
-      "label": "Lithair: CI GitHub",
+      "label": "Lithair: PR Status",
       "type": "shell",
-      "command": "task",
-      "args": ["ci:github"],
+      "command": "cidx",
+      "args": [
+        "repo",
+        "pr",
+        "status"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
         "panel": "shared"
       },
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
-    
-    // Server Tasks
     {
-      "label": "Lithair: Start SCC2 Server (Debug)",
+      "label": "Lithair: Start Hello World (Debug)",
       "type": "shell",
       "command": "task",
-      "args": ["scc2:serve"],
+      "args": [
+        "examples:hello-world"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -135,7 +167,10 @@
       "isBackground": true,
       "problemMatcher": {
         "owner": "rust",
-        "fileLocation": ["relative", "${workspaceFolder}"],
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
         "pattern": {
           "regexp": "^(.*):(\\d+):(\\d+):\\s+(\\d+):\\s+(\\d+)\\s+(warning|error):\\s+(.*)$",
           "file": 1,
@@ -152,10 +187,12 @@
       }
     },
     {
-      "label": "Lithair: Start SCC2 Server (Release)",
+      "label": "Lithair: Start Hello World (Release)",
       "type": "shell",
       "command": "task",
-      "args": ["scc2:serve:release"],
+      "args": [
+        "examples:hello-world:release"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
@@ -163,26 +200,26 @@
       },
       "isBackground": true
     },
-    
-    // Demo Tasks
     {
-      "label": "Lithair: SCC2 Demo",
+      "label": "Lithair: HTTP Firewall Demo",
       "type": "shell",
       "command": "task",
-      "args": ["scc2:demo"],
+      "args": [
+        "examples:replication:firewall"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
         "panel": "dedicated"
       }
     },
-    
-    // Benchmark Tasks
     {
       "label": "Lithair: Benchmark JSON Small",
       "type": "shell",
       "command": "task",
-      "args": ["bench:json-small"],
+      "args": [
+        "bench:json-small"
+      ],
       "group": "test",
       "presentation": {
         "reveal": "always",
@@ -193,7 +230,9 @@
       "label": "Lithair: Benchmark JSON Large",
       "type": "shell",
       "command": "task",
-      "args": ["bench:json-large"],
+      "args": [
+        "bench:json-large"
+      ],
       "group": "test",
       "presentation": {
         "reveal": "always",
@@ -201,49 +240,51 @@
       }
     },
     {
-      "label": "Lithair: Benchmark CRUD Parallel",
+      "label": "Lithair: Benchmark Host Router",
       "type": "shell",
       "command": "task",
-      "args": ["bench:crud-parallel"],
+      "args": [
+        "bench:host-router"
+      ],
       "group": "test",
       "presentation": {
         "reveal": "always",
         "panel": "dedicated"
       }
     },
-    
-    // Clean Tasks
     {
       "label": "Lithair: Clean",
       "type": "shell",
       "command": "task",
-      "args": ["clean"],
+      "args": [
+        "clean"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "silent",
         "panel": "shared"
       }
     },
-    
-    // Documentation
     {
       "label": "Lithair: Show Docs",
       "type": "shell",
       "command": "task",
-      "args": ["docs"],
+      "args": [
+        "docs"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",
         "panel": "shared"
       }
     },
-    
-    // Help
     {
       "label": "Lithair: Show Help",
       "type": "shell",
       "command": "task",
-      "args": ["help"],
+      "args": [
+        "help"
+      ],
       "group": "build",
       "presentation": {
         "reveal": "always",

@@ -250,10 +250,10 @@ actionable `cargo clippy` output.
 
 ## Testing & CI
 
-- **Development:** Use `task check` for fast code quality checks (seconds)
-- **Pre-commit:** Use `task ci` (cidx full pipeline) for complete validation
-- **Guarantee:** If `task ci` passes locally → GitHub Actions will pass
-- **See:** [CI Workflow Guide](docs/CI_WORKFLOW.md) for detailed workflow
+- **Development:** Use `cidx run code` for containerized code quality checks
+- **Pre-commit:** Use `cidx run code` before committing; `cidx run ci` before review
+- **Remote gate:** Verify GitHub checks even after a local `cidx run ci` succeeds
+- **See:** [CI Workflow Guide](../CI_WORKFLOW.md) for detailed workflow
 
 ## When to allow Clippy
 
@@ -262,7 +262,7 @@ actionable `cargo clippy` output.
 
 ## Commit Checklist
 
-- `task ci` (the full containerized CI pipeline via cidx)
+- `cidx run ci` (the full containerized CI pipeline)
 - Tests updated/added if applicable
 
 By following these guidelines, we keep Lithair robust, maintainable, and performant.

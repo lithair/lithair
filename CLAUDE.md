@@ -18,59 +18,37 @@ Lithair is a declarative memory-first web server framework in Rust. Core philoso
 
 ## Common Commands
 
-Uses [Taskfile](https://taskfile.dev). See all tasks: `task help`
-
-### Development Cycle
-
-```bash
-task setup          # Bootstrap the dev environment (or ./scripts/setup.sh if task is missing)
-task check          # Host-native fmt + clippy -D warnings (seconds — inner loop)
-task test           # All workspace tests
-task ci             # cidx run ci — full containerized pipeline, GitHub parity (run before push)
-task pr             # cidx run pr — code + test phases only
-```
-
-For containerized parity with CI (rustfmt, clippy, cargo-audit, gitleaks, trivy,
-workspace test/build) use [cidx](https://github.com/cidx-org/cidx):
+Use **cidx for validation and the PR workflow**, as required by `AGENTS.md`.
+`cidx.toml` defines the phases used locally and by `.github/workflows/cidx.yml`.
 
 ```bash
-cidx run code       # rustfmt + clippy (fast feedback)
-cidx run security   # cargo-audit + gitleaks + trivy
-cidx run test       # unit + integration (lithair-core/tests) + behavior BDD
-cidx run build      # cargo build --workspace --release
-cidx run ci         # full pipeline
+./scripts/setup.sh       # Bootstrap Rust, cidx and probatum
+cidx run code            # CI rustfmt + clippy; mandatory before each commit
+cidx run test            # Unit + integration + macro + behavior BDD gate
+cidx run security        # cargo-audit + gitleaks + trivy
+cidx run build           # Workspace release build
+cidx run pr              # Code + test phases
+cidx run ci              # Full pipeline before review
 ```
 
-Sub-agents and automation should prefer `cidx run code` over waiting on GitHub
-Actions for tight loops. CI runs the same phases via `.github/workflows/cidx.yml`
-(installs cidx `@latest`).
-
-### Build & Test
+Task is optional for project helpers. Install it with
+`./scripts/setup.sh --with-task`; see `task help` for the available commands.
+Its generic CI/check/test wrappers have been removed.
 
 ```bash
-task build          # Debug build
-task build:release  # Release build with LTO
-task test           # Run all workspace tests
-task lint           # Clippy with -D warnings
-task fmt            # Format code
+task fmt                         # Edit Rust formatting; validate with cidx
+task build                       # Build hello-world + loadgen (debug)
+task build:release               # Build hello-world + loadgen (release)
+task examples:hello-world        # Run the minimal server
+task examples:rbac-session       # Run the session example
+task examples:blog:serve PORT=3000
+task bench:host-router           # Dedicated benchmark
+task bdd:performance             # Long-running performance suite
+task bdd:distribution            # Dedicated clustering suite
 ```
 
-### Run Examples
-
-```bash
-task scc2:serve PORT=18321                    # Start SCC2 server
-task scc2:demo                                # Full demo with benchmarks
-task loadgen:json LEADER=http://127.0.0.1:18321 BYTES=65536 CONC=512  # Load test
-task examples:rbac-session                    # RBAC session demo
-```
-
-### BDD Tests
-
-```bash
-task bdd:all         # All BDD suites
-task bdd:performance # Performance tests
-task bdd:security    # Security tests
-```
+See `docs/internal/CI_WORKFLOW.md` for command migration and
+`docs/TESTING.md` for the test pyramid and dedicated suites.
 
 ## Architecture
 
@@ -142,30 +120,33 @@ refactor/<short-description> # Code restructuring
 
 ### Development Flow
 
+Create the draft PR **before implementation**. cidx creates an `issue-NUMBER`
+branch when linking an issue; omit `--issue` for work without one. Start with a
+clean working tree and preserve any unrelated changes.
+
 ```bash
-# 1. Create feature branch from main
-git checkout main && git pull origin main
-git checkout -b feat/my-feature
-
-# 2. Work, commit incrementally
-#    Run CI before each push:
-task check && task test
-git add <files>
-git commit -m "feat: description of change"
-
-# 3. Push and create PR
-git push -u origin feat/my-feature
-gh pr create --title "feat: description" --body "## Summary\n- ...\n\n## Test plan\n- ..."
-
-# 4. CI must pass, then merge via GitHub (squash merge recommended)
-gh pr merge --squash --delete-branch
+cidx repo pr create --issue NUMBER 'fix: describe the correction'
+# Implement the change and its regression coverage on the created branch.
+cidx run test
+cidx repo cpw -m 'fix: describe the correction'  # code gate, commit, push, watch
+cidx repo pr edit --title 'fix: final title' --body 'Behavior and validation'
+cidx run ci
+cidx repo pr status
+cidx repo pr watch
+# Only once checks pass and review findings are addressed:
+cidx repo pr ready
+cidx repo pr merge --method squash
 ```
+
+Do not use `--no-verify` or `--skip-checks` to bypass the gates. Use cidx for PR
+creation, updates, status, readiness and merge. Read review text on GitHub where
+cidx only exposes summary status.
 
 ### Rules
 
 - **Never push directly to `main`** -- always go through a PR
 - **One concern per PR** -- keep PRs small and focused
-- **CI must pass** before merge (`task check && task test` at minimum)
+- **CI must pass** before merge (the cidx code, test, security and build gates)
 - **Short-lived branches** -- merge within hours/days, not weeks
 - **Squash merge** -- keeps `main` history clean and linear
 - **Delete branch after merge** -- no stale branches
@@ -184,9 +165,9 @@ refactor: extract PEM loading helpers
 
 ### Pre-Push Checklist
 
-1. `task check` and `task test` pass (fmt + clippy -D warnings + tests)
+1. `cidx run code` and `cidx run test` pass (formatting, clippy and tests)
 2. Ensure new or modified behavior is covered by tests
-3. `task ci` (cidx full pipeline) for final validation before requesting review
+3. `cidx run ci` (full pipeline) for final validation before requesting review
 
 ### Pre-Merge Checklist
 
@@ -236,7 +217,7 @@ Templates are in `/templates/`, specs go in feature-specific directories.
 
 - `docs/guides/getting-started.md` - Quick start guide
 - `docs/guides/data-first-philosophy.md` - Core philosophy
-- `docs/CI_WORKFLOW.md` - CI task breakdown
+- `docs/internal/CI_WORKFLOW.md` - CI task breakdown
 - `docs/TESTING.md` - Test pyramid: what goes where, the per-PR gate, BDD workflow
-- `docs/development/ai-instructions.md` - Extended AI guidelines
+- `docs/internal/development/ai-instructions.md` - Extended AI guidelines
 - `docs/modules/` - Per-module documentation

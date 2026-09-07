@@ -54,10 +54,13 @@ cidx run test       # CI unit, integration, compile-fail and behavior gate
 cidx run ci         # full containerized pipeline before review
 ```
 
-Task remains useful for project-specific commands such as setup, examples,
-demos, benchmarks and dedicated BDD suites; consult `task help`. Prefer cidx
-over the redundant Task wrappers for CI, linting and tests. Removing Task or
-its duplicate targets is a separate maintenance change, not part of a bug fix.
+Task is optional and runs project helpers: examples, demos, benchmarks,
+documentation tools and dedicated BDD suites, plus editing helpers such as
+`task fmt`. Its generic validation/pipeline wrappers have been removed; use
+cidx directly. `task build` / `task build:release` build hello-world and loadgen,
+not the workspace CI build (`cidx run build`). Consult `task help` for helpers
+and `docs/internal/CI_WORKFLOW.md` for the command migration table. Bootstrap
+with `./scripts/setup.sh`; add `--with-task` to install the optional Task runner.
 Report checks actually run and any blockers; do not equate compilation with
 test execution or mark a PR ready while required gates are failing.
 

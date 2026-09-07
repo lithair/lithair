@@ -361,38 +361,27 @@ changes go through short-lived feature branches merged via Pull Requests.
 
 ### Development Flow
 
+Use cidx from a clean working tree to open a draft PR **before implementation**.
+It creates and pushes the branch and initial commit. Omit `--issue` for work
+without an issue; otherwise cidx names the branch `issue-NUMBER`.
+
 ```bash
-# 1. Start from an up-to-date main
-git checkout main && git pull origin main
-
-# 2. Create a feature branch
-git checkout -b feat/my-feature
-
-# 3. Work in small, focused commits
-#    Always validate before pushing:
-task check && task test               # fmt + clippy -D warnings + tests
-git add <specific-files>              # use explicit file names, not git add -p
-                                      # (interactive staging is incompatible with AI agents)
-git commit -m "feat: concise description"
-
-# 4. Push and open a Pull Request
-git push -u origin feat/my-feature
-gh pr create --title "feat: concise title" --body "$(cat <<'EOF'
-## Summary
-- What this PR does and why
-
-## Test plan
-- [ ] `task check` and `task test` pass
-- [ ] Manual verification of ...
-EOF
-)"
-
-# 5. After CI passes and review is approved, merge (squash)
-gh pr merge --squash --delete-branch
-
-# 6. Back to main for the next task
-git checkout main && git pull origin main
+cidx repo pr create --issue NUMBER 'feat: describe the change'
+# Implement with regression coverage.
+cidx run test
+cidx repo cpw -m 'feat: describe the change'  # code gate, commit, push, watch
+cidx repo pr edit --title 'feat: final title' --body 'Behavior and validation'
+cidx run ci
+cidx repo pr status
+cidx repo pr watch
+# Once all checks pass and review findings are addressed:
+cidx repo pr ready
+cidx repo pr merge --method squash
 ```
+
+Task is optional for examples, demos, benchmarks and documentation helpers.
+Use cidx directly for validation and PR operations; see the
+[CI workflow guide](../internal/CI_WORKFLOW.md) for the command migration table.
 
 ### Rules
 
@@ -400,7 +389,7 @@ git checkout main && git pull origin main
 | ----------------------------- | -------------------------------------- |
 | Never push directly to `main` | Protected branch -- all changes via PR |
 | One concern per PR            | Easier review, safer rollback          |
-| CI must pass before merge     | `task check` + `task test` at minimum  |
+| CI must pass before merge     | All required cidx checks must pass  |
 | Short-lived branches          | Merge within hours/days, not weeks     |
 | Squash merge                  | Keeps `main` history clean and linear  |
 | Delete branch after merge     | No stale branches                      |
@@ -421,16 +410,15 @@ Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
 
 ### Pre-Push Checklist
 
-1. `cargo fmt -- --check` (or `task fmt:check`)
-2. `cargo clippy --workspace --all-targets -- -D warnings` (or `task lint`)
-3. `cargo test -p lithair-core -p lithair-macros`
-4. Format + clippy combined: **`task check`** (then `task test`)
-5. Before requesting review: **`task ci`** (full containerized pipeline via cidx)
+1. `cidx run code` passes (rustfmt and clippy).
+2. `cidx run test` passes, including regression coverage for the change.
+3. `cidx repo cpw` publishes the commit and tracks remote checks.
+4. Before requesting review: `cidx run ci` for the full pipeline.
 
 ### Code Review Checklist
 
 - [ ] Code follows existing Rust idioms and project conventions
-- [ ] All tests pass (`task test`)
+- [ ] All tests pass (`cidx run test`)
 - [ ] New behavior has test coverage
 - [ ] Documentation is updated if public API changed
 - [ ] No security regressions (OWASP top 10)
