@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-08
+
+This release protects cookie-authenticated mutations against cross-site
+requests and makes frontend asset deletion effective and persistent.
+
+### Security
+
+- **Cross-site checks for cookie-authenticated mutations** (#226, closes
+  #225): session-gated model writes, route guards, RBAC logout and MFA
+  mutations reject cross-site requests with HTTP 403. `Sec-Fetch-Site` is
+  checked first, with an Origin/Referer-to-Host check when it is absent.
+  Bearer-authenticated requests and OPTIONS remain exempt; native clients
+  without these browser headers remain supported. A rejected logout does
+  not delete the session or clear its cookie.
+
+### Fixed
+
+- **Frontend asset deletion** (#229, closes #227): `delete_asset()` now
+  flushes a deletion event before removing content from the serving engine.
+  Startup replays asset events and deletions, including existing journals,
+  so withdrawn assets stay absent after restart. Repeated deletion is
+  idempotent, recreation at the same path is supported, and asset listings,
+  counts and cached metadata reflect the changes. Directory reloads also
+  persist their updates and removals. Storage errors propagate to callers.
+
+### Changed
+
+- **cidx is the CI and PR entry point** (#231, closes #230): duplicate Task
+  validation/pipeline targets are removed. Task remains available for
+  examples, demos, benchmarks, documentation and dedicated BDD helpers;
+  install it with `./scripts/setup.sh --with-task`. Contributor guides,
+  agent instructions and VS Code tasks now use the same workflow, including
+  a draft PR before implementation. See the
+  [command migration table](docs/internal/CI_WORKFLOW.md#migrating-from-task).
+
+### Migration notes
+
+- Cookie cross-site enforcement is enabled by default. Applications that
+  intentionally use cookie-authenticated requests from another site must
+  review this policy before upgrading. The explicit opt-out is
+  `[sessions] cross_site_check = "Off"`, `LT_SESSION_CROSS_SITE_CHECK=Off`,
+  or `CookieConfig.cross_site_check = CrossSiteCheck::Off`. See
+  [session security](docs/features/sessions.md#cross-site-request-check-csrf).
+  Struct literals that enumerate all `CookieConfig` fields must add the
+  new field or use `..Default::default()`.
+- `FrontendEngine::new` now restores persisted assets instead of starting
+  empty and fails on invalid asset events. Asset deletion journals are
+  consumed by the new replay path; deploy this version for applications
+  that rely on withdrawal surviving restart.
+
 ## [1.9.0] - 2026-08-17
 
 The browser-session release. The framework's own login now works from a
@@ -1657,7 +1707,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/lithair/lithair/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/lithair/lithair/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/lithair/lithair/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/lithair/lithair/compare/v1.6.0...v1.7.0
