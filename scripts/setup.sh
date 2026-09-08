@@ -3,12 +3,25 @@
 #
 # Installs (only if missing):
 #   - rustup + the pinned toolchain (rust-toolchain.toml picks the version)
-#   - go-task (Taskfile runner) into ~/.local/bin
+#   - go-task (optional project helpers, only with --with-task) into ~/.local/bin
 #   - cidx (containerized CI runner) — from a local clone if present, else via Go
 #   - probatum (black-box check runner) — from a local clone if present, else a release binary
 #
-# Usage: ./scripts/setup.sh   (works without `task` installed — chicken-egg safe)
+# Usage: ./scripts/setup.sh [--with-task] (works without Task installed)
 set -euo pipefail
+
+INSTALL_TASK=0
+for arg in "$@"; do
+    case "$arg" in
+        --with-task) INSTALL_TASK=1 ;;
+        --help|-h)
+            echo 'Usage: ./scripts/setup.sh [--with-task]'
+            echo 'Bootstrap Rust, cidx and probatum; add --with-task for project helpers.'
+            exit 0
+            ;;
+        *) echo "Unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
 
 BIN_DIR="$HOME/.local/bin"
 CIDX_CLONE="$HOME/projects/cidx-org/cidx"
@@ -41,9 +54,11 @@ done
 # ─── go-task ───
 if command -v task >/dev/null 2>&1; then
     log "go-task already installed"
-else
+elif [ "$INSTALL_TASK" = 1 ]; then
     log "installing go-task into $BIN_DIR"
     sh -c "$(curl -fsSL https://taskfile.dev/install.sh)" -- -d -b "$BIN_DIR"
+else
+    log "go-task is optional; re-run with --with-task for examples, demos and benchmarks"
 fi
 
 # ─── cidx ───
@@ -77,7 +92,7 @@ fi
 
 # ─── docker (required by cidx, not installed here) ───
 if ! command -v docker >/dev/null 2>&1; then
-    warn "Docker not found — cidx needs it to run CI containers ('task ci' / 'task pr')."
+    warn "Docker not found — cidx needs it to run CI containers ('cidx run ci' / 'cidx run pr')."
     warn "Install it from https://docs.docker.com/engine/install/ — everything else works without it."
 fi
 
@@ -99,7 +114,9 @@ ver() {
 }
 ver rustup --version
 ver cargo --version
-ver task --version
+if command -v task >/dev/null 2>&1; then
+    ver task --version
+fi
 ver cidx --version
 ver probatum --version
 ver docker --version

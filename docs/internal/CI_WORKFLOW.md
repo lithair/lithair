@@ -1,65 +1,87 @@
 # Lithair CI Workflow Guide
 
-The single source of truth for CI is [`cidx.toml`](../../cidx.toml). GitHub
-Actions (`.github/workflows/cidx.yml`) and local validation run the exact same
-containerized phases via [cidx](https://github.com/cidx-org/cidx). The
-Taskfile only delegates — it no longer duplicates pipeline definitions.
+[`cidx.toml`](../../cidx.toml) is the source of truth for validation. Local cidx
+runs and `.github/workflows/cidx.yml` use the same containerized phases. Use
+cidx directly for checks and the PR lifecycle; Task is optional for project
+helpers.
 
-## Quick Reference
+## Validation commands
 
-**Inner loop (seconds, host-native):**
+| Command | Purpose |
+|---------|---------|
+| `cidx validate` | Validate configuration and workflow invocations |
+| `cidx run code` | Rustfmt check and clippy; required before every commit |
+| `cidx run test` | Workspace unit, core integration, macro and behavior BDD tests |
+| `cidx run security` | cargo-audit, gitleaks and trivy |
+| `cidx run build` | Workspace release build |
+| `cidx run pr` | Code and test phases |
+| `cidx run ci` | Full security, code, test and build pipeline before review |
+
+A local success does not override a remote failure: differences in caches,
+network availability and test isolation can still surface in GitHub Actions.
+Verify the remote checks and read review comments before merging.
+
+## PR lifecycle
+
+Open the draft PR **before implementation**, from a clean working tree. cidx
+creates the branch and initial commit and pushes the draft. Issue-linked work
+uses an `issue-NUMBER` branch; omit `--issue` for work without an issue.
 
 ```bash
-task check      # cargo fmt --check + clippy -D warnings
-task test       # all workspace tests
+cidx repo pr create --issue NUMBER 'fix: describe the correction'
+# Implement and validate on the created branch.
+cidx repo cpw -m 'fix: describe the correction'
+cidx repo pr edit --title 'fix: final title' --body 'Behavior and validation'
+cidx repo pr status
+cidx repo pr watch
+# After successful validation and resolution of review findings:
+cidx repo pr ready
+cidx repo pr merge --method squash
 ```
 
-**Before push (containerized, GitHub parity):**
+`cidx repo cpw` runs the code gate, commits, pushes and tracks CI. Do not bypass
+checks with `--no-verify` or `--skip-checks`. Read review text on GitHub when cidx
+provides only a summary. A failed gate keeps the PR in draft until resolved.
+
+## Migrating from Task
+
+The generic Task validation and pipeline targets have been removed. They no
+longer provide an alternative host-toolchain path or wrappers around cidx.
+
+| Removed Task command | Use directly |
+|----------------------|--------------|
+| `task check` / `task lint` | `cidx run code` |
+| `task fmt:check` | `cidx run rustfmt` (or the full `cidx run code` gate) |
+| `task test` | `cidx run test` |
+| `task pr` | `cidx run pr` |
+| `task ci` | `cidx run ci` |
+| `task bdd:ci` | `cidx run test` (behavior tier); dedicated `task bdd:*` helpers for long suites |
+
+The test gate is defined by `cidx.toml`; it is not an alias for the former
+host-native `cargo test --workspace --all-features` command. The CI phase and
+coverage definitions are unchanged by this migration.
+
+Task still runs examples, demos, load generation, benchmarks, documentation
+commands and dedicated BDD suites. `task fmt` is an editing helper, not a
+validation gate. `task build` and `task build:release` build hello-world and
+loadgen for demos; `cidx run build` builds the workspace in release mode.
 
 ```bash
-task ci         # cidx run ci — security + code + test + build
-task pr         # cidx run pr — code + test only (faster)
+task examples:hello-world
+task smoke
+task bench:host-router
+task bdd:distribution
+task docs:lint
+task help
 ```
 
-**Functional demos (not part of the CI gate):**
+## Environment setup and troubleshooting
 
-```bash
-task smoke      # firewall + hardening demos, example test suites (~5-10min)
-```
+Run `./scripts/setup.sh` to bootstrap Rust, cidx and probatum. Add `--with-task`
+if you want the optional project helpers. The pinned Rust toolchain lives in
+`rust-toolchain.toml`; the code/build/test presets select the CI container.
 
-## Task Breakdown
-
-| Task | Runs | Time | When |
-|------|------|------|------|
-| `task check` | fmt --check + clippy -D warnings on the host | seconds | every edit cycle |
-| `task test` | `cargo test --workspace --all-features` | ~1-2min | before commit |
-| `task pr` | `cidx run pr` (code + test phases) | minutes | fast pre-push gate |
-| `task ci` | `cidx run ci` (security + code + test + build) | ~10min | before opening a PR |
-| `task smoke` | demo scripts + example suites | ~5-10min | when touching demos |
-
-## Why cidx and not plain cargo?
-
-Local `cargo fmt` / `cargo clippy` run whatever toolchain is on your machine.
-rustfmt and clippy gain new behaviors between releases; CI runs a pinned
-container image. `task ci` runs that same image locally — if it passes, the
-GitHub `CIDX CI` workflow passes.
-
-`rust-toolchain.toml` pins the host toolchain to the same version as the CI
-image, so `task check` normally agrees with CI — the container run is the
-guarantee.
-
-## Environment Setup
-
-`task setup` (or `./scripts/setup.sh` directly if `task` itself is missing)
-bootstraps everything: rustup + pinned toolchain, go-task, cidx, probatum.
-Docker is required for `task ci` / `task pr`.
-
-## Common Issues
-
-**Problem:** `task check` passes but CI fails on formatting/clippy
-**Solution:** toolchain drift — re-run `task setup` (installs the pinned
-toolchain from `rust-toolchain.toml`), or validate with `task ci`.
-
-**Problem:** `task ci` fails with a Docker error
-**Solution:** cidx needs a running Docker daemon. `task check` + `task test`
-still work without it.
+A running Docker daemon and socket access are required for the default cidx
+backend. Use `cidx doctor` to diagnose the environment. If Docker is unavailable,
+fix the environment and rerun cidx rather than treating a host-native Cargo
+check as a passing CI gate. `task fmt` can still edit files without Docker.

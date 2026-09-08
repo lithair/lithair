@@ -19,16 +19,10 @@ tasks:
     cmds:
       - |
           cat <<'EOF'
-          Lithair Taskfile - Common tasks:
-            task build                 # Build debug binaries
-            task build:release        # Build release binaries
+          Lithair project helpers (Task is optional for CI and PRs):
+            task build                 # Build hello-world + loadgen (debug)
+            task build:release        # Build hello-world + loadgen (release)
             task fmt                  # Run rustfmt on the workspace
-            task fmt:check            # Check rustfmt (no changes)
-            task lint                 # Run clippy with -D warnings
-            task test                 # Run all tests
-            task check                # Fast host-native check (fmt:check + clippy)
-            task ci                   # Full CI pipeline via cidx (containerized)
-            task pr                   # PR validation via cidx (code + test)
             task setup                # Bootstrap the dev environment
             task examples:list        # List current workspace examples
             task examples:test        # Compile all root examples
@@ -62,17 +56,23 @@ tasks:
           Example:
             task loadgen:json PORT=18321 CONC=1024 BYTES=65536 ACCEPT_ENCODING=gzip
 
-          📋 CI/Testing Tasks (cidx.toml is the single source of truth for CI):
-          task check        - Host-native fmt:check + clippy -D warnings (seconds)
-          task pr           - cidx run pr (code + test, containerized)
-          task ci           - cidx run ci (security + code + test + build, full GitHub parity)
+          CI and PR workflow (cidx.toml is the source of truth):
+          cidx run code     - rustfmt check + clippy in the CI container
+          cidx run test     - unit, integration, macro and behavior tests
+          cidx run build    - workspace release build
+          cidx run pr       - code + test phases
+          cidx run ci       - security + code + test + build
+          cidx repo pr create --issue NUMBER 'type: title' - draft PR before coding
+          cidx repo cpw -m 'type: description'             - check, commit, push, watch
+
+          Project-specific checks and documentation:
           task smoke        - Functional validation (firewall/hardening demos) ~5-10min
           task bdd:all      - Run all BDD test suites
           task bdd:setup    - Install Cucumber dependencies
           task docs:lint    - Lint Markdown documentation files
           task docs:lint:fix - Auto-fix Markdown documentation files
 
-          💡 Use 'task check' for the inner loop, 'task ci' before pushing!
+          Use cidx for validation; Task runs the project helpers listed above.
           EOF
 
   default:
@@ -90,39 +90,8 @@ tasks:
     cmds:
       - cargo fmt
 
-  fmt:check:
-    desc: Check rustfmt formatting (no changes)
-    cmds:
-      - cargo fmt -- --check
-
-  lint:
-    desc: Run clippy lints with -D warnings
-    cmds:
-      - cargo clippy --all-targets --all-features -- -D warnings
-
-  test:
-    desc: Run all tests in the workspace
-    cmds:
-      - cargo test --workspace --all-features
-
-  check:
-    desc: Fast host-native check (fmt:check + clippy -D warnings, no container)
-    cmds:
-      - task: fmt:check
-      - task: lint
-
-  ci:
-    desc: Full CI pipeline via cidx (security + code + test + build — GitHub parity)
-    cmds:
-      - cidx run ci
-
-  pr:
-    desc: PR validation via cidx (code + test, no build artifacts)
-    cmds:
-      - cidx run pr
-
   setup:
-    desc: Bootstrap the dev environment (rustup, go-task, cidx, probatum)
+    desc: Bootstrap Rust, cidx and probatum (Task is already installed)
     cmds:
       - bash scripts/setup.sh
 
@@ -145,7 +114,7 @@ tasks:
       - echo "🎉 All smoke tests completed successfully!"
 
   build:release:
-    desc: Build release binaries for root examples and replication load generator
+    desc: Build hello-world and loadgen release binaries (workspace CI build uses cidx)
     cmds:
       - cargo build --release -p hello-world
       - cargo build --release -p loadgen
@@ -481,9 +450,3 @@ tasks:
       - task: bdd:sessions
       - task: bdd:distribution
       - echo "🎉 All BDD test suites passed successfully!"
-
-  bdd:ci:
-    desc: "Run BDD tests in CI mode (no interactive output)"
-    cmds:
-      - cd cucumber-tests && RUST_LOG=warn cargo run --bin cucumber -- -i "../features/**/*.feature" --format json > test-results/cucumber-results.json
-      - echo "📋 BDD CI results saved to test-results/cucumber-results.json"

@@ -291,36 +291,28 @@ lithair-core/src/
 
 ## Development
 
-Requires [Task](https://taskfile.dev) for build commands:
+[cidx](https://github.com/cidx-org/cidx) is the entry point for validation and
+pull requests. Local checks and GitHub Actions use the phases in `cidx.toml`.
+Bootstrap with `./scripts/setup.sh`; a running Docker daemon is required for
+CI containers.
 
 ```bash
-task setup         # Bootstrap the dev environment (./scripts/setup.sh)
-task check         # Format check + clippy -D warnings (seconds)
-task ci            # Full containerized CI pipeline via cidx
-task test          # Run all workspace tests
-task lint          # Clippy with -D warnings
-task fmt           # Format code
-task help          # List all available tasks
+cidx repo pr create --issue NUMBER 'fix: describe the change'  # before coding
+cidx run code       # Formatting check + clippy
+cidx run test       # Unit, integration, macro and behavior tests
+cidx run build      # Workspace release build
+cidx run ci         # Full pipeline: security + code + test + build
+cidx repo cpw -m 'fix: describe the change'  # Check, commit, push, watch CI
 ```
 
-### Containerized CI with cidx (optional)
+[Task](https://taskfile.dev) is optional for project helpers: examples, demos,
+benchmarks, documentation tools and dedicated BDD suites. Install it with
+`./scripts/setup.sh --with-task` and run `task help`. `task fmt` edits Rust
+formatting; cidx validates it. `task build` and `task build:release` build the
+hello-world and loadgen examples, while `cidx run build` builds the workspace.
 
-[cidx](https://github.com/cidx-org/cidx) runs the same code-quality, security, test,
-and build phases locally in Docker containers, matching what GitHub Actions does.
-Useful for reproducing CI failures without pushing.
-
-```bash
-cidx run code      # rustfmt + clippy
-cidx run security  # cargo-audit + gitleaks + trivy
-cidx run test      # workspace unit tests (lib + bins)
-cidx run build     # workspace release build
-cidx run ci        # full pipeline
-```
-
-CI mirrors the same phases via `.github/workflows/cidx.yml`, which installs
-the latest cidx release at workflow build time (`go install
-github.com/cidx-org/cidx/cmd/cidx@latest`). It runs alongside the existing
-`ci.yml` and `ci-fast.yml` workflows during the integration cycle.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR workflow and the
+[CI workflow guide](docs/internal/CI_WORKFLOW.md) for command migration.
 
 ## License
 

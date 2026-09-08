@@ -24,11 +24,12 @@ a slow gate stops being run.
 
 ## The workflow
 
-**New feature** → write the Gherkin scenario first (red), implement until
-green, open the PR: CI executes the whole behavior tier. The `.feature`
+**New feature** → open a draft PR with `cidx repo pr create`, then write the
+Gherkin scenario first (red), implement until
+green, update the draft PR: CI executes the whole behavior tier. The `.feature`
 file is simultaneously the test and the living documentation.
 
-**Bug** → write the reproduction first (an integration test, or a BDD
+**Bug** → open the draft PR before coding, then write the reproduction first (an integration test, or a BDD
 scenario if the bug breaks a user-visible promise), watch it fail, fix,
 keep the repro as the regression test. The pre-merge checklist requires new
 behavior to be covered — a fix without its repro is unfinished.
@@ -65,8 +66,7 @@ found in this repository the week the suites joined the CI gate (#177):
 ## Commands
 
 ```bash
-task check             # fmt + clippy -D warnings (fast local loop)
-task test              # all workspace tests
+cidx run code          # formatting check + clippy in the CI container
 cidx run test          # the exact per-PR CI gate, in the CI container
 cargo test -p lithair-core --tests                 # integration tier only
 cargo test -p lithair-macros --test compile_fail   # macro surface (trybuild)

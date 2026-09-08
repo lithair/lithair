@@ -209,9 +209,10 @@ shows a `ModifyFieldType` or `RemoveField`.
    cargo build --release
    ```
 
-4. **Run your tests / CI.** `task check` runs fmt + clippy (`-D
-   warnings`), `task test` the workspace tests; `cidx run code` gives the same rustfmt + clippy
-   feedback in a container matching CI (see project `CLAUDE.md`).
+4. **Run your tests / CI.** For the Lithair repository, `cidx run code`
+   checks formatting and clippy and `cidx run test` executes the per-PR test
+   gate in the CI container. Use `cidx run ci` for full validation and run
+   your application's regression tests as well.
 
 5. **Stage against a copy of prod data.** Restore the backup from step 1
    into a throwaway host/volume, start the **new** binary against it,
@@ -305,7 +306,7 @@ lets you catch problems without ever needing a production rollback.
    `Cargo.toml`.
 5. **`cargo build`** — clears the Rust-API surface; breaking API changes
    fail here.
-6. **Run `task check` / `cidx run code`** and your tests.
+6. **Run `cidx run code`** and your tests.
 7. **Stage against a copy of prod data**: replay, `/health`, and
    `/_admin/schema/diff` all clean.
 8. **Promote**, then re-verify `/health` and a data spot-check.
