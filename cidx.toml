@@ -55,6 +55,9 @@ command = "cargo build --workspace --release"
 # `--exit-code 0` matches existing policy — trivy stays informational;
 # cargo-audit is the hard gate on Rust deps.
 [containers.trivy]
+# Keep the scan path and mount explicit across upstream preset changes.
+workdir = "/scan"
+volumes = ["${WORKSPACE}:/scan"]
 command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 
 # cargo-audit: two transitive unmaintained warnings remain (bincode 2.x,
