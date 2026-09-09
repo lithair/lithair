@@ -24,11 +24,59 @@
 //! `tests/with_handler_session_gate_test.rs`.
 
 use chrono::Utc;
-use lithair_core::app::LithairServer;
+use lithair_core::app::{LithairServer, LithairServerBuilder};
 use lithair_core::session::{PersistentSessionStore, Session, SessionManager, SessionStore};
 use lithair_macros::DeclarativeModel;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tokio::net::TcpListener;
+
+/// Own startup and shutdown so failures surface and tasks finish before tempdir cleanup.
+struct RunningServer {
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    task: tokio::task::JoinHandle<anyhow::Result<()>>,
+}
+
+impl RunningServer {
+    async fn start(builder: LithairServerBuilder, listener: TcpListener) -> (String, Self) {
+        let base = format!("http://{}", listener.local_addr().expect("listener address"));
+        let server = builder.build().expect("build server");
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(server.serve_with_listener(listener, async move {
+            let _ = stopped.await;
+        }));
+        let mut running = Self { stop: Some(stop), task };
+        // The socket is already listening; the request waits for startup to finish.
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .expect("client");
+        tokio::select! {
+            result = &mut running.task => panic!("server exited during startup: {result:?}"),
+            response = client.get(format!("{base}/health")).send() => {
+                assert!(response.expect("health request").status().is_success());
+            }
+        }
+        (base, running)
+    }
+
+    async fn shutdown(mut self) {
+        self.stop.take().expect("shutdown sender").send(()).expect("signal shutdown");
+        tokio::time::timeout(Duration::from_secs(15), &mut self.task)
+            .await
+            .expect("shutdown deadline")
+            .expect("server task")
+            .expect("server result");
+    }
+}
+
+impl Drop for RunningServer {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+    }
+}
 
 /// Minimal model exercised through `with_model_ref`. The `#[http(expose)]`
 /// attributes are what `DeclarativeModel` keys off to surface fields in
@@ -46,11 +94,16 @@ struct Mail {
 /// - a valid Bearer token (seeded into the session store before the server starts)
 /// - the `Arc<DeclarativeHttpHandler<Mail>>` returned to the caller (the
 ///   whole point of issue #85 — programmatic write access).
+/// - the server owner, which must be shut down before deleting the data directory.
 async fn spawn_server(
     data_dir: &std::path::Path,
-) -> (String, String, std::sync::Arc<lithair_core::http::DeclarativeHttpHandler<Mail>>) {
-    let port = portpicker::pick_unused_port().expect("free port available");
-    let base_url = format!("http://127.0.0.1:{}", port);
+) -> (
+    String,
+    String,
+    std::sync::Arc<lithair_core::http::DeclarativeHttpHandler<Mail>>,
+    RunningServer,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("reserve listener");
 
     let session_dir = data_dir.join("sessions");
     let mail_dir = data_dir.join("mails");
@@ -71,37 +124,15 @@ async fn spawn_server(
     let manager = SessionManager::new(store);
 
     let (builder, mail_handler) = LithairServer::new()
-        .with_host("127.0.0.1")
-        .with_port(port)
+        .with_data_dir(data_dir.to_string_lossy().to_string())
         .with_sessions(manager)
         .with_models_require_session(true)
         .with_model_ref::<Mail>(mail_dir.to_string_lossy().to_string(), "/api/mails")
         .await
         .expect("with_model_ref");
 
-    let returned_handle = mail_handler.clone();
-
-    tokio::spawn(async move {
-        if let Err(e) = builder.serve().await {
-            eprintln!("test server error: {}", e);
-        }
-    });
-
-    // Readiness probe.
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .expect("reqwest client");
-    let health_url = format!("{}/health", base_url);
-    for _ in 0..50 {
-        if let Ok(resp) = client.get(&health_url).send().await {
-            if resp.status().is_success() {
-                return (base_url, token, returned_handle);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    panic!("test server failed to start on port {}", port);
+    let (base, server) = RunningServer::start(builder, listener).await;
+    (base, token, mail_handler, server)
 }
 
 /// **Issue #85 requirement 1**: the returned handle is usable from outside
@@ -114,7 +145,7 @@ async fn spawn_server(
 #[tokio::test]
 async fn issue_85_programmatic_write_visible_through_gated_get() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let (base, token, mail_handler) = spawn_server(tmp.path()).await;
+    let (base, token, mail_handler, server) = spawn_server(tmp.path()).await;
 
     // Programmatic write — no HTTP involvement.
     let item = Mail { id: "m1".to_string(), subject: "hello from imap".to_string() };
@@ -139,6 +170,7 @@ async fn issue_85_programmatic_write_visible_through_gated_get() {
     assert_eq!(items[0]["id"], "m1");
     assert_eq!(items[0]["subject"], "hello from imap");
     assert_eq!(body["total"], 1);
+    server.shutdown().await;
 }
 
 /// **Issue #85 requirement 2**: the returned handle inherits
@@ -149,7 +181,7 @@ async fn issue_85_programmatic_write_visible_through_gated_get() {
 #[tokio::test]
 async fn issue_85_with_model_ref_gate_fires_no_session() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let (base, _token, _handle) = spawn_server(tmp.path()).await;
+    let (base, _token, _handle, server) = spawn_server(tmp.path()).await;
 
     let resp = reqwest::Client::new()
         .get(format!("{}/api/mails", base))
@@ -162,6 +194,7 @@ async fn issue_85_with_model_ref_gate_fires_no_session() {
         "with_model_ref must honor with_models_require_session(true) — \
          GET without auth must be 401"
     );
+    server.shutdown().await;
 }
 
 /// **Issue #85 requirement 3**: programmatic writes via the handle do NOT
@@ -172,7 +205,7 @@ async fn issue_85_with_model_ref_gate_fires_no_session() {
 #[tokio::test]
 async fn issue_85_programmatic_write_does_not_bypass_read_gate() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let (base, _token, mail_handler) = spawn_server(tmp.path()).await;
+    let (base, _token, mail_handler, server) = spawn_server(tmp.path()).await;
 
     let item = Mail { id: "m1".to_string(), subject: "leaked?".to_string() };
     mail_handler.apply_replicated_item(item).await.expect("programmatic write");
@@ -187,6 +220,7 @@ async fn issue_85_programmatic_write_does_not_bypass_read_gate() {
         401,
         "programmatic writes must not leak through the unauthenticated read path"
     );
+    server.shutdown().await;
 }
 
 /// Companion: `with_model_ref` without the flag set continues to work
@@ -195,37 +229,17 @@ async fn issue_85_programmatic_write_does_not_bypass_read_gate() {
 #[tokio::test]
 async fn with_model_ref_no_gate_returns_handle() {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let port = portpicker::pick_unused_port().expect("free port available");
-    let base = format!("http://127.0.0.1:{}", port);
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("reserve listener");
     let mail_dir = tmp.path().join("mails");
     std::fs::create_dir_all(&mail_dir).expect("create mail dir");
 
     let (builder, mail_handler) = LithairServer::new()
-        .with_host("127.0.0.1")
-        .with_port(port)
+        .with_data_dir(tmp.path().to_string_lossy().to_string())
         .with_model_ref::<Mail>(mail_dir.to_string_lossy().to_string(), "/api/mails")
         .await
         .expect("with_model_ref");
 
-    tokio::spawn(async move {
-        if let Err(e) = builder.serve().await {
-            eprintln!("test server error: {}", e);
-        }
-    });
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .expect("reqwest client");
-    let health_url = format!("{}/health", base);
-    for _ in 0..50 {
-        if let Ok(resp) = client.get(&health_url).send().await {
-            if resp.status().is_success() {
-                break;
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    let (base, server) = RunningServer::start(builder, listener).await;
 
     // Programmatic write works.
     let item = Mail { id: "m1".to_string(), subject: "open".to_string() };
@@ -241,4 +255,5 @@ async fn with_model_ref_no_gate_returns_handle() {
     let body: serde_json::Value = resp.json().await.expect("json body");
     let items = body["data"].as_array().expect("response.data is an array");
     assert_eq!(items.len(), 1);
+    server.shutdown().await;
 }

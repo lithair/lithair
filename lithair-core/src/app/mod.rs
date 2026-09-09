@@ -1150,7 +1150,40 @@ impl LithairServer {
     /// workers after `.await` returns.
     ///
     /// [`LithairServerBuilder::with_shutdown_grace`]: crate::app::LithairServerBuilder::with_shutdown_grace
-    pub async fn serve_with_graceful_shutdown<F>(mut self, shutdown: F) -> Result<()>
+    pub async fn serve_with_graceful_shutdown<F>(self, shutdown: F) -> Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.serve_inner(None, shutdown).await
+    }
+
+    /// Serve an already-bound socket with graceful shutdown.
+    ///
+    /// Bind to `127.0.0.1:0` and read `listener.local_addr()` before calling
+    /// this method to obtain an ephemeral port without a probe/rebind race.
+    /// The listener's actual address overrides the configured host and port
+    /// before startup. Initialization, optional TLS and shutdown behavior are
+    /// identical to [`Self::serve_with_graceful_shutdown`]. The server owns
+    /// the listener and releases it on shutdown.
+    pub async fn serve_with_listener<F>(
+        mut self,
+        listener: tokio::net::TcpListener,
+        shutdown: F,
+    ) -> Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let addr = listener.local_addr().context("Failed to read listener address")?;
+        self.config.server.host = addr.ip().to_string();
+        self.config.server.port = addr.port();
+        self.serve_inner(Some(listener), shutdown).await
+    }
+
+    async fn serve_inner<F>(
+        mut self,
+        listener: Option<tokio::net::TcpListener>,
+        shutdown: F,
+    ) -> Result<()>
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
@@ -2293,9 +2326,13 @@ impl LithairServer {
         let tls_active = tls_acceptor.is_some();
 
         // Start server
-        let listener = tokio::net::TcpListener::bind(&addr)
-            .await
-            .with_context(|| format!("Failed to bind to {}", addr))?;
+        let listener = match listener {
+            Some(listener) => listener,
+            None => tokio::net::TcpListener::bind(&addr)
+                .await
+                .with_context(|| format!("Failed to bind to {}", addr))?,
+        };
+        let addr = listener.local_addr().context("Failed to read listener address")?;
 
         let scheme = if tls_active { "https" } else { "http" };
         log::info!("Server listening on {}://{}", scheme, addr);
