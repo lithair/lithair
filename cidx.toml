@@ -71,6 +71,9 @@ command = "fs --severity HIGH,CRITICAL --skip-dirs target --exit-code 0 /scan"
 # the build graph. If a future feature change enables it, `cargo tree -i`
 # starts printing dependents and the phase fails instead of staying silent.
 [containers.cargo-audit]
+# This override invokes cargo install/tree, so it requires the pinned Rust image
+# even when the upstream cargo-audit preset uses a standalone audit binary.
+image = "rust:1.97.1-slim@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd"
 command = "sh -c 'command -v cargo-audit || cargo install --quiet --locked cargo-audit && cargo audit && test -z \"$(cargo tree -i rkyv@0.7.46 --target all 2>/dev/null)\"'"
 
 # ─── pipelines ───

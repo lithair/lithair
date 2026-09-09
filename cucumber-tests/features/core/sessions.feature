@@ -30,3 +30,9 @@ Feature: Browser sessions
     And the response should not touch any cookie
     When I GET /api/accounts with the session cookie only
     Then the response status should be 200
+
+  Scenario: A reserved ephemeral socket serves the session-gated API
+    Given a server with RBAC auth routes and session-gated models
+    Then the server socket is still exclusively reserved
+    When I GET /api/accounts without credentials
+    Then the response status should be 401

@@ -97,3 +97,13 @@ Create it under the directory that matches its tier, then run
 `cargo test -p cucumber-tests --test no_orphan_features` — it fails until
 you declare a runner for the new file in its `CLAIMED` map. That's the
 point: every spec has an owner, per-PR or nightly, from day one.
+
+## HTTP tests with ephemeral ports
+
+Reserve the socket with `tokio::net::TcpListener::bind("127.0.0.1:0")`, read
+`listener.local_addr()` for the client URL, and pass the listener to
+`builder.build()?.serve_with_listener(listener, shutdown)`. Keep the socket
+open throughout startup: probing a free port and binding it again later leaves
+a race with other tests. The listener address overrides the server host/port.
+The shutdown future has the same semantics as `serve_with_graceful_shutdown`;
+signal it and await the server task before removing the test data directory.

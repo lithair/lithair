@@ -51,36 +51,29 @@ impl SessionsWorld {
 #[given(expr = "a server with RBAC auth routes and session-gated models")]
 async fn given_server(world: &mut SessionsWorld) {
     let tmp = tempfile::tempdir().expect("tmpdir");
-    let port = portpicker::pick_unused_port().expect("free port");
-    let base_url = format!("http://127.0.0.1:{port}");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("reserve socket");
+    let addr = listener.local_addr().expect("listener address");
+    let base_url = format!("http://{addr}");
 
     let rbac = ServerRbacConfig::new()
         .with_user(RbacUser::new("alice", "s3cret", "Admin"))
         .with_session_store(tmp.path().join("sessions").to_string_lossy().to_string());
     let builder = LithairServer::new()
-        .with_host("127.0.0.1")
-        .with_port(port)
+        .with_data_dir(tmp.path().to_string_lossy().to_string())
         .with_model::<Account>(tmp.path().join("accounts").to_string_lossy(), "/api/accounts")
         .with_rbac_config(rbac)
         .with_models_require_session(true);
+    let server = builder.build().expect("build server");
     tokio::spawn(async move {
-        if let Err(e) = builder.serve().await {
+        if let Err(e) = server.serve_with_listener(listener, std::future::pending::<()>()).await {
             eprintln!("sessions BDD server error: {e}");
         }
     });
 
     let client = SessionsWorld::client();
-    let mut up = false;
-    for _ in 0..50 {
-        if let Ok(resp) = client.get(format!("{base_url}/health")).send().await {
-            if resp.status().is_success() {
-                up = true;
-                break;
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert!(up, "server did not come up on {base_url}");
+    // The bound socket queues the connection until startup completes.
+    let response = client.get(format!("{base_url}/health")).send().await.expect("health request");
+    assert!(response.status().is_success(), "server did not come up on {base_url}");
 
     world.temp_dir = Some(tmp);
     world.base_url = base_url;
@@ -181,4 +174,10 @@ async fn then_clears_cookie(world: &mut SessionsWorld, name: String) {
         set_cookie.starts_with(&format!("{name}=;")) && set_cookie.contains("Max-Age=0"),
         "expected an empty {name} cookie with Max-Age=0, got: {set_cookie}"
     );
+}
+
+#[then(expr = "the server socket is still exclusively reserved")]
+async fn then_socket_reserved(world: &mut SessionsWorld) {
+    let addr = world.base_url.strip_prefix("http://").expect("HTTP address");
+    assert!(tokio::net::TcpListener::bind(addr).await.is_err(), "socket must remain owned");
 }
