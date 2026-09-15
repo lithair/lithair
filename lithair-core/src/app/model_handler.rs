@@ -50,6 +50,15 @@ pub struct ModelStats {
 /// Type-erased trait for model handlers
 #[async_trait::async_trait]
 pub trait ModelHandler: Send + Sync {
+    /// Whether native admin, replication, history and RAM diagnostics apply.
+    /// External adapters must return false and reject unsupported operations.
+    fn uses_native_storage(&self) -> bool {
+        true
+    }
+
+    /// Configure role-based permission resolution for an external adapter.
+    fn set_permission_checker(&mut self, _checker: Arc<dyn crate::rbac::PermissionChecker>) {}
+
     /// Handle HTTP request for this model
     async fn handle_request(&self, req: Req, path_segments: &[&str]) -> Result<Resp, Infallible>;
 

@@ -632,6 +632,7 @@ pub struct LithairServer {
     /// `serve()` (see `with_tracing_layer`). Taken (drained) at init.
     pub(crate) tracing_layers: Vec<BoxedTracingLayer>,
     session_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     custom_routes: Vec<CustomRoute>,
     not_found_handler: Option<RouteHandler>,
     route_guards: Vec<crate::http::RouteGuardMatcher>,
@@ -1317,6 +1318,26 @@ impl LithairServer {
             log::info!("Creating handler for model: {}", info.name);
             match (info.factory)(info.data_path.clone()).await {
                 Ok(mut handler) => {
+                    if !handler.uses_native_storage() {
+                        anyhow::ensure!(
+                            !self.config.replication.enabled
+                                && self.node_id.is_none()
+                                && self.cluster_peers.is_empty(),
+                            "External storage model '{}' does not support native clustering",
+                            info.name
+                        );
+                        anyhow::ensure!(
+                            !self.config.admin.data_admin_enabled,
+                            "External storage model '{}' does not support the native data-admin/backup API", info.name
+                        );
+                        if let Some(checker) = &self.permission_checker {
+                            Arc::get_mut(&mut handler)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("Storage factory must return a fresh handler")
+                                })?
+                                .set_permission_checker(Arc::clone(checker));
+                        }
+                    }
                     // Wire SSE broadcaster into each model handler. Works
                     // through `&self` since #91 — `DeclarativeHttpHandler`
                     // stores the broadcaster in a `OnceLock` and the trait
@@ -3636,6 +3657,7 @@ impl Default for LithairServer {
             deferred_warnings: Vec::new(),
             tracing_layers: Vec::new(),
             session_manager: None,
+            permission_checker: None,
             custom_routes: Vec::new(),
             not_found_handler: None,
             route_guards: Vec::new(),

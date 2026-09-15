@@ -1,0 +1,5 @@
+error: Turso supports only #[db(primary_key)]; use storage filters for SQL equality queries
+ --> tests/ui/storage_unsupported_index.rs:6:10
+  |
+6 |     #[db(indexed)]
+  |          ^^^^^^^

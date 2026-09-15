@@ -78,7 +78,8 @@ pub fn derive_lifecycle_aware(input: TokenStream) -> TokenStream {
         firewall,
         schema,
         retention,
-        pinned
+        pinned,
+        storage
     )
 )]
 pub fn derive_declarative_model(input: TokenStream) -> TokenStream {

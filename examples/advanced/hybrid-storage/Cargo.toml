@@ -12,5 +12,4 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow = "1"
-http-body-util.workspace = true
-url = "2"
+chrono.workspace = true

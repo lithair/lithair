@@ -306,3 +306,19 @@ async fn oversized_documents_and_batches_fail_without_writes() {
         Err(Error::InvalidInput(_))
     ));
 }
+
+#[tokio::test]
+async fn concurrent_patches_merge_without_losing_independent_fields() {
+    let (_tmp, _db, store) = setup().await;
+    store.create(note("one"), &permissions()).await.expect("create");
+    let perms = permissions();
+    let (title, category) = tokio::join!(
+        store.patch("one", serde_json::json!({"title": "changed"}), &perms),
+        store.patch("one", serde_json::json!({"category": "other"}), &perms),
+    );
+    title.expect("title");
+    category.expect("category");
+    let updated = store.get("one", &permissions()).await.expect("get").expect("document");
+    assert_eq!(updated.title, "changed");
+    assert_eq!(updated.category, "other");
+}

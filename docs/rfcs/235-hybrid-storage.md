@@ -1,4 +1,4 @@
-# RFC 235: optional SQL storage, first Turso prototype
+# RFC 235: optional SQL storage, declarative Turso integration
 
 Status: experimental prototype, not a stable 1.x storage API.
 Issue: https://github.com/lithair/lithair/issues/235
@@ -8,8 +8,8 @@ Issue: https://github.com/lithair/lithair/issues/235
 Keep native Lithair models as the default. Add an unpublished `lithair-turso`
 crate that applications explicitly depend on. A model has one authoritative
 store: either the existing memory-first/event-sourced path or SQL. An application
-may use both. This prototype does not change `with_model` or derive syntax and
-does not put SQL I/O into native model reads.
+may use both. The model opts in with `#[storage(turso)]`; the usual `with_model` registers
+its storage and HTTP routes. SQL I/O never enters native model reads.
 
 Three different products must not be conflated:
 
@@ -31,7 +31,13 @@ server-selected tenant). Namespaces and identifiers are bound values, never SQL.
 The namespace is a data partition, not authentication: never let an untrusted
 request select arbitrary namespaces or supply its own permission list.
 
-`SqlModel` explicitly opts into a typed document repository. The application
+`DeclarativeModel` generates `SqlModel` and an optional `HttpExposable::storage_factory`
+hook. The default hook is `None` (native); the generated Turso hook references
+only the application dependency, keeping core independent of the driver. All
+three builder registration methods honor this hook. Native handler constructors
+reject externally stored models instead of creating a second authority.
+
+The application
 chooses a collection version such as `archive_v1`; a schema change requires an
 explicit migration/new collection. Records use `(namespace, model, id)` as primary
 key and a JSON body. This demonstrates storage ownership without prematurely
@@ -39,22 +45,26 @@ committing to a generic SQL schema generator or ORM.
 
 The repository calls the existing `HttpExposable::validate`, `can_read` and
 `can_write` hooks. Updates authorize both the stored and proposed objects; deletes
-authorize the stored object. A change never changes the primary key. Authentication
-and mapping an authenticated principal to permission strings belong to the caller.
-This is not automatic integration with `with_models_require_session`, field-level
-HTTP serialization, or every DeclarativeModel annotation. The example supplies
-explicit routes; no arbitrary SQL endpoint is exposed.
+authorize the stored object. A change never changes the primary key. The generated HTTP adapter uses shared session extraction and cookie cross-site
+checks. The builder's session-presence gate applies in any registration order.
+Permissions come from a trusted session or the configured role checker; model
+hooks always execute. Programmatic repository callers still supply trusted
+permissions explicitly. Responses use the stored serde representation, without
+field-level response filtering. No arbitrary SQL endpoint is exposed.
 
-Supported: typed create/get/update/delete, atomic bounded batches within one model
+Supported: typed create/get/update/patch/delete, atomic bounded batches within one model
 and namespace, exact string equality on explicitly allowed JSON fields, stable ID
 ordering, bounded limit/offset pagination, restart and partition isolation.
 
 Not provided: secondary uniqueness, relational foreign keys, schema migration,
 lifecycle auditing/immutability, native history, native retention, SSE, Raft,
 SQL projections, joins through the repository API or transparent cache coherence.
-Do not use annotations requesting those capabilities on SQL models. SQL models
-must opt in explicitly; a future builder integration must reject unsupported
-capabilities before registering routes.
+The macro rejects declarations requesting those capabilities. SQL models
+must opt in explicitly. Startup rejects native clustering and data-admin on a
+server with SQL models so native backups/history cannot silently omit SQL data.
+Native RAM metrics report zero resident SQL records without scanning SQL.
+`with_declarative_model` selects the adapter but does not run native migrations.
+See the adapter README for the exact annotation and HTTP surface.
 
 ## Pagination and authorization
 
@@ -109,7 +119,8 @@ permission checks, concurrent writes and namespace/model isolation. A registered
 Gherkin runner exercises the SQL promises in the cidx test gate. Core-only downstream
 builds must not acquire Turso as a dependency.
 
-After review of the prototype, decide whether to introduce a `ModelRepository`
-boundary in core, authorization-aware query plans and a `with_sql_model` builder.
-Do not freeze a universal storage trait until a second backend and its different
-transaction semantics have exercised that boundary.
+Keep `with_model` as the application entry point. Next decisions concern
+SQL-aware administration/backup, authorization-aware queries and production
+recovery evidence. Do not freeze a universal repository/transaction trait until
+a second backend has exercised its different semantics. The current extension
+point is a model-handler factory, not a generic SQL ORM.

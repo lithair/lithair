@@ -18,5 +18,5 @@ Feature: Optional SQL storage alongside native Lithair models
     Then invalid SQL documents are rejected
     And unauthorized SQL reads and writes are denied
 
-  Scenario: An application mixes native and SQL storage
+  Scenario: Model declarations generate native and SQL routes in one application
     Then native and SQL HTTP models coexist and survive server restart

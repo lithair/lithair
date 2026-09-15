@@ -1,67 +1,122 @@
 # lithair-turso (experimental)
 
-An unpublished, opt-in typed document repository backed by the embedded Turso
-Rust engine. Native Lithair models keep their existing storage and dependencies.
-See [RFC 235](../docs/rfcs/235-hybrid-storage.md) for the design and limitations.
+Optional embedded Turso storage selected on a `DeclarativeModel`. Add the
+`lithair-turso` dependency to the application, then register models as usual:
 
 ```rust,ignore
-impl lithair_turso::SqlModel for Archive {
-    const COLLECTION: &'static str = "archives_v1";
-    const FILTER_FIELDS: &'static [&'static str] = &["category"];
+#[derive(Clone, serde::Serialize, serde::Deserialize, lithair_core::DeclarativeModel)]
+#[storage(turso)]
+struct Archive {
+    #[db(primary_key)]
+    id: String,
+    #[http(validate = "non_empty")]
+    title: String,
 }
 
-let db = lithair_turso::Database::open("archive.db").await?;
-let archives = db.store::<Archive>("trusted-tenant")?;
-archives.create(item, &authenticated_permissions).await?;
-let page = archives.list(
-    lithair_turso::Page { limit: 25, offset: 0 },
-    Some(lithair_turso::Equal { field: "category", value: "work" }),
-    &authenticated_permissions,
-).await?;
+LithairServer::new()
+    .with_model::<LiveTask>("./data/tasks", "/api/tasks") // native by default
+    .with_model::<Archive>("./data/archives", "/api/archives")
+    .serve().await?;
 ```
 
-`SqlModel` extends `HttpExposable`; derived models reuse their generated validation,
-read and write checks. `update` checks the existing and replacement objects;
-`delete` checks the existing object. Permissions and namespaces are supplied by
-trusted application code after authentication. There is no automatic session-gate
-or full DeclarativeModel annotation integration. HTTP serialization remains the
-application's responsibility; do not expose private struct fields accidentally.
+The derive generates `SqlModel` and the adapter factory. `with_model` creates
+`./data/archives/model.db` and the CRUD routes on startup. No manual repository
+implementation, database opening or HTTP handlers are needed. `with_declarative_model`
+and `with_model_full` honor the same selection. The native handler constructors
+reject SQL-declared models, including the native `with_model_ref` path.
 
-## Guarantees and bounds
+This workspace crate is **unpublished and experimental**. Use a path dependency
+from a checkout (as in the example); it is not part of the published v1.10.0 crates.
+Native applications have no Turso dependency. See [RFC 235](../docs/rfcs/235-hybrid-storage.md).
 
-- One source of truth per model. Native models and SQL models may coexist.
-- An acknowledged mutation has committed. A batch commits entirely or rolls back.
-- Same-namespace/model primary keys are unique. Model and namespace keys are bound
-  parameters. No raw SQL is accepted through the repository.
-- Clone one `Database` per file within a process; operations share a serialized
-  connection. Concurrent duplicate creates produce one success, other calls fail.
-- Once a write is admitted, caller cancellation does not cancel the transaction.
-  A timed-out caller must reconcile the outcome; await writes before runtime shutdown.
-- Up to 100 mutations per batch, 100 SQL candidates per page, 1 MiB of encoded JSON
-  per document, 512 bytes per ID, 128 bytes per namespace/collection.
-- Exact string filters, ordering and pagination execute in SQL. JSON filters may
-  scan partition rows on disk; no indexed-filter performance claim is made.
-- Permission checks filter each bounded SQL candidate page. Offset counts candidates,
-  not visible rows; a short/empty page does not establish end-of-data. No total is
-  returned. Concurrent modifications can shift offset pages.
+## Declaration and routes
 
-## Explicitly unsupported
+`#[storage(turso)]` defaults to collection = Rust struct name and namespace =
+`"default"`. For stable names and optional string equality filters:
 
-Secondary uniqueness/foreign keys, relational schema generation/migration, field
-immutability or audit history, native retention, replication, SSE, SQL projections,
-and cross-backend transactions. Do not request these via annotations on SQL models.
-Use versioned collection names and explicit migrations for schema changes. There
-is no transparent cache; reads access SQL. Production promotion needs crash/fault
-injection and workload benchmarks beyond the tested ordinary reopen/rollback paths.
+```rust,ignore
+#[storage(turso, collection = "archives_v1", namespace = "tenant-a", filters("category"))]
+```
 
-The dependency is pinned to Turso 0.7.2 with binding defaults disabled. No experimental
-engine modes, cloud sync or allocator replacement are enabled by this adapter.
-Do not mix SQLite and Turso processes writing the same file.
+Choose a separate data directory for each registration. Keep collection/namespace
+stable across renames and HTTP path changes. Changing them selects another data
+partition; it does not migrate records. Selecting Turso in a directory with
+native events/snapshots, or native storage in a directory with `model.db`, refuses
+to start. Backend changes require an explicit migration. Filter fields must be `String` with default
+serde names/serialization. `limit` and `offset` are reserved. Namespace selection
+comes from trusted application code, never query parameters.
 
-## Validation
+| Method | Route | Result |
+| --- | --- | --- |
+| GET | `/api/archives?category=work&limit=25&offset=0` | `{"data": [...]}` |
+| GET | `/api/archives/{id}` | The document |
+| POST | `/api/archives` | Create complete model including ID; 201 after commit |
+| PUT | `/api/archives/{id}` | Replace complete model; immutable ID |
+| PATCH | `/api/archives/{id}` | Merge top-level fields atomically, then validate |
+| DELETE | `/api/archives/{id}` | Delete; 200 after commit |
+| HEAD / OPTIONS | CRUD routes | Bodyless reads / method discovery |
 
-`cidx run test` includes the repository unit tests and the registered
-`cucumber-tests/tests/turso_test.rs` Gherkin runner. `cidx run ci` also validates
-security, formatting/lints and the complete workspace release build.
+Writes require `application/json` and at most 1 MiB. Unknown/duplicate query
+parameters and unsupported filters are errors. PATCH rejects unknown fields.
+Errors distinguish invalid input (400), authorization (401/403), missing records
+(404), duplicates (409), media type (415), body limit (413) and storage failure (500).
+Bulk HTTP routes, count/schema/SSE subroutes and SQL endpoints are not provided.
 
-See the [mixed HTTP example](../examples/advanced/hybrid-storage/README.md).
+## Authorization
+
+`with_models_require_session(true)` applies to SQL registrations through
+`with_model` and `with_declarative_model`, in any builder order. It requires a
+configured session store at startup. Cookie/Bearer precedence, cookie settings,
+expiration and cross-site protections use Lithair's shared session machinery.
+OPTIONS is exempt from the model session gate.
+
+`#[permission(read = "ArchiveRead", write = "ArchiveWrite")]` uses generated
+model-level `can_read`/`can_write` checks on every operation, including anonymous
+requests with an empty permission list. Store a trusted `Vec<String>` under
+`permissions` in a server-created session, or use the configured RBAC checker to
+resolve declared permissions from the session's `role`. `with_model_full` supports
+an explicit checker/store. Clients cannot supply permissions via headers or query
+parameters. `public_if` read conditions still apply unless an authentication gate
+requires a session first. Updates/PATCH authorize both existing and proposed states.
+
+Model permissions are not field-level response filtering. The HTTP representation
+is the model's serde representation, also used for storage. Avoid storing secrets
+in a model exposed as a whole document.
+
+## Guarantees and limits
+
+- Native memory-first models and SQL models coexist, each with one authority.
+- Acknowledged mutations have committed. Batches commit entirely or roll back.
+  Programmatic access remains available via `Database::store::<T>(namespace)`.
+- Keys are `(namespace, collection, id)`, bound as SQL parameters. A cloned
+  `Database` shares one serialized connection; open once per file per process.
+- Once admitted, writes complete even when their caller is cancelled. A timeout
+  has an unknown outcome: reconcile stable IDs before retrying, and await writes
+  before stopping the Tokio runtime.
+- At most 100 mutations/batch, 100 candidates/page (default 50), 1 MiB encoded
+  JSON/document, 512 bytes/ID, 128 bytes/namespace or collection.
+- SQL executes filtering, ordering and pagination. Permission checks then filter
+  the candidate page: offset counts candidates, an empty page does not prove the
+  end of data, and no total is returned. Concurrent edits can shift offset pages.
+- JSON equality may scan partition rows on disk; no indexed-filter performance
+  claim or transparent memory cache. Native request paths stay unchanged.
+
+Unsupported declarations fail at compile time: secondary indexes/uniqueness,
+foreign keys, native lifecycle/audit/retention/replication, schema migration, RBAC
+owner fields, relations and HTTP serialization modes. Only `db(primary_key)` is
+supported among database annotations. Unknown/duplicate storage options also fail.
+
+A server containing SQL models refuses native clustering or native data-admin
+configuration at startup: native backups/imports/history cannot represent this
+backend. Native RAM metrics report zero resident items for SQL models. Native
+SSE/hooks and cross-backend transactions do not apply to SQL mutations.
+
+The exact Turso 0.7.2 binding has defaults disabled. No cloud sync, allocator
+replacement or experimental engine options are requested. Do not mix SQLite and
+Turso processes on a file. Ordinary restart/rollback are tested; power-loss and
+filesystem fault injection plus workload benchmarks remain prerequisites for
+production promotion.
+
+`cidx run test` runs repository tests, generated HTTP/restart tests, compile-fail
+diagnostics and the Turso Gherkin runner. `cidx run ci` also runs security, code
+and the workspace release build. See the [runnable example](../examples/advanced/hybrid-storage/README.md).

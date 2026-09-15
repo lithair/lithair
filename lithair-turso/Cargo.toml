@@ -13,7 +13,14 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+http-body-util.workspace = true
+bytes = "1"
+url = "2"
 
 [dev-dependencies]
 lithair-macros = { path = "../lithair-macros" }
 tempfile = "3"
+reqwest.workspace = true
+chrono.workspace = true

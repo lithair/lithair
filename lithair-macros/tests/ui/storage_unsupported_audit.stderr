@@ -1,0 +1,5 @@
+error: this annotation requires native storage; it is not supported by Turso
+ --> tests/ui/storage_unsupported_audit.rs:6:5
+  |
+6 |     #[lifecycle(audited)]
+  |     ^^^^^^^^^^^^^^^^^^^^^

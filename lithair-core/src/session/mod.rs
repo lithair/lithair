@@ -256,3 +256,23 @@ mod tests {
         assert_eq!(SameSitePolicy::default(), SameSitePolicy::Lax);
     }
 }
+
+/// Resolve credentials for storage adapters using Lithair's cookie/Bearer
+/// precedence, cookie configuration, live-session lookup and cross-site guard.
+/// A cross-site cookie mutation is rejected before looking up the session.
+/// Missing, expired or unsupported sessions return `Ok(None)` (fail closed).
+pub async fn session_for_request<B>(
+    req: &hyper::Request<B>,
+    store: Option<&Arc<dyn std::any::Any + Send + Sync>>,
+) -> Result<Option<Session>, &'static str> {
+    if crate::http::declarative::cookie_auth_cross_site_blocked(req) {
+        return Err("cross-site request rejected");
+    }
+    let Some(store) = store.and_then(RecognizedSessionStore::recognize) else {
+        return Ok(None);
+    };
+    let Some(token) = crate::http::declarative::extract_session_token(req) else {
+        return Ok(None);
+    };
+    Ok(store.get_live_session(&token).await)
+}

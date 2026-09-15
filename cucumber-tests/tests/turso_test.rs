@@ -175,7 +175,7 @@ async fn mixed_http(world: &mut TursoWorld) {
             updated.title = "archived".into();
             assert_eq!(
                 client
-                    .put(format!("{sql}?id=one"))
+                    .put(format!("{sql}/one"))
                     .bearer_auth("test-archive-token")
                     .json(&updated)
                     .send()
@@ -206,10 +206,34 @@ async fn mixed_http(world: &mut TursoWorld) {
             .expect("SQL JSON");
         assert_eq!(page["data"].as_array().expect("page").len(), 1);
         assert_eq!(page["data"][0]["title"], "archived");
+        assert!(tmp.path().join("archives/model.db").exists());
+        assert!(!tmp.path().join("archives/events.raftlog").exists());
+        assert_eq!(
+            client
+                .patch(format!("{sql}/one"))
+                .bearer_auth("test-archive-token")
+                .json(&serde_json::json!({"id": "changed"}))
+                .send()
+                .await
+                .expect("immutable key")
+                .status(),
+            400
+        );
+        assert_eq!(
+            client
+                .patch(format!("{sql}/one"))
+                .bearer_auth("test-archive-token")
+                .json(&serde_json::json!({"category": "work"}))
+                .send()
+                .await
+                .expect("generated patch")
+                .status(),
+            200
+        );
         if !first_boot {
             assert_eq!(
                 client
-                    .delete(format!("{sql}?id=one"))
+                    .delete(format!("{sql}/one"))
                     .bearer_auth("test-archive-token")
                     .send()
                     .await
@@ -219,7 +243,7 @@ async fn mixed_http(world: &mut TursoWorld) {
             );
             assert_eq!(
                 client
-                    .get(format!("{sql}?id=one"))
+                    .get(format!("{sql}/one"))
                     .bearer_auth("test-archive-token")
                     .send()
                     .await

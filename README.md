@@ -250,9 +250,10 @@ safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
 
 The unpublished [`lithair-turso`](lithair-turso/README.md) prototype lets an
 application store selected models in embedded Turso while keeping native models
-on their existing path. It provides typed document CRUD, model validation and
-permission hooks, SQL filters/pagination and per-store transactions. Native event
-history, replication and full derive-annotation support do not carry over to SQL.
+on their existing path. Add `#[storage(turso)]` to a `DeclarativeModel`, then use
+the usual `with_model`: storage and CRUD routes are automatic. Validation, model
+permissions, sessions, SQL filters/pagination and transactions are supported.
+Unsupported native storage annotations fail explicitly.
 See the [mixed example](examples/advanced/hybrid-storage/README.md) and
 [RFC 235](docs/rfcs/235-hybrid-storage.md) before opting in.
 

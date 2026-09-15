@@ -2068,6 +2068,19 @@ impl LithairServerBuilder {
             let pc = effective_permission_checker.clone();
             let ss = effective_session_store.clone();
             Box::pin(async move {
+                if let Some(factory) = T::storage_factory() {
+                    let mut handler = factory(data_path).await?;
+                    let h = Arc::get_mut(&mut handler).ok_or_else(|| {
+                        anyhow::anyhow!("Storage factory must return a fresh handler")
+                    })?;
+                    if let Some(checker) = pc {
+                        h.set_permission_checker(checker);
+                    }
+                    if let Some(store) = ss {
+                        h.set_session_store_any(store);
+                    }
+                    return Ok(handler);
+                }
                 let mut handler = DeclarativeModelHandler::<T>::new(data_path)
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
@@ -2125,6 +2138,10 @@ impl LithairServerBuilder {
     ///     .serve()
     ///     .await?;
     /// ```
+    ///
+    /// Models declared with `#[storage(turso)]` use the application-provided
+    /// Turso adapter, including generated CRUD routes. `data_path` remains a
+    /// per-model directory. Models without a storage declaration remain native.
     pub fn with_model<T>(
         mut self,
         data_path: impl Into<String>,
@@ -2151,12 +2168,15 @@ impl LithairServerBuilder {
         // than capturing the builder state at this moment — means the order
         // of `.with_model::<T>()`, `.with_sessions(...)`, and
         // `.with_models_require_session(...)` no longer matters.
-        let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
-            Box::pin(async move {
-                let handler = DeclarativeModelHandler::<T>::new(data_path)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
-                Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
+        let external_factory = T::storage_factory();
+        let factory: crate::app::ModelFactory = external_factory.unwrap_or_else(|| {
+            Arc::new(move |data_path: String| {
+                Box::pin(async move {
+                    let handler = DeclarativeModelHandler::<T>::new(data_path)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
+                    Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
+                })
             })
         });
 
@@ -2182,6 +2202,9 @@ impl LithairServerBuilder {
     }
 
     /// Register a DeclarativeModel with schema migration support
+    ///
+    /// A model with an external `storage_factory` uses that adapter instead.
+    /// Native schema migration is not run for externally stored models.
     ///
     /// This method enables automatic schema change detection at startup.
     /// If the model's schema has changed since last run, changes are logged
@@ -2218,13 +2241,17 @@ impl LithairServerBuilder {
         // Session-store and require-session (issue #78) are applied uniformly
         // in `LithairServer::serve()` — see the corresponding comment in
         // `with_model` above.
-        let factory: crate::app::ModelFactory = Arc::new(move |data_path: String| {
-            Box::pin(async move {
-                let handler = DeclarativeModelHandler::<T>::new(data_path)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?
-                    .with_schema_spec(T::schema_spec());
-                Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
+        let external_factory = T::storage_factory();
+        let external_storage = external_factory.is_some();
+        let factory: crate::app::ModelFactory = external_factory.unwrap_or_else(|| {
+            Arc::new(move |data_path: String| {
+                Box::pin(async move {
+                    let handler = DeclarativeModelHandler::<T>::new(data_path)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?
+                        .with_schema_spec(T::schema_spec());
+                    Ok(Arc::new(handler) as Arc<dyn crate::app::ModelHandler>)
+                })
             })
         });
 
@@ -2236,7 +2263,7 @@ impl LithairServerBuilder {
             base_path: base_path_str,
             data_path: data_path_str,
             factory,
-            schema_extractor: Some(schema_extractor),
+            schema_extractor: if external_storage { None } else { Some(schema_extractor) },
             // Same simple-CRUD path as `with_model`; issue #78 gate applies.
             require_session_applies: true,
         });
@@ -2569,6 +2596,7 @@ impl LithairServerBuilder {
             deferred_warnings: self.deferred_warnings,
             tracing_layers: self.tracing_layers,
             session_manager: self.session_manager,
+            permission_checker: self.permission_checker,
             custom_routes: self.custom_routes,
             not_found_handler: self.not_found_handler,
             route_guards: self.route_guards,
