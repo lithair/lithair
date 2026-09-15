@@ -26,7 +26,9 @@ and `with_model_full` honor the same selection. The native handler constructors
 reject SQL-declared models, including the native `with_model_ref` path.
 
 This workspace crate is **unpublished and experimental**. Use a path dependency
-from a checkout (as in the example); it is not part of the published v1.10.0 crates.
+from a checkout (as in the example), or follow the
+[standalone application guide](../docs/guides/turso-in-an-application.md) for
+Git dependencies pinned to a tested revision. It is not part of the published v1.10.0 crates.
 Native applications have no Turso dependency. See [RFC 235](../docs/rfcs/235-hybrid-storage.md).
 
 ## Declaration and routes

@@ -46,6 +46,7 @@ pub struct Product {
 
 - [Data-First Philosophy](guides/data-first-philosophy.md)
 - [Getting Started](guides/getting-started.md)
+- [Use Turso in another application](guides/turso-in-an-application.md) (experimental)
 
 ---
 

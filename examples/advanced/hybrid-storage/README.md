@@ -46,6 +46,8 @@ Turso support is an unpublished experimental workspace crate. It supports one
 SQL authority per model; native retention, history, replication, SSE and backups
 do not apply. Unsupported native annotations fail to compile. See the
 [adapter contract](../../../lithair-turso/README.md) and [RFC](../../../docs/rfcs/235-hybrid-storage.md).
+For a separate repository, use the
+[standalone application guide](../../../docs/guides/turso-in-an-application.md).
 
 `cidx run test` includes the mixed HTTP/restart Gherkin scenario;
 `cidx run ci` validates the full workspace.
