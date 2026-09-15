@@ -1,0 +1,287 @@
+//! Experimental typed SQL document storage, opt-in and independent of native models.
+//!
+//! Reuses `HttpExposable` validation and permission hooks, not all derive annotations.
+//! See the crate README and RFC 235 for capabilities, pagination and cancellation.
+use lithair_core::http::HttpExposable;
+use serde_json::Value as Json;
+use std::{marker::PhantomData, sync::Arc};
+use tokio::sync::Mutex;
+use turso::{params, Connection};
+
+pub const MAX_PAGE_SIZE: u32 = 100;
+pub const MAX_BATCH_SIZE: usize = 100;
+pub const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
+
+/// Explicit opt-in to the prototype's limited capabilities. Use a stable versioned
+/// collection name. FILTER_FIELDS lists top-level JSON string fields available to SQL.
+pub trait SqlModel: HttpExposable {
+    const COLLECTION: &'static str;
+    const FILTER_FIELDS: &'static [&'static str] = &[];
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    #[error("model validation: {0}")]
+    Validation(String),
+    #[error("permission denied")]
+    Forbidden,
+    #[error("record not found")]
+    NotFound,
+    #[error("primary key already exists")]
+    Conflict,
+    #[error("database error: {0}")]
+    Database(Box<turso::Error>),
+    #[error("serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[error("write task failed: {0}")]
+    Task(#[from] tokio::task::JoinError),
+}
+impl From<turso::Error> for Error {
+    fn from(value: turso::Error) -> Self {
+        Self::Database(Box::new(value))
+    }
+}
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// One connection shared by all cloned handles. Open once per file per process.
+#[derive(Clone)]
+pub struct Database {
+    connection: Arc<Mutex<Connection>>,
+}
+impl Database {
+    pub async fn open(path: &str) -> Result<Self> {
+        let database = turso::Builder::new_local(path).build().await?;
+        let connection = database.connect()?;
+        connection.execute("PRAGMA synchronous = FULL", ()).await?;
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS lithair_documents_v1 (namespace TEXT NOT NULL, model TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (namespace, model, id))",
+            (),
+        ).await?;
+        Ok(Self { connection: Arc::new(Mutex::new(connection)) })
+    }
+
+    /// Namespace is selected by trusted application code, not a client permission.
+    pub fn store<T: SqlModel>(&self, namespace: &str) -> Result<Store<T>> {
+        if namespace.is_empty()
+            || namespace.len() > 128
+            || T::COLLECTION.is_empty()
+            || T::COLLECTION.len() > 128
+        {
+            return Err(Error::InvalidInput(
+                "namespace and collection must contain 1..128 bytes".into(),
+            ));
+        }
+        if T::FILTER_FIELDS.iter().any(|field| !valid_field(field)) {
+            return Err(Error::InvalidInput(
+                "filter fields must be simple JSON field names".into(),
+            ));
+        }
+        Ok(Store { database: self.clone(), namespace: namespace.into(), marker: PhantomData })
+    }
+}
+
+fn valid_field(field: &str) -> bool {
+    !field.is_empty() && field.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+}
+
+#[derive(Clone)]
+pub struct Store<T: SqlModel> {
+    database: Database,
+    namespace: String,
+    marker: PhantomData<T>,
+}
+
+/// Atomic changes within one model and namespace. Update cannot change the ID.
+pub enum Mutation<T> {
+    Create(T),
+    Update { id: String, value: T },
+    Delete { id: String },
+}
+
+/// SQL candidate-page offset. Permission filtering may return a short/empty page;
+/// it does not change what the offset counts. No unfiltered total is exposed.
+#[derive(Debug, Clone, Copy)]
+pub struct Page {
+    pub limit: u32,
+    pub offset: u32,
+}
+impl Default for Page {
+    fn default() -> Self {
+        Self { limit: 50, offset: 0 }
+    }
+}
+
+/// Exact string equality on an explicitly allowed top-level JSON field.
+pub struct Equal<'a> {
+    pub field: &'a str,
+    pub value: &'a str,
+}
+
+impl<T: SqlModel> Store<T> {
+    pub async fn get(&self, id: &str, permissions: &[String]) -> Result<Option<T>> {
+        let connection = self.database.connection.lock().await;
+        let item = self.load(&connection, id).await?;
+        if item.as_ref().is_some_and(|item| !item.can_read(permissions)) {
+            return Err(Error::Forbidden);
+        }
+        Ok(item)
+    }
+
+    pub async fn list(
+        &self,
+        page: Page,
+        filter: Option<Equal<'_>>,
+        permissions: &[String],
+    ) -> Result<Vec<T>> {
+        if page.limit == 0 || page.limit > MAX_PAGE_SIZE {
+            return Err(Error::InvalidInput(format!("page limit must be 1..{MAX_PAGE_SIZE}")));
+        }
+        let (enabled, path, value) = match filter {
+            Some(filter) => {
+                if !T::FILTER_FIELDS.contains(&filter.field) {
+                    return Err(Error::InvalidInput("unsupported filter field".into()));
+                }
+                (1i64, format!("$.{}", filter.field), filter.value)
+            }
+            None => (0, "$".into(), ""),
+        };
+        let connection = self.database.connection.lock().await;
+        let mut rows = connection.query(
+            "SELECT body FROM lithair_documents_v1 WHERE namespace = ?1 AND model = ?2 AND (?3 = 0 OR (json_type(body, ?4) = 'text' AND json_extract(body, ?4) = ?5)) ORDER BY id LIMIT ?6 OFFSET ?7",
+            params![self.namespace.as_str(), T::COLLECTION, enabled, path, value, i64::from(page.limit), i64::from(page.offset)],
+        ).await?;
+        let mut items = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let item: T = serde_json::from_str(&row.get::<String>(0)?)?;
+            if item.can_read(permissions) {
+                items.push(item);
+            }
+        }
+        Ok(items)
+    }
+
+    pub async fn create(&self, value: T, permissions: &[String]) -> Result<()> {
+        self.batch(vec![Mutation::Create(value)], permissions).await
+    }
+    pub async fn update(&self, id: &str, value: T, permissions: &[String]) -> Result<()> {
+        self.batch(vec![Mutation::Update { id: id.into(), value }], permissions).await
+    }
+    pub async fn delete(&self, id: &str, permissions: &[String]) -> Result<()> {
+        self.batch(vec![Mutation::Delete { id: id.into() }], permissions).await
+    }
+
+    /// Commit all mutations or roll them back. Once admitted, a write completes
+    /// even if the caller drops this future. Reconcile stable IDs after a timeout;
+    /// await outstanding writes before stopping the Tokio runtime.
+    pub async fn batch(&self, mutations: Vec<Mutation<T>>, permissions: &[String]) -> Result<()> {
+        if mutations.is_empty() || mutations.len() > MAX_BATCH_SIZE {
+            return Err(Error::InvalidInput(format!("batch size must be 1..{MAX_BATCH_SIZE}")));
+        }
+        // Preflight bounds/validation before admitting an owned task.
+        for mutation in &mutations {
+            if let Mutation::Create(value) | Mutation::Update { value, .. } = mutation {
+                Self::encode(value, permissions)?;
+            }
+        }
+        let store = self.clone();
+        let permissions = permissions.to_vec();
+        tokio::spawn(async move {
+            let mut connection = store.database.connection.lock().await;
+            let transaction = connection
+                .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+                .await?;
+            for mutation in mutations {
+                if let Err(error) = store.apply(&transaction, mutation, &permissions).await {
+                    // A rollback error must remain visible to the caller.
+                    transaction.rollback().await?;
+                    return Err(error);
+                }
+            }
+            transaction.commit().await?;
+            Ok(())
+        })
+        .await?
+    }
+
+    fn encode(value: &T, permissions: &[String]) -> Result<String> {
+        if !value.can_write(permissions) {
+            return Err(Error::Forbidden);
+        }
+        value.validate().map_err(Error::Validation)?;
+        let id = value.get_primary_key();
+        if id.is_empty() || id.len() > 512 {
+            return Err(Error::InvalidInput("primary key must contain 1..512 bytes".into()));
+        }
+        let document = serde_json::to_value(value)?;
+        if !matches!(document, Json::Object(_)) {
+            return Err(Error::InvalidInput("model must serialize as a JSON object".into()));
+        }
+        let body = serde_json::to_string(&document)?;
+        if body.len() > MAX_DOCUMENT_BYTES {
+            return Err(Error::InvalidInput("document exceeds 1 MiB".into()));
+        }
+        Ok(body)
+    }
+
+    async fn load(&self, connection: &Connection, id: &str) -> Result<Option<T>> {
+        let mut rows = connection.query(
+            "SELECT body FROM lithair_documents_v1 WHERE namespace = ?1 AND model = ?2 AND id = ?3",
+            params![self.namespace.as_str(), T::COLLECTION, id],
+        ).await?;
+        match rows.next().await? {
+            Some(row) => Ok(Some(serde_json::from_str(&row.get::<String>(0)?)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn apply(
+        &self,
+        connection: &Connection,
+        mutation: Mutation<T>,
+        permissions: &[String],
+    ) -> Result<()> {
+        match mutation {
+            Mutation::Create(value) => {
+                let id = value.get_primary_key();
+                if self.load(connection, &id).await?.is_some() {
+                    return Err(Error::Conflict);
+                }
+                let body = Self::encode(&value, permissions)?;
+                connection.execute(
+                    "INSERT INTO lithair_documents_v1 (namespace, model, id, body) VALUES (?1, ?2, ?3, ?4)",
+                    params![self.namespace.as_str(), T::COLLECTION, id, body],
+                ).await?;
+            }
+            Mutation::Update { id, value } => {
+                let previous = self.load(connection, &id).await?.ok_or(Error::NotFound)?;
+                if !previous.can_write(permissions) {
+                    return Err(Error::Forbidden);
+                }
+                if id != value.get_primary_key() {
+                    return Err(Error::InvalidInput("update cannot change primary key".into()));
+                }
+                let body = Self::encode(&value, permissions)?;
+                connection.execute(
+                    "UPDATE lithair_documents_v1 SET body = ?4 WHERE namespace = ?1 AND model = ?2 AND id = ?3",
+                    params![self.namespace.as_str(), T::COLLECTION, id, body],
+                ).await?;
+            }
+            Mutation::Delete { id } => {
+                let previous = self.load(connection, &id).await?.ok_or(Error::NotFound)?;
+                if !previous.can_write(permissions) {
+                    return Err(Error::Forbidden);
+                }
+                connection.execute(
+                    "DELETE FROM lithair_documents_v1 WHERE namespace = ?1 AND model = ?2 AND id = ?3",
+                    params![self.namespace.as_str(), T::COLLECTION, id],
+                ).await?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;

@@ -5,6 +5,7 @@ members = [
     "lithair-core",
     "lithair-macros",
     "lithair-cli",
+    "lithair-turso",
 
     # Examples (progressive complexity)
     "examples/01-hello-world",
@@ -26,6 +27,7 @@ members = [
 
     # Advanced examples
     "examples/advanced/datatable",
+    "examples/advanced/hybrid-storage",
     "examples/advanced/stress-test",
     "examples/advanced/consistency-test",
     "examples/advanced/playground",

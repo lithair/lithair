@@ -246,6 +246,16 @@ model and disk compaction — see
 For the durability semantics of the `.raftlog` (fsync mode, crash
 safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
 
+### Experimental SQL storage
+
+The unpublished [`lithair-turso`](lithair-turso/README.md) prototype lets an
+application store selected models in embedded Turso while keeping native models
+on their existing path. It provides typed document CRUD, model validation and
+permission hooks, SQL filters/pagination and per-store transactions. Native event
+history, replication and full derive-annotation support do not carry over to SQL.
+See the [mixed example](examples/advanced/hybrid-storage/README.md) and
+[RFC 235](docs/rfcs/235-hybrid-storage.md) before opting in.
+
 ## Learn and adopt
 
 Follow the [golden path](docs/guides/golden-path.md) for the shortest supported
@@ -268,6 +278,7 @@ API and optional sessions and RBAC.
 | [`05-ecommerce`](examples/05-ecommerce/)               | E-commerce workflow                   |
 | [`08-schema-migration`](examples/08-schema-migration/) | Schema evolution patterns             |
 | [`advanced/datatable`](examples/advanced/datatable/)   | Data tables with filtering            |
+| [`advanced/hybrid-storage`](examples/advanced/hybrid-storage/) | Experimental native + Turso storage |
 
 ```bash
 cargo run -p hello-world

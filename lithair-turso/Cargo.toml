@@ -1,0 +1,19 @@
+[package]
+name = "lithair-turso"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Experimental opt-in Turso document storage for Lithair models"
+
+[dependencies]
+lithair-core = { path = "../lithair-core", default-features = false }
+turso = { version = "=0.7.2", default-features = false }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror = "2"
+
+[dev-dependencies]
+lithair-macros = { path = "../lithair-macros" }
+tempfile = "3"
