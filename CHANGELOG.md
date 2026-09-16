@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-09-16
+
+Corrective release with `lithair-core`, `lithair-macros` and `lithair-cli`
+1.12.1, and the experimental `lithair-turso` adapter 0.2.1. The adapter retains
+compatibility with core 1.12.0; existing declarations and database files need no
+migration for this update.
+
 ### Fixed
 
-- Turso HTTP lists now include `has_more` and `next_offset` alongside `data`,
+- Turso HTTP lists (#244) now include `has_more` and `next_offset` alongside `data`,
   so a collection larger than the default 50-candidate page has an explicit
   continuation. The final page returns `false` / `null`, including an exactly
   full final page. Continuation counts SQL candidates before permissions, so
@@ -18,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Turso application guide documents pagination when migrating native
   clients, `serde(default)` restrictions on SQL filter fields and the session
   guard fixes already shipped for applications upgrading from Lithair 0.12.
+
+### Upgrade
+
+Applications already using `lithair-core = "1.12"` and `lithair-turso = "0.2"`
+can run `cargo update`. Require `lithair-turso = "0.2.1"` to make pagination
+metadata a minimum dependency guarantee. Versions 0.1.0 and 0.2.0 return only
+`data`; clients should follow `next_offset` until `null`, keeping the same
+limit, filter and credentials. The metadata describes SQL candidates before
+permission filtering, not the number of readable documents. See the
+[pagination guide](https://github.com/lithair/lithair/blob/v1.12.1/docs/guides/turso-in-an-application.md#paginate-list-requests).
 
 ## [1.12.0] - 2026-09-16
 
