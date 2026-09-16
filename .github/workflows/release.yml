@@ -65,13 +65,18 @@ jobs:
       # Idempotent: crate versions are immutable, so a rerun after a
       # partial failure (say, core rejected after macros went through)
       # must skip what already published. The sparse index needs no auth;
-      # the li/th prefix path is shared by all three lithair-* crates.
+      # the li/th prefix path is shared by all lithair-* crates. Read each
+      # crate's own version: the experimental adapter stays on 0.x while
+      # core, macros and CLI follow the 1.x release tag.
       - name: Publish crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          for crate in lithair-macros lithair-core lithair-cli; do
+          METADATA="$(cargo metadata --no-deps --format-version 1)"
+          CORE_VERSION="$(jq -er '.packages[] | select(.name == "lithair-core") | .version' <<< "$METADATA")"
+          test "$CORE_VERSION" = "${GITHUB_REF_NAME#v}"
+          for crate in lithair-macros lithair-core lithair-turso lithair-cli; do
+            VERSION="$(jq -er --arg crate "$crate" '.packages[] | select(.name == $crate) | .version' <<< "$METADATA")"
             if curl -fsSL "https://index.crates.io/li/th/$crate" \
                 | grep -q "\"vers\":\"$VERSION\""; then
               echo "$crate $VERSION already on crates.io, skipping"

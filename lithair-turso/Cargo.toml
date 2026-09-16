@@ -2,12 +2,16 @@
 name = "lithair-turso"
 version = "0.1.0"
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
-publish = false
+repository.workspace = true
+readme = "README.md"
 description = "Experimental opt-in Turso document storage for Lithair models"
+keywords = ["lithair", "turso", "database", "declarative"]
+categories = ["database", "web-programming::http-server"]
 
 [dependencies]
-lithair-core = { path = "../lithair-core", default-features = false }
+lithair-core = { path = "../lithair-core", version = "1.11.0", default-features = false }
 turso = { version = "=0.7.2", default-features = false }
 tokio.workspace = true
 serde.workspace = true
@@ -20,7 +24,7 @@ bytes = "1"
 url = "2"
 
 [dev-dependencies]
-lithair-macros = { path = "../lithair-macros" }
+lithair-macros = { path = "../lithair-macros", version = "1.11.0" }
 tempfile = "3"
 reqwest.workspace = true
 chrono.workspace = true

@@ -248,7 +248,7 @@ safety), see [`lithair-core/DURABILITY.md`](lithair-core/DURABILITY.md).
 
 ### Experimental SQL storage
 
-The unpublished [`lithair-turso`](lithair-turso/README.md) prototype lets an
+The experimental [`lithair-turso`](lithair-turso/README.md) crate lets an
 application store selected models in embedded Turso while keeping native models
 on their existing path. Add `#[storage(turso)]` to a `DeclarativeModel`, then use
 the usual `with_model`: storage and CRUD routes are automatic. Validation, model

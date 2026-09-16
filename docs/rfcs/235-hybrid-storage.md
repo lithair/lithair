@@ -5,7 +5,7 @@ Issue: https://github.com/lithair/lithair/issues/235
 
 ## Decision
 
-Keep native Lithair models as the default. Add an unpublished `lithair-turso`
+Keep native Lithair models as the default. Add an experimental `lithair-turso`
 crate that applications explicitly depend on. A model has one authoritative
 store: either the existing memory-first/event-sourced path or SQL. An application
 may use both. The model opts in with `#[storage(turso)]`; the usual `with_model` registers

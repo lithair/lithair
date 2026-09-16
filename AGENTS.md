@@ -11,6 +11,8 @@ use straightforward; clustering and other optional capabilities remain opt-in.
   `frontend/` serves in-memory assets. Authentication, sessions, RBAC, schema,
   lifecycle and clustering have their own modules.
 - `lithair-macros/`: derive and attribute macros, with trybuild diagnostics tests.
+- `lithair-turso/`: experimental opt-in embedded SQL storage and model routes;
+  versioned independently from the core framework.
 - `lithair-cli/`: application scaffolding and CLI commands.
 - `examples/`: progressive examples and advanced demonstrations. Consult the
   root `Cargo.toml` for current workspace members.

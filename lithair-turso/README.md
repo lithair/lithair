@@ -25,11 +25,11 @@ implementation, database opening or HTTP handlers are needed. `with_declarative_
 and `with_model_full` honor the same selection. The native handler constructors
 reject SQL-declared models, including the native `with_model_ref` path.
 
-This workspace crate is **unpublished and experimental**. Use a path dependency
-from a checkout (as in the example), or follow the
-[standalone application guide](../docs/guides/turso-in-an-application.md) for
-Git dependencies pinned to a tested revision. It is not part of the published v1.10.0 crates.
-Native applications have no Turso dependency. See [RFC 235](../docs/rfcs/235-hybrid-storage.md).
+This crate is **experimental**. Add `lithair-core = "1.11"` and
+`lithair-turso = "0.1"` to your application. The
+[standalone application guide](https://github.com/lithair/lithair/blob/v1.11.0/docs/guides/turso-in-an-application.md)
+provides a complete Cargo manifest and runnable server. Native applications have
+no Turso dependency. See [RFC 235](https://github.com/lithair/lithair/blob/v1.11.0/docs/rfcs/235-hybrid-storage.md).
 
 ## Declaration and routes
 
@@ -121,4 +121,4 @@ production promotion.
 
 `cidx run test` runs repository tests, generated HTTP/restart tests, compile-fail
 diagnostics and the Turso Gherkin runner. `cidx run ci` also runs security, code
-and the workspace release build. See the [runnable example](../examples/advanced/hybrid-storage/README.md).
+and the workspace release build. See the [runnable example](https://github.com/lithair/lithair/blob/v1.11.0/examples/advanced/hybrid-storage/README.md).
