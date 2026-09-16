@@ -34,7 +34,8 @@ as version 1 and can also upgrade directly to a later version.
 
 ## Add a required field
 
-Replace the previous declaration with this model and transformation:
+Add `serde_json = "1"` to the application’s `[dependencies]` for JSON
+transformations. Replace the previous declaration with this model and function:
 
 ```rust,ignore
 use serde_json::{json, Value};
