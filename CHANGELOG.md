@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-09-16
+
+Corrective release for native model persistence. `lithair-core`, `lithair-macros`
+and `lithair-cli` move to 1.11.1; the compatible experimental `lithair-turso`
+adapter remains at 0.1.0.
+
 ### Fixed
 
 - Native model replay now applies `Deleted` events instead of reinserting their
   payloads (#239, closes #238). Deletions survive restart, including after a
   snapshot and with retention enabled; on-demand warm reads stop at deletions.
+- Replicated deletions of evicted records now write a `Deleted` event, so these
+  records also remain deleted after restart.
 - Native model event types and generated event IDs use the unqualified model
   name. Historical crate/module-qualified events remain readable without log
   rewriting or hash-chain changes. See the
@@ -1757,7 +1765,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/lithair/lithair/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/lithair/lithair/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/lithair/lithair/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/lithair/lithair/compare/v1.8.0...v1.9.0
