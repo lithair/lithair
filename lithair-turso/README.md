@@ -50,7 +50,7 @@ comes from trusted application code, never query parameters.
 
 | Method | Route | Result |
 | --- | --- | --- |
-| GET | `/api/archives?category=work&limit=25&offset=0` | `{"data": [...]}` |
+| GET | `/api/archives?category=work&limit=25&offset=0` | `{"data": [...], "has_more": true, "next_offset": 25}` (continuation metadata unreleased) |
 | GET | `/api/archives/{id}` | The document |
 | POST | `/api/archives` | Create complete model including ID; 201 after commit |
 | PUT | `/api/archives/{id}` | Replace complete model; immutable ID |
@@ -63,6 +63,28 @@ parameters and unsupported filters are errors. PATCH rejects unknown fields.
 Errors distinguish invalid input (400), authorization (401/403), missing records
 (404), duplicates (409), media type (415), body limit (413) and storage failure (500).
 Bulk HTTP routes, count/schema/SSE subroutes and SQL endpoints are not provided.
+
+### Pagination
+
+Lists default to **50 SQL candidates**, with `limit=1..100` and `offset=0`
+by default. They do not return the whole collection. Candidate order is primary
+key order. The next adapter release adds `has_more` and `next_offset` alongside
+the existing `data` array; published 0.1.0 and 0.2.0 return only `data`.
+
+For 55 readable documents, the default first page has 50 items, `has_more: true`
+and `next_offset: 50`. Request the same filter and limit with `offset=50` to read
+the final 5 items, `has_more: false` and `next_offset: null`. A full final page
+also has `has_more: false`; one extra SQL candidate determines continuation.
+
+Continuation describes **SQL candidates before permission filtering**, not a
+promise of further readable documents. Even an empty `data` array can have a
+`next_offset`. Follow that value until it is `null`, keeping the same filter,
+limit and credentials. No total is computed or exposed. Like existing offset
+queries, continuation metadata can reveal the presence of unreadable candidates;
+it never returns their content. Offset pagination is not a snapshot across
+requests: concurrent edits can shift pages. See the
+[application guide](https://github.com/lithair/lithair/blob/main/docs/guides/turso-in-an-application.md#paginate-list-requests)
+for a client loop and filter declaration examples.
 
 ## Schema versions and migrations
 
@@ -110,11 +132,13 @@ in a model exposed as a whole document.
 - Once admitted, writes complete even when their caller is cancelled. A timeout
   has an unknown outcome: reconcile stable IDs before retrying, and await writes
   before stopping the Tokio runtime.
-- At most 100 mutations/batch, 100 candidates/page (default 50), 1 MiB encoded
+- At most 100 mutations/batch, 100 candidates/page (default 50), plus one
+  lookahead candidate for pagination, 1 MiB encoded
   JSON/document, 512 bytes/ID, 128 bytes/namespace or collection.
 - SQL executes filtering, ordering and pagination. Permission checks then filter
   the candidate page: offset counts candidates, an empty page does not prove the
-  end of data, and no total is returned. Concurrent edits can shift offset pages.
+  end of data. Use `next_offset` to continue; no total is returned. Concurrent
+  edits can shift offset pages.
 - JSON equality may scan partition rows on disk; no indexed-filter performance
   claim or transparent memory cache. Native request paths stay unchanged.
 

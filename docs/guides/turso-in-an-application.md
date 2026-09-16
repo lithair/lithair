@@ -91,6 +91,75 @@ The result contains `"title":"Updated note"`. Use a persistent absolute data
 directory in an existing application so deployment working-directory changes
 do not select a new database.
 
+## Paginate list requests
+
+When switching a native model to Turso, update clients that previously loaded
+the entire collection: SQL lists default to **50 candidates**, and accept at most
+100 per request. A 55-document collection needs a second request. `limit=0` and
+`limit=101` return 400; limits are not silently clamped.
+
+**Unreleased:** the next adapter release adds `has_more` and `next_offset` to
+the existing `data` response. Published adapter 0.1.0 and 0.2.0 do not include
+these fields. With the new metadata, the first page looks like:
+
+```json
+{"data": [{"id": "note-1", "title": "First note", "category": "work"}], "has_more": true, "next_offset": 1}
+```
+
+That example uses `limit=1`. Follow the returned offset with the same filter,
+limit and credentials until it is `null`. This browser client uses the current
+session cookie and collects pages of 50:
+
+```javascript
+async function loadNotes() {
+  const notes = [];
+  let offset = 0;
+  do {
+    const query = new URLSearchParams({ category: "work", limit: "50", offset: String(offset) });
+    const response = await fetch(`/api/notes?${query}`, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`Cannot load notes: HTTP ${response.status}`);
+    const page = await response.json();
+    if (!("next_offset" in page)) throw new Error("This adapter needs pagination metadata support");
+    notes.push(...page.data);
+    offset = page.next_offset;
+  } while (offset !== null);
+  return notes;
+}
+```
+
+SQL selects candidate documents in primary-key order, then model permissions
+filter that page. A short or empty `data` array is therefore **not** an end
+condition. `has_more` means another SQL candidate exists, which might itself be
+unreadable; `next_offset` counts candidates, not returned documents. This exposes
+continuation of the filtered SQL partition, not a readable-document count. No
+`total` is computed. Concurrent changes can shift offsets between requests.
+
+## Serde defaults and SQL filters
+
+A field listed in `filters(...)` must be a `String` with its ordinary serde
+name and representation. The current derive rejects **all** `#[serde(...)]`
+attributes on that field or the model itself, including `#[serde(default)]`.
+This conservative restriction keeps SQL filtering aligned with stored JSON;
+there is no supported opt-out in the declaration.
+
+For example, use a required filter field and put defaults on unfiltered fields:
+
+```rust
+#[derive(Clone, serde::Serialize, serde::Deserialize, lithair_core::DeclarativeModel)]
+#[storage(turso, collection = "attempts", filters("subject"))]
+struct Attempt {
+    id: String,
+    subject: String, // Supply explicitly in POST/PUT; no #[serde(default)] here.
+    #[serde(default)]
+    comment: String, // Not a SQL filter: defaults are allowed.
+}
+```
+
+Alternatively remove `subject` from `filters(...)` if it needs serde attributes;
+`?subject=...` then becomes unsupported. For existing documents missing a field,
+use a [versioned migration](turso-schema-migrations.md) to materialize the value
+before adding the filter, rather than relying on a deserialization default.
+
 ## Coexistence and upgrades
 
 Register native models with their usual `with_model` calls and separate data
@@ -112,3 +181,13 @@ workload measurements remain separate work before production promotion.
 For model evolution with this adapter, see the
 [schema versions and migrations guide](turso-schema-migrations.md). It keeps the
 same registration and adds explicit versioned document transformations.
+
+### Coming from Lithair 0.12
+
+Upgrade the framework before reusing session guards: 0.12's `RequireAuth` could
+fail with `Failed to downcast session store` when paired with `with_sessions`.
+The session-manager recognition fix shipped in 0.15 (issue #143).
+`RequireRole` was implemented in 0.16 (issue #149); it previously denied every
+request. Both fixes are included in 1.x. See the
+[0.15](../../CHANGELOG.md#0150---2026-06-18) and
+[0.16](../../CHANGELOG.md#0160---2026-06-22) release notes.
