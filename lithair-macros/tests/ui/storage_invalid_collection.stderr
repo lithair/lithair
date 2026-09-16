@@ -1,0 +1,5 @@
+error: storage name must contain 1..128 bytes
+ --> tests/ui/storage_invalid_collection.rs:4:31
+  |
+4 | #[storage(turso, collection = "")]
+  |                               ^^

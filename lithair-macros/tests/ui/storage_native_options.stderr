@@ -1,0 +1,5 @@
+error: collection, namespace and filters require the turso backend
+ --> tests/ui/storage_native_options.rs:4:1
+  |
+4 | #[storage(native, collection = "bad")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

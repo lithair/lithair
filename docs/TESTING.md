@@ -107,3 +107,13 @@ open throughout startup: probing a free port and binding it again later leaves
 a race with other tests. The listener address overrides the server host/port.
 The shutdown future has the same semantics as `serve_with_graceful_shutdown`;
 signal it and await the server task before removing the test data directory.
+
+## Experimental hybrid storage
+
+The optional `lithair-turso` crate's unit tests and `tests/declarative.rs` HTTP
+regressions run in the standard test gate. Macro compile-fail cases pin unsupported
+storage declarations and malformed options.
+`cucumber-tests/tests/turso_test.rs` owns `features/persistence/turso.feature`
+and is included in `cidx run test`. It exercises SQL rollback/reopen and the
+mixed HTTP example across graceful server restart. The native model path does
+not acquire a Turso dependency. See [RFC 235](rfcs/235-hybrid-storage.md).

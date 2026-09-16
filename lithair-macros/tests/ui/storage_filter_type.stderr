@@ -1,0 +1,5 @@
+error: SQL equality filters require a String field with an ASCII identifier
+ --> tests/ui/storage_filter_type.rs:4:26
+  |
+4 | #[storage(turso, filters("id"))]
+  |                          ^^^^

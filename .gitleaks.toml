@@ -14,3 +14,15 @@ regexes = [
     # These are illustrative, not real credentials.
     '''jwt_token_[a-z_]+_authenticated''',
 ]
+
+# Inherit the default curl rule; allow only the documented demo credential
+# in this example. Keep scanning other values and all other files normally.
+[[rules]]
+id = "curl-auth-header"
+
+[[rules.allowlists]]
+description = "Hybrid-storage README demo session token"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^local-example-token$''']
+paths = ['''^examples/advanced/hybrid-storage/README\.md$''']

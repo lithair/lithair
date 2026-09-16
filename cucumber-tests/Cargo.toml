@@ -98,6 +98,15 @@ path = "tests/scaffolding_test.rs"
 harness = false
 
 
+[[test]]
+name = "turso_test"
+path = "tests/turso_test.rs"
+harness = false
+
+[dev-dependencies]
+lithair-turso = { path = "../lithair-turso" }
+hybrid-storage = { path = "../examples/advanced/hybrid-storage" }
+
 [dependencies]
 cucumber = { git = "https://github.com/cucumber-rs/cucumber.git" }
 tokio = { version = "1.47", features = ["full"] }

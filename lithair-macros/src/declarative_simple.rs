@@ -1,3 +1,5 @@
+mod storage;
+
 /// Model-level HTTP attributes (e.g., public_if condition, base_path override)
 #[derive(Debug, Default, Clone)]
 struct ModelHttpAttributes {
@@ -1130,7 +1132,7 @@ fn extract_rule_param<'a>(rule: &'a str, prefix: &str) -> Option<&'a str> {
 /// must not appear on the struct (gate G2, #128 follow-up). Both cases were
 /// silently ignored before — a #[retention] on a field configured nothing.
 fn validate_attribute_positions(input: &DeriveInput) -> syn::Result<()> {
-    const STRUCT_ONLY: &[&str] = &["retention", "server", "firewall", "schema"];
+    const STRUCT_ONLY: &[&str] = &["retention", "server", "firewall", "schema", "storage"];
     // NOTE: `http` is dual-position (field: expose/validate; struct:
     // base_path/public_if — parse_model_http_attributes) so it appears in
     // neither list (Gemini #179).
@@ -1180,6 +1182,11 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     if let Err(e) = validate_attribute_positions(&input) {
         return e.to_compile_error();
     }
+
+    let (storage_impl, storage_hook) = match storage::expand(&input) {
+        Ok(tokens) => tokens,
+        Err(error) => return error.to_compile_error(),
+    };
 
     let name = &input.ident;
     let name_str = name.to_string();
@@ -1850,6 +1857,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
             }
         }
 
+        #storage_impl
+
         #lifecycle_impl
 
         #retention_impl
@@ -1890,6 +1899,8 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
                     Err(__errors.join("; "))
                 }
             }
+
+            #storage_hook
 
             // INJECTED FUNCTIONS
             #fw_fn

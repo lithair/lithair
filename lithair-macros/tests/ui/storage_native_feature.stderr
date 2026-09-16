@@ -1,0 +1,5 @@
+error: Turso storage does not support native retention or schema migration annotations
+ --> tests/ui/storage_native_feature.rs:5:1
+  |
+5 | #[retention(memory = "1h")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
