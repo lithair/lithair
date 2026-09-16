@@ -21,6 +21,9 @@ Feature: Optional SQL storage alongside native Lithair models
   Scenario: Model declarations generate native and SQL routes in one application
     Then native and SQL HTTP models coexist and survive server restart
 
+  Scenario: SQL clients can discover all 55 documents using pagination metadata
+    Then the SQL HTTP list provides a continuation until all 55 documents are read
+
   @turso-migrations
   Scenario: Declared schema migrations preserve data across restarts
     Given SQL documents stored by the first application version

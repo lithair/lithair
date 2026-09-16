@@ -158,6 +158,54 @@ struct Owned {
     id: String,
     owner: String,
 }
+
+#[tokio::test]
+async fn pagination_lookahead_does_not_decode_the_next_document() {
+    let (_tmp, db, store) = setup().await;
+    store.create(note("a"), &permissions()).await.expect("first document");
+    db.store::<Note>("tenant-b")
+        .unwrap()
+        .create(note("b"), &permissions())
+        .await
+        .unwrap();
+    let isolated = store
+        .list_page(Page { limit: 1, offset: 0 }, None, &permissions())
+        .await
+        .unwrap();
+    assert_eq!(isolated.data.len(), 1);
+    assert_eq!(isolated.next_offset, None, "another namespace must not create continuation");
+    // A malformed subsequent model must not break the current page. It becomes
+    // an explicit serialization error only when that page is actually requested.
+    db.connection
+        .lock()
+        .await
+        .execute(
+            "INSERT INTO lithair_documents_v1 (namespace, model, id, body) VALUES (?1, ?2, ?3, ?4)",
+            turso::params![
+                "tenant-a",
+                Note::COLLECTION,
+                "b",
+                r#"{"id":"b","title":42,"category":"work"}"#
+            ],
+        )
+        .await
+        .unwrap();
+    let page = store
+        .list_page(Page { limit: 1, offset: 0 }, None, &permissions())
+        .await
+        .unwrap();
+    assert_eq!(page.data.len(), 1);
+    assert_eq!(page.data[0].id, "a");
+    assert_eq!(page.next_offset, Some(1));
+    assert!(matches!(
+        store.list_page(Page { limit: 1, offset: 1 }, None, &permissions()).await,
+        Err(Error::Serialization(_))
+    ));
+    store
+        .create(note("c"), &permissions())
+        .await
+        .expect("connection remains usable");
+}
 impl HttpExposable for Owned {
     fn http_base_path() -> &'static str {
         "owned"

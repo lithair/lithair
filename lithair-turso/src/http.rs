@@ -139,9 +139,16 @@ impl<T: SqlModel> SqlHandler<T> {
                 if filters.next().is_some() {
                     return error(StatusCode::BAD_REQUEST, "Only one equality filter is supported");
                 }
-                match self.store.list(Page { limit, offset }, filter, &permissions).await {
-                    Ok(items) => match serde_json::to_value(items) {
-                        Ok(data) => response::json_value(StatusCode::OK, &json!({"data": data})),
+                match self.store.list_page(Page { limit, offset }, filter, &permissions).await {
+                    Ok(page) => match serde_json::to_value(page.data) {
+                        Ok(data) => response::json_value(
+                            StatusCode::OK,
+                            &json!({
+                                "data": data,
+                                "has_more": page.next_offset.is_some(),
+                                "next_offset": page.next_offset,
+                            }),
+                        ),
                         Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Serialization failed"),
                     },
                     Err(e) => storage_error(e),

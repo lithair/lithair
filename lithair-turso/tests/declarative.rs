@@ -182,6 +182,124 @@ async fn declared_storage_generates_crud_and_survives_restart_with_both_builders
 }
 
 #[tokio::test]
+async fn list_pagination_reports_continuation_for_sql_candidates() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let running = Running::start(builder(tmp.path(), false).await).await;
+    let http = client();
+    let url = format!("{}/custom/notes", running.base);
+    for i in 0..105 {
+        let mut value = note(&format!("{i:03}"));
+        if i >= 55 {
+            value["category"] = json!("personal");
+        }
+        assert_eq!(
+            http.post(&url)
+                .bearer_auth("writer")
+                .json(&value)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            201
+        );
+    }
+    for (query, count, first, next) in [
+        ("", 50, 0, Some(50)),
+        ("category=work", 50, 0, Some(50)),
+        ("category=work&offset=50", 5, 50, None),
+        ("category=work&limit=5&offset=50", 5, 50, None),
+        ("category=work&offset=55", 0, 0, None),
+        ("category=personal", 50, 55, None),
+        ("category=missing", 0, 0, None),
+        ("limit=100", 100, 0, Some(100)),
+        ("limit=100&offset=5", 100, 5, None),
+        ("limit=100&offset=100", 5, 100, None),
+        ("offset=4294967295", 0, 0, None),
+    ] {
+        let response =
+            http.get(format!("{url}?{query}")).bearer_auth("reader").send().await.unwrap();
+        assert_eq!(response.status(), 200, "{query}");
+        let page: Value = response.json().await.unwrap();
+        let ids: Vec<_> = page["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_owned())
+            .collect();
+        let expected: Vec<_> = (first..first + count).map(|id| format!("{id:03}")).collect();
+        assert_eq!(ids, expected, "{query}");
+        assert_eq!(page["has_more"], json!(next.is_some()), "{query}");
+        assert!(page.get("next_offset").is_some(), "{query}");
+        assert_eq!(page["next_offset"], json!(next), "{query}");
+        assert!(page.get("total").is_none());
+    }
+    for (offset, next) in [(0, Some(50)), (50, Some(100)), (100, None)] {
+        let page: Value = http
+            .get(format!("{url}?offset={offset}"))
+            .bearer_auth("empty")
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(page["data"], json!([]));
+        assert_eq!(page["has_more"], json!(next.is_some()));
+        assert_eq!(page["next_offset"], json!(next));
+    }
+    running.stop().await;
+}
+
+#[derive(Clone, Serialize, Deserialize, DeclarativeModel)]
+#[storage(turso, filters("visibility"))]
+#[http(public_if = "visibility=public")]
+struct VisibleNote {
+    id: String,
+    visibility: String,
+}
+
+#[tokio::test]
+async fn empty_permission_filtered_page_can_lead_to_a_visible_document() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let running = Running::start(
+        LithairServer::new()
+            .with_data_dir(tmp.path().to_string_lossy())
+            .with_model::<VisibleNote>(tmp.path().join("notes").to_string_lossy(), "/notes"),
+    )
+    .await;
+    let http = client();
+    let url = format!("{}/notes", running.base);
+    for (id, visibility) in [("a", "private"), ("b", "private"), ("c", "public")] {
+        assert_eq!(
+            http.post(&url)
+                .json(&json!({"id":id,"visibility":visibility}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            201
+        );
+    }
+    let page: Value =
+        http.get(format!("{url}?limit=2")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(page["data"], json!([]));
+    assert_eq!(page["has_more"], true);
+    assert_eq!(page["next_offset"], 2);
+    let page: Value = http
+        .get(format!("{url}?limit=2&offset=2"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(page["data"], json!([{"id":"c","visibility":"public"}]));
+    assert_eq!(page["has_more"], false);
+    assert!(page["next_offset"].is_null());
+    running.stop().await;
+}
+
+#[tokio::test]
 async fn sessions_permissions_cookie_policy_and_input_bounds_are_enforced() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let running =

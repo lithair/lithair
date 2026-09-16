@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Turso HTTP lists now include `has_more` and `next_offset` alongside `data`,
+  so a collection larger than the default 50-candidate page has an explicit
+  continuation. The final page returns `false` / `null`, including an exactly
+  full final page. Continuation counts SQL candidates before permissions, so
+  empty authorized pages can still have a next offset. The 100-candidate limit
+  remains, with one lookahead candidate and no full count scan.
+- The Turso application guide documents pagination when migrating native
+  clients, `serde(default)` restrictions on SQL filter fields and the session
+  guard fixes already shipped for applications upgrading from Lithair 0.12.
+
 ## [1.12.0] - 2026-09-16
 
 Declarative Turso document migrations are available with `lithair-core`,
@@ -761,8 +773,8 @@ be migrated in/out via the logical backup pair, and two more v1.0 gates close
   disclosure + forced reload — had none, relying on the off-by-default
   firewall). Two supporting fixes: the route-guard `RequireAuth` path now
   recognizes the `Arc<SessionManager<…>>` shape produced by `with_sessions(...)`
-  (it previously only matched a raw `PersistentSessionStore`, silently making
-  the guard a no-op for the documented API), and it now also checks session
+  (it previously only matched a raw `PersistentSessionStore`, causing a
+  `Failed to downcast session store` error with the documented API), and it now also checks session
   expiry. New `with_data_admin_public()` is the explicit, loudly-logged opt-out
   for dev/internal use (mirrors `with_data_admin_ui_public()`); with no session
   store configured the guard is a no-op, so single-user deployments are

@@ -151,6 +151,13 @@ impl Default for Page {
     }
 }
 
+/// Internal HTTP pagination result. Continuation counts SQL candidates, before
+/// permission filtering; a short or empty `data` vector can still have a next page.
+pub(crate) struct ListedPage<T> {
+    pub data: Vec<T>,
+    pub next_offset: Option<u32>,
+}
+
 /// Exact string equality on an explicitly allowed top-level JSON field.
 pub struct Equal<'a> {
     pub field: &'a str,
@@ -175,6 +182,15 @@ impl<T: SqlModel> Store<T> {
         filter: Option<Equal<'_>>,
         permissions: &[String],
     ) -> Result<Vec<T>> {
+        Ok(self.list_page(page, filter, permissions).await?.data)
+    }
+
+    pub(crate) async fn list_page(
+        &self,
+        page: Page,
+        filter: Option<Equal<'_>>,
+        permissions: &[String],
+    ) -> Result<ListedPage<T>> {
         if page.limit == 0 || page.limit > MAX_PAGE_SIZE {
             return Err(Error::InvalidInput(format!("page limit must be 1..{MAX_PAGE_SIZE}")));
         }
@@ -192,16 +208,27 @@ impl<T: SqlModel> Store<T> {
         self.check_schema(&connection).await?;
         let mut rows = connection.query(
             "SELECT body FROM lithair_documents_v1 WHERE namespace = ?1 AND model = ?2 AND (?3 = 0 OR (json_type(body, ?4) = 'text' AND json_extract(body, ?4) = ?5)) ORDER BY id LIMIT ?6 OFFSET ?7",
-            params![self.namespace.as_str(), T::COLLECTION, enabled, path, value, i64::from(page.limit), i64::from(page.offset)],
+            params![self.namespace.as_str(), T::COLLECTION, enabled, path, value, i64::from(page.limit) + 1, i64::from(page.offset)],
         ).await?;
         let mut items = Vec::new();
+        let mut candidates = 0;
+        let mut next_offset = None;
         while let Some(row) = rows.next().await? {
+            // One lookahead in the same query distinguishes a full final page
+            // from one with more candidates. Never deserialize or expose it.
+            if candidates == page.limit {
+                next_offset = Some(page.offset.checked_add(page.limit).ok_or_else(|| {
+                    Error::InvalidInput("next page offset exceeds the supported range".into())
+                })?);
+                break;
+            }
+            candidates += 1;
             let item: T = serde_json::from_str(&row.get::<String>(0)?)?;
             if item.can_read(permissions) {
                 items.push(item);
             }
         }
-        Ok(items)
+        Ok(ListedPage { data: items, next_offset })
     }
 
     pub async fn create(&self, value: T, permissions: &[String]) -> Result<()> {

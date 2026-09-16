@@ -271,6 +271,62 @@ async fn mixed_http(world: &mut TursoWorld) {
     world.rejected = false;
 }
 
+#[then("the SQL HTTP list provides a continuation until all 55 documents are read")]
+async fn paginated_http(_world: &mut TursoWorld) {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/api/archives", listener.local_addr().unwrap());
+    let builder = hybrid_storage::application(tmp.path(), "pagination-token".into())
+        .await
+        .unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(builder.build().unwrap().serve_with_listener(listener, async {
+        let _ = stopped.await;
+    }));
+    for id in 0..55 {
+        let item = Archive { id: format!("{id:03}"), ..archive() };
+        assert_eq!(
+            client
+                .post(&url)
+                .bearer_auth("pagination-token")
+                .json(&item)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            201
+        );
+    }
+    let mut ids = Vec::new();
+    let mut offset = 0;
+    for (count, next) in [(50, Some(50)), (5, None)] {
+        let response = client
+            .get(format!("{url}?category=work&offset={offset}"))
+            .bearer_auth("pagination-token")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let page: serde_json::Value = response.json().await.unwrap();
+        let items = page["data"].as_array().unwrap();
+        assert_eq!(items.len(), count);
+        ids.extend(items.iter().map(|item| item["id"].as_str().unwrap().to_owned()));
+        assert_eq!(page["has_more"], serde_json::json!(next.is_some()));
+        assert_eq!(page.get("next_offset"), Some(&serde_json::json!(next)));
+        if let Some(next) = page["next_offset"].as_u64() {
+            offset = next;
+        }
+    }
+    assert_eq!(ids, (0..55).map(|id| format!("{id:03}")).collect::<Vec<_>>());
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(15), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize, lithair_core::DeclarativeModel)]
 #[storage(turso, collection = "evolving")]
 struct OriginalDocument {
