@@ -1084,7 +1084,7 @@ where
     /// IMPORTANT: This must be fully idempotent and never fail once storage is modified
     pub async fn apply_replicated_delete(&self, id: &str) -> Result<bool, String> {
         // Remove from storage
-        let removed_item = {
+        let mut removed_item = {
             let mut storage = self.storage.write().await;
             let has_key = storage.contains_key(id);
             log::debug!(
@@ -1095,6 +1095,12 @@ where
             );
             storage.remove(id)
         };
+
+        // Evicted records still exist. Recover their payload before clearing the
+        // retention index so followers persist and broadcast their deletion too.
+        if removed_item.is_none() && self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+            removed_item = self.load_evicted_item(id).await;
+        }
 
         // Clean up warm map entry (if any) so evicted items don't linger
         if let Some(retention) = &self.retention {

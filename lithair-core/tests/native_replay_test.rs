@@ -286,6 +286,38 @@ struct RetainedAttempt {
 }
 
 #[tokio::test]
+async fn replicated_deletion_of_a_warm_record_is_persisted_and_idempotent() {
+    let _guard = ENV_LOCK.lock().await;
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = tmp.path().to_str().expect("path");
+    let handler = DeclarativeHttpHandler::<RetainedAttempt>::new_with_replay(path)
+        .await
+        .expect("handler");
+    for id in ["warm", "hot"] {
+        handler
+            .apply_replicated_item(RetainedAttempt { id: id.into(), title: "original".into() })
+            .await
+            .expect("create");
+    }
+    assert_eq!(handler.storage_count().await, 1);
+    assert!(handler.apply_replicated_delete("warm").await.expect("delete warm record"));
+    assert!(!handler.apply_replicated_delete("warm").await.expect("repeat delete"));
+    handler.get_event_store().write().await.flush().expect("flush");
+    assert_eq!(
+        handler.get_event_store().read().await.event_count(),
+        3,
+        "exactly one deletion is persisted"
+    );
+    drop(handler);
+    let handler = DeclarativeHttpHandler::<RetainedAttempt>::new_with_replay(path)
+        .await
+        .expect("restart");
+    assert!(handler.get_by_id("warm").await.is_none());
+    assert!(handler.get_by_id("hot").await.is_some());
+    assert_eq!(handler.total_item_count().await, 1);
+}
+
+#[tokio::test]
 async fn replay_removes_hot_and_warm_records_even_when_delete_payload_has_an_old_schema() {
     let _guard = ENV_LOCK.lock().await;
     let tmp = tempfile::tempdir().expect("tempdir");
