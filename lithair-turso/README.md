@@ -64,6 +64,21 @@ Errors distinguish invalid input (400), authorization (401/403), missing records
 (404), duplicates (409), media type (415), body limit (413) and storage failure (500).
 Bulk HTTP routes, count/schema/SSE subroutes and SQL endpoints are not provided.
 
+## Schema versions and migrations
+
+Opt into schema tracking with `#[storage(turso, collection = "notes", version = 1)]`.
+For a model change, increase the version and declare the full ordered history,
+for example `#[storage(turso, collection = "notes", version = 2, migrations(note_v2))]`.
+Each callback has signature `fn(&mut serde_json::Value) -> lithair_turso::Result<()>`.
+The ordinary builder migrates existing documents and records their schema in one
+transaction before serving. Invalid transformations roll everything back; tracked schema drift and
+downgrades fail explicitly. Existing unversioned databases are treated as version 1.
+
+See [model evolution](https://github.com/lithair/lithair/blob/main/docs/guides/turso-schema-migrations.md) for runnable
+snippets, restart/rollback semantics and compatibility limits. This API follows
+0.1.0 and is not present in that published release. Native `#[schema]`, native
+migration administration and backend conversion remain separate capabilities.
+
 ## Authorization
 
 `with_models_require_session(true)` applies to SQL registrations through
@@ -104,7 +119,7 @@ in a model exposed as a whole document.
   claim or transparent memory cache. Native request paths stay unchanged.
 
 Unsupported declarations fail at compile time: secondary indexes/uniqueness,
-foreign keys, native lifecycle/audit/retention/replication, schema migration, RBAC
+foreign keys, native lifecycle/audit/retention/replication, native schema migration, RBAC
 owner fields, relations and HTTP serialization modes. Only `db(primary_key)` is
 supported among database annotations. Unknown/duplicate storage options also fail.
 

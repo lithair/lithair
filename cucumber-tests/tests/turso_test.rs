@@ -271,6 +271,113 @@ async fn mixed_http(world: &mut TursoWorld) {
     world.rejected = false;
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize, lithair_core::DeclarativeModel)]
+#[storage(turso, collection = "evolving")]
+struct OriginalDocument {
+    id: String,
+    title: String,
+}
+
+fn add_category(document: &mut serde_json::Value) -> lithair_turso::Result<()> {
+    document["category"] = serde_json::json!("work");
+    Ok(())
+}
+
+fn reject_migration(document: &mut serde_json::Value) -> lithair_turso::Result<()> {
+    add_category(document)?;
+    if document["id"] == "two" {
+        return Err(Error::Validation("rejected migration".into()));
+    }
+    Ok(())
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, lithair_core::DeclarativeModel)]
+#[storage(turso, collection = "evolving", version = 2, migrations(add_category))]
+struct EvolvedDocument {
+    id: String,
+    title: String,
+    category: String,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, lithair_core::DeclarativeModel)]
+#[storage(turso, collection = "evolving", version = 2, migrations(reject_migration))]
+struct RejectedDocument {
+    id: String,
+    title: String,
+    category: String,
+}
+
+#[given("SQL documents stored by the first application version")]
+async fn original_schema(world: &mut TursoWorld) {
+    isolated(world).await;
+    let store = world.database.as_ref().unwrap().store::<OriginalDocument>("tenant-a").unwrap();
+    for id in ["one", "two"] {
+        store
+            .create(OriginalDocument { id: id.into(), title: "kept".into() }, &[])
+            .await
+            .unwrap();
+    }
+}
+
+#[when("the application upgrades its declared SQL model")]
+async fn upgrade_schema(world: &mut TursoWorld) {
+    world
+        .database
+        .as_ref()
+        .unwrap()
+        .store::<EvolvedDocument>("tenant-a")
+        .unwrap()
+        .prepare()
+        .await
+        .expect("upgrade");
+}
+
+#[then("the migrated documents and schema survive another restart")]
+async fn migrated_schema(world: &mut TursoWorld) {
+    reopen(world).await;
+    let store = world.database.as_ref().unwrap().store::<EvolvedDocument>("tenant-a").unwrap();
+    store.prepare().await.expect("already migrated");
+    for id in ["one", "two"] {
+        let value = store.get(id, &[]).await.unwrap().unwrap();
+        assert_eq!(value.title, "kept");
+        assert_eq!(value.category, "work");
+    }
+    assert!(matches!(
+        world
+            .database
+            .as_ref()
+            .unwrap()
+            .store::<OriginalDocument>("tenant-a")
+            .unwrap()
+            .prepare()
+            .await,
+        Err(Error::Schema(_))
+    ));
+}
+
+#[when("a declared SQL migration fails")]
+async fn rejected_schema(world: &mut TursoWorld) {
+    world.rejected = world
+        .database
+        .as_ref()
+        .unwrap()
+        .store::<RejectedDocument>("tenant-a")
+        .unwrap()
+        .prepare()
+        .await
+        .is_err();
+}
+
+#[then("the previous SQL model can still read every original document")]
+async fn original_schema_preserved(world: &mut TursoWorld) {
+    assert!(world.rejected);
+    reopen(world).await;
+    let store = world.database.as_ref().unwrap().store::<OriginalDocument>("tenant-a").unwrap();
+    for id in ["one", "two"] {
+        assert_eq!(store.get(id, &[]).await.unwrap().unwrap().title, "kept");
+    }
+}
+
 #[tokio::main]
 async fn main() {
     TursoWorld::cucumber()

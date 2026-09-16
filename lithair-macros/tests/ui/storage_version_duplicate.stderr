@@ -1,0 +1,5 @@
+error: duplicate version option
+ --> tests/ui/storage_version_duplicate.rs:4:31
+  |
+4 | #[storage(turso, version = 1, version = 2)]
+  |                               ^^^^^^^

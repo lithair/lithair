@@ -1,0 +1,5 @@
+error: collection, namespace, filters, version and migrations require the turso backend
+ --> tests/ui/storage_native_version.rs:4:1
+  |
+4 | #[storage(native, version = 1)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

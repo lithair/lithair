@@ -28,6 +28,7 @@ pub fn model_factory<T: SqlModel>() -> ModelFactory {
             )
             .await?;
             let store = database.store::<T>(T::NAMESPACE)?;
+            store.prepare().await?;
             Ok(
                 Arc::new(SqlHandler {
                     store,

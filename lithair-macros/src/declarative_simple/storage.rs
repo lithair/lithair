@@ -1,7 +1,7 @@
 //! Strict, opt-in storage declarations. Native models emit no adapter reference.
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{punctuated::Punctuated, DeriveInput, Error, LitStr, Token};
+use syn::{punctuated::Punctuated, DeriveInput, Error, LitInt, LitStr, Path, Token};
 
 pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStream)> {
     let attrs: Vec<_> = input.attrs.iter().filter(|a| a.path().is_ident("storage")).collect();
@@ -13,6 +13,8 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
     let mut collection = None;
     let mut namespace = None;
     let mut filters = None;
+    let mut version = None;
+    let mut migrations = None;
     attr.parse_nested_meta(|meta| {
         if meta.path.is_ident("native") || meta.path.is_ident("turso") {
             if backend.is_some() { return Err(meta.error("declare exactly one storage backend")); }
@@ -30,18 +32,34 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
             let content;
             syn::parenthesized!(content in meta.input);
             filters = Some(Punctuated::<LitStr, Token![,]>::parse_terminated(&content)?);
+        } else if meta.path.is_ident("version") {
+            if version.is_some() { return Err(meta.error("duplicate version option")); }
+            let value: LitInt = meta.value()?.parse()?;
+            let number = value.base10_parse::<u32>()?;
+            if number == 0 { return Err(Error::new_spanned(value, "storage version must be positive")); }
+            version = Some(number);
+        } else if meta.path.is_ident("migrations") {
+            if migrations.is_some() { return Err(meta.error("duplicate migrations option")); }
+            let content;
+            syn::parenthesized!(content in meta.input);
+            migrations = Some(Punctuated::<Path, Token![,]>::parse_terminated(&content)?);
         } else {
-            return Err(meta.error("unknown storage option; valid options: native, turso, collection, namespace, filters"));
+            return Err(meta.error("unknown storage option; valid options: native, turso, collection, namespace, filters, version, migrations"));
         }
         Ok(())
     })?;
     let turso = backend
         .ok_or_else(|| Error::new_spanned(attr, "storage requires a backend: native or turso"))?;
     if !turso {
-        if collection.is_some() || namespace.is_some() || filters.is_some() {
+        if collection.is_some()
+            || namespace.is_some()
+            || filters.is_some()
+            || version.is_some()
+            || migrations.is_some()
+        {
             return Err(Error::new_spanned(
                 attr,
-                "collection, namespace and filters require the turso backend",
+                "collection, namespace, filters, version and migrations require the turso backend",
             ));
         }
         return Ok((quote! {}, quote! {}));
@@ -132,12 +150,45 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
             ));
         }
     }
+    if migrations.is_some() && version.is_none() {
+        return Err(Error::new_spanned(attr, "migrations require an explicit storage version"));
+    }
+    let version_metadata = if let Some(version) = version {
+        let migrations = migrations.unwrap_or_default();
+        if migrations.len() as u64 != u64::from(version) - 1 {
+            return Err(Error::new_spanned(attr,
+                "declare exactly version - 1 migrations, ordered from v1 to v2, v2 to v3, and so on"));
+        }
+        let migrations: Vec<_> = migrations.iter().collect();
+        // Describe serialization, types, key and validation without the Rust
+        // struct/module name. Model renames keep their stable collection identity.
+        // This deliberately conservative descriptor cannot inspect custom serde
+        // or validation function bodies; changes to those require a version bump.
+        let serde_attrs = input.attrs.iter().filter(|a| a.path().is_ident("serde"));
+        let schema_fields = fields.iter().map(|field| {
+            let name = &field.ident;
+            let ty = &field.ty;
+            let attrs = field
+                .attrs
+                .iter()
+                .filter(|a| ["serde", "db", "http"].iter().any(|name| a.path().is_ident(name)));
+            quote! { #(#attrs)* #name: #ty }
+        });
+        quote! {
+            const VERSION: u32 = #version;
+            const SCHEMA: &'static str = stringify!(#(#serde_attrs)* { #(#schema_fields),* });
+            const MIGRATIONS: &'static [::lithair_turso::Migration] = &[#(#migrations),*];
+        }
+    } else {
+        quote! {}
+    };
     let name = &input.ident;
     let collection = collection.unwrap_or_else(|| LitStr::new(&name.to_string(), name.span()));
     let namespace = namespace.unwrap_or_else(|| LitStr::new("default", name.span()));
     let filters: Vec<_> = filters.iter().collect();
     let implementation = quote! {
         impl ::lithair_turso::SqlModel for #name {
+            #version_metadata
             const COLLECTION: &'static str = #collection;
             const NAMESPACE: &'static str = #namespace;
             const FILTER_FIELDS: &'static [&'static str] = &[#(#filters),*];

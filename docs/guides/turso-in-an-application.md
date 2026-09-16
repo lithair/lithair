@@ -103,3 +103,7 @@ The adapter follows its own 0.x version series while core/macros follow 1.x.
 Publication makes the integration available for application trials; it does not
 change its experimental status. Recovery under process/filesystem faults and
 workload measurements remain separate work before production promotion.
+
+For model evolution in the next adapter revision, see the
+[schema versions and migrations guide](turso-schema-migrations.md). It keeps the
+same registration and adds explicit versioned document transformations.
