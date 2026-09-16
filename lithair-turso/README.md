@@ -26,10 +26,10 @@ and `with_model_full` honor the same selection. The native handler constructors
 reject SQL-declared models, including the native `with_model_ref` path.
 
 This crate is **experimental**. Add `lithair-core = "1.12"` and
-`lithair-turso = "0.2"` to your application. The
-[standalone application guide](https://github.com/lithair/lithair/blob/v1.12.0/docs/guides/turso-in-an-application.md)
+`lithair-turso = "0.2.1"` to your application. The
+[standalone application guide](https://github.com/lithair/lithair/blob/v1.12.1/docs/guides/turso-in-an-application.md)
 provides a complete Cargo manifest and runnable server. Native applications have
-no Turso dependency. See [RFC 235](https://github.com/lithair/lithair/blob/v1.12.0/docs/rfcs/235-hybrid-storage.md).
+no Turso dependency. See [RFC 235](https://github.com/lithair/lithair/blob/v1.12.1/docs/rfcs/235-hybrid-storage.md).
 
 ## Declaration and routes
 
@@ -50,7 +50,7 @@ comes from trusted application code, never query parameters.
 
 | Method | Route | Result |
 | --- | --- | --- |
-| GET | `/api/archives?category=work&limit=25&offset=0` | `{"data": [...], "has_more": true, "next_offset": 25}` (continuation metadata unreleased) |
+| GET | `/api/archives?category=work&limit=25&offset=0` | `{"data": [...], "has_more": true, "next_offset": 25}` |
 | GET | `/api/archives/{id}` | The document |
 | POST | `/api/archives` | Create complete model including ID; 201 after commit |
 | PUT | `/api/archives/{id}` | Replace complete model; immutable ID |
@@ -68,8 +68,8 @@ Bulk HTTP routes, count/schema/SSE subroutes and SQL endpoints are not provided.
 
 Lists default to **50 SQL candidates**, with `limit=1..100` and `offset=0`
 by default. They do not return the whole collection. Candidate order is primary
-key order. The next adapter release adds `has_more` and `next_offset` alongside
-the existing `data` array; published 0.1.0 and 0.2.0 return only `data`.
+key order. Adapter 0.2.1 adds `has_more` and `next_offset` alongside
+the existing `data` array; 0.1.0 and 0.2.0 return only `data`.
 
 For 55 readable documents, the default first page has 50 items, `has_more: true`
 and `next_offset: 50`. Request the same filter and limit with `offset=50` to read
@@ -83,7 +83,7 @@ limit and credentials. No total is computed or exposed. Like existing offset
 queries, continuation metadata can reveal the presence of unreadable candidates;
 it never returns their content. Offset pagination is not a snapshot across
 requests: concurrent edits can shift pages. See the
-[application guide](https://github.com/lithair/lithair/blob/main/docs/guides/turso-in-an-application.md#paginate-list-requests)
+[application guide](https://github.com/lithair/lithair/blob/v1.12.1/docs/guides/turso-in-an-application.md#paginate-list-requests)
 for a client loop and filter declaration examples.
 
 ## Schema versions and migrations
@@ -96,7 +96,7 @@ The ordinary builder migrates existing documents and records their schema in one
 transaction before serving. Invalid transformations roll everything back; tracked schema drift and
 downgrades fail explicitly. Existing unversioned databases are treated as version 1.
 
-See [model evolution](https://github.com/lithair/lithair/blob/v1.12.0/docs/guides/turso-schema-migrations.md) for runnable
+See [model evolution](https://github.com/lithair/lithair/blob/v1.12.1/docs/guides/turso-schema-migrations.md) for runnable
 snippets, restart/rollback semantics and compatibility limits. This API requires
 Lithair 1.12 and adapter 0.2. Native `#[schema]`, native
 migration administration and backend conversion remain separate capabilities.
@@ -160,4 +160,4 @@ production promotion.
 
 `cidx run test` runs repository tests, generated HTTP/restart tests, compile-fail
 diagnostics and the Turso Gherkin runner. `cidx run ci` also runs security, code
-and the workspace release build. See the [runnable example](https://github.com/lithair/lithair/blob/v1.12.0/examples/advanced/hybrid-storage/README.md).
+and the workspace release build. See the [runnable example](https://github.com/lithair/lithair/blob/v1.12.1/examples/advanced/hybrid-storage/README.md).

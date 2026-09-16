@@ -1,7 +1,7 @@
 # Use Turso models in another application
 
-Turso storage is experimental and available on crates.io as `lithair-turso` 0.2,
-alongside Lithair 1.12. Cargo retrieves the published crates; you do not need a
+Turso storage is experimental and available on crates.io as `lithair-turso` 0.2.1,
+alongside Lithair 1.12.1. Cargo retrieves the published crates; you do not need a
 Lithair checkout or Git dependencies.
 
 ## Dependencies
@@ -13,7 +13,7 @@ Use these dependencies in its `Cargo.toml`:
 ```toml
 [dependencies]
 lithair-core = "1.12"
-lithair-turso = "0.2"
+lithair-turso = "0.2.1"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 ```
@@ -30,6 +30,10 @@ core 1.12, which includes the new migration declarations. Existing unversioned
 models and files remain usable. See the
 [schema migration guide](turso-schema-migrations.md) before versioning existing data.
 Commit the application's `Cargo.lock` to keep its resolved dependencies stable.
+For an application already on adapter 0.2.0, `cargo update -p lithair-turso`
+selects 0.2.1 without changing model declarations. The adapter remains compatible
+with core 1.12.0. The manifest above requires 0.2.1 so the pagination metadata
+used below is always available.
 
 ## Declare and register the model
 
@@ -98,8 +102,8 @@ the entire collection: SQL lists default to **50 candidates**, and accept at mos
 100 per request. A 55-document collection needs a second request. `limit=0` and
 `limit=101` return 400; limits are not silently clamped.
 
-**Unreleased:** the next adapter release adds `has_more` and `next_offset` to
-the existing `data` response. Published adapter 0.1.0 and 0.2.0 do not include
+**Since adapter 0.2.1**, list responses include `has_more` and `next_offset`
+alongside the existing `data` array. Adapter 0.1.0 and 0.2.0 do not include
 these fields. With the new metadata, the first page looks like:
 
 ```json
