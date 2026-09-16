@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-09-16
+
+Declarative embedded SQL storage is now available to downstream applications:
+use `lithair-core = "1.11"` with the separately versioned, experimental
+`lithair-turso = "0.1"` adapter.
+
+### Added
+
+- **Opt-in Turso model storage** (#236, closes #235): add `#[storage(turso)]`
+  to a `DeclarativeModel` and register it with the usual `with_model` call.
+  Lithair opens the database and generates CRUD routes, including atomic PATCH,
+  validation, session authentication and model permission checks. SQL storage
+  supports committed writes, atomic bounded batches, string equality filters,
+  pagination and namespace isolation. Native memory-first models remain the
+  default and do not depend on the Turso driver.
+- **`lithair-turso` 0.1.0 on crates.io**: the optional adapter has its own
+  experimental version series and uses Turso 0.7.2 with default features
+  disabled. See the [application guide](docs/guides/turso-in-an-application.md)
+  for dependencies and a complete declarative server.
+- **Reserved-listener startup** (#233, closes #207): applications and tests
+  can supply an already-bound listener to `serve_with_listener`, retaining the
+  reserved socket through startup and exposing its actual address.
+
+### Changed
+
+- Release publishing includes the Turso adapter and reads each crate's own
+  version, so reruns correctly skip both published 1.x and 0.x crates.
+
+### Migration notes
+
+- Existing native models keep their storage. Selecting a new backend does not
+  migrate existing data; backend changes over an existing model directory are
+  rejected. Keep one authority and a separate data directory per model.
+- SQL models do not support native data-admin/backups, clustering, history,
+  retention, SSE or native schema migration. Unsupported declarations and
+  incompatible server configuration fail explicitly. This first adapter release
+  is intended for application trials and feedback; fault-recovery qualification
+  and workload measurements remain work for production promotion.
+
 ## [1.10.0] - 2026-09-08
 
 This release protects cookie-authenticated mutations against cross-site
@@ -1707,7 +1746,8 @@ except on a binary change.
 
 - Upgraded reqwest from 0.12 to 0.13
 
-[Unreleased]: https://github.com/lithair/lithair/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/lithair/lithair/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/lithair/lithair/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/lithair/lithair/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/lithair/lithair/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/lithair/lithair/compare/v1.7.0...v1.8.0

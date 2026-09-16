@@ -1,9 +1,8 @@
 # Use Turso models in another application
 
-Turso storage is experimental and is not included in the published Lithair
-v1.10.0 crates. Until a release includes the adapter, use Git dependencies pinned
-to the same tested revision. Cargo retrieves the crates from the repository;
-you do not need a local Lithair checkout.
+Turso storage is experimental and available on crates.io as `lithair-turso` 0.1,
+alongside Lithair 1.11. Cargo retrieves the published crates; you do not need a
+Lithair checkout or Git dependencies.
 
 ## Dependencies
 
@@ -13,17 +12,18 @@ Use these dependencies in its `Cargo.toml`:
 
 ```toml
 [dependencies]
-lithair-core = { git = "https://github.com/lithair/lithair", rev = "1153d4145a53400bbfe54fcb65702810868bb0ab" }
-lithair-turso = { git = "https://github.com/lithair/lithair", rev = "1153d4145a53400bbfe54fcb65702810868bb0ab" }
+lithair-core = "1.11"
+lithair-turso = "0.1"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 ```
 
 `lithair-core` re-exports `DeclarativeModel` with its default `macros` feature.
 No separate `lithair-macros` dependency is needed. If your application already
-depends on it directly, move it to the **same Git URL and revision** too. Replace
-existing crates.io dependencies on these crates throughout your workspace;
-mixing registry and Git copies produces distinct Rust types and traits.
+depends on it directly, upgrade it to `"1.11"` too. Replace any previous Git or
+path dependencies on these crates throughout your workspace; mixing registry
+and Git/path copies produces distinct Rust types and traits. Lithair 1.10 does
+not include the storage selector required by the adapter.
 Commit the application's `Cargo.lock` to keep its resolved dependencies stable.
 
 ## Declare and register the model
@@ -99,8 +99,7 @@ containing SQL models in this revision. See the full
 [capabilities and limits](../../lithair-turso/README.md#guarantees-and-limits)
 before adapting an existing model.
 
-This Git installation makes the integration available for application trials;
-it does not change its experimental status. A crates.io release still needs
-compatible core/macros versions, a publishable `lithair-turso` manifest and an
-updated release publishing order. Recovery under process/filesystem faults and
+The adapter follows its own 0.x version series while core/macros follow 1.x.
+Publication makes the integration available for application trials; it does not
+change its experimental status. Recovery under process/filesystem faults and
 workload measurements remain separate work before production promotion.

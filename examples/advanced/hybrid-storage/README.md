@@ -42,7 +42,7 @@ Archive validation, model permissions, pagination and storage errors are enforce
 by the generated adapter. No manual `SqlModel` implementation or custom CRUD
 handlers are present in the application.
 
-Turso support is an unpublished experimental workspace crate. It supports one
+Turso support is an experimental crate (`lithair-turso` 0.1, with Lithair 1.11). It supports one
 SQL authority per model; native retention, history, replication, SSE and backups
 do not apply. Unsupported native annotations fail to compile. See the
 [adapter contract](../../../lithair-turso/README.md) and [RFC](../../../docs/rfcs/235-hybrid-storage.md).
