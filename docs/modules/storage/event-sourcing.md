@@ -50,6 +50,43 @@ Each event is persisted as an envelope:
 - `event_id`: app-provided idempotence key (or auto `json:<payload-hash>`).
 - `payload`: original event JSON string.
 
+### Native declarative model events
+
+Models registered with `with_model`, `with_declarative_model` or `with_model_ref`
+use full-state envelopes for their native CRUD history. New events use the Rust
+model's unqualified name followed by the operation: `AttemptCreated`,
+`AttemptUpdated`, `AttemptReplicated`, `AttemptAdminEdit` or `AttemptDeleted`.
+Generated event IDs likewise use the unqualified model name. Crate and module
+paths are not part of this identity. This naming contract concerns the native
+model handler; custom events using the generic engine keep their own identifiers.
+
+Replay accepts both these logical names and historical qualified names such as
+`curio_backend::models::AttemptCreated` and
+`kompri_backend::models::AttemptDeleted`. A crate rename or moving the model to
+another Rust module requires no log rewrite. Existing envelopes and their hash
+chains remain unchanged, and new envelopes continue the existing chain.
+
+The model name itself remains part of the stored identity: renaming `Attempt`
+requires an explicit data migration. Keep a separate data directory for each
+model, including same-named models from different modules. Unrecognized event
+kinds or events for a different model are not applied by the native handler.
+
+On restart, Lithair restores the snapshot and applies subsequent events in log
+order. `Created`, `Updated`, `Replicated` and `AdminEdit` replace the record's
+state; `Deleted` removes it from both hot storage and the retention index.
+Deletion uses `aggregate_id`, with the payload's primary key as a fallback for
+older envelopes lacking that field. Timestamps do not reorder operations: a
+delete followed by a new creation of the same ID keeps the new record.
+
+After upgrading from a version affected by the native delete replay bug (#238),
+restarting with an intact log applies the existing `Deleted` events correctly;
+no manual edits to `.raftlog` files are needed. If an affected version already
+compacted away those events into a snapshot containing resurrected records,
+that snapshot cannot recover the lost deletion intent: restore an earlier
+complete log/backup or delete those records again after upgrading.
+
+### Generic engine deduplication
+
 During startup, the engine reconstructs the dedup set by:
 
 - hashing `event_id`s from `dedup.raftids`, and

@@ -157,6 +157,42 @@ Feature: Retention and Pinned Fields
 
   # ==================== RESTART AND REPLAY ====================
 
+  @core @retention @replay @native-replay
+  Scenario Outline: Native deletions survive replay in hot and warm storage
+    Given a model with retention limit of <limit>
+    And 4 items have been created and persisted
+    When I delete retained item 0
+    And I delete retained item 3
+    And the engine is restarted
+    Then retained item 0 should be absent
+    And retained item 3 should be absent
+    And the native model should contain 2 records
+
+    Examples:
+      | limit |
+      | 10    |
+      | 1     |
+
+  @core @retention @replay @native-replay
+  Scenario: Deletion after a snapshot is applied on restart
+    Given a model with retention limit of 10
+    And 4 items have been created and persisted
+    When I compact the native model
+    And I delete retained item 0
+    And the engine is restarted
+    Then retained item 0 should be absent
+    And the native model should contain 3 records
+
+  @core @retention @replay @native-replay
+  Scenario: Recreating a deleted ID preserves the new state after restart
+    Given a model with retention limit of 1
+    And 4 items have been created and persisted
+    When I delete retained item 0
+    And I recreate retained item 0
+    And the engine is restarted
+    Then retained item 0 should contain its recreated content
+    And the native model should contain 4 records
+
   @core @retention @replay
   Scenario: Event replay respects retention policy
     Given a model with retention limit of 10

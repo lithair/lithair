@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Native model replay now applies `Deleted` events instead of reinserting their
+  payloads (#239, closes #238). Deletions survive restart, including after a
+  snapshot and with retention enabled; on-demand warm reads stop at deletions.
+- Native model event types and generated event IDs use the unqualified model
+  name. Historical crate/module-qualified events remain readable without log
+  rewriting or hash-chain changes. See the
+  [native event contract](docs/modules/storage/event-sourcing.md#native-declarative-model-events)
+  for model renames and recovery when an older version already compacted the log.
+
 ## [1.11.0] - 2026-09-16
 
 Declarative embedded SQL storage is now available to downstream applications:
