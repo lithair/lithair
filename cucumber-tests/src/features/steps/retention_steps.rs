@@ -180,11 +180,76 @@ async fn when_engine_restarted(world: &mut LithairWorld) {
         let slot = world.retention_path.lock().await;
         slot.clone().expect("no retention path recorded")
     };
+    handler_slot(world)
+        .as_ref()
+        .expect("handler")
+        .get_event_store()
+        .write()
+        .await
+        .flush()
+        .expect("flush before restart");
     *handler_slot(world) = None;
     let handler = DeclarativeHttpHandler::<RetentionTestEmail>::new_with_replay(&path)
         .await
         .expect("recreate handler on restart");
     *handler_slot(world) = Some(Arc::new(handler));
+}
+
+#[when(expr = "I delete retained item {int}")]
+async fn when_delete_retained(world: &mut LithairWorld, idx: usize) {
+    let handler = handler_slot(world).as_ref().expect("handler");
+    let id = format!("email-{idx:05}");
+    assert!(handler.get_by_id(&id).await.is_some(), "record must exist before deletion");
+    handler.apply_replicated_delete(&id).await.expect("delete");
+    assert!(handler.get_by_id(&id).await.is_none());
+}
+
+#[when("I compact the native model")]
+async fn when_compact_native(world: &mut LithairWorld) {
+    let handler = handler_slot(world).as_ref().expect("handler");
+    handler.get_event_store().write().await.flush().expect("flush");
+    handler.compact().await.expect("compact");
+}
+
+#[when(expr = "I recreate retained item {int}")]
+async fn when_recreate_retained(world: &mut LithairWorld, idx: usize) {
+    handler_slot(world)
+        .as_ref()
+        .expect("handler")
+        .apply_replicated_item(RetentionTestEmail {
+            id: format!("email-{idx:05}"),
+            from: "recreated@test.com".into(),
+            subject: "Recreated".into(),
+            body: "Recreated content".into(),
+        })
+        .await
+        .expect("recreate");
+}
+
+#[then(expr = "retained item {int} should be absent")]
+async fn then_retained_absent(world: &mut LithairWorld, idx: usize) {
+    assert!(handler_slot(world)
+        .as_ref()
+        .expect("handler")
+        .get_by_id(&format!("email-{idx:05}"))
+        .await
+        .is_none());
+}
+
+#[then(expr = "retained item {int} should contain its recreated content")]
+async fn then_retained_recreated(world: &mut LithairWorld, idx: usize) {
+    let item = handler_slot(world)
+        .as_ref()
+        .expect("handler")
+        .get_by_id(&format!("email-{idx:05}"))
+        .await
+        .expect("recreated record");
+    assert_eq!(item.body, "Recreated content");
+}
+
+#[then(expr = "the native model should contain {int} records")]
+async fn then_native_count(world: &mut LithairWorld, count: usize) {
+    assert_eq!(handler_slot(world).as_ref().expect("handler").total_item_count().await, count);
 }
 
 #[then(expr = "all {int} items should be accessible by id")]

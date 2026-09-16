@@ -227,6 +227,12 @@ pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 's
     }
 }
 
+/// Full-state operations recorded by native model handlers.
+enum ModelEvent<T> {
+    Upsert(T),
+    Delete(String),
+}
+
 /// HTTP handler for DeclarativeModel CRUD operations
 pub struct DeclarativeHttpHandler<T>
 where
@@ -519,11 +525,25 @@ where
         let mut replayed_count = 0;
         for event_json in events {
             if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(&event_json) {
-                if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
-                    let key = item.get_primary_key();
-                    Self::insert_with_retention(&mut storage, self.retention.as_ref(), key, item);
-                    replayed_count += 1;
+                match Self::decode_model_event(&envelope) {
+                    Some(ModelEvent::Upsert(item)) => {
+                        let key = item.get_primary_key();
+                        Self::insert_with_retention(
+                            &mut storage,
+                            self.retention.as_ref(),
+                            key,
+                            item,
+                        );
+                    }
+                    Some(ModelEvent::Delete(key)) => {
+                        storage.remove(&key);
+                        if let Some(retention) = &self.retention {
+                            retention.remove(&key);
+                        }
+                    }
+                    None => continue,
                 }
+                replayed_count += 1;
             }
         }
 
@@ -852,24 +872,17 @@ where
                 Err(_) => continue,
             };
 
-            match probe.aggregate_id {
-                Some(id) if id == key => {
-                    if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
-                        if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
-                            return Some(item);
-                        }
+            if probe.aggregate_id.is_some_and(|id| id != key) {
+                continue; // mismatched aggregate, payload not parsed
+            }
+            if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
+                match Self::decode_model_event(&envelope) {
+                    // A deletion is a barrier: never fall back to an earlier creation.
+                    Some(ModelEvent::Delete(id)) if id == key => return None,
+                    Some(ModelEvent::Upsert(item)) if item.get_primary_key() == key => {
+                        return Some(item);
                     }
-                }
-                Some(_) => continue, // mismatched aggregate, payload not parsed
-                None => {
-                    // Legacy fallback: aggregate_id missing, must inspect payload
-                    if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(event_json) {
-                        if let Ok(item) = serde_json::from_str::<T>(&envelope.payload) {
-                            if item.get_primary_key() == key {
-                                return Some(item);
-                            }
-                        }
-                    }
+                    _ => {}
                 }
             }
         }
@@ -1071,7 +1084,7 @@ where
     /// IMPORTANT: This must be fully idempotent and never fail once storage is modified
     pub async fn apply_replicated_delete(&self, id: &str) -> Result<bool, String> {
         // Remove from storage
-        let removed_item = {
+        let mut removed_item = {
             let mut storage = self.storage.write().await;
             let has_key = storage.contains_key(id);
             log::debug!(
@@ -1082,6 +1095,12 @@ where
             );
             storage.remove(id)
         };
+
+        // Evicted records still exist. Recover their payload before clearing the
+        // retention index so followers persist and broadcast their deletion too.
+        if removed_item.is_none() && self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+            removed_item = self.load_evicted_item(id).await;
+        }
 
         // Clean up warm map entry (if any) so evicted items don't linger
         if let Some(retention) = &self.retention {
@@ -2390,6 +2409,34 @@ where
         }
     }
 
+    /// Crate/module paths are implementation details, not native model identity.
+    fn event_model_name() -> &'static str {
+        let full_name = std::any::type_name::<T>();
+        full_name.rsplit("::").next().unwrap_or(full_name)
+    }
+
+    /// Accept both logical names and historical fully qualified Rust names.
+    /// Decode without changing the persisted envelope (including its hash).
+    fn decode_model_event(envelope: &EventEnvelope) -> Option<ModelEvent<T>> {
+        let kind = envelope.event_type.rsplit("::").next()?;
+        match kind.strip_prefix(Self::event_model_name())? {
+            "Created" | "Updated" | "Replicated" | "AdminEdit" => {
+                serde_json::from_str(&envelope.payload).ok().map(ModelEvent::Upsert)
+            }
+            "Deleted" => {
+                // Deletion only requires identity. Older payloads need not deserialize
+                // against today's schema when an aggregate ID is available.
+                let key = envelope.aggregate_id.clone().or_else(|| {
+                    serde_json::from_str::<T>(&envelope.payload)
+                        .ok()
+                        .map(|item| item.get_primary_key())
+                })?;
+                Some(ModelEvent::Delete(key))
+            }
+            _ => None,
+        }
+    }
+
     /// Persist operation to EventStore
     async fn persist_to_event_store(
         &self,
@@ -2397,10 +2444,10 @@ where
         item: &T,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = EventEnvelope {
-            event_type: format!("{}{}", std::any::type_name::<T>(), operation),
+            event_type: format!("{}{}", Self::event_model_name(), operation),
             event_id: format!(
                 "{}:{}:{}",
-                std::any::type_name::<T>(),
+                Self::event_model_name(),
                 operation,
                 item.get_primary_key()
             ),
@@ -2593,10 +2640,10 @@ where
 
         // Persist as AdminEdit event (different from regular Updated)
         let envelope = EventEnvelope {
-            event_type: format!("{}AdminEdit", std::any::type_name::<T>()),
+            event_type: format!("{}AdminEdit", Self::event_model_name()),
             event_id: format!(
                 "{}:AdminEdit:{}:{}",
-                std::any::type_name::<T>(),
+                Self::event_model_name(),
                 id,
                 chrono::Utc::now().timestamp_millis()
             ),
