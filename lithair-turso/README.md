@@ -25,11 +25,11 @@ implementation, database opening or HTTP handlers are needed. `with_declarative_
 and `with_model_full` honor the same selection. The native handler constructors
 reject SQL-declared models, including the native `with_model_ref` path.
 
-This crate is **experimental**. Add `lithair-core = "1.11"` and
-`lithair-turso = "0.1"` to your application. The
-[standalone application guide](https://github.com/lithair/lithair/blob/v1.11.0/docs/guides/turso-in-an-application.md)
+This crate is **experimental**. Add `lithair-core = "1.12"` and
+`lithair-turso = "0.2"` to your application. The
+[standalone application guide](https://github.com/lithair/lithair/blob/v1.12.0/docs/guides/turso-in-an-application.md)
 provides a complete Cargo manifest and runnable server. Native applications have
-no Turso dependency. See [RFC 235](https://github.com/lithair/lithair/blob/v1.11.0/docs/rfcs/235-hybrid-storage.md).
+no Turso dependency. See [RFC 235](https://github.com/lithair/lithair/blob/v1.12.0/docs/rfcs/235-hybrid-storage.md).
 
 ## Declaration and routes
 
@@ -74,9 +74,9 @@ The ordinary builder migrates existing documents and records their schema in one
 transaction before serving. Invalid transformations roll everything back; tracked schema drift and
 downgrades fail explicitly. Existing unversioned databases are treated as version 1.
 
-See [model evolution](https://github.com/lithair/lithair/blob/main/docs/guides/turso-schema-migrations.md) for runnable
-snippets, restart/rollback semantics and compatibility limits. This API follows
-0.1.0 and is not present in that published release. Native `#[schema]`, native
+See [model evolution](https://github.com/lithair/lithair/blob/v1.12.0/docs/guides/turso-schema-migrations.md) for runnable
+snippets, restart/rollback semantics and compatibility limits. This API requires
+Lithair 1.12 and adapter 0.2. Native `#[schema]`, native
 migration administration and backend conversion remain separate capabilities.
 
 ## Authorization
@@ -136,4 +136,4 @@ production promotion.
 
 `cidx run test` runs repository tests, generated HTTP/restart tests, compile-fail
 diagnostics and the Turso Gherkin runner. `cidx run ci` also runs security, code
-and the workspace release build. See the [runnable example](https://github.com/lithair/lithair/blob/v1.11.0/examples/advanced/hybrid-storage/README.md).
+and the workspace release build. See the [runnable example](https://github.com/lithair/lithair/blob/v1.12.0/examples/advanced/hybrid-storage/README.md).

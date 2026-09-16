@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-16
+
+Declarative Turso document migrations are available with `lithair-core`,
+`lithair-macros` and `lithair-cli` 1.12.0, and the experimental
+`lithair-turso` adapter 0.2.0.
+
+### Added
+
+- **Versioned Turso models** (#242, closes #241): declare
+  `#[storage(turso, collection = "notes", version = 2, migrations(note_v2))]`
+  and keep ordinary `with_model` / `with_declarative_model` registration.
+  Startup applies ordered Rust JSON transformations and validates the results
+  before serving. Document changes and schema metadata commit atomically per
+  namespace/collection; invalid transformations and callback panics roll back.
+- Schema metadata rejects tracked same-version declaration changes, downgrades
+  and operations through stale model handles. Existing 0.1 files are adopted
+  as version 1; empty partitions initialize directly at the declared version.
+- Bounded primary-key pages preserve fields unknown to the current Rust model.
+  Repository callers can explicitly await `Store::prepare()`; operations also
+  prepare lazily, retaining the adapter's admitted-write cancellation semantics.
+
+### Migration notes
+
+- Use `lithair-core = "1.12"` and `lithair-turso = "0.2"`; update an explicit
+  `lithair-macros` dependency to `"1.12"` too. Adapter 0.2 requires core 1.12.
+  Changing a `"0.1"` manifest requirement is necessary before `cargo update`
+  can select adapter 0.2. Exhaustive matches on the adapter's `Error` enum must
+  handle the new `Schema` variant.
+- Unversioned declarations remain usable. Keep the existing collection, namespace
+  and data directory when adopting versions; changing them selects another
+  partition. Keep the complete ordered migration history and use deterministic
+  callbacks without external side effects. See the
+  [schema migration guide](docs/guides/turso-schema-migrations.md).
+- Old binaries using adapter 0.1 ignore schema metadata and must not reopen an
+  upgraded database. Rollback requires a compatible application or restoring
+  pre-upgrade data. Native migration administration and backups do not cover
+  SQL models. The adapter remains experimental; this release does not add
+  process/filesystem fault-recovery guarantees or backend conversion.
+
 ## [1.11.1] - 2026-09-16
 
 Corrective release for native model persistence. `lithair-core`, `lithair-macros`

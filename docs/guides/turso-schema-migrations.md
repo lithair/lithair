@@ -5,9 +5,21 @@ in `#[storage(...)]`; the usual `with_model` or `with_declarative_model` registr
 applies pending transformations before serving HTTP. These are document migrations,
 not generated SQL columns or native `#[schema(...)]` migrations.
 
-This API is available in the repository after Lithair 1.11.1 / lithair-turso 0.1.0;
-those published versions do not contain it yet. Use matching core, macros and
-adapter revisions when testing before the next release.
+This API is available with Lithair 1.12 and `lithair-turso` 0.2 on crates.io.
+Use the following dependencies in the application:
+
+```toml
+[dependencies]
+lithair-core = "1.12"
+lithair-turso = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
+
+If upgrading from adapter 0.1, edit its manifest requirement to `"0.2"` before
+running `cargo update`. If using `lithair-macros` directly, update it to `"1.12"`
+as well. Core re-exports the macros with its default features.
 
 ## Start with a stable collection and version
 

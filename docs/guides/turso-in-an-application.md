@@ -1,7 +1,7 @@
 # Use Turso models in another application
 
-Turso storage is experimental and available on crates.io as `lithair-turso` 0.1,
-alongside Lithair 1.11. Cargo retrieves the published crates; you do not need a
+Turso storage is experimental and available on crates.io as `lithair-turso` 0.2,
+alongside Lithair 1.12. Cargo retrieves the published crates; you do not need a
 Lithair checkout or Git dependencies.
 
 ## Dependencies
@@ -12,18 +12,23 @@ Use these dependencies in its `Cargo.toml`:
 
 ```toml
 [dependencies]
-lithair-core = "1.11"
-lithair-turso = "0.1"
+lithair-core = "1.12"
+lithair-turso = "0.2"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 ```
 
 `lithair-core` re-exports `DeclarativeModel` with its default `macros` feature.
 No separate `lithair-macros` dependency is needed. If your application already
-depends on it directly, upgrade it to `"1.11"` too. Replace any previous Git or
+depends on it directly, upgrade it to `"1.12"` too. Replace any previous Git or
 path dependencies on these crates throughout your workspace; mixing registry
 and Git/path copies produces distinct Rust types and traits. Lithair 1.10 does
 not include the storage selector required by the adapter.
+When upgrading from adapter 0.1, change the manifest requirement to `"0.2"`;
+`cargo update` alone cannot cross that 0.x minor boundary. Adapter 0.2 requires
+core 1.12, which includes the new migration declarations. Existing unversioned
+models and files remain usable. See the
+[schema migration guide](turso-schema-migrations.md) before versioning existing data.
 Commit the application's `Cargo.lock` to keep its resolved dependencies stable.
 
 ## Declare and register the model
@@ -104,6 +109,6 @@ Publication makes the integration available for application trials; it does not
 change its experimental status. Recovery under process/filesystem faults and
 workload measurements remain separate work before production promotion.
 
-For model evolution in the next adapter revision, see the
+For model evolution with this adapter, see the
 [schema versions and migrations guide](turso-schema-migrations.md). It keeps the
 same registration and adds explicit versioned document transformations.
