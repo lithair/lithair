@@ -1,4 +1,4 @@
-error: unknown storage option; valid options: native, turso, collection, namespace, filters
+error: unknown storage option; valid options: native, turso, collection, namespace, filters, version, migrations
  --> tests/ui/storage_unknown.rs:4:11
   |
 4 | #[storage(postgres)]

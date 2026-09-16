@@ -1,0 +1,5 @@
+error: declare exactly version - 1 migrations, ordered from v1 to v2, v2 to v3, and so on
+ --> tests/ui/storage_version_missing_steps.rs:4:1
+  |
+4 | #[storage(turso, version = 3, migrations(v2))]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

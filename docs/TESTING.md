@@ -115,5 +115,7 @@ regressions run in the standard test gate. Macro compile-fail cases pin unsuppor
 storage declarations and malformed options.
 `cucumber-tests/tests/turso_test.rs` owns `features/persistence/turso.feature`
 and is included in `cidx run test`. It exercises SQL rollback/reopen and the
-mixed HTTP example across graceful server restart. The native model path does
+mixed HTTP example across graceful server restart, plus transactional schema
+upgrade/rollback. `lithair-turso/tests/migrations.rs` covers legacy files, paged
+upgrades, declaration drift, cancellation/panic recovery and HTTP startup. The native model path does
 not acquire a Turso dependency. See [RFC 235](rfcs/235-hybrid-storage.md).

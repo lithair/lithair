@@ -1,0 +1,5 @@
+error: storage version must be positive
+ --> tests/ui/storage_version_zero.rs:4:28
+  |
+4 | #[storage(turso, version = 0)]
+  |                            ^

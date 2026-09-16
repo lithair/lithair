@@ -2117,7 +2117,8 @@ impl LithairServerBuilder {
     /// Generates GET, POST, PUT, DELETE endpoints under `base_path`.
     /// Events are persisted to `data_path`.
     ///
-    /// For schema migration support, use `with_declarative_model` instead.
+    /// For native schema migration support, use `with_declarative_model` instead.
+    /// Turso document migrations are handled by its adapter with either builder.
     ///
     /// # Example
     /// ```ignore

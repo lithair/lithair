@@ -37,9 +37,11 @@ only the application dependency, keeping core independent of the driver. All
 three builder registration methods honor this hook. Native handler constructors
 reject externally stored models instead of creating a second authority.
 
-The application
-chooses a collection version such as `archive_v1`; a schema change requires an
-explicit migration/new collection. Records use `(namespace, model, id)` as primary
+The application chooses a stable collection such as `archives`. The initial 0.1
+prototype required external migration or a new collection for schema changes.
+The follow-up in #241 adds opt-in `version` and ordered document `migrations`
+to the storage declaration, preserving the collection and ordinary builder.
+See [schema migration behavior](../guides/turso-schema-migrations.md). Records use `(namespace, model, id)` as primary
 key and a JSON body. This demonstrates storage ownership without prematurely
 committing to a generic SQL schema generator or ORM.
 
@@ -56,7 +58,7 @@ Supported: typed create/get/update/patch/delete, atomic bounded batches within o
 and namespace, exact string equality on explicitly allowed JSON fields, stable ID
 ordering, bounded limit/offset pagination, restart and partition isolation.
 
-Not provided: secondary uniqueness, relational foreign keys, schema migration,
+Not provided: secondary uniqueness, relational foreign keys, native schema migration,
 lifecycle auditing/immutability, native history, native retention, SSE, Raft,
 SQL projections, joins through the repository API or transparent cache coherence.
 The macro rejects declarations requesting those capabilities. SQL models

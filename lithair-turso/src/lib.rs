@@ -5,11 +5,13 @@
 use lithair_core::http::HttpExposable;
 use serde_json::Value as Json;
 use std::{marker::PhantomData, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 use turso::{params, Connection};
 
 mod http;
+mod migration;
 pub use http::model_factory;
+pub use migration::Migration;
 
 pub const MAX_PAGE_SIZE: u32 = 100;
 pub const MAX_BATCH_SIZE: usize = 100;
@@ -23,6 +25,12 @@ pub trait SqlModel: HttpExposable {
     const NAMESPACE: &'static str = "default";
     /// Permission names resolved against trusted session data or a role checker.
     const PERMISSIONS: &'static [&'static str] = &[];
+    /// Opt-in schema version. Unversioned 0.1 documents are version 1.
+    const VERSION: u32 = 1;
+    /// Syntactic schema descriptor generated for explicitly versioned models.
+    const SCHEMA: &'static str = "";
+    /// Complete ordered history: entry zero upgrades version 1 to version 2.
+    const MIGRATIONS: &'static [Migration] = &[];
     const FILTER_FIELDS: &'static [&'static str] = &[];
 }
 
@@ -32,6 +40,8 @@ pub enum Error {
     InvalidInput(String),
     #[error("model validation: {0}")]
     Validation(String),
+    #[error("schema migration: {0}")]
+    Schema(String),
     #[error("permission denied")]
     Forbidden,
     #[error("record not found")]
@@ -66,6 +76,10 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS lithair_documents_v1 (namespace TEXT NOT NULL, model TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (namespace, model, id))",
             (),
         ).await?;
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS lithair_schemas_v1 (namespace TEXT NOT NULL, model TEXT NOT NULL, version INTEGER NOT NULL, schema TEXT NOT NULL, PRIMARY KEY (namespace, model))",
+            (),
+        ).await?;
         Ok(Self { connection: Arc::new(Mutex::new(connection)) })
     }
 
@@ -85,7 +99,13 @@ impl Database {
                 "filter fields must be simple JSON field names".into(),
             ));
         }
-        Ok(Store { database: self.clone(), namespace: namespace.into(), marker: PhantomData })
+        migration::validate_declaration::<T>()?;
+        Ok(Store {
+            database: self.clone(),
+            namespace: namespace.into(),
+            prepared: Arc::new(OnceCell::new()),
+            marker: PhantomData,
+        })
     }
 }
 
@@ -97,6 +117,7 @@ fn valid_field(field: &str) -> bool {
 pub struct Store<T: SqlModel> {
     database: Database,
     namespace: String,
+    prepared: Arc<OnceCell<()>>,
     marker: PhantomData<T>,
 }
 
@@ -138,7 +159,9 @@ pub struct Equal<'a> {
 
 impl<T: SqlModel> Store<T> {
     pub async fn get(&self, id: &str, permissions: &[String]) -> Result<Option<T>> {
+        self.ensure_prepared().await?;
         let connection = self.database.connection.lock().await;
+        self.check_schema(&connection).await?;
         let item = self.load(&connection, id).await?;
         if item.as_ref().is_some_and(|item| !item.can_read(permissions)) {
             return Err(Error::Forbidden);
@@ -164,7 +187,9 @@ impl<T: SqlModel> Store<T> {
             }
             None => (0, "$".into(), ""),
         };
+        self.ensure_prepared().await?;
         let connection = self.database.connection.lock().await;
+        self.check_schema(&connection).await?;
         let mut rows = connection.query(
             "SELECT body FROM lithair_documents_v1 WHERE namespace = ?1 AND model = ?2 AND (?3 = 0 OR (json_type(body, ?4) = 'text' AND json_extract(body, ?4) = ?5)) ORDER BY id LIMIT ?6 OFFSET ?7",
             params![self.namespace.as_str(), T::COLLECTION, enabled, path, value, i64::from(page.limit), i64::from(page.offset)],
@@ -217,7 +242,9 @@ impl<T: SqlModel> Store<T> {
         let store = self.clone();
         let permissions = permissions.to_vec();
         tokio::spawn(async move {
+            store.ensure_prepared().await?;
             let mut connection = store.database.connection.lock().await;
+            store.check_schema(&connection).await?;
             let transaction = connection
                 .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
                 .await?;

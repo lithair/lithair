@@ -1,0 +1,5 @@
+error: migrations require an explicit storage version
+ --> tests/ui/storage_migrations_without_version.rs:4:1
+  |
+4 | #[storage(turso, migrations(v2))]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
