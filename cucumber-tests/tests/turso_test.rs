@@ -114,7 +114,7 @@ async fn unauthorized(world: &mut TursoWorld) {
 }
 
 // Exercise the actual example over HTTP, including a full server restart.
-#[then("native and SQL HTTP models coexist and survive server restart")]
+#[then("native and SQL HTTP models coexist, survive restart and delete with 204 and no body")]
 async fn mixed_http(world: &mut TursoWorld) {
     let tmp = tempfile::tempdir().expect("tempdir");
     let client = reqwest::Client::builder()
@@ -231,16 +231,14 @@ async fn mixed_http(world: &mut TursoWorld) {
             200
         );
         if !first_boot {
-            assert_eq!(
-                client
-                    .delete(format!("{sql}/one"))
-                    .bearer_auth("test-archive-token")
-                    .send()
-                    .await
-                    .expect("delete")
-                    .status(),
-                200
-            );
+            let deleted = client
+                .delete(format!("{sql}/one"))
+                .bearer_auth("test-archive-token")
+                .send()
+                .await
+                .expect("SQL delete");
+            assert_eq!(deleted.status(), 204);
+            assert!(deleted.bytes().await.expect("SQL delete body").is_empty());
             assert_eq!(
                 client
                     .get(format!("{sql}/one"))
@@ -260,6 +258,9 @@ async fn mixed_http(world: &mut TursoWorld) {
                     .status(),
                 200
             );
+            let deleted = client.delete(format!("{live}/one")).send().await.expect("native delete");
+            assert_eq!(deleted.status(), 204);
+            assert!(deleted.bytes().await.expect("native delete body").is_empty());
         }
         stop.send(()).expect("shutdown");
         tokio::time::timeout(Duration::from_secs(15), task)

@@ -101,6 +101,55 @@ async fn builder(path: &Path, schema: bool) -> LithairServerBuilder {
 }
 
 #[tokio::test]
+async fn delete_contract_matches_native_with_both_builders_and_after_restart() {
+    for sql in [false, true] {
+        for schema in [false, true] {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let http = client();
+            for first_boot in [true, false] {
+                let builder = LithairServer::new().with_data_dir(tmp.path().to_string_lossy());
+                let data = tmp.path().join("notes");
+                let builder = match (sql, schema) {
+                    (false, false) => {
+                        builder.with_model::<NativeNote>(data.to_string_lossy(), "/notes")
+                    }
+                    (false, true) => builder
+                        .with_declarative_model::<NativeNote>(data.to_string_lossy(), "/notes"),
+                    (true, false) => {
+                        builder.with_model::<PublicNote>(data.to_string_lossy(), "/notes")
+                    }
+                    (true, true) => builder
+                        .with_declarative_model::<PublicNote>(data.to_string_lossy(), "/notes"),
+                };
+                let running = Running::start(builder).await;
+                let url = format!("{}/notes", running.base);
+                let item_url = format!("{url}/one");
+                if first_boot {
+                    assert_eq!(
+                        http.post(&url)
+                            .json(&json!({"id":"one","title":"delete me"}))
+                            .send()
+                            .await
+                            .expect("create")
+                            .status(),
+                        201
+                    );
+                    let deleted = http.delete(&item_url).send().await.expect("delete");
+                    assert_eq!(deleted.status(), 204, "sql={sql}, schema={schema}");
+                    assert!(deleted.bytes().await.expect("delete body").is_empty());
+                }
+                assert_eq!(http.get(&item_url).send().await.expect("missing read").status(), 404);
+                assert_eq!(
+                    http.delete(&item_url).send().await.expect("missing delete").status(),
+                    404
+                );
+                running.stop().await;
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn declared_storage_generates_crud_and_survives_restart_with_both_builders() {
     for schema in [false, true] {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -163,15 +212,14 @@ async fn declared_storage_generates_crud_and_survives_restart_with_both_builders
                 assert_eq!(result.status(), 404);
             }
             if boot == 1 {
-                assert_eq!(
-                    http.delete(format!("{url}/a%2Fb"))
-                        .bearer_auth("writer")
-                        .send()
-                        .await
-                        .expect("delete")
-                        .status(),
-                    200
-                );
+                let deleted = http
+                    .delete(format!("{url}/a%2Fb"))
+                    .bearer_auth("writer")
+                    .send()
+                    .await
+                    .expect("delete");
+                assert_eq!(deleted.status(), 204);
+                assert!(deleted.bytes().await.expect("delete body").is_empty());
             }
             running.stop().await;
             assert!(tmp.path().join("notes/model.db").is_file());
