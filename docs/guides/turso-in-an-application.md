@@ -95,6 +95,16 @@ The result contains `"title":"Updated note"`. Use a persistent absolute data
 directory in an existing application so deployment working-directory changes
 do not select a new database.
 
+## DELETE response contract
+
+Native generated DELETE routes return `204 No Content` with an empty body.
+Published Turso adapter versions through 0.2.1 return `200` with
+`{"deleted": true}`. The **unreleased adapter change** aligns successful deletes
+with the native `204` response, after the SQL transaction commits. Clients
+upgrading to that change should check the status and skip JSON parsing on
+success. A missing record, including a second DELETE of the same ID, returns 404.
+No model declaration or database migration is needed for this response change.
+
 ## Paginate list requests
 
 When switching a native model to Turso, update clients that previously loaded

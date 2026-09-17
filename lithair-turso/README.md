@@ -55,8 +55,13 @@ comes from trusted application code, never query parameters.
 | POST | `/api/archives` | Create complete model including ID; 201 after commit |
 | PUT | `/api/archives/{id}` | Replace complete model; immutable ID |
 | PATCH | `/api/archives/{id}` | Merge top-level fields atomically, then validate |
-| DELETE | `/api/archives/{id}` | Delete; 200 after commit |
+| DELETE | `/api/archives/{id}` | Delete; 204 with no body after commit |
 | HEAD / OPTIONS | CRUD routes | Bodyless reads / method discovery |
+
+**Unreleased change:** successful DELETE now returns `204 No Content`, matching
+native model routes. Published adapter versions through 0.2.1 return `200` with
+`{"deleted": true}`. Clients upgrading to this change must not parse a JSON body
+after a successful DELETE. Deleting a missing record still returns 404.
 
 Writes require `application/json` and at most 1 MiB. Unknown/duplicate query
 parameters and unsupported filters are errors. PATCH rejects unknown fields.

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Generated Turso DELETE routes now return `204 No Content` with an empty body,
+  matching native model routes, after the SQL transaction commits. Previous
+  adapter versions returned `200` with `{"deleted": true}`; clients must stop
+  parsing a JSON body on successful deletion. Missing records still return 404.
+  Model declarations and database files need no migration.
+
 ## [1.12.1] - 2026-09-16
 
 Corrective release with `lithair-core`, `lithair-macros` and `lithair-cli`

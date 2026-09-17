@@ -218,7 +218,7 @@ impl<T: SqlModel> SqlHandler<T> {
             }
             (Method::DELETE, 1) => {
                 match self.store.delete(id.as_deref().unwrap_or_default(), &permissions).await {
-                    Ok(()) => response::json_value(StatusCode::OK, &json!({"deleted": true})),
+                    Ok(()) => response::empty(StatusCode::NO_CONTENT),
                     Err(e) => storage_error(e),
                 }
             }

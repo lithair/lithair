@@ -19,7 +19,7 @@ Feature: Optional SQL storage alongside native Lithair models
     And unauthorized SQL reads and writes are denied
 
   Scenario: Model declarations generate native and SQL routes in one application
-    Then native and SQL HTTP models coexist and survive server restart
+    Then native and SQL HTTP models coexist, survive restart and delete with 204 and no body
 
   Scenario: SQL clients can discover all 55 documents using pagination metadata
     Then the SQL HTTP list provides a continuation until all 55 documents are read
