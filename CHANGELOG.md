@@ -7,13 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.2] - 2026-09-17
+
+Corrective release with `lithair-core`, `lithair-macros` and `lithair-cli`
+1.12.2, and the experimental `lithair-turso` adapter 0.2.2. The adapter retains
+compatibility with core 1.12.0.
+
 ### Fixed
 
-- Generated Turso DELETE routes now return `204 No Content` with an empty body,
+- Generated Turso DELETE routes (#246) now return `204 No Content` with an empty body,
   matching native model routes, after the SQL transaction commits. Previous
   adapter versions returned `200` with `{"deleted": true}`; clients must stop
   parsing a JSON body on successful deletion. Missing records still return 404.
   Model declarations and database files need no migration.
+
+### Upgrade
+
+Applications already using `lithair-turso = "0.2"` can run
+`cargo update -p lithair-turso`. Require `lithair-turso = "0.2.2"` to guarantee
+the new DELETE contract. A successful deletion has no JSON response body;
+clients should check the status instead of reading `deleted` or calling
+`response.json()`. Native DELETE responses are unchanged.
 
 ## [1.12.1] - 2026-09-16
 

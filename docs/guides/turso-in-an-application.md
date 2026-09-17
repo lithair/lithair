@@ -1,7 +1,7 @@
 # Use Turso models in another application
 
-Turso storage is experimental and available on crates.io as `lithair-turso` 0.2.1,
-alongside Lithair 1.12.1. Cargo retrieves the published crates; you do not need a
+Turso storage is experimental and available on crates.io as `lithair-turso` 0.2.2,
+alongside Lithair 1.12.2. Cargo retrieves the published crates; you do not need a
 Lithair checkout or Git dependencies.
 
 ## Dependencies
@@ -13,7 +13,7 @@ Use these dependencies in its `Cargo.toml`:
 ```toml
 [dependencies]
 lithair-core = "1.12"
-lithair-turso = "0.2.1"
+lithair-turso = "0.2.2"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 ```
@@ -30,10 +30,10 @@ core 1.12, which includes the new migration declarations. Existing unversioned
 models and files remain usable. See the
 [schema migration guide](turso-schema-migrations.md) before versioning existing data.
 Commit the application's `Cargo.lock` to keep its resolved dependencies stable.
-For an application already on adapter 0.2.0, `cargo update -p lithair-turso`
-selects 0.2.1 without changing model declarations. The adapter remains compatible
-with core 1.12.0. The manifest above requires 0.2.1 so the pagination metadata
-used below is always available.
+For an application already on adapter 0.2.0 or 0.2.1, `cargo update -p lithair-turso`
+selects 0.2.2 without changing model declarations. The adapter remains compatible
+with core 1.12.0. The manifest above requires 0.2.2 so both the pagination metadata
+and the empty 204 DELETE response described below are guaranteed.
 
 ## Declare and register the model
 
@@ -98,10 +98,10 @@ do not select a new database.
 ## DELETE response contract
 
 Native generated DELETE routes return `204 No Content` with an empty body.
-Published Turso adapter versions through 0.2.1 return `200` with
-`{"deleted": true}`. The **unreleased adapter change** aligns successful deletes
-with the native `204` response, after the SQL transaction commits. Clients
-upgrading to that change should check the status and skip JSON parsing on
+Turso adapter versions through 0.2.1 return `200` with
+`{"deleted": true}`. **Since adapter 0.2.2**, successful deletes return the native
+`204` response, after the SQL transaction commits. Clients
+upgrading to 0.2.2 should check the status and skip JSON parsing on
 success. A missing record, including a second DELETE of the same ID, returns 404.
 No model declaration or database migration is needed for this response change.
 
