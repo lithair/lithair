@@ -25,8 +25,9 @@ from both the durable file boundary and any future applied index.
 ## Files and durability
 
 The caller provisions an existing, dedicated directory and makes its parent
-entries durable before opening it. No legacy WAL is adopted. A new store requires
-an empty directory. The files are:
+entries durable before using it. Bootstrap calls `create()` explicitly on an
+empty directory. Restart calls `open()`, which requires the initialized files
+and never falls back to creation. No legacy WAL is adopted. The files are:
 
 - `LOCK`: exclusive OS file lock, held until the last handle closes.
 - `journal`: `LTRLOG01`, a random 16-byte store identity, then framed operations.

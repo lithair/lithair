@@ -264,21 +264,22 @@ pub(crate) enum Stage {
 }
 
 impl<C: RaftTypeConfig> Inner<C> {
-    fn open(directory: PathBuf) -> io::Result<Self> {
+    fn open(directory: PathBuf, create: bool) -> io::Result<Self> {
         // The caller provisions a durable, dedicated directory. Never interpret
         // an existing legacy WAL or a partially initialized store as empty.
+        let directory = directory.canonicalize()?;
         let dir = File::open(&directory)?;
         let lock = OpenOptions::new()
             .read(true)
             .write(true)
-            .create(true)
+            .create(create)
             .truncate(false)
             .open(directory.join("LOCK"))?;
         lock.try_lock().map_err(io::Error::other)?;
         let lock = DirectoryLock(lock);
         let journal_path = directory.join("journal");
         let metadata_path = directory.join("durable.meta");
-        let (mut journal, end) = if !journal_path.try_exists()? && !metadata_path.try_exists()? {
+        let (mut journal, end) = if create {
             for entry in std::fs::read_dir(&directory)? {
                 if entry?.file_name() != "LOCK" {
                     return Err(invalid(
@@ -409,10 +410,29 @@ impl<C: RaftTypeConfig> Inner<C> {
 }
 
 impl<C: RaftTypeConfig> DurableLog<C> {
+    /// Explicit bootstrap only; never used as a fallback when recovery fails.
+    pub(crate) async fn create(
+        directory: impl AsRef<Path>,
+    ) -> Result<Self, StorageError<C::NodeId>> {
+        Self::load(directory, true).await
+    }
+
+    /// Reopen an initialized store. Missing files are always an error.
     pub(crate) async fn open(directory: impl AsRef<Path>) -> Result<Self, StorageError<C::NodeId>> {
+        Self::load(directory, false).await
+    }
+
+    async fn load(
+        directory: impl AsRef<Path>,
+        create: bool,
+    ) -> Result<Self, StorageError<C::NodeId>> {
         let directory = directory.as_ref().to_owned();
         tokio::task::spawn_blocking(move || {
-            Inner::open(directory).map(|inner| Self(Arc::new(Mutex::new(inner))))
+            Inner::open(directory.clone(), create)
+                .map(|inner| Self(Arc::new(Mutex::new(inner))))
+                .map_err(|e| {
+                    io::Error::new(e.kind(), format!("OpenRaft store {}: {e}", directory.display()))
+                })
         })
         .await
         .map_err(|e| storage_error::<C>(ErrorVerb::Read, io::Error::other(e)))?

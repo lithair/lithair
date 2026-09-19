@@ -20,3 +20,9 @@ Feature: Durable OpenRaft storage foundation
     When I persist a vote and three log entries
     And I damage the durable journal
     Then reopening the OpenRaft log store fails
+
+  Scenario: Missing storage is not silently recreated
+    Given an isolated OpenRaft log store
+    When I persist a vote and three log entries
+    And the stored journal and metadata disappear
+    Then reopening the OpenRaft log store fails

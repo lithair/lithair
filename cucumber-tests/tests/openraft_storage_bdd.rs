@@ -31,7 +31,12 @@ fn entry(term: u64, index: u64) -> Entry<Config> {
 #[given("an isolated OpenRaft log store")]
 async fn isolated(world: &mut LogWorld) {
     world.dir = Some(tempfile::tempdir().unwrap());
-    reopen(world).await;
+    world.store = Some(
+        DurableLog::create(world.dir.as_ref().unwrap().path())
+            .await
+            .unwrap()
+            .into_log_store(),
+    );
 }
 #[when("I reopen the OpenRaft log store")]
 async fn reopen(world: &mut LogWorld) {
@@ -100,6 +105,13 @@ async fn damage(world: &mut LogWorld) {
 #[then("reopening the OpenRaft log store fails")]
 async fn rejected(world: &mut LogWorld) {
     assert!(DurableLog::<Config>::open(world.dir.as_ref().unwrap().path()).await.is_err());
+}
+#[when("the stored journal and metadata disappear")]
+async fn missing(world: &mut LogWorld) {
+    world.store = None;
+    for name in ["journal", "durable.meta"] {
+        std::fs::remove_file(world.dir.as_ref().unwrap().path().join(name)).unwrap();
+    }
 }
 #[tokio::main]
 async fn main() {

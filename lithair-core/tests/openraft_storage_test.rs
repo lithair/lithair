@@ -22,6 +22,9 @@ type TestStateMachine = Adaptor<TypeConfig, std::sync::Arc<MemStore>>;
 async fn open(path: impl AsRef<std::path::Path>) -> Result<Store, StorageError<u64>> {
     Ok(DurableLog::open(path).await?.into_log_store())
 }
+async fn create(path: impl AsRef<std::path::Path>) -> Result<Store, StorageError<u64>> {
+    Ok(DurableLog::create(path).await?.into_log_store())
+}
 async fn test_state_machine() -> TestStateMachine {
     Adaptor::new(MemStore::new_async().await).1
 }
@@ -47,7 +50,7 @@ impl StoreBuilder<TypeConfig, Store, TestStateMachine, tempfile::TempDir> for Bu
         &self,
     ) -> Result<(tempfile::TempDir, Store, TestStateMachine), StorageError<u64>> {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = open(dir.path()).await?;
+        let store = create(dir.path()).await?;
         Ok((dir, store, test_state_machine().await))
     }
 }
@@ -59,7 +62,7 @@ fn upstream_openraft_storage_suite() {
 #[tokio::test]
 async fn vote_membership_truncation_purge_and_commit_survive_reopen() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = open(dir.path()).await.unwrap();
+    let mut store = create(dir.path()).await.unwrap();
     store.save_vote(&Vote::new_committed(3, 1)).await.unwrap();
     let membership = Membership::new(vec![BTreeSet::from([1, 2, 3])], None);
     store
@@ -109,7 +112,7 @@ async fn vote_membership_truncation_purge_and_commit_survive_reopen() {
 #[tokio::test]
 async fn uncommitted_entries_are_not_applied_on_recovery() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = open(dir.path()).await.unwrap();
+    let mut store = create(dir.path()).await.unwrap();
     store.save_vote(&Vote::new_committed(1, 1)).await.unwrap();
     store.blocking_append([entry(1, 0), entry(1, 1), entry(1, 2)]).await.unwrap();
     store.save_committed(Some(id(1, 1))).await.unwrap();
@@ -124,7 +127,7 @@ async fn uncommitted_entries_are_not_applied_on_recovery() {
 #[tokio::test]
 async fn rejects_holes_backwards_votes_and_conflicting_committed_truncation() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = open(dir.path()).await.unwrap();
+    let mut store = create(dir.path()).await.unwrap();
     store.save_vote(&Vote::new_committed(3, 1)).await.unwrap();
     assert!(store.save_vote(&Vote::new(2, 1)).await.is_err());
     assert!(store.blocking_append([entry(3, 0), entry(3, 2)]).await.is_err());
@@ -146,10 +149,10 @@ async fn rejects_holes_backwards_votes_and_conflicting_committed_truncation() {
 async fn same_directory_is_exclusive_until_all_handles_close() {
     let a = tempfile::tempdir().unwrap();
     let b = tempfile::tempdir().unwrap();
-    let mut store = open(a.path()).await.unwrap();
+    let mut store = create(a.path()).await.unwrap();
     let reader = store.get_log_reader().await;
     assert!(open(a.path()).await.is_err());
-    let mut other = open(b.path()).await.unwrap();
+    let mut other = create(b.path()).await.unwrap();
     store.save_vote(&Vote::new(3, 1)).await.unwrap();
     assert!(other.read_vote().await.unwrap().is_none());
     drop(store);
@@ -161,7 +164,7 @@ async fn same_directory_is_exclusive_until_all_handles_close() {
 #[tokio::test]
 async fn cancelled_caller_does_not_cancel_an_admitted_write() {
     let dir = tempfile::tempdir().unwrap();
-    let store = open(dir.path()).await.unwrap();
+    let store = create(dir.path()).await.unwrap();
     let (reached_tx, reached_rx) = tokio::sync::oneshot::channel();
     let (release_tx, release_rx) = std::sync::mpsc::channel();
     store.storage().await.pause_at(Stage::JournalSync, reached_tx, release_rx).await;
@@ -196,7 +199,7 @@ openraft::declare_raft_types!(PanicConfig: D = PanickingPayload, R = (), Snapsho
 #[tokio::test]
 async fn serializer_panic_invalidates_handles_without_losing_acknowledged_data() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = DurableLog::<PanicConfig>::open(dir.path()).await.unwrap().into_log_store();
+    let mut store = DurableLog::<PanicConfig>::create(dir.path()).await.unwrap().into_log_store();
     store.save_vote(&Vote::new(1, 1)).await.unwrap();
     assert!(store
         .blocking_append([Entry {
@@ -215,7 +218,7 @@ async fn serializer_panic_invalidates_handles_without_losing_acknowledged_data()
 #[tokio::test]
 async fn real_metadata_replace_error_is_propagated() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = open(dir.path()).await.unwrap();
+    let mut store = create(dir.path()).await.unwrap();
     store.save_vote(&Vote::new(1, 1)).await.unwrap();
     let meta = dir.path().join("durable.meta");
     let backup = dir.path().join("saved.meta");
@@ -245,7 +248,7 @@ const STAGES: [Stage; 7] = [
 async fn io_failures_never_acknowledge_and_poison_every_handle_until_reopen() {
     for stage in STAGES {
         let dir = tempfile::tempdir().unwrap();
-        let mut store = open(dir.path()).await.unwrap();
+        let mut store = create(dir.path()).await.unwrap();
         store.save_vote(&Vote::new(1, 1)).await.unwrap();
         store.blocking_append([entry(1, 0)]).await.unwrap();
         let mut reader = store.get_log_reader().await;
@@ -271,7 +274,7 @@ async fn io_failures_never_acknowledge_and_poison_every_handle_until_reopen() {
 async fn corruption_and_missing_durable_bytes_fail_closed() {
     for damage in ["checksum", "length", "header", "metadata", "missing", "short"] {
         let dir = tempfile::tempdir().unwrap();
-        let mut store = open(dir.path()).await.unwrap();
+        let mut store = create(dir.path()).await.unwrap();
         store.save_vote(&Vote::new(1, 1)).await.unwrap();
         drop(store);
         let path = dir.path().join(if damage == "metadata" || damage == "missing" {
@@ -309,18 +312,38 @@ async fn legacy_or_mismatched_files_are_never_adopted() {
     let legacy = tempfile::tempdir().unwrap();
     std::fs::write(legacy.path().join("events.raftlog"), b"old events").unwrap();
     assert!(open(legacy.path()).await.is_err());
+    assert!(create(legacy.path()).await.is_err());
     let a = tempfile::tempdir().unwrap();
     let b = tempfile::tempdir().unwrap();
-    drop(open(a.path()).await.unwrap());
-    drop(open(b.path()).await.unwrap());
+    drop(create(a.path()).await.unwrap());
+    drop(create(b.path()).await.unwrap());
     std::fs::copy(a.path().join("durable.meta"), b.path().join("durable.meta")).unwrap();
     assert!(open(b.path()).await.is_err());
 }
 
 #[tokio::test]
+async fn reopening_never_reinitializes_missing_storage() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(open(dir.path()).await.is_err());
+    let mut store = create(dir.path()).await.unwrap();
+    store.save_vote(&Vote::new_committed(5, 1)).await.unwrap();
+    drop(store);
+    assert!(create(dir.path()).await.is_err(), "bootstrap cannot replace an existing store");
+    assert_eq!(
+        open(dir.path()).await.unwrap().read_vote().await.unwrap(),
+        Some(Vote::new_committed(5, 1))
+    );
+    std::fs::remove_file(dir.path().join("journal")).unwrap();
+    std::fs::remove_file(dir.path().join("durable.meta")).unwrap();
+    assert!(open(dir.path()).await.is_err());
+    assert!(!dir.path().join("journal").exists());
+    assert!(!dir.path().join("durable.meta").exists());
+}
+
+#[tokio::test]
 async fn unsupported_metadata_version_is_rejected_even_with_valid_checksum() {
     let dir = tempfile::tempdir().unwrap();
-    drop(open(dir.path()).await.unwrap());
+    drop(create(dir.path()).await.unwrap());
     let path = dir.path().join("durable.meta");
     let bytes = std::fs::read(&path).unwrap();
     let mut metadata: serde_json::Value =
@@ -337,7 +360,7 @@ async fn unsupported_metadata_version_is_rejected_even_with_valid_checksum() {
 #[tokio::test]
 async fn normal_payload_and_size_limit() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = open(dir.path()).await.unwrap();
+    let mut store = create(dir.path()).await.unwrap();
     let request =
         |status| openraft_memstore::ClientRequest { client: "client-a".into(), serial: 42, status };
     store
@@ -371,7 +394,7 @@ async fn normal_payload_and_size_limit() {
 #[tokio::test]
 async fn compacted_entries_cannot_be_resurrected() {
     let dir = tempfile::tempdir().unwrap();
-    let mut store = open(dir.path()).await.unwrap();
+    let mut store = create(dir.path()).await.unwrap();
     store.blocking_append([entry(1, 0), entry(1, 1)]).await.unwrap();
     store.purge(id(1, 1)).await.unwrap();
     store.blocking_append([entry(1, 0), entry(1, 1), entry(1, 2)]).await.unwrap();
@@ -406,7 +429,7 @@ async fn process_death_recovers_an_atomic_operation_at_each_boundary() {
     for operation in ["append", "vote", "truncate", "purge"] {
         for (n, stage) in STAGES.into_iter().enumerate() {
             let dir = tempfile::tempdir().unwrap();
-            let mut store = open(dir.path()).await.unwrap();
+            let mut store = create(dir.path()).await.unwrap();
             store.save_vote(&Vote::new_committed(1, 1)).await.unwrap();
             store.blocking_append([entry(1, 0), entry(1, 1), entry(1, 2)]).await.unwrap();
             drop(store);
