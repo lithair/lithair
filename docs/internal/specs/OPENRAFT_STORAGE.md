@@ -27,7 +27,7 @@ from both the durable file boundary and any future applied index.
 The caller provisions an existing, dedicated directory and makes its parent
 entries durable before using it. Bootstrap calls `create()` explicitly on an
 empty directory. Restart calls `open()`, which requires the initialized files
-and never falls back to creation. No legacy WAL is adopted. The files are:
+and never falls back to creation. No legacy WAL is adopted. The original version-1 files are (version-2 generations are described below):
 
 - `LOCK`: exclusive OS file lock, held until the last handle closes.
 - `journal`: `LTRLOG01`, a random 16-byte store identity, then framed operations.
@@ -80,11 +80,13 @@ rename, directory sync and exclusive file locking. Network filesystems and actua
 power-loss/device-cache behavior are not qualified by these tests. The directory
 must be trusted and never replaced while open. A node must not run two writers.
 
-Purge removes entries from the logical index and persists its watermark; this
-first journal format retains historical operation bytes on disk. Physical
-compaction and coordinated application snapshots are required before runtime
-deployment. Recovery time and disk usage therefore grow with operation history.
-There is no throughput claim or format migration API in this milestone.
+Purge removes entries from the logical index and persists its watermark.
+Explicit `compact()` now rewrites retained state into an atomically selected
+generation; `save_snapshot()` publishes an opaque durable snapshot with the same
+manifest. See [checkpoint format and recovery](OPENRAFT_CHECKPOINTS.md) for the
+version-2 extension, purge coordination and crash tests. Without compaction,
+format-1 journal history still grows with operations. Coordinated application
+checkpoints and a compaction scheduling policy remain deployment prerequisites.
 
 `cidx run test` explicitly enables `cluster` for the dedicated storage target
 and runs:

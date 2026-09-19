@@ -23,11 +23,25 @@ on GitHub runners. Long-running tiers stay out of the gate *by design*:
 a slow gate stops being run.
 
 The private OpenRaft log foundation is also in this gate. The dedicated
-`openraft_storage_test` target explicitly enables `cluster` and runs the upstream storage
+`openraft_storage_test` target explicitly enables `cluster,tls` and runs the upstream storage
 suite plus crash/reopen and error-injection regressions. `openraft_storage_bdd`
 owns `features/persistence/openraft_storage.feature`. These storage tests do not
 qualify the current HTTP cluster; see the
 [storage contract](internal/specs/OPENRAFT_STORAGE.md).
+
+A bounded three-process OpenRaft subset also runs on every PR:
+`openraft_consensus_test` exercises authenticated RPCs, repeated leader death,
+restart, real TCP partitions and quorum rejection. `openraft_consensus_bdd` owns
+`features/core/openraft_consensus.feature` and runs the crash/partition scenarios
+with the same process fixture. These use a test-only state machine; they do not
+qualify native/Turso/session replication. See the
+[transport contract](internal/specs/OPENRAFT_TRANSPORT.md).
+
+`openraft_checkpoint_test` and `openraft_checkpoint_bdd` cover snapshot publication,
+physical journal compaction and process interruption. The consensus fixture also
+checks snapshot transfer to a lagging follower and cold recovery after purge.
+See the [checkpoint contract](internal/specs/OPENRAFT_CHECKPOINTS.md).
+
 
 ## The workflow
 

@@ -105,12 +105,27 @@ harness = false
 
 [dev-dependencies]
 openraft = { workspace = true, features = ["serde"] }
+openraft-memstore = "0.9"
+rcgen = "0.14"
+rustls = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+sha2 = "0.10"
+anyhow = "1"
 lithair-turso = { path = "../lithair-turso" }
 hybrid-storage = { path = "../examples/advanced/hybrid-storage" }
 
 [[test]]
 name = "openraft_storage_bdd"
 path = "tests/openraft_storage_bdd.rs"
+harness = false
+
+[[test]]
+name = "openraft_consensus_bdd"
+path = "tests/openraft_consensus_bdd.rs"
 harness = false
 
 [dependencies]
@@ -148,3 +163,8 @@ dotenvy = "0.15"
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing
 rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization
 lazy_static = "1.4"                                         # Thread-safe static variables
+
+[[test]]
+name = "openraft_checkpoint_bdd"
+path = "tests/openraft_checkpoint_bdd.rs"
+harness = false
