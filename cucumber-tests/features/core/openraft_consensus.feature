@@ -21,3 +21,11 @@ Feature: Authenticated three-node OpenRaft foundation
     When all three processes are killed after an acknowledged command and restarted
     Then the remaining majority accepts writes
     And all three processes recover the acknowledged commands
+
+  Scenario: An offline follower catches up after the leader compacts its log
+    Given three authenticated OpenRaft processes with durable logs
+    When a follower misses writes until the leader snapshots and compacts them
+    And the offline follower restarts from its existing log
+    Then the returning follower installs a snapshot over TLS
+    When all three processes are killed after an acknowledged command and restarted
+    Then all three processes recover the acknowledged commands

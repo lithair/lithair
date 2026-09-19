@@ -37,6 +37,11 @@ with the same process fixture. These use a test-only state machine; they do not
 qualify native/Turso/session replication. See the
 [transport contract](internal/specs/OPENRAFT_TRANSPORT.md).
 
+`openraft_checkpoint_test` and `openraft_checkpoint_bdd` cover snapshot publication,
+physical journal compaction and process interruption. The consensus fixture also
+checks snapshot transfer to a lagging follower and cold recovery after purge.
+See the [checkpoint contract](internal/specs/OPENRAFT_CHECKPOINTS.md).
+
 
 ## The workflow
 

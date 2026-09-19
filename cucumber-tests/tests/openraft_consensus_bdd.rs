@@ -28,6 +28,7 @@ async fn write(world: &mut ConsensusWorld) {
     cluster.write(cluster.affected, "majority-write").await;
 }
 #[when("the old leader restarts from its existing log")]
+#[when("the offline follower restarts from its existing log")]
 async fn restart(world: &mut ConsensusWorld) {
     world.cluster.as_mut().unwrap().restart().await;
 }
@@ -66,4 +67,15 @@ async fn main() {
         .fail_on_skipped()
         .run_and_exit("features/core/openraft_consensus.feature")
         .await;
+}
+
+#[when("a follower misses writes until the leader snapshots and compacts them")]
+async fn snapshot_catch_up(world: &mut ConsensusWorld) {
+    world.cluster.as_mut().unwrap().prepare_snapshot_catch_up().await;
+}
+#[then("the returning follower installs a snapshot over TLS")]
+async fn installed(world: &mut ConsensusWorld) {
+    let cluster = world.cluster.as_mut().unwrap();
+    cluster.converge().await;
+    cluster.assert_snapshot_installed().await;
 }

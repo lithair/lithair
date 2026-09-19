@@ -197,7 +197,7 @@ paths rejected. Merging this RFC closes only #249, not the delivery tracker #248
 | Milestone | Deliverable and exit evidence |
 |---|---|
 | 1. Durable consensus storage | [#251](https://github.com/lithair/lithair/issues/251): private OpenRaft log/vote implementation, upstream storage suite and crash/reopen regressions |
-| 2. Three-node consensus | [#253](https://github.com/lithair/lithair/issues/253): authenticated transport and real-process election/partition tests with a test state machine. Durable snapshots, physical compaction, operator bootstrap and membership/recovery remain follow-ups |
+| 2. Three-node consensus | [#253](https://github.com/lithair/lithair/issues/253): authenticated transport and real-process election/partition tests with a test state machine. [#255](https://github.com/lithair/lithair/issues/255): durable snapshots and physical compaction. Operator bootstrap, persisted identity and membership replacement remain follow-ups |
 | 3. Native integration | Ordered native writes, idempotency, consistent reads and generated-route contract parity; restart and old-leader return tests |
 | 4. Turso integration | Replicated SQL apply/checkpoints, coordinated schema changes and hybrid snapshots; crash/replay tests without duplicate mutations |
 | 5. Sessions and admission | Session continuity/revocation, clock handling, complete hybrid recovery and quorum-aware readiness |

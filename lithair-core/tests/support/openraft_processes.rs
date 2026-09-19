@@ -1,11 +1,13 @@
 //! Shared real-process fixture for the integration target and Gherkin runner.
-//! All application state is TEST-ONLY MemStore, reconstructed from unpurged logs.
+//! Test-only state restores a durable snapshot and replays the retained suffix.
 use crate::{
     durable_log::DurableLog,
     peer_transport::{fingerprint, Peer, PeerTransport},
 };
 use openraft::{storage::Adaptor, Config, Raft, SnapshotPolicy};
-use openraft_memstore::{ClientRequest, MemStore, TypeConfig};
+use openraft_memstore::{ClientRequest, TypeConfig};
+#[path = "openraft_snapshot_machine.rs"]
+mod snapshot_machine;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -126,26 +128,32 @@ pub async fn child() {
         DurableLog::<TypeConfig>::open(&setup.directory).await
     }
     .unwrap();
-    let memory = MemStore::new_async().await;
-    let (_, machine) = Adaptor::new(memory.clone());
+    let snapshot_machine = snapshot_machine::SnapshotMachine::restore(log.clone()).await.unwrap();
+    let memory = snapshot_machine.memory.clone();
+    let installs = snapshot_machine.installs.clone();
+    // OpenRaft can submit purge before snapshot installation completes.
+    // Separate adapter locks let the state-machine worker publish while purge waits.
+    let (log_store, _) = Adaptor::new(snapshot_machine.clone());
+    let (_, machine) = Adaptor::new(snapshot_machine);
     let network = setup.credentials.transport(setup.id, "process-test", setup.peers);
     let config = Config {
         heartbeat_interval: 100,
         election_timeout_min: 400,
         election_timeout_max: 800,
-        // Test-only recovery rebuilds all state from committed durable logs.
-        snapshot_policy: SnapshotPolicy::Never,
-        max_in_snapshot_log_to_keep: u64::MAX,
+        // A durable snapshot must exist before OpenRaft can purge its prefix.
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(8),
+        replication_lag_threshold: 8,
+        max_in_snapshot_log_to_keep: 2,
+        purge_batch_size: 1,
         max_payload_entries: 64,
         snapshot_max_chunk_size: 64 * 1024,
         ..Config::default()
     }
     .validate()
     .unwrap();
-    let raft =
-        Raft::new(setup.id, Arc::new(config), network.clone(), log.into_log_store(), machine)
-            .await
-            .unwrap();
+    let raft = Raft::new(setup.id, Arc::new(config), network.clone(), log_store, machine)
+        .await
+        .unwrap();
     let peer_raft = raft.clone();
     let server = tokio::spawn(async move {
         network.serve(listener, peer_raft, std::future::pending()).await.unwrap()
@@ -168,9 +176,10 @@ pub async fn child() {
             "barrier" => {
                 json!({"ok":matches!(timeout(Duration::from_secs(2), raft.ensure_linearizable()).await, Ok(Ok(_)))})
             }
+            "snapshot" => json!({"ok":raft.trigger().snapshot().await.is_ok()}),
             "state" => {
                 let metrics = raft.metrics().borrow().clone();
-                json!({"leader":metrics.current_leader,"term":metrics.current_term,"state":memory.get_state_machine().await.client_status,"running":metrics.running_state.is_ok()})
+                json!({"leader":metrics.current_leader,"term":metrics.current_term,"state":memory.get_state_machine().await.client_status,"running":metrics.running_state.is_ok(),"error":format!("{:?}",metrics.running_state),"purged":metrics.purged.map(|id|id.index),"installed":installs.load(std::sync::atomic::Ordering::Relaxed)})
             }
             _ => panic!("unknown fixture operation"),
         };
@@ -394,6 +403,37 @@ impl Cluster {
         self.processes.clear();
         self.proxies.abort_all();
         while self.proxies.join_next().await.is_some() {}
+    }
+
+    pub async fn prepare_snapshot_catch_up(&mut self) {
+        let leader = self.write(None, "before-snapshot").await;
+        let follower = (1..=3).find(|id| *id != leader).unwrap();
+        self.affected = Some(follower);
+        let mut process = self.processes.remove(&follower).unwrap();
+        process.child.kill().await.unwrap();
+        let _ = process.child.wait().await.unwrap();
+        for index in 0..24 {
+            self.write(Some(follower), &format!("snapshot-{index}")).await;
+        }
+        let leader = self.leader(Some(follower)).await;
+        assert_eq!(self.call(leader, json!({"op":"snapshot"})).await["ok"], true);
+        let deadline = Instant::now() + DEADLINE;
+        let mut tick = tokio::time::interval(Duration::from_millis(40));
+        loop {
+            let state = self.call(leader, json!({"op":"state"})).await;
+            if state["purged"].as_u64().is_some_and(|index| index >= 20) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "leader did not purge snapshot prefix: {state}");
+            tick.tick().await;
+        }
+    }
+    pub async fn assert_snapshot_installed(&mut self) {
+        let state = self.call(self.affected.unwrap(), json!({"op":"state"})).await;
+        assert!(
+            state["installed"].as_u64().unwrap() > 0,
+            "follower must install a snapshot over TLS: {state}"
+        );
     }
 
     pub async fn cold_restart(&mut self) {
