@@ -22,6 +22,13 @@ unit → integration → compile-fail → behavior BDD in one container — ~8 m
 on GitHub runners. Long-running tiers stay out of the gate *by design*:
 a slow gate stops being run.
 
+The private OpenRaft log foundation is also in this gate. The dedicated
+`openraft_storage_test` target explicitly enables `cluster` and runs the upstream storage
+suite plus crash/reopen and error-injection regressions. `openraft_storage_bdd`
+owns `features/persistence/openraft_storage.feature`. These storage tests do not
+qualify the current HTTP cluster; see the
+[storage contract](internal/specs/OPENRAFT_STORAGE.md).
+
 ## The workflow
 
 **New feature** → open a draft PR with `cidx repo pr create`, then write the

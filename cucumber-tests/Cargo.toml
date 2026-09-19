@@ -104,8 +104,14 @@ path = "tests/turso_test.rs"
 harness = false
 
 [dev-dependencies]
+openraft = { workspace = true, features = ["serde"] }
 lithair-turso = { path = "../lithair-turso" }
 hybrid-storage = { path = "../examples/advanced/hybrid-storage" }
+
+[[test]]
+name = "openraft_storage_bdd"
+path = "tests/openraft_storage_bdd.rs"
+harness = false
 
 [dependencies]
 cucumber = { git = "https://github.com/cucumber-rs/cucumber.git" }
