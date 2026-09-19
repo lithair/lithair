@@ -1,14 +1,16 @@
 # Cluster operations runbook
 
-Lithair cluster mode is **production-stable within the operating envelope
-documented here** (G1 decision, issue #104, 2026-06-12). That phrase is
-load-bearing: inside the envelope the cluster has a measured stress record
-of zero drops, zero panics, and zero replication divergence; outside it
-(higher write rates, multi-host redirects, runtime membership changes) you
-are off the tested path. Read the [election model](#election--failover-model)
-and [limitations](#limitations) before deploying — Lithair's cluster is
-**not textbook Raft**, and operating it safely depends on knowing how it
-actually behaves.
+This runbook describes the existing native cluster implementation and historical
+local stress measurements (G1 decision, issue #104, 2026-06-12). Those results
+**do not qualify a three-VM deployment with native models, Turso, persistent
+sessions and rolling upgrades**. In 1.12.2, Turso clustering is rejected at startup,
+persistent sessions remain local, and `/ready` is not a quorum/recovery check.
+
+The target architecture and delivery milestones are in
+[RFC 248: reliable three-node deployment](../rfcs/248-three-node-cluster.md).
+That RFC is a design target, not a shipped capability. For the existing path,
+read the [election model](#election--failover-model) and
+[limitations](#limitations) before deploying.
 
 Everything below traces to `lithair-core/src/cluster/`,
 `lithair-core/src/app/mod.rs`, and the measured results posted on
@@ -110,9 +112,9 @@ no vote RPCs, and no term increments on failover. What ships
 - **Election = lowest alive node ID wins.** The candidate polls every
   peer's `/status` (2 s timeout each); among the nodes that answered
   (plus itself), the lowest node ID becomes leader. No quorum of votes is
-  required to *become* leader — but a leader without a majority cannot
-  *commit* (next section), which is what actually prevents committed
-  split-brain writes.
+  required to *become* leader. The write path checks majority acknowledgements,
+  but that check alone does not establish Raft safety across elections or
+  partitions; see the old-leader rejoin limitation below.
 
 The BDD suite (`cucumber-tests/features/core/real_cluster_test.feature`)
 exercises exactly this: "Static leader election with lowest node ID" and
