@@ -15,6 +15,7 @@ use std::path::Path;
 /// nightly by design (perf/stress/cluster are long-running).
 const CLAIMED: &[(&str, &str)] = &[
     // — per-PR CI gate —
+    ("features/core/openraft_consensus.feature", "test:openraft_consensus_bdd"),
     ("features/persistence/openraft_storage.feature", "test:openraft_storage_bdd"),
     ("features/persistence/turso.feature", "test:turso_test"),
     ("features/persistence/event_sourcing.feature", "test:cucumber_tests"),
