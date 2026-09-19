@@ -70,3 +70,6 @@ site-packages/
 
 # Probatum run evidence (committed checks live in probatum.toml / .probatum/*.toml)
 .probatum/runs/
+
+# Compiler/test core dumps (including empty files after disk exhaustion)
+/core.[0-9]*

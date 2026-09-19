@@ -40,6 +40,10 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 pub mod consensus_log;
+// Foundation for #251; deliberately not connected to the legacy cluster runtime.
+#[cfg(feature = "cluster")]
+#[allow(dead_code)]
+pub(crate) mod durable_log;
 pub mod replication_batcher;
 pub mod snapshot;
 pub mod upgrade;
