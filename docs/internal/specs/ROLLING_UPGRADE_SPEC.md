@@ -1,5 +1,11 @@
 # Lithair Rolling Upgrade Specification
 
+> **Historical draft, superseded for implementation planning by
+> [RFC 248: reliable three-node deployment](../../rfcs/248-three-node-cluster.md).**
+> The zero-downtime and automatic-rollback claims below are design aspirations,
+> not capabilities qualified in Lithair 1.12.2. Use the new RFC for the agreed
+> compatibility, durability and deployment acceptance criteria.
+
 > **Version**: 0.1.0 (Draft)
 > **Status**: RFC
 > **Author**: Claude + Human collaboration
