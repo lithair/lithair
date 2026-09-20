@@ -205,11 +205,12 @@ def snapshot():
 
 
 def restart():
-    compose('kill', '-s', 'SIGKILL', 'node1', 'node2', 'node3')
-    compose('start', 'node1', 'node2', 'node3')
-    ready()
-    leader()
-    converge()
+    for _ in range(3):
+        compose('kill', '-s', 'SIGKILL', 'node1', 'node2', 'node3')
+        compose('start', 'node1', 'node2', 'node3')
+        ready()
+        leader()
+        converge()
     for node in IDS:
         assert state(node)['initialized']
         assert request(node, 'initialize', {})[0] == 503

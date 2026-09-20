@@ -24,21 +24,27 @@ services:
     command: [serve, '1']
     volumes: [keys1:/secrets:ro, data1:/data]
     networks:
-      replication: {aliases: [raft1]}
+      replication:
+        aliases: [raft1]
+        ipv4_address: ${LITHAIR_CLUSTER_NODE1_IP:?set by runner}
       control: {aliases: [control1]}
   node2:
     <<: *node
     command: [serve, '2']
     volumes: [keys2:/secrets:ro, data2:/data]
     networks:
-      replication: {aliases: [raft2]}
+      replication:
+        aliases: [raft2]
+        ipv4_address: ${LITHAIR_CLUSTER_NODE2_IP:?set by runner}
       control: {aliases: [control2]}
   node3:
     <<: *node
     command: [serve, '3']
     volumes: [keys3:/secrets:ro, data3:/data]
     networks:
-      replication: {aliases: [raft3]}
+      replication:
+        aliases: [raft3]
+        ipv4_address: ${LITHAIR_CLUSTER_NODE3_IP:?set by runner}
       control: {aliases: [control3]}
   driver:
     image: ${LITHAIR_CLUSTER_DRIVER_IMAGE:?set by cidx runner}
@@ -50,6 +56,9 @@ services:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:?unique run name required}
       LITHAIR_CLUSTER_NODE_IMAGE: ${LITHAIR_CLUSTER_NODE_IMAGE}
       LITHAIR_CLUSTER_DRIVER_IMAGE: ${LITHAIR_CLUSTER_DRIVER_IMAGE}
+      LITHAIR_CLUSTER_NODE1_IP: ${LITHAIR_CLUSTER_NODE1_IP}
+      LITHAIR_CLUSTER_NODE2_IP: ${LITHAIR_CLUSTER_NODE2_IP}
+      LITHAIR_CLUSTER_NODE3_IP: ${LITHAIR_CLUSTER_NODE3_IP}
     networks: [control]
     volumes: [evidence:/evidence, /var/run/docker.sock:/var/run/docker.sock]
 

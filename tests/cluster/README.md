@@ -40,6 +40,8 @@ operator. Separate Compose projects can run without fixed host ports/subnets. Th
 asks Docker for a free subnet and reserves it explicitly (retrying allocation
 conflicts). This permits restoring the original peer IP on Docker engines that
 reject static addresses in automatically configured networks.
+All three replication addresses are fixed within that run's reserved subnet;
+parallel cold starts cannot allocate another stopped node's address.
 
 Probatum owns the ordered checks in `probatum.toml`; `checks.py` implements HTTP
 assertions and Docker actions. It uses deadline polling, bounded subprocesses and
@@ -56,7 +58,7 @@ request timeouts. Assertions verify:
    accepts writes. Healing restores its original enrolled IP and convergence.
 6. A killed follower stays behind while the leader snapshots and purges beyond
    its last applied index; its return must actually install a remote snapshot.
-7. All three containers are killed and cold-started using their existing volumes.
+7. All three containers are killed and cold-started three times using their existing volumes.
    Every acknowledged mutation is recovered and repeated bootstrap is rejected.
 8. A nested Probatum run with a deliberately wrong expected response must exit 1
    and emit valid JSON, proving assertions do not silently pass.

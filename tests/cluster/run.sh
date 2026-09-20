@@ -6,6 +6,9 @@ nonce=$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
 export COMPOSE_PROJECT_NAME="lithair-cluster-$nonce"
 export LITHAIR_CLUSTER_NODE_IMAGE="lithair-cluster-node:$nonce"
 export LITHAIR_CLUSTER_DRIVER_IMAGE="lithair-cluster-driver:$nonce"
+# Valid placeholders let cleanup parse Compose even if a build fails before
+# subnet allocation. No node is started until the real addresses are assigned.
+export LITHAIR_CLUSTER_NODE1_IP=0.0.0.0 LITHAIR_CLUSTER_NODE2_IP=0.0.0.0 LITHAIR_CLUSTER_NODE3_IP=0.0.0.0
 report="/work/.probatum/runs/$COMPOSE_PROJECT_NAME"
 staging=$(mktemp -d)
 mkdir -p "$report" "$staging/node" "$staging/driver"
@@ -13,9 +16,15 @@ mkdir -p "$report" "$staging/node" "$staging/driver"
 # the workspace owner when upload-artifact runs outside this root container.
 owner="$(stat -c %u /work):$(stat -c %g /work)"
 chown "$owner" /work/.probatum /work/.probatum/runs "$report"
+record_environment() {
 printf '%s\n' "export COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME" \
     "export LITHAIR_CLUSTER_NODE_IMAGE=$LITHAIR_CLUSTER_NODE_IMAGE" \
-    "export LITHAIR_CLUSTER_DRIVER_IMAGE=$LITHAIR_CLUSTER_DRIVER_IMAGE" > "$report/project.env"
+    "export LITHAIR_CLUSTER_DRIVER_IMAGE=$LITHAIR_CLUSTER_DRIVER_IMAGE" \
+    "export LITHAIR_CLUSTER_NODE1_IP=$LITHAIR_CLUSTER_NODE1_IP" \
+    "export LITHAIR_CLUSTER_NODE2_IP=$LITHAIR_CLUSTER_NODE2_IP" \
+    "export LITHAIR_CLUSTER_NODE3_IP=$LITHAIR_CLUSTER_NODE3_IP" > "$report/project.env"
+}
+record_environment
 compose() { docker compose -f /work/tests/cluster/compose.yml "$@"; }
 cleanup() {
     result=$?
@@ -74,6 +83,15 @@ for attempt in 1 2 3 4 5 6 7 8; do
     fi
 done
 if [ "$reserved" != true ]; then echo 'Could not reserve an isolated replication subnet' >&2; exit 1; fi
+case "$subnet" in *.*.*.*/*) ;; *) echo 'An IPv4 Docker pool is required' >&2; exit 1;; esac
+if [ "${subnet#*/}" -gt 29 ]; then echo 'Docker pool is too small for three nodes' >&2; exit 1; fi
+base=${subnet%/*}
+prefix=${base%.*}
+octet=${base##*.}
+export LITHAIR_CLUSTER_NODE1_IP="$prefix.$((octet + 2))"
+export LITHAIR_CLUSTER_NODE2_IP="$prefix.$((octet + 3))"
+export LITHAIR_CLUSTER_NODE3_IP="$prefix.$((octet + 4))"
+record_environment
 docker network inspect "$COMPOSE_PROJECT_NAME-replication" > "$report/replication-network.json"
 compose run --rm --no-deps prepare
 compose up -d node1 node2 node3
