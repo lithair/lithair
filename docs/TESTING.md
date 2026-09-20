@@ -43,6 +43,11 @@ checks snapshot transfer to a lagging follower and cold recovery after purge.
 See the [checkpoint contract](internal/specs/OPENRAFT_CHECKPOINTS.md).
 
 
+`openraft_identity_test` and `openraft_identity_bdd` cover durable node/cluster
+binding and explicit single-use bootstrap, including interrupted claims and the
+three-process cold restart before and after initialization. See the
+[identity contract](internal/specs/OPENRAFT_IDENTITY.md).
+
 ## The workflow
 
 **New feature** → open a draft PR with `cidx repo pr create`, then write the

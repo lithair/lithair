@@ -25,9 +25,12 @@ from both the durable file boundary and any future applied index.
 ## Files and durability
 
 The caller provisions an existing, dedicated directory and makes its parent
-entries durable before using it. Bootstrap calls `create()` explicitly on an
-empty directory. Restart calls `open()`, which requires the initialized files
-and never falls back to creation. No legacy WAL is adopted. The original version-1 files are (version-2 generations are described below):
+entries durable before using it. Unbound storage tests call `create()` explicitly
+on an empty directory and `open()` on restart. The identity-bound consensus fixture uses `create_for_node()`
+and `open_for_node()`; see [identity and bootstrap](OPENRAFT_IDENTITY.md). Recovery
+requires initialized files and never falls back to creation. No legacy WAL is
+adopted. The original version-1 files are (version-2 generations are described
+below):
 
 - `LOCK`: exclusive OS file lock, held until the last handle closes.
 - `journal`: `LTRLOG01`, a random 16-byte store identity, then framed operations.

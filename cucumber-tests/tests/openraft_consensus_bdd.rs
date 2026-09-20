@@ -5,6 +5,7 @@ mod durable_log;
 #[allow(dead_code)]
 mod peer_transport;
 #[path = "../../lithair-core/tests/support/openraft_processes.rs"]
+#[allow(dead_code)] // Identity-only scenarios use the other shared fixture methods.
 mod processes;
 
 use cucumber::{given, then, when, World};

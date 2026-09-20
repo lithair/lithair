@@ -95,6 +95,7 @@ impl Credentials {
 #[derive(Serialize, Deserialize)]
 struct Setup {
     id: u64,
+    cluster_id: String,
     directory: PathBuf,
     create: bool,
     peers: BTreeMap<u64, Peer>,
@@ -122,12 +123,20 @@ pub async fn child() {
     reply(json!({"address":listener.local_addr().unwrap()}));
     let mut input = BufReader::new(tokio::io::stdin()).lines();
     let setup: Setup = serde_json::from_value(next_json(&mut input).await).unwrap();
+    let network = setup.credentials.transport(setup.id, &setup.cluster_id, setup.peers);
+    let identity = network.node_identity(1).unwrap();
     let log = if setup.create {
-        DurableLog::<TypeConfig>::create(&setup.directory).await
+        DurableLog::<TypeConfig>::create_for_node(&setup.directory, identity).await
     } else {
-        DurableLog::<TypeConfig>::open(&setup.directory).await
-    }
-    .unwrap();
+        DurableLog::<TypeConfig>::open_for_node(&setup.directory, identity).await
+    };
+    let log = match log {
+        Ok(log) => log,
+        Err(error) => {
+            reply(json!({"ready":false,"error":error.to_string()}));
+            return;
+        }
+    };
     let snapshot_machine = snapshot_machine::SnapshotMachine::restore(log.clone()).await.unwrap();
     let memory = snapshot_machine.memory.clone();
     let installs = snapshot_machine.installs.clone();
@@ -135,7 +144,6 @@ pub async fn child() {
     // Separate adapter locks let the state-machine worker publish while purge waits.
     let (log_store, _) = Adaptor::new(snapshot_machine.clone());
     let (_, machine) = Adaptor::new(snapshot_machine);
-    let network = setup.credentials.transport(setup.id, "process-test", setup.peers);
     let config = Config {
         heartbeat_interval: 100,
         election_timeout_min: 400,
@@ -163,7 +171,7 @@ pub async fn child() {
         let request: Value = serde_json::from_str(&line).unwrap();
         let response = match request["op"].as_str().unwrap() {
             "initialize" => {
-                json!({"ok":raft.initialize([1,2,3].into_iter().map(|id| (id,())).collect::<BTreeMap<_,_>>()).await.is_ok()})
+                json!({"ok":log.bootstrap(&raft).await.is_ok()})
             }
             "write" => {
                 let write = raft.client_write(ClientRequest {
@@ -179,7 +187,7 @@ pub async fn child() {
             "snapshot" => json!({"ok":raft.trigger().snapshot().await.is_ok()}),
             "state" => {
                 let metrics = raft.metrics().borrow().clone();
-                json!({"leader":metrics.current_leader,"term":metrics.current_term,"state":memory.get_state_machine().await.client_status,"running":metrics.running_state.is_ok(),"error":format!("{:?}",metrics.running_state),"purged":metrics.purged.map(|id|id.index),"installed":installs.load(std::sync::atomic::Ordering::Relaxed)})
+                json!({"leader":metrics.current_leader,"term":metrics.current_term,"state":memory.get_state_machine().await.client_status,"running":metrics.running_state.is_ok(),"error":format!("{:?}",metrics.running_state),"purged":metrics.purged.map(|id|id.index),"installed":installs.load(std::sync::atomic::Ordering::Relaxed),"initialized":raft.is_initialized().await.unwrap()})
             }
             _ => panic!("unknown fixture operation"),
         };
@@ -245,6 +253,15 @@ impl std::fmt::Debug for Cluster {
 }
 impl Cluster {
     pub async fn start() -> Self {
+        let mut cluster = Self::provision().await;
+        cluster.assert_uninitialized().await;
+        cluster.reject_follower_bootstrap().await;
+        cluster.bootstrap().await;
+        cluster.reject_rebootstrap().await;
+        cluster.leader(None).await;
+        cluster
+    }
+    pub async fn provision() -> Self {
         let mut cluster = Self {
             processes: BTreeMap::new(),
             addresses: BTreeMap::new(),
@@ -276,13 +293,9 @@ impl Cluster {
         for id in 1..=3 {
             cluster.configure(id, true).await;
         }
-        assert_eq!(cluster.call(1, json!({"op":"initialize"})).await["ok"], true);
-        // OpenRaft explicitly rejects reinitialization of an existing member.
-        assert_eq!(cluster.call(1, json!({"op":"initialize"})).await["ok"], false);
-        cluster.leader(None).await;
         cluster
     }
-    async fn configure(&mut self, id: u64, create: bool) {
+    async fn setup(&self, id: u64, create: bool) -> Setup {
         let mut addresses = BTreeMap::new();
         for to in 1..=3 {
             let address = if to == id {
@@ -292,14 +305,68 @@ impl Cluster {
             };
             addresses.insert(to, address);
         }
-        let setup = Setup {
+        Setup {
             id,
+            cluster_id: "process-test".into(),
             directory: self.directory.path().join(id.to_string()),
             create,
             peers: self.credentials.peers(&addresses),
             credentials: self.credentials.clone(),
-        };
+        }
+    }
+    async fn configure(&mut self, id: u64, create: bool) {
+        let setup = self.setup(id, create).await;
         assert_eq!(self.call(id, serde_json::to_value(setup).unwrap()).await["ready"], true);
+    }
+    pub async fn assert_uninitialized(&mut self) {
+        for id in 1..=3 {
+            let state = self.call(id, json!({"op":"state"})).await;
+            assert_eq!(state["initialized"], false);
+            assert!(state["leader"].is_null());
+        }
+    }
+    pub async fn reject_follower_bootstrap(&mut self) {
+        for id in [2, 3] {
+            assert_eq!(self.call(id, json!({"op":"initialize"})).await["ok"], false);
+        }
+    }
+    pub async fn bootstrap(&mut self) {
+        assert_eq!(self.call(1, json!({"op":"initialize"})).await["ok"], true);
+    }
+    pub async fn reject_rebootstrap(&mut self) {
+        for id in 1..=3 {
+            assert_eq!(self.call(id, json!({"op":"initialize"})).await["ok"], false);
+        }
+    }
+
+    pub async fn reject_wrong_identity(&mut self) {
+        let id = 2;
+        self.write(None, "before-identity-mismatch").await;
+        let mut process = self.processes.remove(&id).unwrap();
+        process.child.kill().await.unwrap();
+        process.child.wait().await.unwrap();
+        for mode in ["node", "cluster", "certificate"] {
+            let (mut rejected, _) = Process::launch().await;
+            let mut setup = self.setup(id, false).await;
+            match mode {
+                "cluster" => setup.cluster_id = "other-cluster".into(),
+                "node" => setup.id = 3,
+                _ => {
+                    let cert = setup.credentials.certs[&4].clone();
+                    setup.peers.get_mut(&id).unwrap().certificate_sha256 = fingerprint(&cert);
+                    setup.credentials.certs.insert(id, cert);
+                    let key = setup.credentials.keys[&4].clone();
+                    setup.credentials.keys.insert(id, key);
+                }
+            }
+            let response = rejected.call(serde_json::to_value(setup).unwrap()).await;
+            assert_eq!(response["ready"], false, "{response}");
+            assert!(response["error"].as_str().unwrap().contains("identity mismatch"));
+            assert!(timeout(DEADLINE, rejected.child.wait()).await.unwrap().unwrap().success());
+        }
+        self.affected = Some(id);
+        self.restart().await;
+        self.converge().await;
     }
     pub async fn call(&mut self, id: u64, request: Value) -> Value {
         self.processes.get_mut(&id).unwrap().call(request).await
@@ -437,6 +504,15 @@ impl Cluster {
     }
 
     pub async fn cold_restart(&mut self) {
+        self.restart_all().await;
+        self.leader(None).await;
+        self.reject_rebootstrap().await;
+    }
+    pub async fn restart_uninitialized(&mut self) {
+        self.restart_all().await;
+        self.assert_uninitialized().await;
+    }
+    async fn restart_all(&mut self) {
         for process in self.processes.values_mut() {
             process.child.kill().await.unwrap();
             let _ = process.child.wait().await.unwrap();
@@ -449,10 +525,6 @@ impl Cluster {
         }
         for id in 1..=3 {
             self.configure(id, false).await;
-        }
-        self.leader(None).await;
-        for id in 1..=3 {
-            assert_eq!(self.call(id, json!({"op":"initialize"})).await["ok"], false);
         }
     }
 }

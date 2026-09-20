@@ -1,6 +1,7 @@
 //! Authenticated internal OpenRaft RPCs. Enrollment is operator supplied and
 //! fixed for this foundation; it is not automatic Raft membership management.
 
+use super::durable_log::NodeIdentity;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response, StatusCode};
@@ -78,6 +79,24 @@ fn invalid(message: &str) -> io::Error {
 }
 
 impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
+    /// Bind durable enrollment to the identities already validated by this TLS
+    /// transport. Addresses may change without changing certificate identities.
+    pub(crate) fn node_identity(&self, bootstrap_node: u64) -> anyhow::Result<NodeIdentity> {
+        let identity = NodeIdentity {
+            cluster_id: self.settings.cluster.clone(),
+            node_id: self.settings.local,
+            bootstrap_node,
+            voters: self
+                .settings
+                .peers
+                .iter()
+                .map(|(id, peer)| (*id, peer.certificate_sha256))
+                .collect(),
+        };
+        identity.validate()?;
+        Ok(identity)
+    }
+
     pub(crate) fn new(
         cluster: String,
         local: u64,

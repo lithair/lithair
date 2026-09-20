@@ -163,7 +163,11 @@ impl<C: RaftTypeConfig> Inner<C> {
             bytes: (prefix.len() + data.len()) as u64,
             digest: hash.finalize().into(),
         };
-        let end = DurableEnd { version: 2, snapshot: Some(pointer), ..self.end.clone() };
+        let end = DurableEnd {
+            version: self.end.version.max(2),
+            snapshot: Some(pointer),
+            ..self.end.clone()
+        };
         self.failed = true;
         let mut file = OpenOptions::new()
             .write(true)
@@ -222,7 +226,12 @@ impl<C: RaftTypeConfig> Inner<C> {
         file.sync_all()?;
         self.checkpoint(Stage::GenerationDirectorySync)?;
         self.dir.sync_all()?;
-        let end = DurableEnd { version: 2, journal: Some(generation), offset, ..self.end.clone() };
+        let end = DurableEnd {
+            version: self.end.version.max(2),
+            journal: Some(generation),
+            offset,
+            ..self.end.clone()
+        };
         self.activate(&end)?;
         self.end = end;
         self.journal = file;
