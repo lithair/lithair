@@ -1,7 +1,7 @@
 //! Authenticated internal OpenRaft RPCs. Enrollment is operator supplied and
 //! fixed for this foundation; it is not automatic Raft membership management.
 
-use super::durable_log::NodeIdentity;
+use super::durable_log::{DurableLog, NodeIdentity};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response, StatusCode};
@@ -27,7 +27,7 @@ use tokio::{
 };
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
-const WIRE_VERSION: u32 = 1;
+const WIRE_VERSION: u32 = 2;
 // JSON byte arrays expand snapshot chunks: callers must keep chunks below 64KiB.
 pub(crate) const MAX_BODY: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 32;
@@ -51,16 +51,27 @@ struct Envelope<T> {
     cluster: String,
     sender: u64,
     recipient: u64,
+    plan: [u8; 32],
     payload: T,
 }
 
 struct Settings {
     cluster: String,
     local: u64,
+    bootstrap_node: u64,
+    plan: [u8; 32],
     peers: BTreeMap<u64, Peer>,
     server: Arc<rustls::ServerConfig>,
     client: Arc<rustls::ClientConfig>,
     outgoing: Semaphore,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Preflight {
+    node_id: u64,
+    plan: [u8; 32],
+    initialized: bool,
 }
 
 // Manual Clone avoids requiring C: Clone beyond the RaftTypeConfig contract.
@@ -81,11 +92,11 @@ fn invalid(message: &str) -> io::Error {
 impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
     /// Bind durable enrollment to the identities already validated by this TLS
     /// transport. Addresses may change without changing certificate identities.
-    pub(crate) fn node_identity(&self, bootstrap_node: u64) -> anyhow::Result<NodeIdentity> {
+    pub(crate) fn node_identity(&self) -> anyhow::Result<NodeIdentity> {
         let identity = NodeIdentity {
             cluster_id: self.settings.cluster.clone(),
             node_id: self.settings.local,
-            bootstrap_node,
+            bootstrap_node: self.settings.bootstrap_node,
             voters: self
                 .settings
                 .peers
@@ -100,6 +111,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
     pub(crate) fn new(
         cluster: String,
         local: u64,
+        bootstrap_node: u64,
         peers: BTreeMap<u64, Peer>,
         trust: Vec<CertificateDer<'static>>,
         chain: Vec<CertificateDer<'static>>,
@@ -109,6 +121,13 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         let leaf = chain.first().ok_or_else(|| invalid("missing local certificate"))?;
         let own = peers.get(&local).ok_or_else(|| invalid("local node is not enrolled"))?;
         anyhow::ensure!(own.certificate_sha256 == fingerprint(leaf), "local certificate mismatch");
+        let identity = NodeIdentity {
+            cluster_id: cluster.clone(),
+            node_id: local,
+            bootstrap_node,
+            voters: peers.iter().map(|(id, peer)| (*id, peer.certificate_sha256)).collect(),
+        };
+        let plan = identity.plan_digest()?;
         let mut pins = std::collections::BTreeSet::new();
         for peer in peers.values() {
             ServerName::try_from(peer.server_name.clone())?;
@@ -141,6 +160,8 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             settings: Arc::new(Settings {
                 cluster,
                 local,
+                bootstrap_node,
+                plan,
                 peers,
                 server: Arc::new(server),
                 client: Arc::new(client),
@@ -158,6 +179,9 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         raft: Raft<C>,
         shutdown: impl std::future::Future<Output = ()>,
     ) -> io::Result<()> {
+        if raft.metrics().borrow().id != self.settings.local {
+            return Err(invalid("Raft/transport node identity mismatch"));
+        }
         tokio::pin!(shutdown);
         let slots = Arc::new(Semaphore::new(MAX_CONNECTIONS));
         let mut tasks = JoinSet::new();
@@ -209,7 +233,10 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             return status(StatusCode::NOT_FOUND);
         }
         let path = request.uri().path().to_owned();
-        if !matches!(path.as_str(), "/raft/v1/append" | "/raft/v1/vote" | "/raft/v1/snapshot") {
+        if !matches!(
+            path.as_str(),
+            "/raft/v2/append" | "/raft/v2/vote" | "/raft/v2/snapshot" | "/raft/v2/preflight"
+        ) {
             return status(StatusCode::NOT_FOUND);
         }
         if request.headers().get(hyper::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
@@ -221,23 +248,45 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             Ok(body) => body.to_bytes(),
             Err(_) => return status(StatusCode::PAYLOAD_TOO_LARGE),
         };
-        // Authenticate the envelope and the Raft candidate/leader before calling Raft.
+        let envelope: Envelope<serde_json::Value> = match serde_json::from_slice(&bytes) {
+            Ok(value) => value,
+            Err(_) => return status(StatusCode::BAD_REQUEST),
+        };
+        if envelope.version != WIRE_VERSION
+            || envelope.cluster != self.settings.cluster
+            || envelope.plan != self.settings.plan
+        {
+            return status(StatusCode::CONFLICT);
+        }
+        if envelope.sender != sender || envelope.recipient != self.settings.local {
+            return status(StatusCode::FORBIDDEN);
+        }
+        if path == "/raft/v2/preflight" {
+            if !envelope.payload.is_null() {
+                return status(StatusCode::BAD_REQUEST);
+            }
+            let initialized = match raft.is_initialized().await {
+                Ok(value) => value,
+                Err(_) => return status(StatusCode::SERVICE_UNAVAILABLE),
+            };
+            let report =
+                Preflight { node_id: self.settings.local, plan: self.settings.plan, initialized };
+            return match encode(&report) {
+                Ok(body) => Response::new(Full::new(body.into())),
+                Err(_) => status(StatusCode::INTERNAL_SERVER_ERROR),
+            };
+        }
+        // Validate the candidate/leader after authenticating the shared plan.
         macro_rules! handle {
             ($ty:ty, $method:ident) => {{
-                let envelope: Envelope<$ty> = match serde_json::from_slice(&bytes) {
-                    Ok(v) => v,
+                let payload: $ty = match serde_json::from_value(envelope.payload) {
+                    Ok(value) => value,
                     Err(_) => return status(StatusCode::BAD_REQUEST),
                 };
-                if envelope.version != WIRE_VERSION || envelope.cluster != self.settings.cluster {
-                    return status(StatusCode::CONFLICT);
-                }
-                if envelope.sender != sender
-                    || envelope.recipient != self.settings.local
-                    || envelope.payload.vote.leader_id.voted_for() != Some(sender)
-                {
+                if payload.vote.leader_id.voted_for() != Some(sender) {
                     return status(StatusCode::FORBIDDEN);
                 }
-                let result = raft.$method(envelope.payload).await;
+                let result = raft.$method(payload).await;
                 match encode(&result) {
                     Ok(body) => Response::new(Full::new(body.into())),
                     Err(_) => status(StatusCode::INTERNAL_SERVER_ERROR),
@@ -245,11 +294,45 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             }};
         }
         match path.as_str() {
-            "/raft/v1/append" => handle!(AppendEntriesRequest<C>, append_entries),
-            "/raft/v1/vote" => handle!(VoteRequest<u64>, vote),
-            "/raft/v1/snapshot" => handle!(InstallSnapshotRequest<C>, install_snapshot),
+            "/raft/v2/append" => handle!(AppendEntriesRequest<C>, append_entries),
+            "/raft/v2/vote" => handle!(VoteRequest<u64>, vote),
+            "/raft/v2/snapshot" => handle!(InstallSnapshotRequest<C>, install_snapshot),
             _ => status(StatusCode::NOT_FOUND),
         }
+    }
+
+    /// Local operator action. All initial members must be reachable and agree
+    /// before the durable single-use permission is consumed. Steady-state quorum
+    /// operation remains 2/3; this preflight is only for initial formation.
+    pub(crate) async fn bootstrap(
+        &self,
+        store: &DurableLog<C>,
+        raft: &Raft<C>,
+    ) -> anyhow::Result<()>
+    where
+        C::Node: Default,
+    {
+        let identity = self.node_identity()?;
+        anyhow::ensure!(
+            identity == store.node_identity().await?,
+            "store/transport identity mismatch"
+        );
+        anyhow::ensure!(
+            identity.node_id == identity.bootstrap_node,
+            "not the designated bootstrap node"
+        );
+        anyhow::ensure!(raft.metrics().borrow().id == identity.node_id, "Raft identity mismatch");
+        anyhow::ensure!(!raft.is_initialized().await?, "node already initialized");
+        for id in self.settings.peers.keys().copied().filter(|id| *id != self.settings.local) {
+            let report: Preflight =
+                self.exchange(id, "/raft/v2/preflight", (), MAX_LIFETIME).await?;
+            anyhow::ensure!(
+                report.node_id == id && report.plan == self.settings.plan,
+                "peer plan mismatch"
+            );
+            anyhow::ensure!(!report.initialized, "peer already initialized");
+        }
+        store.bootstrap(raft).await
     }
 
     async fn exchange<T: Serialize, R: DeserializeOwned>(
@@ -264,6 +347,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             cluster: self.settings.cluster.clone(),
             sender: self.settings.local,
             recipient: target,
+            plan: self.settings.plan,
             payload,
         })?;
         let deadline = ttl.min(MAX_LIFETIME);
@@ -408,14 +492,14 @@ impl<C: RaftTypeConfig<NodeId = u64>> RaftNetwork<C> for PeerClient<C> {
         rpc: AppendEntriesRequest<C>,
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<u64>, RPCError<u64, C::Node, RaftError<u64>>> {
-        self.rpc("/raft/v1/append", rpc, option).await
+        self.rpc("/raft/v2/append", rpc, option).await
     }
     async fn vote(
         &mut self,
         rpc: VoteRequest<u64>,
         option: RPCOption,
     ) -> Result<VoteResponse<u64>, RPCError<u64, C::Node, RaftError<u64>>> {
-        self.rpc("/raft/v1/vote", rpc, option).await
+        self.rpc("/raft/v2/vote", rpc, option).await
     }
     async fn install_snapshot(
         &mut self,
@@ -425,6 +509,6 @@ impl<C: RaftTypeConfig<NodeId = u64>> RaftNetwork<C> for PeerClient<C> {
         InstallSnapshotResponse<u64>,
         RPCError<u64, C::Node, RaftError<u64, InstallSnapshotError>>,
     > {
-        self.rpc("/raft/v1/snapshot", rpc, option).await
+        self.rpc("/raft/v2/snapshot", rpc, option).await
     }
 }

@@ -48,6 +48,13 @@ binding and explicit single-use bootstrap, including interrupted claims and the
 three-process cold restart before and after initialization. See the
 [identity contract](internal/specs/OPENRAFT_IDENTITY.md).
 
+`cluster_operator_test`, the opt-in CLI `cluster_ops` subprocess tests and
+`cluster_operator_bdd` cover strict configuration/TLS validation, explicit
+provisioning, nonmutating offline inspection and bootstrap retry after peer
+unavailability. The cidx gates explicitly enable `cluster-ops` for the CLI and
+BDD targets; the release build also compiles the optional CLI. See the
+[operator contract](internal/specs/OPENRAFT_OPERATOR.md).
+
 ## The workflow
 
 **New feature** → open a draft PR with `cidx repo pr create`, then write the

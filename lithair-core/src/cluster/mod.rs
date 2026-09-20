@@ -45,6 +45,9 @@ pub mod consensus_log;
 #[allow(dead_code)]
 pub(crate) mod durable_log;
 
+/// Experimental offline tools for the new consensus storage, behind cluster/TLS.
+#[cfg(all(feature = "cluster", feature = "tls"))]
+pub mod operator;
 #[cfg(all(feature = "cluster", feature = "tls"))]
 #[allow(dead_code)] // Private foundation; application integration follows #248.
 pub(crate) mod peer_transport;

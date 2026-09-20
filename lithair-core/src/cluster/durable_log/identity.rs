@@ -11,6 +11,22 @@ pub(crate) struct NodeIdentity {
     pub voters: BTreeMap<u64, [u8; 32]>,
 }
 impl NodeIdentity {
+    /// The common initial plan excludes per-node IDs and dial addresses.
+    pub(crate) fn plan_digest(&self) -> io::Result<[u8; 32]> {
+        use sha2::{Digest, Sha256};
+        self.validate()?;
+        let mut hash = Sha256::new();
+        hash.update(b"lithair-initial-group-v1\0");
+        hash.update((self.cluster_id.len() as u64).to_le_bytes());
+        hash.update(self.cluster_id.as_bytes());
+        hash.update(self.bootstrap_node.to_le_bytes());
+        for (id, fingerprint) in &self.voters {
+            hash.update(id.to_le_bytes());
+            hash.update(fingerprint);
+        }
+        Ok(hash.finalize().into())
+    }
+
     pub(crate) fn validate(&self) -> io::Result<()> {
         if self.cluster_id.is_empty() || self.cluster_id.len() > 128 {
             return Err(invalid("cluster ID must contain 1 to 128 bytes"));
@@ -64,6 +80,33 @@ impl BootstrapPermit {
 }
 
 impl<C: RaftTypeConfig<NodeId = u64>> DurableLog<C> {
+    /// Offline validation holds the normal exclusive lock but never repairs or
+    /// cleans the store. It is not evidence of quorum or application readiness.
+    pub(crate) async fn inspect_for_node(
+        directory: impl AsRef<Path>,
+        identity: NodeIdentity,
+    ) -> anyhow::Result<serde_json::Value> {
+        let directory = directory.as_ref().to_owned();
+        tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let inner = Inner::<C>::load(directory, false, Some(identity), false)?;
+            let node = inner.end.node.as_ref().ok_or_else(|| invalid("unbound store"))?;
+            Ok(serde_json::json!({
+                "manifest_version":inner.end.version,
+                "store_id":uuid::Uuid::from_bytes(inner.end.identity).to_string(),
+                "bootstrap_claimed":node.bootstrap_claimed,
+                "pristine":inner.state.vote.is_none() && inner.state.logs.is_empty()
+                    && inner.state.committed.is_none() && inner.state.purged.is_none() && inner.snapshot.is_none(),
+                "retained_entries":inner.state.logs.len(),
+                "commit_index":inner.state.committed.as_ref().map(|id|id.index),
+                "purged_index":inner.state.purged.as_ref().map(|id|id.index),
+                "snapshot_index":inner.snapshot.as_ref().and_then(|s|s.meta.last_log_id.as_ref()).map(|id|id.index),
+                "durable_journal_bytes":inner.end.offset,
+                "ignored_tail_bytes":inner.journal.metadata()?.len()-inner.end.offset,
+                "scope":"offline_consensus_integrity"
+            }))
+        }).await?
+    }
+
     /// Explicit provisioning only. An existing unbound store is never adopted.
     pub(crate) async fn create_for_node(
         directory: impl AsRef<Path>,

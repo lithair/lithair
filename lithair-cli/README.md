@@ -10,6 +10,23 @@ cargo install lithair-cli
 
 This installs a `lithair` binary on your `$PATH`.
 
+## Experimental offline cluster tools
+
+From a checkout containing the new consensus foundation:
+
+```bash
+cargo install --path lithair-cli --features cluster-ops
+lithair cluster check --config /etc/lithair/node.toml
+lithair cluster provision --config /etc/lithair/node.toml
+lithair cluster inspect --config /etc/lithair/node.toml
+```
+
+These commands validate local configuration/TLS, explicitly provision an empty
+identity-bound consensus store, and inspect it offline without repairing it.
+They print JSON on success and exit 2 on error. They do not start the application
+or initialize a cluster. See the [configuration and operations contract](../docs/internal/specs/OPENRAFT_OPERATOR.md)
+for the three-peer TOML format, prerequisites, limits and bootstrap preflight.
+
 ## Usage
 
 ### Create a new project

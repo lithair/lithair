@@ -34,6 +34,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Experimental offline cluster configuration and storage tools.
+    #[cfg(feature = "cluster-ops")]
+    Cluster {
+        #[command(subcommand)]
+        command: ClusterCommand,
+    },
     /// Create a new Lithair project
     New {
         /// Project name (used as directory name and Cargo package name)
@@ -56,10 +62,54 @@ enum Commands {
     },
 }
 
+#[cfg(feature = "cluster-ops")]
+#[derive(Subcommand)]
+enum ClusterCommand {
+    /// Validate enrollment and local TLS material without changing storage.
+    Check {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Explicitly create an empty, identity-bound consensus store.
+    Provision {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Validate an offline consensus store without repairing or cleaning it.
+    Inspect {
+        #[arg(long)]
+        config: PathBuf,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
 
     match cli.command {
+        #[cfg(feature = "cluster-ops")]
+        Commands::Cluster { command } => {
+            use lithair_core::cluster::operator::{run, OperatorCommand};
+            let (command, config) = match command {
+                ClusterCommand::Check { config } => (OperatorCommand::Check, config),
+                ClusterCommand::Provision { config } => (OperatorCommand::Provision, config),
+                ClusterCommand::Inspect { config } => (OperatorCommand::Inspect, config),
+            };
+            let result = tokio::runtime::Runtime::new()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime.block_on(run(command, config)).map_err(|error| format!("{error:#}"))
+                })
+                .and_then(|report| {
+                    serde_json::to_string_pretty(&report).map_err(|error| error.to_string())
+                });
+            match result {
+                Ok(report) => println!("{report}"),
+                Err(error) => {
+                    eprintln!("cluster: {error}");
+                    std::process::exit(2);
+                }
+            }
+        }
         Commands::New { name, no_frontend } => {
             let base = PathBuf::from(".");
             if let Err(e) = commands::new::run(&name, &base, no_frontend) {

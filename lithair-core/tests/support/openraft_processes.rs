@@ -83,6 +83,7 @@ impl Credentials {
         PeerTransport::new(
             cluster.into(),
             id,
+            1,
             peers,
             vec![CertificateDer::from(self.ca.clone())],
             vec![CertificateDer::from(self.certs[&id].clone())],
@@ -124,7 +125,7 @@ pub async fn child() {
     let mut input = BufReader::new(tokio::io::stdin()).lines();
     let setup: Setup = serde_json::from_value(next_json(&mut input).await).unwrap();
     let network = setup.credentials.transport(setup.id, &setup.cluster_id, setup.peers);
-    let identity = network.node_identity(1).unwrap();
+    let identity = network.node_identity().unwrap();
     let log = if setup.create {
         DurableLog::<TypeConfig>::create_for_node(&setup.directory, identity).await
     } else {
@@ -162,6 +163,7 @@ pub async fn child() {
     let raft = Raft::new(setup.id, Arc::new(config), network.clone(), log_store, machine)
         .await
         .unwrap();
+    let operator_network = network.clone();
     let peer_raft = raft.clone();
     let server = tokio::spawn(async move {
         network.serve(listener, peer_raft, std::future::pending()).await.unwrap()
@@ -171,7 +173,7 @@ pub async fn child() {
         let request: Value = serde_json::from_str(&line).unwrap();
         let response = match request["op"].as_str().unwrap() {
             "initialize" => {
-                json!({"ok":log.bootstrap(&raft).await.is_ok()})
+                json!({"ok":operator_network.bootstrap(&log, &raft).await.is_ok()})
             }
             "write" => {
                 let write = raft.client_write(ClientRequest {
@@ -332,6 +334,15 @@ impl Cluster {
     }
     pub async fn bootstrap(&mut self) {
         assert_eq!(self.call(1, json!({"op":"initialize"})).await["ok"], true);
+    }
+    pub async fn reject_unavailable_bootstrap(&mut self) {
+        for ((from, to), edge) in &self.edges {
+            if *from == 3 || *to == 3 {
+                edge.enabled.send_replace(false);
+            }
+        }
+        assert_eq!(self.call(1, json!({"op":"initialize"})).await["ok"], false);
+        self.assert_uninitialized().await;
     }
     pub async fn reject_rebootstrap(&mut self) {
         for id in 1..=3 {
