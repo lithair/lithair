@@ -36,7 +36,10 @@ to its replication address; each test HTTP listener binds only to its control
 address. The Probatum driver joins control only. No service publishes host ports.
 The driver can control Docker lifecycle/network faults through the socket; plane
 isolation assertions test ordinary network access, not containment of that trusted
-operator. Separate Compose projects can run without fixed host ports/subnets.
+operator. Separate Compose projects can run without fixed host ports/subnets. The runner
+asks Docker for a free subnet and reserves it explicitly (retrying allocation
+conflicts). This permits restoring the original peer IP on Docker engines that
+reject static addresses in automatically configured networks.
 
 Probatum owns the ordered checks in `probatum.toml`; `checks.py` implements HTTP
 assertions and Docker actions. It uses deadline polling, bounded subprocesses and
@@ -73,7 +76,8 @@ ignored by Git.
 
 The outer runner traps normal success/failure and interrupt/termination. It
 collects evidence before removing only its own containers, networks, volumes and
-image tags. Cleanup failure makes the gate fail. No global prune, shared container
+image tags, including the externally managed replication network. Cleanup failure
+makes the gate fail. No global prune, shared container
 name or fixed host port is used. A killed host, lost Docker daemon or SIGKILL of
 the outer runner cannot execute a shell trap; use the recorded project name for
 manual cleanup after restoring Docker:
@@ -83,7 +87,10 @@ docker compose -p lithair-cluster-REPLACE_WITH_RUN_ID -f tests/cluster/compose.y
 ```
 
 That manual command also needs the image environment variables recorded in
-`project.env` in the evidence directory; source that file first.
+`project.env` in the evidence directory; source that file first. Remove the
+external replication network afterwards with
+`docker network rm "$COMPOSE_PROJECT_NAME-replication"` (and the temporary
+`"$COMPOSE_PROJECT_NAME-subnet-probe"` if interruption occurred during allocation).
 
 To test the entire failing-gate cleanup path deliberately:
 

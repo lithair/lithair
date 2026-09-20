@@ -171,7 +171,7 @@ def failover():
 def partition():
     victim = leader()
     node_container = container(victim)
-    network = f'{PROJECT}_replication'
+    network = f'{PROJECT}-replication'
     info = json.loads(command('docker', 'inspect', node_container))[0]
     address = info['NetworkSettings']['Networks'][network]['IPAddress']
     command('docker', 'network', 'disconnect', network, node_container)

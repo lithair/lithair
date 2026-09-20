@@ -54,7 +54,11 @@ services:
     volumes: [evidence:/evidence, /var/run/docker.sock:/var/run/docker.sock]
 
 networks:
-  replication: {internal: true}
+  # The runner reserves an explicit, daemon-selected subnet so restoring a peer's
+  # IP also works on engines that reject static addresses in automatic pools.
+  replication:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME}-replication
   control: {internal: true}
 volumes:
   keys1:

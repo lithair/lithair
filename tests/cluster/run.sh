@@ -25,6 +25,11 @@ cleanup() {
     docker cp "$COMPOSE_PROJECT_NAME-driver:/evidence/." "$report/evidence" 2>/dev/null || true
     # A cleanup failure is itself a failed gate; never silently leave this run behind.
     compose down --volumes --remove-orphans --timeout 5 >> "$report/cleanup.log" 2>&1 || result=1
+    for network in "$COMPOSE_PROJECT_NAME-subnet-probe" "$COMPOSE_PROJECT_NAME-replication"; do
+        if docker network inspect "$network" >/dev/null 2>&1; then
+            docker network rm "$network" >> "$report/cleanup.log" 2>&1 || result=1
+        fi
+    done
     remaining=$(docker container ls -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME") || result=1
     if [ -n "$remaining" ]; then
         echo "Unremoved containers: $remaining" >> "$report/cleanup.log"
@@ -52,6 +57,24 @@ cp /work/tests/cluster/Driver.Dockerfile "$staging/driver/Dockerfile"
 cp /work/tests/cluster/checks.py /work/tests/cluster/compose.yml /work/tests/cluster/probatum.toml "$staging/driver/"
 docker build -t "$LITHAIR_CLUSTER_NODE_IMAGE" "$staging/node"
 docker build -t "$LITHAIR_CLUSTER_DRIVER_IMAGE" "$staging/driver"
+# Ask Docker's allocator for a free pool, then reserve it explicitly. Concurrent
+# allocators may win the gap between removal and reservation; retry on conflict.
+# No host subnet is hardcoded and Docker remains the overlap authority.
+reserved=false
+for attempt in 1 2 3 4 5 6 7 8; do
+    probe="$COMPOSE_PROJECT_NAME-subnet-probe"
+    docker network create --internal --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" "$probe" >/dev/null
+    subnet=$(docker network inspect -f '{{(index .IPAM.Config 0).Subnet}}' "$probe")
+    docker network rm "$probe" >/dev/null
+    if docker network create --internal --subnet "$subnet" \
+        --label "com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
+        "$COMPOSE_PROJECT_NAME-replication" > "$report/replication-network.id"; then
+        reserved=true
+        break
+    fi
+done
+if [ "$reserved" != true ]; then echo 'Could not reserve an isolated replication subnet' >&2; exit 1; fi
+docker network inspect "$COMPOSE_PROJECT_NAME-replication" > "$report/replication-network.json"
 compose run --rm --no-deps prepare
 compose up -d node1 node2 node3
 compose run -T --no-deps --name "$COMPOSE_PROJECT_NAME-driver" driver > "$report/verdict.json"
