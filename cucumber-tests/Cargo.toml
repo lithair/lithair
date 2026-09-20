@@ -163,3 +163,8 @@ dotenvy = "0.15"
 simd-json = "0.14"                                        # SIMD-accelerated JSON parsing
 rkyv = { version = "0.8", features = ["bytecheck"] }       # Zero-copy serialization
 lazy_static = "1.4"                                         # Thread-safe static variables
+
+[[test]]
+name = "openraft_checkpoint_bdd"
+path = "tests/openraft_checkpoint_bdd.rs"
+harness = false

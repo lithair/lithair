@@ -74,10 +74,11 @@ fingerprint mismatch, wrong envelopes and payload limits.
 
 The shared fixture in `lithair-core/tests/support/openraft_processes.rs` starts
 three **child processes**, each with its own durable log directory and test-only
-OpenRaft MemStore state machine. It explicitly creates stores and initializes the
-three-member configuration once. Recovery calls `open()` and never initializes
-because peers are absent. Snapshots and log purge are disabled in this fixture;
-all application state is reconstructed from the retained committed log.
+OpenRaft MemStore state machine with a durable snapshot adapter. It explicitly
+creates stores and initializes the three-member configuration once. Recovery calls
+`open()` and never initializes because peers are absent. The fixture now publishes
+durable snapshots, purges their covered prefixes and compacts the journal. Recovery restores the snapshot before replaying the retained
+committed suffix; see [checkpoint integration](OPENRAFT_CHECKPOINTS.md).
 
 Six directed TCP relays reserve ephemeral listening sockets and forward real TLS
 traffic. Partitioning disables selected relays and drops their established TCP
@@ -91,7 +92,7 @@ Tests poll state with deadlines and check:
 - the remaining majority can write and all replicas converge after healing.
 
 `cucumber-tests/tests/openraft_consensus_bdd.rs` uses the same real-process
-fixture for the three scenarios in `features/core/openraft_consensus.feature`.
+fixture for the four scenarios in `features/core/openraft_consensus.feature`.
 It is registered with `no_orphan_features` and executes in the cidx PR gate.
 Certificates are generated per test; no private keys are committed.
 
@@ -99,10 +100,12 @@ Certificates are generated per test; no private keys are committed.
 
 This establishes consensus with a test state machine, not durable application
 snapshots or integration with native models, Turso, sessions and authorization.
-The snapshot RPC response test does not qualify crash-safe snapshot installation.
-Physical journal compaction, snapshot recovery, explicit operator bootstrap,
-persisted identity checks, replacement membership and certificate rotation remain
-milestone 2 follow-ups. HTTP contracts, read admission, request deduplication,
-application checkpoints, rolling deployment and qualification on three independent
+The isolated snapshot RPC response test only checks transport behavior. Durable
+publication, physical compaction and test-state snapshot recovery are covered by
+[the checkpoint tests](OPENRAFT_CHECKPOINTS.md) in #255.
+Explicit operator bootstrap, persisted identity checks, replacement membership
+and certificate rotation remain milestone 2 follow-ups. HTTP contracts, read
+admission, request deduplication, application checkpoints, rolling deployment and
+qualification on three independent
 VMs remain later milestones. No production availability or throughput claim follows
 from these loopback correctness tests.

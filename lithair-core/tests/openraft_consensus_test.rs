@@ -48,3 +48,17 @@ async fn minority_partition_rejects_writes_and_read_barriers() {
 
 #[path = "support/openraft_transport_cases.rs"]
 mod transport_cases;
+
+#[tokio::test]
+async fn follower_installs_snapshot_after_compaction_and_survives_cold_restart() {
+    let mut cluster = processes::Cluster::start().await;
+    cluster.prepare_snapshot_catch_up().await;
+    cluster.restart().await;
+    cluster.converge().await;
+    cluster.assert_snapshot_installed().await;
+    cluster.cold_restart().await;
+    cluster.converge().await;
+    cluster.write(None, "after-snapshot-recovery").await;
+    cluster.converge().await;
+    cluster.stop().await;
+}

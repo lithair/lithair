@@ -2,6 +2,7 @@
 
 // Exercise the private source without publishing a premature storage API.
 #[path = "../src/cluster/durable_log/mod.rs"]
+#[allow(dead_code)]
 mod durable_log;
 
 use durable_log::{DurableLog, Stage};
@@ -348,7 +349,7 @@ async fn unsupported_metadata_version_is_rejected_even_with_valid_checksum() {
     let bytes = std::fs::read(&path).unwrap();
     let mut metadata: serde_json::Value =
         serde_json::from_slice(&bytes[4..bytes.len() - 4]).unwrap();
-    metadata["version"] = 2.into();
+    metadata["version"] = 99.into();
     let body = serde_json::to_vec(&metadata).unwrap();
     let mut frame = (body.len() as u32).to_le_bytes().to_vec();
     frame.extend_from_slice(&body);

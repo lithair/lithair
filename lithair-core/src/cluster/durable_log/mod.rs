@@ -1,4 +1,4 @@
-//! Private OpenRaft log/vote foundation. No application state machine or legacy
+//! Private OpenRaft log/vote/snapshot foundation. No application state machine or legacy
 //! WAL migration. See docs/internal/specs/OPENRAFT_STORAGE.md for the disk contract.
 
 use openraft::storage::Adaptor;
@@ -15,6 +15,9 @@ use std::ops::{Bound, RangeBounds};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+mod checkpoint;
+pub(crate) use checkpoint::SavedSnapshot;
 
 const MAGIC: &[u8; 8] = b"LTRLOG01";
 const HEADER_LEN: u64 = 24;
@@ -156,12 +159,16 @@ impl<C: RaftTypeConfig> State<C> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DurableEnd {
     version: u32,
     identity: [u8; 16],
     offset: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    journal: Option<[u8; 16]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    snapshot: Option<checkpoint::SnapshotPointer>,
 }
 
 struct Inner<C: RaftTypeConfig> {
@@ -171,6 +178,8 @@ struct Inner<C: RaftTypeConfig> {
     journal: File,
     end: DurableEnd,
     state: State<C>,
+    snapshot: Option<SavedSnapshot<C>>,
+    snapshot_changed: Arc<tokio::sync::Notify>,
     failed: bool,
     #[cfg(test)]
     fault: Option<(Stage, bool)>,
@@ -230,7 +239,10 @@ fn encode(value: &impl Serialize) -> io::Result<Vec<u8>> {
     frame.extend_from_slice(&crc32fast::hash(&frame).to_le_bytes());
     Ok(frame)
 }
-fn decode<T: serde::de::DeserializeOwned>(file: &mut File, available: u64) -> io::Result<(T, u64)> {
+fn decode<T: serde::de::DeserializeOwned>(
+    file: &mut impl Read,
+    available: u64,
+) -> io::Result<(T, u64)> {
     if available < 8 {
         return Err(invalid("truncated durable frame"));
     }
@@ -261,6 +273,10 @@ pub(crate) enum Stage {
     MetadataRename,
     DirectorySync,
     Complete,
+    GenerationWrite,
+    GenerationSync,
+    GenerationDirectorySync,
+    Cleanup,
 }
 
 impl<C: RaftTypeConfig> Inner<C> {
@@ -294,7 +310,13 @@ impl<C: RaftTypeConfig> Inner<C> {
             new.as_file().sync_all()?;
             let journal = new.persist(&journal_path).map_err(|e| e.error)?;
             dir.sync_all()?;
-            let end = DurableEnd { version: 1, identity, offset: HEADER_LEN };
+            let end = DurableEnd {
+                version: 1,
+                identity,
+                offset: HEADER_LEN,
+                journal: None,
+                snapshot: None,
+            };
             let mut metadata = tempfile::NamedTempFile::new_in(&directory)?;
             metadata.write_all(&encode(&end)?)?;
             metadata.as_file().sync_all()?;
@@ -302,28 +324,46 @@ impl<C: RaftTypeConfig> Inner<C> {
             dir.sync_all()?;
             (journal, end)
         } else {
-            let journal = OpenOptions::new().read(true).write(true).open(&journal_path)?;
             let mut metadata = File::open(&metadata_path)?;
             let size = metadata.metadata()?.len();
             let (end, read): (DurableEnd, _) = decode(&mut metadata, size)?;
-            if read != size || end.version != 1 {
+            if read != size
+                || !matches!(end.version, 1 | 2)
+                || (end.version == 1 && (end.journal.is_some() || end.snapshot.is_some()))
+                || (end.version == 2 && end.journal.is_none() && end.snapshot.is_none())
+            {
                 return Err(invalid("unsupported or invalid durable metadata format"));
             }
+            let journal = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(directory.join(end.journal_name()))?;
             (journal, end)
         };
         journal.seek(SeekFrom::Start(0))?;
         let mut header = [0; HEADER_LEN as usize];
         journal.read_exact(&mut header)?;
-        if &header[..8] != MAGIC || header[8..] != end.identity {
+        let expected_magic = if end.journal.is_some() { checkpoint::JOURNAL_MAGIC } else { MAGIC };
+        if &header[..8] != expected_magic || header[8..] != end.identity {
             return Err(invalid(
                 "unsupported journal format or journal/metadata identity mismatch",
             ));
         }
-        if end.offset < HEADER_LEN || end.offset > journal.metadata()?.len() {
+        let header_len = if let Some(generation) = end.journal {
+            let mut stored = [0; 16];
+            journal.read_exact(&mut stored)?;
+            if stored != generation {
+                return Err(invalid("journal generation mismatch"));
+            }
+            HEADER_LEN + 16
+        } else {
+            HEADER_LEN
+        };
+        if end.offset < header_len || end.offset > journal.metadata()?.len() {
             return Err(invalid("durable journal prefix is missing"));
         }
         let mut state = State::<C>::default();
-        let mut offset = HEADER_LEN;
+        let mut offset = header_len;
         while offset < end.offset {
             let (record, size) = decode(&mut journal, end.offset - offset)?;
             state.validate(&record)?;
@@ -338,19 +378,34 @@ impl<C: RaftTypeConfig> Inner<C> {
         // A preceding process may have died after rename but before directory
         // sync. Stabilize the selected metadata before allowing any new response.
         dir.sync_all()?;
-        Ok(Self {
+        let snapshot = checkpoint::load_snapshot::<C>(&directory, &end)?;
+        if let (Some(snapshot), Some(purged)) = (&snapshot, &state.purged) {
+            if snapshot
+                .meta
+                .last_log_id
+                .as_ref()
+                .is_none_or(|last| purged > last || purged.index > last.index)
+            {
+                return Err(invalid("snapshot does not cover the purged log prefix"));
+            }
+        }
+        let mut inner = Self {
             directory,
             dir,
             _lock: lock,
             journal,
             end,
             state,
+            snapshot,
+            snapshot_changed: Arc::new(tokio::sync::Notify::new()),
             failed: false,
             #[cfg(test)]
             fault: None,
             #[cfg(test)]
             pause: None,
-        })
+        };
+        inner.reclaim_generations()?;
+        Ok(inner)
     }
 
     fn checkpoint(&mut self, stage: Stage) -> io::Result<()> {
@@ -383,7 +438,7 @@ impl<C: RaftTypeConfig> Inner<C> {
             .offset
             .checked_add(frame.len() as u64)
             .ok_or_else(|| invalid("journal offset overflow"))?;
-        let end = DurableEnd { version: 1, identity: self.end.identity, offset };
+        let end = DurableEnd { offset, ..self.end.clone() };
         // After any I/O error the result may be indeterminate. Refuse all further
         // operations through every clone until close/reopen resolves the boundary.
         self.failed = true;
@@ -392,15 +447,7 @@ impl<C: RaftTypeConfig> Inner<C> {
         self.journal.write_all(&frame[frame.len() / 2..])?;
         self.checkpoint(Stage::JournalSync)?;
         self.journal.sync_all()?;
-        let mut metadata = tempfile::NamedTempFile::new_in(&self.directory)?;
-        self.checkpoint(Stage::MetadataWrite)?;
-        metadata.write_all(&encode(&end)?)?;
-        self.checkpoint(Stage::MetadataSync)?;
-        metadata.as_file().sync_all()?;
-        self.checkpoint(Stage::MetadataRename)?;
-        metadata.persist(self.directory.join("durable.meta")).map_err(|e| e.error)?;
-        self.checkpoint(Stage::DirectorySync)?;
-        self.dir.sync_all()?;
+        self.activate(&end)?;
         self.checkpoint(Stage::Complete)?;
         self.end = end;
         self.state.apply(record);
@@ -457,9 +504,15 @@ impl<C: RaftTypeConfig> DurableLog<C> {
             // Tokio's mutex does not poison itself on unwind. Isolate panicking
             // payload serializers/cloners and explicitly invalidate every handle.
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut guard))) {
-                Ok(result) => result,
+                Ok(result) => {
+                    if guard.failed {
+                        guard.snapshot_changed.notify_waiters();
+                    }
+                    result
+                }
                 Err(_) => {
                     guard.failed = true;
+                    guard.snapshot_changed.notify_waiters();
                     Err(io::Error::other(
                         "OpenRaft storage operation panicked; close all handles and reopen",
                     ))
@@ -585,7 +638,20 @@ where
         &mut self,
         id: LogId<C::NodeId>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        self.access(ErrorVerb::Write, move |i| i.commit(Record::Purge(id))).await
+        self.access(ErrorVerb::Write, move |i| {
+            if let Some(snapshot) = &i.snapshot {
+                if snapshot
+                    .meta
+                    .last_log_id
+                    .as_ref()
+                    .is_none_or(|last| &id > last || id.index > last.index)
+                {
+                    return Err(invalid("purge exceeds the durable snapshot"));
+                }
+            }
+            i.commit(Record::Purge(id))
+        })
+        .await
     }
     // Only the adapter's log half may be used. No fake application state machine
     // is provided: consensus integration must supply a separate durable one.
