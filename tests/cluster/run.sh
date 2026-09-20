@@ -9,6 +9,10 @@ export LITHAIR_CLUSTER_DRIVER_IMAGE="lithair-cluster-driver:$nonce"
 report="/work/.probatum/runs/$COMPOSE_PROJECT_NAME"
 staging=$(mktemp -d)
 mkdir -p "$report" "$staging/node" "$staging/driver"
+# A clean CI checkout has no evidence parents yet. They must be traversable by
+# the workspace owner when upload-artifact runs outside this root container.
+owner="$(stat -c %u /work):$(stat -c %g /work)"
+chown "$owner" /work/.probatum /work/.probatum/runs "$report"
 printf '%s\n' "export COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME" \
     "export LITHAIR_CLUSTER_NODE_IMAGE=$LITHAIR_CLUSTER_NODE_IMAGE" \
     "export LITHAIR_CLUSTER_DRIVER_IMAGE=$LITHAIR_CLUSTER_DRIVER_IMAGE" > "$report/project.env"
@@ -16,6 +20,7 @@ compose() { docker compose -f /work/tests/cluster/compose.yml "$@"; }
 cleanup() {
     result=$?
     trap - EXIT INT TERM
+    if [ -f "$report/verdict.json" ]; then cat "$report/verdict.json"; fi
     compose logs --no-color > "$report/containers.log" 2>&1 || true
     docker cp "$COMPOSE_PROJECT_NAME-driver:/evidence/." "$report/evidence" 2>/dev/null || true
     # A cleanup failure is itself a failed gate; never silently leave this run behind.
@@ -34,7 +39,7 @@ cleanup() {
     done
     docker image rm "$LITHAIR_CLUSTER_NODE_IMAGE" "$LITHAIR_CLUSTER_DRIVER_IMAGE" >> "$report/cleanup.log" 2>&1 || true
     rm -rf "$staging"
-    chown -R "$(stat -c %u /work):$(stat -c %g /work)" "$report"
+    chown -R "$owner" "$report"
     echo "Cluster evidence: .probatum/runs/$COMPOSE_PROJECT_NAME (exit $result)"
     exit "$result"
 }
@@ -50,4 +55,3 @@ docker build -t "$LITHAIR_CLUSTER_DRIVER_IMAGE" "$staging/driver"
 compose run --rm --no-deps prepare
 compose up -d node1 node2 node3
 compose run -T --no-deps --name "$COMPOSE_PROJECT_NAME-driver" driver > "$report/verdict.json"
-cat "$report/verdict.json"

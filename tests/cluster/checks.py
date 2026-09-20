@@ -17,7 +17,9 @@ HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def command(*args, timeout=30):
-    result = subprocess.run(args, check=True, capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f'{args!r} exited {result.returncode}\n{result.stdout}\n{result.stderr}')
     return result.stdout.strip()
 
 
@@ -154,8 +156,11 @@ def bootstrap():
 def failover():
     victim = leader()
     compose('kill', '-s', 'SIGKILL', f'node{victim}')
-    info = json.loads(command('docker', 'inspect', container(victim)))[0]
-    assert not info['State']['Running'] and info['State']['ExitCode'] == 137, info['State']
+    victim_container = container(victim)
+    def killed():
+        info = json.loads(command('docker', 'inspect', victim_container))[0]['State']
+        return not info['Running'] and info['ExitCode'] == 137
+    poll('killed leader exited with SIGKILL', killed)
     survivors = tuple(i for i in IDS if i != victim)
     write_batch('after-kill', 4, survivors)
     compose('start', f'node{victim}')
