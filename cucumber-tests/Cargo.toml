@@ -168,3 +168,8 @@ lazy_static = "1.4"                                         # Thread-safe static
 name = "openraft_checkpoint_bdd"
 path = "tests/openraft_checkpoint_bdd.rs"
 harness = false
+
+[[test]]
+name = "openraft_identity_bdd"
+path = "tests/openraft_identity_bdd.rs"
+harness = false

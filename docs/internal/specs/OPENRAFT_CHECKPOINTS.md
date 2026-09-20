@@ -109,5 +109,6 @@ and consensus Gherkin runners execute these contracts in `cidx run test`.
 These tests establish process-crash recovery under the documented filesystem
 sync/rename assumptions. They do not emulate host power loss or qualify disks,
 hybrid application checkpoints, membership replacement or deployment on three
-independent VMs. Persisted cluster identity and operator bootstrap remain the next
+independent VMs. [Persisted identity and guarded bootstrap](OPENRAFT_IDENTITY.md)
+are covered by #257. Operator tooling, membership replacement and credential rotation remain
 milestone-2 work before native/Turso/session integration.

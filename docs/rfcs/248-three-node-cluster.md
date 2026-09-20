@@ -189,6 +189,15 @@ stage schema changes using expand/contract steps. Enable new commands only after
 every participating binary supports them. Refuse unsafe downgrades; a destructive
 migration cannot be made reversible by calling it an automatic rollback.
 
+## Administration target
+
+Provide a dedicated authenticated cluster/deployment console for node health,
+leader/quorum status, replication lag, versions and guarded operator actions. Its
+access is separate from public application traffic and the internal mTLS peer
+listener. Existing data administration does not implement these cluster controls.
+The console must use the same validated operational APIs as operator tooling;
+it cannot bypass quorum, compatibility, recovery or authorization checks.
+
 ## Delivery and acceptance
 
 Each milestone gets a draft PR before implementation and must leave unsupported
@@ -197,7 +206,7 @@ paths rejected. Merging this RFC closes only #249, not the delivery tracker #248
 | Milestone | Deliverable and exit evidence |
 |---|---|
 | 1. Durable consensus storage | [#251](https://github.com/lithair/lithair/issues/251): private OpenRaft log/vote implementation, upstream storage suite and crash/reopen regressions |
-| 2. Three-node consensus | [#253](https://github.com/lithair/lithair/issues/253): authenticated transport and real-process election/partition tests with a test state machine. [#255](https://github.com/lithair/lithair/issues/255): durable snapshots and physical compaction. Operator bootstrap, persisted identity and membership replacement remain follow-ups |
+| 2. Three-node consensus | [#253](https://github.com/lithair/lithair/issues/253): authenticated transport and real-process election/partition tests with a test state machine. [#255](https://github.com/lithair/lithair/issues/255): durable snapshots and physical compaction. [#257](https://github.com/lithair/lithair/issues/257): persisted identity and guarded bootstrap. Operator tooling, membership replacement and credential rotation remain follow-ups |
 | 3. Native integration | Ordered native writes, idempotency, consistent reads and generated-route contract parity; restart and old-leader return tests |
 | 4. Turso integration | Replicated SQL apply/checkpoints, coordinated schema changes and hybrid snapshots; crash/replay tests without duplicate mutations |
 | 5. Sessions and admission | Session continuity/revocation, clock handling, complete hybrid recovery and quorum-aware readiness |

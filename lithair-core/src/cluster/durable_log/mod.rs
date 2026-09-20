@@ -18,6 +18,8 @@ use tokio::sync::Mutex;
 
 mod checkpoint;
 pub(crate) use checkpoint::SavedSnapshot;
+mod identity;
+pub(crate) use identity::NodeIdentity;
 
 const MAGIC: &[u8; 8] = b"LTRLOG01";
 const HEADER_LEN: u64 = 24;
@@ -169,6 +171,8 @@ struct DurableEnd {
     journal: Option<[u8; 16]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     snapshot: Option<checkpoint::SnapshotPointer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    node: Option<identity::BoundNode>,
 }
 
 struct Inner<C: RaftTypeConfig> {
@@ -280,7 +284,10 @@ pub(crate) enum Stage {
 }
 
 impl<C: RaftTypeConfig> Inner<C> {
-    fn open(directory: PathBuf, create: bool) -> io::Result<Self> {
+    fn open(directory: PathBuf, create: bool, expected: Option<NodeIdentity>) -> io::Result<Self> {
+        if let Some(identity) = &expected {
+            identity.validate()?;
+        }
         // The caller provisions a durable, dedicated directory. Never interpret
         // an existing legacy WAL or a partially initialized store as empty.
         let directory = directory.canonicalize()?;
@@ -311,11 +318,12 @@ impl<C: RaftTypeConfig> Inner<C> {
             let journal = new.persist(&journal_path).map_err(|e| e.error)?;
             dir.sync_all()?;
             let end = DurableEnd {
-                version: 1,
+                version: if expected.is_some() { 3 } else { 1 },
                 identity,
                 offset: HEADER_LEN,
                 journal: None,
                 snapshot: None,
+                node: expected.clone().map(identity::BoundNode::new),
             };
             let mut metadata = tempfile::NamedTempFile::new_in(&directory)?;
             metadata.write_all(&encode(&end)?)?;
@@ -328,11 +336,20 @@ impl<C: RaftTypeConfig> Inner<C> {
             let size = metadata.metadata()?.len();
             let (end, read): (DurableEnd, _) = decode(&mut metadata, size)?;
             if read != size
-                || !matches!(end.version, 1 | 2)
+                || !matches!(end.version, 1..=3)
                 || (end.version == 1 && (end.journal.is_some() || end.snapshot.is_some()))
                 || (end.version == 2 && end.journal.is_none() && end.snapshot.is_none())
+                || ((end.version == 3) != end.node.is_some())
             {
                 return Err(invalid("unsupported or invalid durable metadata format"));
+            }
+            // Check identity before opening/replaying/truncating the journal or
+            // reclaiming generations. Recovery is never an enrollment operation.
+            if let Some(node) = &end.node {
+                node.identity.validate()?;
+            }
+            if end.node.as_ref().map(|n| &n.identity) != expected.as_ref() {
+                return Err(invalid("OpenRaft node identity mismatch or missing binding"));
             }
             let journal = OpenOptions::new()
                 .read(true)
@@ -461,21 +478,22 @@ impl<C: RaftTypeConfig> DurableLog<C> {
     pub(crate) async fn create(
         directory: impl AsRef<Path>,
     ) -> Result<Self, StorageError<C::NodeId>> {
-        Self::load(directory, true).await
+        Self::load(directory, true, None).await
     }
 
     /// Reopen an initialized store. Missing files are always an error.
     pub(crate) async fn open(directory: impl AsRef<Path>) -> Result<Self, StorageError<C::NodeId>> {
-        Self::load(directory, false).await
+        Self::load(directory, false, None).await
     }
 
     async fn load(
         directory: impl AsRef<Path>,
         create: bool,
+        expected: Option<NodeIdentity>,
     ) -> Result<Self, StorageError<C::NodeId>> {
         let directory = directory.as_ref().to_owned();
         tokio::task::spawn_blocking(move || {
-            Inner::open(directory.clone(), create)
+            Inner::open(directory.clone(), create, expected)
                 .map(|inner| Self(Arc::new(Mutex::new(inner))))
                 .map_err(|e| {
                     io::Error::new(e.kind(), format!("OpenRaft store {}: {e}", directory.display()))

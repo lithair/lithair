@@ -40,9 +40,10 @@ public model or readiness endpoints on this listener.
 Enrollment is immutable for the lifetime of a transport. The caller must supply
 the intended fixed group; OpenRaft owns voting membership and quorum decisions.
 `C::Node` metadata does not override enrolled addresses or certificates. Dynamic
-membership, credential rotation and persistent node/cluster identity manifests
-must be implemented and qualified before exposing a supported deployment API.
-Reusing a durable directory with a different identity is not made safe by TLS.
+membership and credential rotation remain prerequisites for a supported deployment
+API. `node_identity()` supplies the [persistent store binding](OPENRAFT_IDENTITY.md);
+the consensus fixture verifies it before starting the peer listener. TLS alone
+does not make reusing a directory under another identity safe.
 
 ## Bounds and shutdown
 
@@ -103,9 +104,10 @@ snapshots or integration with native models, Turso, sessions and authorization.
 The isolated snapshot RPC response test only checks transport behavior. Durable
 publication, physical compaction and test-state snapshot recovery are covered by
 [the checkpoint tests](OPENRAFT_CHECKPOINTS.md) in #255.
-Explicit operator bootstrap, persisted identity checks, replacement membership
-and certificate rotation remain milestone 2 follow-ups. HTTP contracts, read
-admission, request deduplication, application checkpoints, rolling deployment and
-qualification on three independent
-VMs remain later milestones. No production availability or throughput claim follows
+Persisted identity and guarded explicit bootstrap are covered by
+[the identity foundation](OPENRAFT_IDENTITY.md) in #257. Operator tooling,
+replacement membership and certificate rotation remain milestone 2 follow-ups.
+HTTP contracts, read admission, request deduplication, application checkpoints,
+rolling deployment and qualification on three independent VMs remain later
+milestones. No production availability or throughput claim follows
 from these loopback correctness tests.

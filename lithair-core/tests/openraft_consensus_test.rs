@@ -62,3 +62,18 @@ async fn follower_installs_snapshot_after_compaction_and_survives_cold_restart()
     cluster.converge().await;
     cluster.stop().await;
 }
+
+#[tokio::test]
+async fn provisioned_nodes_require_explicit_bootstrap_even_after_restart() {
+    let mut cluster = processes::Cluster::provision().await;
+    cluster.assert_uninitialized().await;
+    cluster.restart_uninitialized().await;
+    cluster.reject_follower_bootstrap().await;
+    cluster.bootstrap().await;
+    cluster.write(None, "explicit-bootstrap").await;
+    cluster.reject_wrong_identity().await;
+    cluster.cold_restart().await;
+    cluster.converge().await;
+    cluster.reject_rebootstrap().await;
+    cluster.stop().await;
+}

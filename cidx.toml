@@ -43,7 +43,7 @@ containers = ["cargo-build"]
 # suite finds target/debug/lithair (lithair_binary() probes both).
 [containers.cargo-test]
 timeout = "50m"
-command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p lithair-core --features cluster,tls --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test && cargo test -p lithair-macros --tests && cargo test -p lithair-turso --tests && cargo build -p lithair-cli && cargo test -p cucumber-tests --test no_orphan_features --test cucumber_tests --test behavior_models_test --test scaffolding_test --test serialization_test --test sessions_test --test turso_test --test openraft_storage_bdd --test openraft_consensus_bdd --test openraft_checkpoint_bdd'"
+command = "sh -c 'cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p lithair-core --features cluster,tls --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test --test openraft_identity_test && cargo test -p lithair-macros --tests && cargo test -p lithair-turso --tests && cargo build -p lithair-cli && cargo test -p cucumber-tests --test no_orphan_features --test cucumber_tests --test behavior_models_test --test scaffolding_test --test serialization_test --test sessions_test --test turso_test --test openraft_storage_bdd --test openraft_consensus_bdd --test openraft_checkpoint_bdd --test openraft_identity_bdd'"
 
 # Workspace-aware release build.
 [containers.cargo-build]
@@ -52,7 +52,7 @@ command = "cargo build --workspace --release"
 # Check the private cluster/TLS foundation and its executable harness too;
 # the default feature set does not compile those modules.
 [containers.clippy]
-command = "sh -c 'rustup component add clippy && cargo clippy -- -D warnings && cargo clippy -p lithair-core --features cluster,tls --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test -- -D warnings && cargo clippy -p cucumber-tests --test openraft_consensus_bdd --test openraft_checkpoint_bdd -- -D warnings'"
+command = "sh -c 'rustup component add clippy && cargo clippy -- -D warnings && cargo clippy -p lithair-core --features cluster,tls --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test --test openraft_identity_test -- -D warnings && cargo clippy -p cucumber-tests --test openraft_consensus_bdd --test openraft_checkpoint_bdd --test openraft_identity_bdd -- -D warnings'"
 
 # Trivy filesystem scan. `--skip-dirs target` excludes build artifacts:
 # `cargo package` leaves frozen Cargo.locks under target/package/ that
