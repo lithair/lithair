@@ -61,7 +61,8 @@ tasks:
           cidx run test     - unit, integration, macro and behavior tests
           cidx run build    - workspace release build
           cidx run pr       - code + test phases
-          cidx run ci       - security + code + test + build
+          cidx run cluster  - Probatum + three-node Compose failure/recovery
+          cidx run ci       - security + code + test + cluster + build
           cidx repo pr create --issue NUMBER 'type: title' - draft PR before coding
           cidx repo cpw -m 'type: description'             - check, commit, push, watch
 

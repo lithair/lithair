@@ -54,6 +54,7 @@ commands for the cidx gates:
 cidx run code       # mandatory before every commit: CI rustfmt and clippy
 cidx run test       # CI unit, integration, compile-fail and behavior gate
 cidx run ci         # full containerized pipeline before review
+cidx run cluster    # Probatum + three-node Docker Compose qualification
 ```
 
 Task is optional and runs project helpers: examples, demos, benchmarks,
@@ -72,6 +73,13 @@ coverage in the relevant BDD suite. Register new feature files with the
 `no_orphan_features` test. Use temporary data directories and isolated ports.
 Assert properties rather than elapsed time; poll with a deadline instead of
 fixed sleeps. Serialize tests that mutate process-wide environment variables.
+
+For cluster operations and failure/recovery changes, extend the Probatum checks
+in `tests/cluster/` and use Docker Compose (or a documented equivalent) to exercise
+separate nodes, volumes and networks. Run them through `cidx run cluster`, also
+part of `cidx run ci`. Assert acknowledged data, quorum refusal and recovery;
+container startup alone is not evidence. Keep run evidence, isolate resource
+names and clean up on failure. Retain the lower-level Rust and Gherkin suites.
 
 ## Git and review
 

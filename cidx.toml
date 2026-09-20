@@ -5,6 +5,7 @@
 #   cidx run security  # cargo-audit + gitleaks + trivy
 #   cidx run test      # unit + integration + behavior BDD (per-PR pyramid)
 #   cidx run build     # workspace release build
+#   cidx run cluster   # Probatum + three-node Docker Compose qualification
 #   cidx run ci        # full pipeline
 #
 # CI executes the same phases via .github/workflows/cidx.yml.
@@ -20,6 +21,9 @@ containers = ["rustfmt", "clippy"]
 
 [test]
 containers = ["cargo-test"]
+
+[cluster]
+containers = ["cluster-build", "cluster-probatum"]
 
 [build]
 containers = ["cargo-build"]
@@ -52,7 +56,7 @@ command = "sh -c 'cargo build --workspace --release && cargo build -p lithair-cl
 # Check the private cluster/TLS foundation and its executable harness too;
 # the default feature set does not compile those modules.
 [containers.clippy]
-command = "sh -c 'rustup component add clippy && cargo clippy -- -D warnings && cargo clippy -p lithair-core --features cluster,tls --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test --test openraft_identity_test --test cluster_operator_test -- -D warnings && cargo clippy -p lithair-cli --features cluster-ops --test cluster_ops -- -D warnings && cargo clippy -p cucumber-tests --features cluster-ops --test openraft_consensus_bdd --test openraft_checkpoint_bdd --test openraft_identity_bdd --test cluster_operator_bdd -- -D warnings'"
+command = "sh -c 'rustup component add clippy && cargo clippy -- -D warnings && cargo clippy -p lithair-core --features cluster,tls --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test --test openraft_identity_test --test cluster_operator_test --example cluster-compose-node -- -D warnings && cargo clippy -p lithair-cli --features cluster-ops --test cluster_ops -- -D warnings && cargo clippy -p cucumber-tests --features cluster-ops --test openraft_consensus_bdd --test openraft_checkpoint_bdd --test openraft_identity_bdd --test cluster_operator_bdd -- -D warnings'"
 
 # Trivy filesystem scan. `--skip-dirs target` excludes build artifacts:
 # `cargo package` leaves frozen Cargo.locks under target/package/ that
@@ -86,9 +90,30 @@ command = "sh -c 'command -v cargo-audit || cargo install --quiet --locked cargo
 
 # ─── pipelines ───
 [pipelines.ci]
-phases = ["security", "code", "test", "build"]
+phases = ["security", "code", "test", "cluster", "build"]
 description = "Full CI pipeline"
 
 [pipelines.pr]
 phases = ["code", "test"]
 description = "Pull request validation (no build artifacts)"
+
+# The fixture is deliberately a test-only example, not an application server.
+[containers.cluster-build]
+image = "rust:1.97.1-slim@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd"
+command = "cargo build -p lithair-core --features cluster,tls --example cluster-compose-node"
+workdir = "/work"
+volumes = ["${WORKSPACE}:/work"]
+timeout = "20m"
+
+[containers.cluster-probatum]
+image = "docker:29.7.1-cli@sha256:27a51d5ab1cd38d9eeaba7b415b8c07bc10c31e1cf1ec8d78f6413fcfab3f44f"
+entrypoint = ["sh"]
+command = "tests/cluster/run.sh"
+workdir = "/work"
+volumes = ["${WORKSPACE}:/work", "/var/run/docker.sock:/var/run/docker.sock"]
+privileged = true
+ephemeral = true
+timeout = "20m"
+
+[containers.cluster-probatum.env]
+LITHAIR_CLUSTER_INJECT_FAILURE = "${LITHAIR_CLUSTER_INJECT_FAILURE}"

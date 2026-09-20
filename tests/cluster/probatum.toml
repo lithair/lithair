@@ -1,0 +1,45 @@
+# Black-box assertions against independently networked containers.
+[[check]]
+name = "three isolated stores start without initializing a group"
+run = "python3 /suite/checks.py pristine"
+timeout = 60
+
+[[check]]
+name = "replication is isolated from test control and requires a client certificate"
+run = "python3 /suite/checks.py isolation"
+timeout = 30
+
+[[check]]
+name = "missing peer refuses bootstrap; explicit retry succeeds after its return"
+run = "python3 /suite/checks.py bootstrap"
+timeout = 60
+
+[[check]]
+name = "acknowledged writes survive leader SIGKILL and majority failover"
+run = "python3 /suite/checks.py failover"
+timeout = 90
+
+[[check]]
+name = "a real network partition denies minority writes and consistent reads"
+run = "python3 /suite/checks.py partition"
+timeout = 90
+
+[[check]]
+name = "a stopped follower recovers the purged prefix through a snapshot"
+run = "python3 /suite/checks.py snapshot"
+timeout = 120
+
+[[check]]
+name = "three cold-restarted containers recover without rebootstrap"
+run = "python3 /suite/checks.py restart"
+timeout = 90
+
+[[check]]
+name = "Probatum propagates an intentionally wrong expected state"
+run = "python3 /suite/checks.py negative"
+timeout = 30
+
+[[check]]
+name = "stopped stores can be inspected with their original identities"
+run = "python3 /suite/checks.py inspect"
+timeout = 60

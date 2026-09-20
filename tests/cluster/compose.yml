@@ -1,0 +1,66 @@
+# Test state machine only. No host ports and no production HTTP routes.
+x-node: &node
+  image: ${LITHAIR_CLUSTER_NODE_IMAGE:?set by cidx runner}
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  stop_grace_period: 5s
+
+services:
+  prepare:
+    <<: *node
+    command: [prepare]
+    network_mode: none
+    volumes:
+      - keys1:/secrets/1
+      - keys2:/secrets/2
+      - keys3:/secrets/3
+      - data1:/stores/1
+      - data2:/stores/2
+      - data3:/stores/3
+  node1:
+    <<: *node
+    command: [serve, '1']
+    volumes: [keys1:/secrets:ro, data1:/data]
+    networks:
+      replication: {aliases: [raft1]}
+      control: {aliases: [control1]}
+  node2:
+    <<: *node
+    command: [serve, '2']
+    volumes: [keys2:/secrets:ro, data2:/data]
+    networks:
+      replication: {aliases: [raft2]}
+      control: {aliases: [control2]}
+  node3:
+    <<: *node
+    command: [serve, '3']
+    volumes: [keys3:/secrets:ro, data3:/data]
+    networks:
+      replication: {aliases: [raft3]}
+      control: {aliases: [control3]}
+  driver:
+    image: ${LITHAIR_CLUSTER_DRIVER_IMAGE:?set by cidx runner}
+    init: true
+    working_dir: /evidence
+    command: [probatum, run, /suite/probatum.toml, --json]
+    environment:
+      LITHAIR_CLUSTER_INJECT_FAILURE: ${LITHAIR_CLUSTER_INJECT_FAILURE:-0}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:?unique run name required}
+      LITHAIR_CLUSTER_NODE_IMAGE: ${LITHAIR_CLUSTER_NODE_IMAGE}
+      LITHAIR_CLUSTER_DRIVER_IMAGE: ${LITHAIR_CLUSTER_DRIVER_IMAGE}
+    networks: [control]
+    volumes: [evidence:/evidence, /var/run/docker.sock:/var/run/docker.sock]
+
+networks:
+  replication: {internal: true}
+  control: {internal: true}
+volumes:
+  keys1:
+  keys2:
+  keys3:
+  data1:
+  data2:
+  data3:
+  evidence:
