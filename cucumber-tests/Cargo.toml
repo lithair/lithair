@@ -118,6 +118,15 @@ anyhow = "1"
 lithair-turso = { path = "../lithair-turso" }
 hybrid-storage = { path = "../examples/advanced/hybrid-storage" }
 
+[features]
+cluster-ops = ["lithair-core/cluster", "lithair-core/tls"]
+
+[[test]]
+name = "cluster_operator_bdd"
+path = "tests/cluster_operator_bdd.rs"
+harness = false
+required-features = ["cluster-ops"]
+
 [[test]]
 name = "openraft_storage_bdd"
 path = "tests/openraft_storage_bdd.rs"

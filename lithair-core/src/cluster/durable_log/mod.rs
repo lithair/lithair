@@ -285,6 +285,15 @@ pub(crate) enum Stage {
 
 impl<C: RaftTypeConfig> Inner<C> {
     fn open(directory: PathBuf, create: bool, expected: Option<NodeIdentity>) -> io::Result<Self> {
+        Self::load(directory, create, expected, true)
+    }
+
+    fn load(
+        directory: PathBuf,
+        create: bool,
+        expected: Option<NodeIdentity>,
+        recover: bool,
+    ) -> io::Result<Self> {
         if let Some(identity) = &expected {
             identity.validate()?;
         }
@@ -294,7 +303,7 @@ impl<C: RaftTypeConfig> Inner<C> {
         let dir = File::open(&directory)?;
         let lock = OpenOptions::new()
             .read(true)
-            .write(true)
+            .write(recover)
             .create(create)
             .truncate(false)
             .open(directory.join("LOCK"))?;
@@ -353,7 +362,7 @@ impl<C: RaftTypeConfig> Inner<C> {
             }
             let journal = OpenOptions::new()
                 .read(true)
-                .write(true)
+                .write(recover)
                 .open(directory.join(end.journal_name()))?;
             (journal, end)
         };
@@ -389,12 +398,16 @@ impl<C: RaftTypeConfig> Inner<C> {
         }
         // Only bytes outside the durable boundary may be discarded. They were
         // never acknowledged. Damage inside that boundary was rejected above.
-        journal.set_len(end.offset)?;
-        journal.sync_all()?;
+        if recover {
+            journal.set_len(end.offset)?;
+            journal.sync_all()?;
+        }
         journal.seek(SeekFrom::Start(end.offset))?;
         // A preceding process may have died after rename but before directory
         // sync. Stabilize the selected metadata before allowing any new response.
-        dir.sync_all()?;
+        if recover {
+            dir.sync_all()?;
+        }
         let snapshot = checkpoint::load_snapshot::<C>(&directory, &end)?;
         if let (Some(snapshot), Some(purged)) = (&snapshot, &state.purged) {
             if snapshot
@@ -421,7 +434,9 @@ impl<C: RaftTypeConfig> Inner<C> {
             #[cfg(test)]
             pause: None,
         };
-        inner.reclaim_generations()?;
+        if recover {
+            inner.reclaim_generations()?;
+        }
         Ok(inner)
     }
 

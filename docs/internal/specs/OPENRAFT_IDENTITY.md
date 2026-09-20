@@ -7,14 +7,14 @@ not a public server builder or a production deployment API.
 
 ## Provisioning and recovery
 
-`PeerTransport::node_identity(bootstrap_node)` derives enrollment from the
+`PeerTransport::node_identity()` derives enrollment from the
 validated transport configuration: cluster ID, local node ID, exactly three
 voter IDs with distinct certificate fingerprints, and one designated bootstrap
 node. The local and bootstrap IDs must belong to that group. This initial group
 is immutable for this milestone. All three operators must provision the same
 cluster, enrollment and bootstrap designation, with each node's own local ID.
-This local binding does not negotiate agreement on operator configuration across
-peers; coordinated enrollment remains an operator-tooling prerequisite.
+The [operator tooling](OPENRAFT_OPERATOR.md) validates a shared plan digest on
+every peer RPC and requires all three peers to agree before initial bootstrap.
 
 `DurableLog::create_for_node(directory, identity)` explicitly provisions an empty,
 dedicated directory. `open_for_node(directory, expected_identity)` only recovers
@@ -53,9 +53,10 @@ need explicit later procedures. Editing the manifest is not such a procedure.
 
 Provisioning starts a learner with no group. A restart of provisioned, empty nodes
 still does not initialize a group. Peer unavailability never triggers bootstrap.
-The test operator invokes `DurableLog::bootstrap(&raft)` through its parent/child
-control channel; neither the internal peer HTTPS listener nor the public HTTP
-listener exposes this action.
+The test operator invokes `PeerTransport::bootstrap(&store, &raft)` through its
+parent/child control channel. After authenticated preflight of both remote peers,
+this invokes `DurableLog::bootstrap(&raft)`; neither the internal peer HTTPS
+listener nor the public HTTP listener exposes this action.
 
 The helper checks the Raft node ID, then obtains a single-use `BootstrapPermit`:
 
@@ -98,7 +99,9 @@ acknowledged writes. Existing partition, leader-crash and snapshot catch-up case
 exercise the same bound stores. The registered `openraft_identity_bdd` runner
 executes `features/core/openraft_identity.feature` in the cidx test gate.
 
-Operator CLI/UI, persistent membership replacement, credential rotation, native
+Offline CLI preparation and inspection are described in the
+[operator contract](OPENRAFT_OPERATOR.md). Live operator CLI/UI, persistent
+membership replacement, credential rotation, native
 models, Turso, sessions, public readiness and rolling deployment remain follow-up
 work. The planned authenticated cluster/deployment console is separate from the
 public application and internal mTLS replication access. These tests use a

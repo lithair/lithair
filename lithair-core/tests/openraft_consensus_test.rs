@@ -69,6 +69,8 @@ async fn provisioned_nodes_require_explicit_bootstrap_even_after_restart() {
     cluster.assert_uninitialized().await;
     cluster.restart_uninitialized().await;
     cluster.reject_follower_bootstrap().await;
+    cluster.reject_unavailable_bootstrap().await;
+    cluster.heal();
     cluster.bootstrap().await;
     cluster.write(None, "explicit-bootstrap").await;
     cluster.reject_wrong_identity().await;

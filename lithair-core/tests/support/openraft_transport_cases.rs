@@ -47,8 +47,8 @@ impl Fixture {
         self.raft.shutdown().await.unwrap();
     }
 }
-fn vote_body() -> Value {
-    json!({"version":1,"cluster":"test","sender":1,"recipient":2,
+fn vote_body(network: &PeerTransport<TypeConfig>) -> Value {
+    json!({"version":2,"cluster":"test","sender":1,"recipient":2,"plan":network.node_identity().unwrap().plan_digest().unwrap(),
         "payload":VoteRequest::new(Vote::new(5,1),None)})
 }
 fn option() -> RPCOption {
@@ -95,31 +95,35 @@ async fn invalid_envelopes_are_rejected_before_raft_dispatch() {
     let client = fixture.client();
     let mut cases = Vec::new();
     for (key, value) in [
-        ("version", json!(2)),
+        ("version", json!(1)),
         ("cluster", json!("another")),
         ("sender", json!(3)),
         ("recipient", json!(3)),
         ("extra", json!(true)),
     ] {
-        let mut body = vote_body();
+        let mut body = vote_body(&fixture.client());
         body[key] = value;
         cases.push(serde_json::to_vec(&body).unwrap());
     }
-    let mut impersonated = vote_body();
+    let mut impersonated = vote_body(&fixture.client());
     impersonated["payload"] =
         serde_json::to_value(VoteRequest::new(Vote::new(5, 3), None)).unwrap();
     cases.push(serde_json::to_vec(&impersonated).unwrap());
     cases.push(b"malformed".to_vec());
     cases.push(vec![b' '; MAX_BODY + 1]);
     for body in cases {
-        assert!(client.raw_rpc(2, "/raft/v1/vote", body).await.is_err());
+        assert!(client.raw_rpc(2, "/raft/v2/vote", body).await.is_err());
     }
     assert!(client
-        .raw_rpc(2, "/raft/v1/vote?unexpected=1", serde_json::to_vec(&vote_body()).unwrap())
+        .raw_rpc(
+            2,
+            "/raft/v2/vote?unexpected=1",
+            serde_json::to_vec(&vote_body(&fixture.client())).unwrap()
+        )
         .await
         .is_err());
     assert!(client
-        .raw_rpc(2, "/public", serde_json::to_vec(&vote_body()).unwrap())
+        .raw_rpc(2, "/public", serde_json::to_vec(&vote_body(&fixture.client())).unwrap())
         .await
         .is_err());
     assert_eq!(fixture.raft.metrics().borrow().current_term, 0);
@@ -132,7 +136,7 @@ async fn mutual_tls_rejects_missing_unknown_and_foreign_certificates() {
     let mut missing = fixture.client();
     missing.without_client_certificate(CertificateDer::from(fixture.credentials.ca.clone()));
     assert!(missing
-        .raw_rpc(2, "/raft/v1/vote", serde_json::to_vec(&vote_body()).unwrap())
+        .raw_rpc(2, "/raft/v2/vote", serde_json::to_vec(&vote_body(&fixture.client())).unwrap())
         .await
         .is_err());
     let mut peers = fixture.peers.clone();
@@ -144,9 +148,10 @@ async fn mutual_tls_rejects_missing_unknown_and_foreign_certificates() {
             certificate_sha256: crate::peer_transport::fingerprint(&fixture.credentials.certs[&4]),
         },
     );
+    peers.remove(&3);
     let unknown = fixture.credentials.transport(4, "test", peers);
     assert!(unknown
-        .raw_rpc(2, "/raft/v1/vote", serde_json::to_vec(&vote_body()).unwrap())
+        .raw_rpc(2, "/raft/v2/vote", serde_json::to_vec(&vote_body(&fixture.client())).unwrap())
         .await
         .is_err());
     let foreign = Credentials::generate();
@@ -156,6 +161,7 @@ async fn mutual_tls_rejects_missing_unknown_and_foreign_certificates() {
     let foreign = PeerTransport::<TypeConfig>::new(
         "test".into(),
         1,
+        1,
         peers,
         vec![fixture.credentials.ca.clone().into()],
         vec![foreign.certs[&1].clone().into()],
@@ -163,7 +169,7 @@ async fn mutual_tls_rejects_missing_unknown_and_foreign_certificates() {
     )
     .unwrap();
     assert!(foreign
-        .raw_rpc(2, "/raft/v1/vote", serde_json::to_vec(&vote_body()).unwrap())
+        .raw_rpc(2, "/raft/v2/vote", serde_json::to_vec(&vote_body(&fixture.client())).unwrap())
         .await
         .is_err());
     assert_eq!(fixture.raft.metrics().borrow().current_term, 0);
@@ -182,7 +188,7 @@ async fn outbound_identity_and_body_limits_fail_closed() {
         }
         let client = fixture.credentials.transport(1, "test", peers);
         assert!(client
-            .raw_rpc(2, "/raft/v1/vote", serde_json::to_vec(&vote_body()).unwrap())
+            .raw_rpc(2, "/raft/v2/vote", serde_json::to_vec(&vote_body(&fixture.client())).unwrap())
             .await
             .is_err());
     }
@@ -209,6 +215,7 @@ async fn enrollment_rejects_duplicate_certificate_identities() {
     peers.get_mut(&3).unwrap().certificate_sha256 = peers[&2].certificate_sha256;
     assert!(PeerTransport::<TypeConfig>::new(
         "test".into(),
+        1,
         1,
         peers,
         vec![fixture.credentials.ca.clone().into()],
@@ -243,5 +250,61 @@ async fn rpc_deadline_closes_an_unresponsive_tls_connection() {
         .unwrap_err();
     assert!(error.to_string().contains("deadline has elapsed"), "{error}");
     server.await.unwrap();
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn a_different_initial_group_is_rejected_before_raft_dispatch() {
+    let fixture = Fixture::new().await;
+    let mut peers = fixture.peers.clone();
+    peers.get_mut(&3).unwrap().certificate_sha256 = [9; 32];
+    let changed = fixture.credentials.transport(1, "test", peers);
+    assert!(changed
+        .raw_rpc(2, "/raft/v2/vote", serde_json::to_vec(&vote_body(&changed)).unwrap())
+        .await
+        .is_err());
+    let changed = PeerTransport::<TypeConfig>::new(
+        "test".into(),
+        1,
+        2,
+        fixture.peers.clone(),
+        vec![fixture.credentials.ca.clone().into()],
+        vec![fixture.credentials.certs[&1].clone().into()],
+        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(fixture.credentials.keys[&1].clone())),
+    )
+    .unwrap();
+    assert!(changed
+        .raw_rpc(2, "/raft/v2/vote", serde_json::to_vec(&vote_body(&changed)).unwrap())
+        .await
+        .is_err());
+    assert_eq!(fixture.raft.metrics().borrow().current_term, 0);
+    fixture.stop().await;
+}
+
+#[tokio::test]
+async fn authenticated_preflight_reports_state_without_initializing_or_voting() {
+    let fixture = Fixture::new().await;
+    let client = fixture.client();
+    let mut body = vote_body(&client);
+    body["payload"] = Value::Null;
+    let bytes = serde_json::to_vec(&body).unwrap();
+    let report = client.raw_rpc(2, "/raft/v2/preflight", bytes.clone()).await.unwrap();
+    assert_eq!(report["node_id"], 2);
+    assert_eq!(report["initialized"], false);
+    assert_eq!(report["plan"], body["plan"]);
+    assert!(client.raw_rpc(2, "/raft/v1/preflight", bytes.clone()).await.is_err());
+    assert!(client.raw_rpc(2, "/raft/v2/bootstrap", bytes).await.is_err());
+    assert_eq!(fixture.raft.metrics().borrow().current_term, 0);
+    assert!(!fixture.raft.is_initialized().await.unwrap());
+    fixture
+        .raft
+        .initialize([1, 2, 3].into_iter().collect::<std::collections::BTreeSet<_>>())
+        .await
+        .unwrap();
+    let report = client
+        .raw_rpc(2, "/raft/v2/preflight", serde_json::to_vec(&body).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(report["initialized"], true);
     fixture.stop().await;
 }

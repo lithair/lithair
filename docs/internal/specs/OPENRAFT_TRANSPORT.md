@@ -9,8 +9,9 @@ unchanged. See [RFC 248](../../rfcs/248-three-node-cluster.md).
 ## Identity and protocol
 
 The caller supplies a cluster ID (1–128 bytes), stable local node ID, an explicit
-map of enrolled node IDs to socket addresses, TLS server names and SHA-256 leaf
-certificate fingerprints, a private CA trust store, and a local certificate/key.
+map of exactly three enrolled node IDs to socket addresses, TLS server names and
+SHA-256 leaf certificate fingerprints, a designated bootstrap node, a private CA trust store,
+and a local certificate/key.
 A node cannot share its enrolled certificate with another ID. Addresses can be
 remote VM IPs; TLS server names are verified independently of the dial address.
 There is no DNS discovery or automatic enrollment.
@@ -24,14 +25,17 @@ is explicit; neither the system root store nor ambient HTTP proxies are used.
 
 One HTTP/1.1 POST per TLS connection carries JSON to one of:
 
-- `/raft/v1/vote`: RequestVote;
-- `/raft/v1/append`: AppendEntries;
-- `/raft/v1/snapshot`: OpenRaft's chunked InstallSnapshot.
+- `/raft/v2/vote`: RequestVote;
+- `/raft/v2/append`: AppendEntries;
+- `/raft/v2/snapshot`: OpenRaft's chunked InstallSnapshot;
+- `/raft/v2/preflight`: read-only initial-group agreement and initialized state.
 
-The envelope has `version`, `cluster`, `sender`, `recipient` and `payload`.
+The envelope has `version`, `cluster`, `sender`, `recipient`, `plan` and `payload`.
+`plan` is the 32-byte shared initial-group digest described in the
+[operator contract](OPENRAFT_OPERATOR.md). Wire version 1 is rejected.
 Unknown envelope fields, invalid JSON, unsupported versions, wrong clusters and
-wrong recipients are rejected before Raft is called. The sender must match the
-verified client certificate and the candidate/leader identity in the Raft vote.
+wrong recipients or shared plans are rejected before Raft is called. The sender
+must match the verified client certificate and the candidate/leader identity in the Raft vote.
 Replies preserve OpenRaft's typed success/error result. HTTP rejection, TLS,
 serialization, timeout and socket errors become transport errors, never votes
 or successful acknowledgements. There are no bootstrap, write-forwarding,
@@ -77,7 +81,7 @@ The shared fixture in `lithair-core/tests/support/openraft_processes.rs` starts
 three **child processes**, each with its own durable log directory and test-only
 OpenRaft MemStore state machine with a durable snapshot adapter. It explicitly
 creates stores and initializes the three-member configuration once. Recovery calls
-`open()` and never initializes because peers are absent. The fixture now publishes
+`open_for_node()` and never initializes because peers are absent. The fixture now publishes
 durable snapshots, purges their covered prefixes and compacts the journal. Recovery restores the snapshot before replaying the retained
 committed suffix; see [checkpoint integration](OPENRAFT_CHECKPOINTS.md).
 
@@ -105,8 +109,10 @@ The isolated snapshot RPC response test only checks transport behavior. Durable
 publication, physical compaction and test-state snapshot recovery are covered by
 [the checkpoint tests](OPENRAFT_CHECKPOINTS.md) in #255.
 Persisted identity and guarded explicit bootstrap are covered by
-[the identity foundation](OPENRAFT_IDENTITY.md) in #257. Operator tooling,
-replacement membership and certificate rotation remain milestone 2 follow-ups.
+[the identity foundation](OPENRAFT_IDENTITY.md) in #257. Offline preparation,
+inspection and shared-plan preflight are covered by the
+[operator tooling](OPENRAFT_OPERATOR.md) in #259. Live administration, replacement
+membership and certificate rotation remain milestone 2 follow-ups.
 HTTP contracts, read admission, request deduplication, application checkpoints,
 rolling deployment and qualification on three independent VMs remain later
 milestones. No production availability or throughput claim follows
