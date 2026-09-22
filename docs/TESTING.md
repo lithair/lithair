@@ -55,6 +55,22 @@ unavailability. The cidx gates explicitly enable `cluster-ops` for the CLI and
 BDD targets; the release build also compiles the optional CLI. See the
 [operator contract](internal/specs/OPENRAFT_OPERATOR.md).
 
+## Probatum and Docker Compose cluster gate
+
+`cidx run cluster` compiles the private test node, then runs Probatum 0.10.0
+against three separate Compose containers. Each node owns its data and credential
+volumes; replication and test control use different private networks. The gate
+kills the leader, disconnects a node from replication, checks majority/minority
+behavior, requires actual snapshot transfer and cold-restarts all three nodes.
+It also proves that Probatum rejects an intentionally incorrect expected value.
+
+This phase runs in `cidx run ci` and the GitHub Cluster job. Evidence is saved
+under `.probatum/runs/lithair-cluster-*/` and uploaded even after failure. See
+[the fixture runbook](../tests/cluster/README.md) for prerequisites, cleanup and
+failure-injection commands. These containers share one host and use a test state
+machine; this is not three-VM or native/Turso/session qualification. The existing
+Rust/Gherkin suites remain the lower-level regression gate.
+
 ## The workflow
 
 **New feature** → open a draft PR with `cidx repo pr create`, then write the

@@ -29,6 +29,7 @@ cidx run test            # Unit + integration + macro + behavior BDD gate
 cidx run security        # cargo-audit + gitleaks + trivy
 cidx run build           # Workspace release build
 cidx run pr              # Code + test phases
+cidx run cluster         # Probatum + three-node Compose failure/recovery gate
 cidx run ci              # Full pipeline before review
 ```
 

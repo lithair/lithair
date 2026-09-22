@@ -132,3 +132,9 @@ admin-ui = []
 
 # All optional features
 full = ["macros", "tls", "mfa", "cluster", "openapi", "admin-ui"]
+
+# Private Compose fixture: test state machine and test-control routes only.
+[[example]]
+name = "cluster-compose-node"
+path = "tests/support/compose_node.rs"
+required-features = ["cluster", "tls"]
