@@ -25,9 +25,10 @@ impl Credentials {
         let issuer = Issuer::new(params, key);
         let mut certs = BTreeMap::new();
         let mut keys = BTreeMap::new();
-        // Node 4 is CA-signed but not enrolled in the three-member fixture.
-        for id in 1..=4 {
-            let mut params = CertificateParams::new(vec![format!("node{id}.test")]).unwrap();
+        // Node 4 is unenrolled; slot 5 is a renewal of node 2 under the same CA.
+        for id in 1..=5 {
+            let name = if id == 5 { 2 } else { id };
+            let mut params = CertificateParams::new(vec![format!("node{name}.test")]).unwrap();
             params.extended_key_usages =
                 vec![ExtendedKeyUsagePurpose::ServerAuth, ExtendedKeyUsagePurpose::ClientAuth];
             let key = KeyPair::generate().unwrap();

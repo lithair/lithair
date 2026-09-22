@@ -30,6 +30,11 @@ run = "python3 /suite/checks.py snapshot"
 timeout = 120
 
 [[check]]
+name = "rolling leaf certificate rotation preserves quorum writes and rejects retired keys"
+run = "python3 /suite/checks.py rotate"
+timeout = 240
+
+[[check]]
 name = "three cold-restarted containers recover without rebootstrap"
 run = "python3 /suite/checks.py restart"
 timeout = 90

@@ -65,6 +65,13 @@ enum Commands {
 #[cfg(feature = "cluster-ops")]
 #[derive(Subcommand)]
 enum ClusterCommand {
+    /// Offline compare-and-swap of one peer certificate overlap/retirement policy.
+    UpdateCredentials {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        expected_generation: u64,
+    },
     /// Validate enrollment and local TLS material without changing storage.
     Check {
         #[arg(long)]
@@ -93,6 +100,9 @@ fn main() {
                 ClusterCommand::Check { config } => (OperatorCommand::Check, config),
                 ClusterCommand::Provision { config } => (OperatorCommand::Provision, config),
                 ClusterCommand::Inspect { config } => (OperatorCommand::Inspect, config),
+                ClusterCommand::UpdateCredentials { config, expected_generation } => {
+                    (OperatorCommand::UpdateCredentials { expected_generation }, config)
+                }
             };
             let result = tokio::runtime::Runtime::new()
                 .map_err(|error| error.to_string())

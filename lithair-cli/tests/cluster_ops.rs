@@ -44,3 +44,27 @@ fn parse_errors_do_not_echo_sensitive_configuration_contents() {
     assert!(!String::from_utf8_lossy(&output.stderr).contains("SECRET_TEST_VALUE"));
     assert!(!files.data(1).exists());
 }
+
+#[test]
+fn credential_updates_require_a_generation_and_report_stale_retries() {
+    let files = fixture::OperatorFiles::new();
+    assert!(run("provision", &files.configs[&1]).status.success());
+    let config = files.rotation_config(1);
+    let missing = run("update-credentials", &config);
+    assert_eq!(missing.status.code(), Some(2));
+    for success in [true, false] {
+        let output = Command::new(env!("CARGO_BIN_EXE_lithair"))
+            .args(["cluster", "update-credentials", "--expected-generation", "0", "--config"])
+            .arg(&config)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.success(), success, "{}", String::from_utf8_lossy(&output.stderr));
+        if success {
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(value["action"], "update-credentials");
+            assert_eq!(value["updated"], true);
+        } else {
+            assert!(output.stdout.is_empty());
+        }
+    }
+}

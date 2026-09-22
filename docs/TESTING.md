@@ -168,3 +168,7 @@ mixed HTTP example across graceful server restart, plus transactional schema
 upgrade/rollback. `lithair-turso/tests/migrations.rs` covers legacy files, paged
 upgrades, declaration drift, cancellation/panic recovery and HTTP startup. The native model path does
 not acquire a Turso dependency. See [RFC 235](rfcs/235-hybrid-storage.md).
+
+The cluster gate also qualifies staged leaf certificate rotation, retirement of
+the old client/server identity, and post-rotation cold recovery. Operator details:
+[durable credentials](internal/specs/OPENRAFT_CREDENTIALS.md).

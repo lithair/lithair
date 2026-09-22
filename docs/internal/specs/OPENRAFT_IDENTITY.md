@@ -11,8 +11,9 @@ not a public server builder or a production deployment API.
 validated transport configuration: cluster ID, local node ID, exactly three
 voter IDs with distinct certificate fingerprints, and one designated bootstrap
 node. The local and bootstrap IDs must belong to that group. This initial group
-is immutable for this milestone. All three operators must provision the same
-cluster, enrollment and bootstrap designation, with each node's own local ID.
+remains immutable; [leaf credential rotation](OPENRAFT_CREDENTIALS.md) uses a
+separate policy while preserving these original fingerprints. All three operators
+must provision the same cluster, enrollment and bootstrap designation, with each node's own local ID.
 The [operator tooling](OPENRAFT_OPERATOR.md) validates a shared plan digest on
 every peer RPC and requires all three peers to agree before initial bootstrap.
 
@@ -46,8 +47,9 @@ Dial addresses and TLS server names remain explicit transport configuration;
 they are checked by the transport but are not persisted in this identity record.
 An address can change on restart while the certificate identity stays the same.
 Trust roots and private keys are supplied separately; only certificate
-fingerprints are stored here. Membership replacement and credential rotation
-need explicit later procedures. Editing the manifest is not such a procedure.
+fingerprints are stored here. Membership replacement needs a later procedure.
+[Leaf rotation](OPENRAFT_CREDENTIALS.md) has an explicit offline procedure. Editing
+the manifest is not such a procedure.
 
 ## One explicit bootstrap action
 
@@ -101,7 +103,7 @@ executes `features/core/openraft_identity.feature` in the cidx test gate.
 
 Offline CLI preparation and inspection are described in the
 [operator contract](OPENRAFT_OPERATOR.md). Live operator CLI/UI, persistent
-membership replacement, credential rotation, native
+membership replacement, live rotation, native
 models, Turso, sessions, public readiness and rolling deployment remain follow-up
 work. The planned authenticated cluster/deployment console is separate from the
 public application and internal mTLS replication access. These tests use a

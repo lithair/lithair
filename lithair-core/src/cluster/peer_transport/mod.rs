@@ -1,7 +1,7 @@
 //! Authenticated internal OpenRaft RPCs. Enrollment is operator supplied and
-//! fixed for this foundation; it is not automatic Raft membership management.
+//! fixed for this foundation; leaf pins rotate through an offline durable policy.
 
-use super::durable_log::{DurableLog, NodeIdentity};
+use super::durable_log::{CredentialPolicy, DurableLog, NodeIdentity};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response, StatusCode};
@@ -61,6 +61,7 @@ struct Settings {
     bootstrap_node: u64,
     plan: [u8; 32],
     peers: BTreeMap<u64, Peer>,
+    credentials: CredentialPolicy,
     server: Arc<rustls::ServerConfig>,
     client: Arc<rustls::ClientConfig>,
     outgoing: Semaphore,
@@ -117,22 +118,45 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         chain: Vec<CertificateDer<'static>>,
         key: PrivateKeyDer<'static>,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(!cluster.is_empty() && cluster.len() <= 128, "invalid cluster ID");
-        let leaf = chain.first().ok_or_else(|| invalid("missing local certificate"))?;
-        let own = peers.get(&local).ok_or_else(|| invalid("local node is not enrolled"))?;
-        anyhow::ensure!(own.certificate_sha256 == fingerprint(leaf), "local certificate mismatch");
         let identity = NodeIdentity {
-            cluster_id: cluster.clone(),
+            cluster_id: cluster,
             node_id: local,
             bootstrap_node,
             voters: peers.iter().map(|(id, peer)| (*id, peer.certificate_sha256)).collect(),
         };
+        let credentials = CredentialPolicy::initial(&identity);
+        Self::with_credentials(identity, credentials, peers, trust, chain, key)
+    }
+
+    pub(crate) fn credential_policy(&self) -> &CredentialPolicy {
+        &self.settings.credentials
+    }
+
+    /// The peer fingerprint field describes genesis; active authorization is
+    /// supplied independently and must match the policy used to open the store.
+    pub(crate) fn with_credentials(
+        identity: NodeIdentity,
+        credentials: CredentialPolicy,
+        peers: BTreeMap<u64, Peer>,
+        trust: Vec<CertificateDer<'static>>,
+        chain: Vec<CertificateDer<'static>>,
+        key: PrivateKeyDer<'static>,
+    ) -> anyhow::Result<Self> {
+        credentials.validate(&identity)?;
+        let leaf = chain.first().ok_or_else(|| invalid("missing local certificate"))?;
+        anyhow::ensure!(
+            credentials.accepts(identity.node_id, fingerprint(leaf)),
+            "local certificate mismatch"
+        );
+        let supplied = peers
+            .iter()
+            .map(|(id, peer)| (*id, peer.certificate_sha256))
+            .collect::<BTreeMap<_, _>>();
+        anyhow::ensure!(supplied == identity.voters, "peer/genesis enrollment mismatch");
         let plan = identity.plan_digest()?;
-        let mut pins = std::collections::BTreeSet::new();
         for peer in peers.values() {
             ServerName::try_from(peer.server_name.clone())?;
             anyhow::ensure!(peer.address.port() != 0, "missing peer port");
-            anyhow::ensure!(pins.insert(peer.certificate_sha256), "duplicate peer certificate");
         }
         let mut roots = rustls::RootCertStore::empty();
         for cert in trust {
@@ -158,11 +182,12 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         client.alpn_protocols = vec![b"http/1.1".to_vec()];
         Ok(Self {
             settings: Arc::new(Settings {
-                cluster,
-                local,
-                bootstrap_node,
+                cluster: identity.cluster_id,
+                local: identity.node_id,
+                bootstrap_node: identity.bootstrap_node,
                 plan,
                 peers,
+                credentials,
                 server: Arc::new(server),
                 client: Arc::new(client),
                 outgoing: Semaphore::new(MAX_CONNECTIONS),
@@ -201,8 +226,8 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
                             let cert = tls.get_ref().1.peer_certificates().and_then(|c| c.first())
                                 .ok_or_else(|| invalid("missing client certificate"))?;
                             let pin = fingerprint(cert);
-                            let sender = transport.settings.peers.iter()
-                                .find_map(|(id, peer)| (peer.certificate_sha256 == pin).then_some(*id))
+                            let sender = transport.settings.peers.keys()
+                                .find(|id| transport.settings.credentials.accepts(**id, pin)).copied()
                                 .filter(|id| *id != transport.settings.local)
                                 .ok_or_else(|| invalid("unenrolled client certificate"))?;
                             let service = service_fn(move |request| {
@@ -314,7 +339,8 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
     {
         let identity = self.node_identity()?;
         anyhow::ensure!(
-            identity == store.node_identity().await?,
+            identity == store.node_identity().await?
+                && self.settings.credentials == store.credential_policy().await?,
             "store/transport identity mismatch"
         );
         anyhow::ensure!(
@@ -324,15 +350,18 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         anyhow::ensure!(raft.metrics().borrow().id == identity.node_id, "Raft identity mismatch");
         anyhow::ensure!(!raft.is_initialized().await?, "node already initialized");
         for id in self.settings.peers.keys().copied().filter(|id| *id != self.settings.local) {
-            let report: Preflight =
-                self.exchange(id, "/raft/v2/preflight", (), MAX_LIFETIME).await?;
-            anyhow::ensure!(
-                report.node_id == id && report.plan == self.settings.plan,
-                "peer plan mismatch"
-            );
-            anyhow::ensure!(!report.initialized, "peer already initialized");
+            anyhow::ensure!(!self.preflight(id).await?, "peer already initialized");
         }
         store.bootstrap(raft).await
+    }
+
+    pub(crate) async fn preflight(&self, id: u64) -> anyhow::Result<bool> {
+        let report: Preflight = self.exchange(id, "/raft/v2/preflight", (), MAX_LIFETIME).await?;
+        anyhow::ensure!(
+            report.node_id == id && report.plan == self.settings.plan,
+            "peer plan mismatch"
+        );
+        Ok(report.initialized)
     }
 
     async fn exchange<T: Serialize, R: DeserializeOwned>(
@@ -377,7 +406,10 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             .peer_certificates()
             .and_then(|c| c.first())
             .ok_or_else(|| invalid("missing server certificate"))?;
-        anyhow::ensure!(fingerprint(cert) == peer.certificate_sha256, "server identity mismatch");
+        anyhow::ensure!(
+            self.settings.credentials.accepts(target, fingerprint(cert)),
+            "server identity mismatch"
+        );
         let (mut sender, connection) =
             hyper::client::conn::http1::handshake(TokioIo::new(tls)).await?;
         let request = Request::builder()

@@ -27,7 +27,8 @@ its `/test/*` control routes.
 The `cluster-probatum` container builds disposable node/driver images and creates
 a unique `lithair-cluster-<random>` Compose project. `prepare` generates a temporary
 CA and separate node keys, explicitly provisions three bound stores, and exits.
-Each node receives only its own private key, mounted read-only, and its own data
+Each node receives only its own private keys (including node 2’s renewal), mounted
+read-only, and its own data
 volume. Node restart calls recovery only. No keys or stores are copied into run
 evidence or committed to the repository.
 
@@ -58,11 +59,14 @@ request timeouts. Assertions verify:
    accepts writes. Healing restores its original enrolled IP and convergence.
 6. A killed follower stays behind while the leader snapshots and purges beyond
    its last applied index; its return must actually install a remote snapshot.
-7. All three containers are killed and cold-started three times using their existing volumes.
+7. Rolling leaf rotation stages overlap, switches node 2’s certificate/key, and
+   retires the old pin while preserving majority writes. It verifies minority
+   refusal and rejection of retired client/server credentials.
+8. All three containers are killed and cold-started three times using their existing volumes.
    Every acknowledged mutation is recovered and repeated bootstrap is rejected.
-8. A nested Probatum run with a deliberately wrong expected response must exit 1
+9. A nested Probatum run with a deliberately wrong expected response must exit 1
    and emit valid JSON, proving assertions do not silently pass.
-9. Offline inspection succeeds on each stopped, identity-bound store.
+10. Offline inspection succeeds on each stopped, identity-bound store.
 
 A timed-out/rejected write has an uncertain outcome; the suite tracks successful
 acknowledgements and does not incorrectly assert that rejected writes never commit.
@@ -109,6 +113,12 @@ negative assertion without making the overall run fail.
 The three containers share one host/kernel. They prove real socket, TLS,
 container-crash, disk-reopen and network-partition behavior with the test state
 machine. They do not prove independent-VM failure tolerance, power-loss semantics,
-replacement membership, certificate rotation, native/Turso/session replication,
+replacement membership, automatic/CA rotation, native/Turso/session replication,
 application admission or rolling production upgrades. These remain the follow-up
 milestones in [RFC 248](../../docs/rfcs/248-three-node-cluster.md).
+
+The leaf rotation check stages overlap on each stopped node, switches node 2 to
+a renewed same-CA certificate/key, retires its old pin, and checks rejection in
+both directions. It preserves majority writes and deliberately verifies minority
+refusal during maintenance. The subsequent cold restarts and offline inspections
+require credential generation 2. See the [operator procedure](../../docs/internal/specs/OPENRAFT_CREDENTIALS.md).

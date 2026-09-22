@@ -119,9 +119,10 @@ Normal running operation still requires a 2/3 quorum, not all three nodes.
 
 There is no CLI command or HTTP route to start an application or invoke bootstrap
 in this milestone. The real-process fixture exercises the runtime action through
-its private test control channel. Replacement membership, credential rotation,
-public server integration and the dedicated authenticated deployment console
-remain subsequent work; the offline tools do not establish three-VM readiness.
+its private test control channel. [Offline leaf rotation](OPENRAFT_CREDENTIALS.md)
+adds configuration version 2 and `update-credentials --expected-generation`.
+Replacement membership, live rotation, public server integration and the dedicated
+authenticated deployment console remain subsequent work; the offline tools do not establish three-VM readiness.
 
 ## Validation
 

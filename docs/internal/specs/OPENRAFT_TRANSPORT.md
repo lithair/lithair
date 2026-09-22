@@ -44,8 +44,13 @@ public model or readiness endpoints on this listener.
 Enrollment is immutable for the lifetime of a transport. The caller must supply
 the intended fixed group; OpenRaft owns voting membership and quorum decisions.
 `C::Node` metadata does not override enrolled addresses or certificates. Dynamic
-membership and credential rotation remain prerequisites for a supported deployment
-API. `node_identity()` supplies the [persistent store binding](OPENRAFT_IDENTITY.md);
+membership and coordinated live rotation remain prerequisites for a supported
+deployment API. [Offline leaf rotation](OPENRAFT_CREDENTIALS.md) supplies a separate
+active pin policy through `with_credentials`; startup must use that same policy
+with `open_with_credentials`. Both incoming and outgoing TLS use those active pins,
+while `plan` retains the original genesis digest. Overlap permits adjacent policies
+to communicate; no policy is learned or adopted from a network request.
+`node_identity()` supplies the [persistent store binding](OPENRAFT_IDENTITY.md);
 the consensus fixture verifies it before starting the peer listener. TLS alone
 does not make reusing a directory under another identity safe.
 

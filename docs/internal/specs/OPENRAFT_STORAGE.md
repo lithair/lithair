@@ -104,3 +104,8 @@ and runs:
 The integration and BDD harnesses compile the private source directly to avoid
 publishing an application-facing API solely for tests. Process-death tests exercise
 recovery without destructors; they do not simulate a machine losing its page cache.
+
+Bound stores support explicit [leaf credential rotation](OPENRAFT_CREDENTIALS.md).
+Its first transition upgrades the manifest from version 3 to version 4 while
+preserving the journal, snapshots, UUID and bootstrap claim. Old binaries reject
+version 4; ordinary reads/recovery do not perform this upgrade.

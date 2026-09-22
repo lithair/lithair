@@ -18,6 +18,8 @@ use tokio::sync::Mutex;
 
 mod checkpoint;
 pub(crate) use checkpoint::SavedSnapshot;
+pub(crate) mod credentials;
+pub(crate) use credentials::CredentialPolicy;
 mod identity;
 pub(crate) use identity::NodeIdentity;
 
@@ -173,6 +175,8 @@ struct DurableEnd {
     snapshot: Option<checkpoint::SnapshotPointer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     node: Option<identity::BoundNode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    credentials: Option<CredentialPolicy>,
 }
 
 struct Inner<C: RaftTypeConfig> {
@@ -284,18 +288,18 @@ pub(crate) enum Stage {
 }
 
 impl<C: RaftTypeConfig> Inner<C> {
-    fn open(directory: PathBuf, create: bool, expected: Option<NodeIdentity>) -> io::Result<Self> {
-        Self::load(directory, create, expected, true)
-    }
-
     fn load(
         directory: PathBuf,
         create: bool,
         expected: Option<NodeIdentity>,
+        credentials: Option<CredentialPolicy>,
         recover: bool,
     ) -> io::Result<Self> {
         if let Some(identity) = &expected {
             identity.validate()?;
+            if let Some(policy) = &credentials {
+                policy.validate(identity)?;
+            }
         }
         // The caller provisions a durable, dedicated directory. Never interpret
         // an existing legacy WAL or a partially initialized store as empty.
@@ -333,6 +337,7 @@ impl<C: RaftTypeConfig> Inner<C> {
                 journal: None,
                 snapshot: None,
                 node: expected.clone().map(identity::BoundNode::new),
+                credentials: None,
             };
             let mut metadata = tempfile::NamedTempFile::new_in(&directory)?;
             metadata.write_all(&encode(&end)?)?;
@@ -345,10 +350,11 @@ impl<C: RaftTypeConfig> Inner<C> {
             let size = metadata.metadata()?.len();
             let (end, read): (DurableEnd, _) = decode(&mut metadata, size)?;
             if read != size
-                || !matches!(end.version, 1..=3)
+                || !matches!(end.version, 1..=4)
                 || (end.version == 1 && (end.journal.is_some() || end.snapshot.is_some()))
                 || (end.version == 2 && end.journal.is_none() && end.snapshot.is_none())
-                || ((end.version == 3) != end.node.is_some())
+                || ((end.version >= 3) != end.node.is_some())
+                || ((end.version == 4) != end.credentials.is_some())
             {
                 return Err(invalid("unsupported or invalid durable metadata format"));
             }
@@ -359,6 +365,12 @@ impl<C: RaftTypeConfig> Inner<C> {
             }
             if end.node.as_ref().map(|n| &n.identity) != expected.as_ref() {
                 return Err(invalid("OpenRaft node identity mismatch or missing binding"));
+            }
+            if end.node.is_some() {
+                let actual = end.credential_policy()?;
+                if credentials.as_ref().is_some_and(|expected| *expected != actual) {
+                    return Err(invalid("OpenRaft credential policy mismatch"));
+                }
             }
             let journal = OpenOptions::new()
                 .read(true)
@@ -506,9 +518,19 @@ impl<C: RaftTypeConfig> DurableLog<C> {
         create: bool,
         expected: Option<NodeIdentity>,
     ) -> Result<Self, StorageError<C::NodeId>> {
+        let credentials = expected.as_ref().map(CredentialPolicy::initial);
+        Self::load_policy(directory, create, expected, credentials).await
+    }
+
+    async fn load_policy(
+        directory: impl AsRef<Path>,
+        create: bool,
+        expected: Option<NodeIdentity>,
+        credentials: Option<CredentialPolicy>,
+    ) -> Result<Self, StorageError<C::NodeId>> {
         let directory = directory.as_ref().to_owned();
         tokio::task::spawn_blocking(move || {
-            Inner::open(directory.clone(), create, expected)
+            Inner::load(directory.clone(), create, expected, credentials, true)
                 .map(|inner| Self(Arc::new(Mutex::new(inner))))
                 .map_err(|e| {
                     io::Error::new(e.kind(), format!("OpenRaft store {}: {e}", directory.display()))
