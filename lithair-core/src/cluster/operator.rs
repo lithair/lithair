@@ -1,7 +1,7 @@
 //! Experimental offline cluster provisioning and inspection. These tools do not
 //! start an application or establish quorum/readiness. See OPENRAFT_OPERATOR.md.
 use super::{
-    durable_log::DurableLog,
+    durable_log::{credentials::PendingCertificate, CredentialPolicy, DurableLog, NodeIdentity},
     peer_transport::{Peer, PeerTransport},
 };
 use anyhow::{ensure, Context};
@@ -23,12 +23,14 @@ use std::{
 openraft::declare_raft_types!(InspectionConfig: D=Value, R=(), Node=Value, SnapshotData=std::io::Cursor<Vec<u8>>);
 
 /// Offline actions. `Provision` explicitly creates a store; the other actions
-/// never create, repair or clean consensus storage.
+/// never create, repair or clean consensus storage. Credential updates replace
+/// only the authorization metadata and require the node to be stopped.
 #[derive(Clone, Copy, Debug)]
 pub enum OperatorCommand {
     Check,
     Provision,
     Inspect,
+    UpdateCredentials { expected_generation: u64 },
 }
 
 #[derive(Deserialize)]
@@ -43,6 +45,7 @@ struct Configuration {
     tls_certificate: PathBuf,
     tls_key: PathBuf,
     peers: Vec<ConfiguredPeer>,
+    credentials: Option<ConfiguredCredentials>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,7 +55,46 @@ struct ConfiguredPeer {
     server_name: String,
     certificate_sha256: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfiguredCredentials {
+    generation: u64,
+    current: BTreeMap<String, String>,
+    pending: Option<ConfiguredPin>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfiguredPin {
+    node_id: u64,
+    certificate_sha256: String,
+}
+fn pin(text: &str) -> anyhow::Result<[u8; 32]> {
+    hex::decode(text)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .context("certificate fingerprint must be 64 hexadecimal digits")
+}
+impl ConfiguredCredentials {
+    fn policy(self) -> anyhow::Result<CredentialPolicy> {
+        let mut current = BTreeMap::new();
+        for (node, value) in self.current {
+            let node: u64 = node.parse().context("invalid credential node ID")?;
+            ensure!(current.insert(node, pin(&value)?).is_none(), "duplicate credential node ID");
+        }
+        let pending = self
+            .pending
+            .map(|p| {
+                Ok::<_, anyhow::Error>(PendingCertificate {
+                    node_id: p.node_id,
+                    certificate_sha256: pin(&p.certificate_sha256)?,
+                })
+            })
+            .transpose()?;
+        Ok(CredentialPolicy { generation: self.generation, current, pending })
+    }
+}
 struct Prepared {
+    version: u32,
     directory: PathBuf,
     transport: PeerTransport<InspectionConfig>,
 }
@@ -101,7 +143,11 @@ fn prepare(config_path: &Path) -> anyhow::Result<Prepared> {
     let config: Configuration = toml::from_str(text).map_err(|_| {
         anyhow::anyhow!("invalid cluster configuration: syntax, type or unknown field")
     })?;
-    ensure!(config.version == 1, "unsupported operator configuration version");
+    ensure!(matches!(config.version, 1 | 2), "unsupported operator configuration version");
+    ensure!(
+        (config.version == 2) == config.credentials.is_some(),
+        "version 2 requires an explicit credential policy; version 1 forbids it"
+    );
     ensure!(config.peers.len() == 3, "exactly three peers are required");
     ensure!(!config.data_dir.as_os_str().is_empty(), "missing data directory");
     let mut peers = BTreeMap::new();
@@ -112,10 +158,7 @@ fn prepare(config_path: &Path) -> anyhow::Result<Prepared> {
                 && !configured.address.ip().is_multicast(),
             "invalid peer dial address"
         );
-        let pin: [u8; 32] = hex::decode(&configured.certificate_sha256)
-            .ok()
-            .and_then(|v| v.try_into().ok())
-            .context("certificate fingerprint must be 64 hexadecimal digits")?;
+        let pin = pin(&configured.certificate_sha256)?;
         let old = peers.insert(
             configured.node_id,
             Peer {
@@ -155,17 +198,19 @@ fn prepare(config_path: &Path) -> anyhow::Result<Prepared> {
         .build()?
         .verify_client_cert(leaf, &chain[1..], UnixTime::now())
         .context("local certificate is not valid for peer client authentication")?;
-    let transport = PeerTransport::new(
-        config.cluster_id,
-        config.node_id,
-        config.bootstrap_node,
-        peers,
-        trust,
-        chain,
-        key,
-    )
-    .context("invalid peer TLS configuration or enrollment")?;
-    Ok(Prepared { directory: directory.join(config.data_dir), transport })
+    let identity = NodeIdentity {
+        cluster_id: config.cluster_id,
+        node_id: config.node_id,
+        bootstrap_node: config.bootstrap_node,
+        voters: peers.iter().map(|(id, peer)| (*id, peer.certificate_sha256)).collect(),
+    };
+    let policy = match config.credentials {
+        Some(configured) => configured.policy()?,
+        None => CredentialPolicy::initial(&identity),
+    };
+    let transport = PeerTransport::with_credentials(identity, policy, peers, trust, chain, key)
+        .context("invalid peer TLS configuration or enrollment")?;
+    Ok(Prepared { version: config.version, directory: directory.join(config.data_dir), transport })
 }
 
 /// Execute one offline action using paths resolved against the configuration's
@@ -175,14 +220,19 @@ pub async fn run(command: OperatorCommand, config_path: impl AsRef<Path>) -> any
     let path = config_path.as_ref().to_owned();
     let prepared = tokio::task::spawn_blocking(move || prepare(&path)).await??;
     let identity = prepared.transport.node_identity()?;
-    let mut report = json!({"configuration_version":1,"cluster_id":identity.cluster_id,
+    let mut report = json!({"configuration_version":prepared.version,
+        "configured_credential_generation":prepared.transport.credential_policy().generation,"cluster_id":identity.cluster_id,
         "node_id":identity.node_id,"bootstrap_node":identity.bootstrap_node,
         "peer_ids":identity.voters.keys().copied().collect::<Vec<_>>(),
         "plan_sha256":hex::encode(identity.plan_digest()?),"data_dir":prepared.directory,
-        "action":match command {OperatorCommand::Check=>"check",OperatorCommand::Provision=>"provision",OperatorCommand::Inspect=>"inspect"}});
+        "action":match command {OperatorCommand::Check=>"check",OperatorCommand::Provision=>"provision",OperatorCommand::Inspect=>"inspect", OperatorCommand::UpdateCredentials{..}=>"update-credentials"}});
     match command {
         OperatorCommand::Check => {}
         OperatorCommand::Provision => {
+            ensure!(
+                *prepared.transport.credential_policy() == CredentialPolicy::initial(&identity),
+                "provisioning requires generation zero"
+            );
             let directory = prepared.directory.clone();
             tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
                 let parent = directory.parent().context("data directory has no parent")?;
@@ -204,6 +254,16 @@ pub async fn run(command: OperatorCommand, config_path: impl AsRef<Path>) -> any
             // Provisioning deliberately does not claim bootstrap or start Raft.
             drop(store);
             report["provisioned"] = json!(true);
+        }
+        OperatorCommand::UpdateCredentials { expected_generation } => {
+            DurableLog::<InspectionConfig>::transition_credentials(
+                &prepared.directory,
+                identity,
+                expected_generation,
+                prepared.transport.credential_policy().clone(),
+            )
+            .await?;
+            report["updated"] = json!(true);
         }
         OperatorCommand::Inspect => {
             report["store"] =

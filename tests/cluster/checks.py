@@ -204,6 +204,50 @@ def snapshot():
     converge()
 
 
+def rotate():
+    binary = '/usr/local/bin/cluster-compose-node'
+    before = {}
+    for generation in (1, 2):
+        if generation == 2:
+            # Switch only after every peer durably accepts both certificates.
+            compose('stop', 'node2', 'node3')
+            assert request(1, 'write', {'key': 'rotation-minority', 'value': 'uncertain'})[0] == 503
+            assert request(1, 'barrier', {})[0] == 503
+            compose('start', 'node3')
+            ready((1, 3))
+            write_batch('rotation-switch', 2, (1, 3))
+            compose('run', '--rm', '-T', '--no-deps', 'node2', 'renew-certificate', '2')
+            compose('start', 'node2')
+            ready()
+            converge()
+        for node in IDS:
+            compose('stop', f'node{node}')
+            majority = tuple(i for i in IDS if i != node)
+            write_batch(f'rotation-{generation}-{node}', 2, majority)
+            if generation == 1:
+                before[node] = json.loads(compose('run', '--rm', '-T', '--no-deps', f'node{node}', 'inspect', str(node)))
+            compose('run', '--rm', '-T', '--no-deps', f'node{node}', 'update-policy', str(node), str(generation))
+            inspected = json.loads(compose('run', '--rm', '-T', '--no-deps', f'node{node}', 'inspect', str(node)))
+            assert inspected['credentials']['generation'] == generation
+            assert inspected['store_id'] == before[node]['store_id']
+            assert inspected['bootstrap_claimed'] == before[node]['bootstrap_claimed']
+            compose('start', f'node{node}')
+            ready()
+            assert state(node)['credential_generation'] == generation
+            converge()
+    incoming = command('docker', 'exec', container(2), binary, 'probe-retired-client', '2')
+    command('docker', 'exec', '-d', container(2), binary, 'old-server', '2')
+    def rejected_server():
+        result = subprocess.run(['docker', 'exec', container(1), binary, 'probe-retired-server', '1'],
+                                capture_output=True, text=True, timeout=15)
+        (ROOT / 'retired-server-probe.log').write_text(result.stdout + result.stderr)
+        return result.returncode == 0 and 'retired certificate rejected' in result.stdout
+    poll('valid TLS server rejected by its retired pin', rejected_server)
+    (ROOT / 'rotation.json').write_text(json.dumps({'generation': 2, 'incoming': incoming,
+        'outgoing': (ROOT / 'retired-server-probe.log').read_text(), 'acknowledged': len(expected())}))
+    converge()
+
+
 def restart():
     for _ in range(3):
         compose('kill', '-s', 'SIGKILL', 'node1', 'node2', 'node3')
@@ -236,10 +280,11 @@ def inspect():
         value = json.loads(result)
         assert value['scope'] == 'offline_consensus_integrity' and not value['pristine']
         assert value['bootstrap_claimed'] == (node == 1)
+        assert value['credentials']['generation'] == 2
         (ROOT / f'node{node}-inspection.json').write_text(result)
 
 
 if __name__ == '__main__':
-    actions = {fn.__name__: fn for fn in (pristine, isolation, bootstrap, failover, partition, snapshot, restart, negative, inspect)}
+    actions = {fn.__name__: fn for fn in (pristine, isolation, bootstrap, failover, partition, snapshot, rotate, restart, negative, inspect)}
     actions[sys.argv[1]]()
     print(f'PASS: {sys.argv[1]} ({len(expected())} acknowledged mutations retained)')

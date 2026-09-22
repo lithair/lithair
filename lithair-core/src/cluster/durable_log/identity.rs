@@ -88,10 +88,11 @@ impl<C: RaftTypeConfig<NodeId = u64>> DurableLog<C> {
     ) -> anyhow::Result<serde_json::Value> {
         let directory = directory.as_ref().to_owned();
         tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-            let inner = Inner::<C>::load(directory, false, Some(identity), false)?;
+            let inner = Inner::<C>::load(directory, false, Some(identity), None, false)?;
             let node = inner.end.node.as_ref().ok_or_else(|| invalid("unbound store"))?;
             Ok(serde_json::json!({
                 "manifest_version":inner.end.version,
+                "credentials":inner.end.credential_policy()?,
                 "store_id":uuid::Uuid::from_bytes(inner.end.identity).to_string(),
                 "bootstrap_claimed":node.bootstrap_claimed,
                 "pristine":inner.state.vote.is_none() && inner.state.logs.is_empty()
@@ -137,7 +138,10 @@ impl<C: RaftTypeConfig<NodeId = u64>> DurableLog<C> {
     pub(crate) async fn claim_bootstrap(&self) -> Result<BootstrapPermit, StorageError<u64>> {
         self.access(ErrorVerb::Write, |inner| {
             let node = inner.end.node.as_ref().ok_or_else(|| invalid("unbound OpenRaft store"))?;
-            if node.bootstrap_claimed || node.identity.node_id != node.identity.bootstrap_node {
+            if node.bootstrap_claimed
+                || node.identity.node_id != node.identity.bootstrap_node
+                || inner.end.credential_policy()?.generation != 0
+            {
                 return Err(invalid("bootstrap already claimed or not the designated node"));
             }
             if inner.state.vote.is_some()

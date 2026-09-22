@@ -216,3 +216,39 @@ async fn inspection_validates_committed_data_snapshots_and_consumed_bootstrap_wi
         std::fs::write(files.data(1).join(name), original).unwrap();
     }
 }
+
+#[tokio::test]
+async fn offline_credential_rotation_checks_generations_and_preserves_the_genesis_plan() {
+    let files = fixture::OperatorFiles::new();
+    let original = run(OperatorCommand::Provision, &files.configs[&1]).await.unwrap();
+    let before = bytes(&files.data(1));
+    let overlap = files.rotation_config(1);
+    let retired = files.rotation_config(2);
+    assert!(run(OperatorCommand::UpdateCredentials { expected_generation: 0 }, &retired)
+        .await
+        .is_err());
+    assert_eq!(bytes(&files.data(1)), before);
+    for (expected_generation, path) in [(0, &overlap), (1, &retired)] {
+        let lock = std::fs::File::open(files.data(1).join("LOCK")).unwrap();
+        lock.try_lock().unwrap();
+        assert!(run(OperatorCommand::UpdateCredentials { expected_generation }, path)
+            .await
+            .is_err());
+        lock.unlock().unwrap();
+        let report = run(OperatorCommand::UpdateCredentials { expected_generation }, path)
+            .await
+            .unwrap();
+        assert_eq!(report["plan_sha256"], original["plan_sha256"]);
+        assert_eq!(report["updated"], true);
+        let contents = bytes(&files.data(1));
+        assert!(run(OperatorCommand::UpdateCredentials { expected_generation }, path)
+            .await
+            .is_err());
+        assert_eq!(bytes(&files.data(1)), contents);
+    }
+    // Read-only inspection can diagnose the stored generation with stale config.
+    let report = run(OperatorCommand::Inspect, &files.configs[&1]).await.unwrap();
+    assert_eq!(report["store"]["credentials"]["generation"], 2);
+    assert_eq!(report["configured_credential_generation"], 0);
+    assert_eq!(before["journal"], bytes(&files.data(1))["journal"]);
+}

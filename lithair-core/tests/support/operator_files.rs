@@ -49,6 +49,41 @@ impl OperatorFiles {
         }
         Self { root, configs }
     }
+    /// Rotate the remote node 2 pin; node 1 retains its valid local TLS material.
+    #[allow(dead_code)]
+    pub fn rotation_config(&self, generation: u64) -> PathBuf {
+        let source = std::fs::read_to_string(&self.configs[&1]).unwrap();
+        let mut value: toml::Value = toml::from_str(&source).unwrap();
+        value["version"] = toml::Value::Integer(2);
+        let mut current = toml::map::Map::new();
+        for peer in value["peers"].as_array().unwrap() {
+            let id = peer["node_id"].as_integer().unwrap();
+            current.insert(
+                id.to_string(),
+                if id == 2 && generation == 2 {
+                    toml::Value::String("04".repeat(32))
+                } else {
+                    peer["certificate_sha256"].clone()
+                },
+            );
+        }
+        let mut policy = toml::map::Map::new();
+        policy.insert("generation".into(), toml::Value::Integer(generation as i64));
+        policy.insert("current".into(), toml::Value::Table(current));
+        if generation == 1 {
+            let mut pending = toml::map::Map::new();
+            pending.insert("node_id".into(), toml::Value::Integer(2));
+            pending.insert("certificate_sha256".into(), toml::Value::String("04".repeat(32)));
+            policy.insert("pending".into(), toml::Value::Table(pending));
+        }
+        value
+            .as_table_mut()
+            .unwrap()
+            .insert("credentials".into(), toml::Value::Table(policy));
+        let path = self.root.path().join(format!("1/rotation-{generation}.toml"));
+        std::fs::write(&path, toml::to_string(&value).unwrap()).unwrap();
+        path
+    }
     pub fn data(&self, id: u64) -> PathBuf {
         self.root.path().join(id.to_string()).join("raft")
     }

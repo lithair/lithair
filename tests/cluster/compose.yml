@@ -6,6 +6,10 @@ x-node: &node
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   stop_grace_period: 5s
+  environment:
+    LITHAIR_CLUSTER_NODE1_IP: ${LITHAIR_CLUSTER_NODE1_IP:?set by runner}
+    LITHAIR_CLUSTER_NODE2_IP: ${LITHAIR_CLUSTER_NODE2_IP:?set by runner}
+    LITHAIR_CLUSTER_NODE3_IP: ${LITHAIR_CLUSTER_NODE3_IP:?set by runner}
 
 services:
   prepare:

@@ -35,3 +35,4 @@ lithair-core = { path = "../lithair-core", version = "1.12.2", default-features 
 tempfile = "3.8"
 rcgen = "0.14"
 sha2 = "0.10"
+toml = "0.8"

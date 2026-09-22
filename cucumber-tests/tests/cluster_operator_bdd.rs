@@ -84,6 +84,31 @@ async fn restart(world: &mut OperatorWorld) {
     cluster.converge().await;
     cluster.stop().await;
 }
+#[when("I stage and retire a peer certificate with explicit generations")]
+async fn rotate(world: &mut OperatorWorld) {
+    let files = world.files.as_ref().unwrap();
+    for expected_generation in 0..2 {
+        let path = files.rotation_config(expected_generation + 1);
+        let report = run(OperatorCommand::UpdateCredentials { expected_generation }, path)
+            .await
+            .unwrap();
+        assert_eq!(report["plan_sha256"], world.report["plan_sha256"]);
+    }
+    let report = run(OperatorCommand::Inspect, &files.configs[&1]).await.unwrap();
+    assert_eq!(report["store"]["credentials"]["generation"], 2);
+}
+#[then("stale credential transitions leave the store untouched")]
+async fn stale(world: &mut OperatorWorld) {
+    let files = world.files.as_ref().unwrap();
+    let before = contents(&files.data(1));
+    assert!(run(
+        OperatorCommand::UpdateCredentials { expected_generation: 0 },
+        files.rotation_config(1)
+    )
+    .await
+    .is_err());
+    assert_eq!(contents(&files.data(1)), before);
+}
 #[tokio::main]
 async fn main() {
     if std::env::var_os(processes::CHILD_ENV).is_some() {
