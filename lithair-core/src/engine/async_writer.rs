@@ -1,205 +1,212 @@
 use crate::engine::events::{EventEnvelope, EventStore};
-use std::sync::{Arc, RwLock};
-use tokio::sync::{mpsc, oneshot};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
+use tokio::sync::oneshot;
 
-/// Message for the writer thread
+/// Message for the writer worker. Queue admission is not a persistence acknowledgement.
 #[derive(Debug)]
 pub enum WriteEvent {
-    /// Raw JSON event string
     Event(String),
-    /// Structured event envelope
     Envelope(EventEnvelope),
-    /// Flush request with acknowledgment channel
-    Flush(oneshot::Sender<()>),
+    Flush(oneshot::Sender<Result<(), String>>),
 }
 
-/// Async writer for EventStore - batch writes
+/// Ordered, batched writes. After an I/O failure this writer remains failed:
+/// retrying a partly written batch could duplicate events. Reopen/recover first.
 pub struct AsyncWriter {
-    tx: mpsc::UnboundedSender<WriteEvent>,
-    handle: Option<tokio::task::JoinHandle<()>>,
+    tx: mpsc::Sender<WriteEvent>,
+    handle: Option<std::thread::JoinHandle<()>>,
+    failure: Arc<Mutex<Option<String>>>,
 }
 
-/// Durability mode configuration
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DurabilityMode {
-    /// Maximum performance: batch + periodic flush (10ms)
-    /// RISK: Up to 10ms of data loss on hard crash
-    /// Usage: Benchmarks, prototypes, non-critical data
+    /// Flush batches without fsync. Neither queue admission nor the timer
+    /// guarantees persistence across a machine failure.
     Performance,
-
-    /// Maximum durability: fsync after each batch (DEFAULT)
-    /// GUARANTEE: No data loss, even on crash
-    /// Usage: Production, critical data, event-sourcing
-    /// Note: 10-100x slower, but this is the STANDARD for serious DBs
+    /// Fsync completed batches. Call `flush` to await acknowledgement;
+    /// merely enqueueing an event does not establish durability.
     #[default]
     MaxDurability,
 }
 
 impl AsyncWriter {
-    /// Create a new async writer with maximum durability by default
     pub fn new(store: Arc<RwLock<EventStore>>, batch_size: usize) -> Self {
         Self::with_durability(store, batch_size, DurabilityMode::default())
     }
 
-    /// Create an async writer with configurable durability mode
     pub fn with_durability(
         store: Arc<RwLock<EventStore>>,
         batch_size: usize,
         durability: DurabilityMode,
     ) -> Self {
-        // Configure fsync based on durability mode (on the shared store)
-        {
-            let mut guard = store.write().expect("event store lock poisoned");
-            let fsync = durability == DurabilityMode::MaxDurability;
-            guard.configure_batching(batch_size, fsync);
-        }
-
-        let (tx, mut rx) = mpsc::unbounded_channel::<WriteEvent>();
-
-        let handle = tokio::spawn(async move {
-            let mut buffer = Vec::with_capacity(batch_size);
-            // Keep track of flush requests
-            let mut flushes = Vec::new();
-
-            loop {
-                tokio::select! {
-                    // Receive events
-                    Some(msg) = rx.recv() => {
-                        match msg {
-                            WriteEvent::Event(json) => {
-                                buffer.push(json);
-                                if buffer.len() >= batch_size {
-                                    Self::flush_buffer(&store, &mut buffer, &mut flushes);
-                                }
+        let batch_size = batch_size.max(1);
+        let initial_error = match store.write() {
+            Ok(mut guard) => {
+                guard.configure_batching(batch_size, durability == DurabilityMode::MaxDurability);
+                None
+            }
+            Err(error) => Some(format!("event store lock poisoned: {error}")),
+        };
+        let failure = Arc::new(Mutex::new(initial_error));
+        let worker_failure = failure.clone();
+        let (tx, rx) = mpsc::channel::<WriteEvent>();
+        // Blocking file I/O has its own worker. Native mutation callers may
+        // hold their ordering gate while waiting for a flush; this worker must
+        // progress even when those callers occupy Tokio/blocking-pool threads.
+        let handle =
+            std::thread::Builder::new().name("lithair-event-writer".into()).spawn(move || {
+                let mut buffer = Vec::with_capacity(batch_size);
+                let period = std::time::Duration::from_millis(10);
+                let mut deadline = std::time::Instant::now() + period;
+                loop {
+                    match rx
+                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                    {
+                        Ok(WriteEvent::Flush(ack)) => {
+                            let result = Self::flush_buffer(&store, &mut buffer, &worker_failure);
+                            let _ = ack.send(result);
+                            deadline = std::time::Instant::now() + period;
+                        }
+                        Ok(event) => {
+                            if Self::check_failure(&worker_failure).is_ok() {
+                                buffer.push(event);
                             }
-                            WriteEvent::Envelope(envelope) => {
-                                // Serialize envelope to JSON and add to buffer
-                                if let Ok(json) = serde_json::to_string(&envelope) {
-                                    buffer.push(json);
-                                    if buffer.len() >= batch_size {
-                                        Self::flush_buffer(&store, &mut buffer, &mut flushes);
-                                    }
-                                }
-                            }
-                            WriteEvent::Flush(ack) => {
-                                flushes.push(ack);
-                                Self::flush_buffer(&store, &mut buffer, &mut flushes);
+                            if buffer.len() >= batch_size || std::time::Instant::now() >= deadline {
+                                let _ = Self::flush_buffer(&store, &mut buffer, &worker_failure);
+                                deadline = std::time::Instant::now() + period;
                             }
                         }
-
-                        // Quick loop to drain channel without sleeping if busy
-                        while let Ok(msg) = rx.try_recv() {
-                            match msg {
-                                WriteEvent::Event(json) => {
-                                    buffer.push(json);
-                                    if buffer.len() >= batch_size {
-                                        Self::flush_buffer(&store, &mut buffer, &mut flushes);
-                                    }
-                                }
-                                WriteEvent::Envelope(envelope) => {
-                                    if let Ok(json) = serde_json::to_string(&envelope) {
-                                        buffer.push(json);
-                                        if buffer.len() >= batch_size {
-                                            Self::flush_buffer(&store, &mut buffer, &mut flushes);
-                                        }
-                                    }
-                                }
-                                WriteEvent::Flush(ack) => {
-                                    flushes.push(ack);
-                                    Self::flush_buffer(&store, &mut buffer, &mut flushes);
-                                }
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            if !buffer.is_empty() {
+                                let _ = Self::flush_buffer(&store, &mut buffer, &worker_failure);
                             }
+                            deadline = std::time::Instant::now() + period;
                         }
-                    }
-
-                    // Timeout periodic flush (if not receiving)
-                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)), if !buffer.is_empty() => {
-                        Self::flush_buffer(&store, &mut buffer, &mut flushes);
-                    }
-
-                    // Channel closed
-                    else => {
-                        if !buffer.is_empty() || !flushes.is_empty() {
-                            Self::flush_buffer(&store, &mut buffer, &mut flushes);
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            let _ = Self::flush_buffer(&store, &mut buffer, &worker_failure);
+                            break;
                         }
-                        break;
                     }
                 }
+            });
+        let handle = match handle {
+            Ok(handle) => Some(handle),
+            Err(error) => {
+                if let Ok(mut failed) = failure.lock() {
+                    *failed = Some(format!("failed to start event writer: {error}"));
+                }
+                None
             }
-        });
-
-        Self { tx, handle: Some(handle) }
+        };
+        Self { tx, handle, failure }
     }
 
-    /// Get the sender channel to send events to the writer
-    pub fn sender(&self) -> &mpsc::UnboundedSender<WriteEvent> {
+    fn check_failure(failure: &Mutex<Option<String>>) -> Result<(), String> {
+        match &*failure.lock().map_err(|e| format!("writer failure lock poisoned: {e}"))? {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
+    }
+
+    pub fn sender(&self) -> &mpsc::Sender<WriteEvent> {
         &self.tx
     }
 
-    /// Write an event (non-blocking)
+    /// Queue a raw event. Use `flush` to learn whether persistence succeeded.
     pub fn write(&self, event_json: String) -> Result<(), String> {
+        Self::check_failure(&self.failure)?;
         self.tx
             .send(WriteEvent::Event(event_json))
-            .map_err(|e| format!("Failed to send event: {}", e))
+            .map_err(|e| format!("Failed to queue event: {e}"))
     }
 
-    /// Flush the buffer to disk via EventStore
+    pub(crate) fn write_envelope(&self, envelope: EventEnvelope) -> Result<(), String> {
+        Self::check_failure(&self.failure)?;
+        self.tx
+            .send(WriteEvent::Envelope(envelope))
+            .map_err(|e| format!("Failed to queue event: {e}"))
+    }
+
     fn flush_buffer(
-        store: &Arc<RwLock<EventStore>>,
-        buffer: &mut Vec<String>,
-        flushes: &mut Vec<oneshot::Sender<()>>,
-    ) {
-        if buffer.is_empty() && flushes.is_empty() {
-            return;
-        }
-
-        let mut guard = match store.write() {
-            Ok(g) => g,
-            Err(e) => {
-                log::error!("EventStore lock error: {}", e);
-                // If we can't lock, we can't write.
-                // Fail pending flushes?
-                // Ideally we should panic or retry, but here we just drop them which causes Receiver drop error.
-                // Since we are in a critical thread, logging is best effort.
-                return;
+        store: &RwLock<EventStore>,
+        buffer: &mut Vec<WriteEvent>,
+        failure: &Mutex<Option<String>>,
+    ) -> Result<(), String> {
+        Self::check_failure(failure)?;
+        let result = (|| {
+            let mut guard = store.write().map_err(|e| format!("event store lock poisoned: {e}"))?;
+            for event in buffer.drain(..) {
+                let result = match event {
+                    WriteEvent::Event(json) => guard.append_raw_line(&json),
+                    WriteEvent::Envelope(envelope) => guard.append_envelope(&envelope),
+                    WriteEvent::Flush(_) => unreachable!("flush messages are never buffered"),
+                };
+                result.map_err(|e| e.to_string())?;
             }
-        };
-
-        // Write all events
-        for event_json in buffer.drain(..) {
-            let _ = guard.append_raw_line(&event_json);
+            guard.flush_events().map_err(|e| e.to_string())
+        })();
+        if let Err(error) = &result {
+            log::error!("event writer stopped after persistence failure: {error}");
+            *failure.lock().map_err(|e| format!("writer failure lock poisoned: {e}"))? =
+                Some(error.clone());
+            buffer.clear();
         }
-
-        // FS YNC
-        if let Err(e) = guard.flush_events() {
-            log::error!("flush_events error: {}", e);
-        }
-
-        // Acknowledge all flushes
-        for ack in flushes.drain(..) {
-            let _ = ack.send(());
-        }
+        result
     }
 
-    /// Wait for all events to be written
+    /// Close this sender and wait for the worker. Call `flush` first when the
+    /// caller needs a persistence result. Other cloned senders must be dropped.
     pub async fn shutdown(mut self) {
-        // Close the channel
         drop(self.tx);
-
-        // Wait for the writer to finish
         if let Some(handle) = self.handle.take() {
-            let _ = handle.await;
+            match tokio::task::spawn_blocking(move || handle.join()).await {
+                Ok(Ok(())) => {}
+                _ => log::error!("event writer thread failed during shutdown"),
+            }
         }
     }
 
-    /// Flush all pending events to disk immediately and wait for completion.
-    pub async fn flush(&self) -> Result<(), String> {
+    /// Only call from a blocking thread, never from a Tokio executor callback.
+    pub(crate) fn flush_blocking(&self) -> Result<(), String> {
+        let rx = self.flush_barrier()?;
+        rx.blocking_recv()
+            .map_err(|e| format!("Flush cancelled (channel closed): {e}"))?
+    }
+
+    fn flush_barrier(&self) -> Result<oneshot::Receiver<Result<(), String>>, String> {
+        Self::check_failure(&self.failure)?;
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(WriteEvent::Flush(tx))
-            .map_err(|e| format!("Failed to send flush signal: {}", e))?;
+            .map_err(|e| format!("Failed to queue flush: {e}"))?;
+        Ok(rx)
+    }
 
-        // Wait for acknowledgement
-        rx.await.map_err(|e| format!("Flush cancelled (channel closed): {}", e))
+    /// Acknowledge all events queued before this barrier, or return the first
+    /// persistence failure. A failed writer never reports a later success.
+    pub async fn flush(&self) -> Result<(), String> {
+        self.flush_barrier()?
+            .await
+            .map_err(|e| format!("Flush cancelled (channel closed): {e}"))?
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writer_progress_does_not_depend_on_a_tokio_executor() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(RwLock::new(EventStore::new(dir.path().to_str().unwrap()).unwrap()));
+        let writer = AsyncWriter::new(store.clone(), 1000);
+        writer.write(r#"{"value":1}"#.into()).unwrap();
+        writer.write(r#"{"value":2}"#.into()).unwrap();
+        writer.flush_blocking().unwrap();
+        assert_eq!(store.read().unwrap().get_all_events().unwrap().len(), 2);
+        // Join without a runtime too, so the temporary directory outlives the worker.
+        let AsyncWriter { tx, handle, .. } = writer;
+        drop(tx);
+        handle.unwrap().join().unwrap();
     }
 }

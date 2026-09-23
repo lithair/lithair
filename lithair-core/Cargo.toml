@@ -31,7 +31,7 @@ toml = "0.8"
 # High-performance serialization
 bincode = { version = "2", features = ["serde"] }        # Binary serialization (3-5x faster than JSON)
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metadata
-scc = "3"            # SCC2 HashMap ultra-performant (40M+ ops/sec)
+scc = "3"            # Concurrent in-memory maps; mutations coordinate persistence separately
 reqwest = { version = "0.13", features = ["json", "rustls", "form"], default-features = false }  # HTTP client with rustls
 uuid = { version = "1", features = ["v4", "serde"] }  # For generating unique IDs with Serde
 clap = { version = "4", features = ["derive"] }  # CLI argument parsing for auto-generated apps

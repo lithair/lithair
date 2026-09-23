@@ -71,6 +71,16 @@ failure-injection commands. These containers share one host and use a test state
 machine; this is not three-VM or native/Turso/session qualification. The existing
 Rust/Gherkin suites remain the lower-level regression gate.
 
+## Native concurrent engine
+
+`native_scc2_test` covers concurrent reads/mutations, uniqueness and secondary
+indexes, event ordering across reopen, legacy events, retention and failed
+persistence acknowledgements. `native_scc2_bdd` owns
+`features/core/native_scc2.feature` and exercises the same public runtime
+promises with declaratively defined models in the test gate. These are
+single-process tests, not native model cluster qualification. See the
+[engine contract](features/state-engine/scc2.md).
+
 ## The workflow
 
 **New feature** → open a draft PR with `cidx repo pr create`, then write the

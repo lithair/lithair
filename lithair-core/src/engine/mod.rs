@@ -47,7 +47,7 @@ pub use persistence::{DatabaseStats, FileStorage};
 #[doc(hidden)] // internal: alternate persistence path
 pub use persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 pub use relations::{AutoJoiner, DataSource, RelationRegistry};
-#[doc(hidden)] // internal: lock-free concurrent engine
+#[doc(hidden)] // internal: concurrent in-memory engine
 pub use scc2_engine::{Scc2Engine, Scc2EngineConfig, VersionedEntry};
 pub use snapshot::{
     AutoCompactionConfig, RecoveryContext, Snapshot, SnapshotMetadata, SnapshotStats,
