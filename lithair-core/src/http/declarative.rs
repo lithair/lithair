@@ -22,6 +22,9 @@ use crate::engine::events::{EventEnvelope, EventStore};
 use crate::engine::retention::RetentionLayer;
 use crate::lifecycle::{LifecycleAware, RetentionAware};
 
+mod commit;
+use commit::MutationError;
+
 type RespBody = BoxBody<Bytes, Infallible>;
 type Req = Request<Incoming>;
 type Resp = Response<RespBody>;
@@ -240,7 +243,11 @@ where
 {
     event_store: Arc<tokio::sync::RwLock<EventStore>>,
     storage: Arc<tokio::sync::RwLock<std::collections::HashMap<String, T>>>,
-    retention: Option<RetentionLayer>,
+    retention: Option<Arc<RetentionLayer>>,
+    /// Orders validation, journaling and publication. A journal error is sticky.
+    mutations: Arc<tokio::sync::Mutex<Option<String>>>,
+    /// Journal prefix published in memory; failed appends must not leak via cold reads.
+    published_events: Arc<std::sync::atomic::AtomicUsize>,
     #[cfg(feature = "cluster")]
     consensus: Option<Arc<tokio::sync::RwLock<DeclarativeConsensus<T>>>>,
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
@@ -369,6 +376,14 @@ where
         if std::path::Path::new(event_store_path).join("model.db").try_exists()? {
             return Err("SQL data exists in this model directory; migrate explicitly before selecting native storage".into());
         }
+        // The legacy optimized writer only queues flush requests and cannot
+        // acknowledge them. It cannot implement this handler's commit contract.
+        if std::env::var("LT_OPT_PERSIST")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            return Err("Native HTTP commits require LT_OPT_PERSIST=0; the legacy optimized writer does not acknowledge persistence".into());
+        }
         // Initialize EventStore with batching configuration
         let mut event_store = EventStore::new(event_store_path)?;
         let max_batch_size: usize = std::env::var("LT_EVENT_MAX_BATCH")
@@ -381,37 +396,9 @@ where
             .unwrap_or(false);
         event_store.configure_batching(max_batch_size, fsync_on_append);
 
+        let published_events =
+            Arc::new(std::sync::atomic::AtomicUsize::new(event_store.event_count()));
         let event_store = Arc::new(tokio::sync::RwLock::new(event_store));
-
-        // Spawn a lightweight background flusher to persist batches
-        // periodically. The task holds only a `Weak` to the store (issue
-        // #115): with a strong `Arc` the flusher kept the store — and
-        // itself — alive forever, orphaning one infinite task per handler
-        // ever constructed (servers restarted in-process, every test).
-        // With `Weak`, the task exits within one flush interval of the
-        // last strong reference dropping, so its lifetime is exactly the
-        // store's lifetime. No shutdown signal to thread through `new()`.
-        let flush_interval_ms: u64 = std::env::var("LT_FLUSH_INTERVAL_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(100);
-        let store_weak = Arc::downgrade(&event_store);
-        tokio::spawn(async move {
-            let interval = std::time::Duration::from_millis(flush_interval_ms);
-            loop {
-                // The strong ref is scoped to the flush and dropped before
-                // the sleep — the task never extends the store's lifetime
-                // across an idle interval.
-                match store_weak.upgrade() {
-                    Some(store) => {
-                        let mut store = store.write().await;
-                        let _ = store.flush_events();
-                    }
-                    None => break,
-                }
-                tokio::time::sleep(interval).await;
-            }
-        });
 
         // Effective retention config = annotation, overridable by env vars.
         // Each dimension (count, duration, budget) is independently
@@ -433,7 +420,7 @@ where
         // annotation must activate retention too (issue #121).
         let retention = if retention_config.is_configured() {
             let pinned = T::pinned_fields().iter().map(|s| s.to_string()).collect();
-            Some(RetentionLayer::new(retention_config, pinned))
+            Some(Arc::new(RetentionLayer::new(retention_config, pinned)))
         } else {
             None
         };
@@ -442,6 +429,8 @@ where
             event_store,
             storage: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             retention,
+            mutations: Arc::new(tokio::sync::Mutex::new(None)),
+            published_events,
             #[cfg(feature = "cluster")]
             consensus: None,
             permission_checker: None,
@@ -482,6 +471,7 @@ where
         fields(count = tracing::field::Empty)
     )]
     pub async fn replay_events(&self) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        let _mutation = self.lock_mutations().await.map_err(|e| e.to_string())?;
         // Snapshot-first replay (issue #69 follow-up):
         // If a snapshot was written by a previous `compact()` call, it
         // captures all storage state up to the moment the log was
@@ -504,8 +494,13 @@ where
             match serde_json::from_str::<std::collections::HashMap<String, T>>(&json) {
                 Ok(snap) => {
                     from_snapshot = snap.len();
-                    for (k, v) in snap {
-                        storage.insert(k, v);
+                    for (key, item) in snap {
+                        Self::insert_with_retention(
+                            &mut storage,
+                            self.retention.as_deref(),
+                            key,
+                            item,
+                        );
                     }
                 }
                 Err(e) => {
@@ -522,6 +517,7 @@ where
             store.get_all_events()?
         };
 
+        self.published_events.store(events.len(), std::sync::atomic::Ordering::Release);
         let mut replayed_count = 0;
         for event_json in events {
             if let Ok(envelope) = serde_json::from_str::<EventEnvelope>(&event_json) {
@@ -530,7 +526,7 @@ where
                         let key = item.get_primary_key();
                         Self::insert_with_retention(
                             &mut storage,
-                            self.retention.as_ref(),
+                            self.retention.as_deref(),
                             key,
                             item,
                         );
@@ -547,7 +543,7 @@ where
             }
         }
 
-        let warm_count = self.retention.as_ref().map_or(0, |r| r.warm_count());
+        let warm_count = self.retention.as_deref().map_or(0, |r| r.warm_count());
         if Self::is_verbose() || replayed_count > 0 || from_snapshot > 0 {
             if warm_count > 0 {
                 log::info!(
@@ -570,42 +566,42 @@ where
         Ok(replayed_count)
     }
 
-    /// Atomically snapshot the current storage state and truncate the
-    /// event log (issue #69 follow-up — addresses Gemini review on PR #84).
+    /// Snapshot and truncate while excluding handler mutations.
     ///
-    /// Acquires the storage read lock briefly to serialize state, then
-    /// the event-store write lock to persist the snapshot and truncate.
-    /// After this returns `Ok(())`, the on-disk `.raftlog` is empty but
-    /// the on-disk `.snapshot` file holds the full state — a restart
-    /// reconstructs storage from the snapshot via `replay_events()`.
-    ///
-    /// **Critical**: callers must NEVER call `truncate_events()` directly
-    /// on the underlying `EventStore` without first writing a snapshot —
-    /// doing so causes permanent data loss. This method is the only safe
-    /// compaction primitive at the handler level.
+    /// This coordinates live writers, but does not make snapshot publication
+    /// crash-atomic. Evicted records still depend on the journal, so compaction
+    /// refuses to truncate it while warm records exist. Direct EventStore writes
+    /// bypass this coordination and must be performed with the handler stopped.
     pub async fn compact(&self) -> Result<(), String> {
-        // 1. Serialize the current storage map under the storage read lock.
-        let state_json = {
-            let storage = self.storage.read().await;
-            serde_json::to_string(&*storage)
-                .map_err(|e| format!("compact: failed to serialize storage: {}", e))?
-        };
-
-        // 2. Hold the event-store write lock for snapshot+truncate so the
-        //    two operations are atomic from any other event-store caller's
-        //    perspective. Callers that block waiting on the write lock
-        //    will see either "pre-compact" or "post-compact" — never an
-        //    intermediate state where the snapshot exists but the log
-        //    has not yet been truncated (or vice versa, the dangerous
-        //    case fixed here).
-        let mut store = self.event_store.write().await;
-        store
-            .save_snapshot(&state_json)
-            .map_err(|e| format!("compact: save_snapshot failed: {}", e))?;
-        store
-            .truncate_events()
-            .map_err(|e| format!("compact: truncate_events failed: {}", e))?;
-        Ok(())
+        let mut mutation = self.lock_mutations().await.map_err(|e| e.to_string())?;
+        if self.retention.as_deref().is_some_and(|r| r.warm_count() > 0) {
+            return Err("compact: warm records still require the journal".into());
+        }
+        let storage = self.storage.clone();
+        let event_store = self.event_store.clone();
+        let published_events = self.published_events.clone();
+        tokio::spawn(async move {
+            let state_json = serde_json::to_string(&*storage.read().await)
+                .map_err(|e| format!("compact: failed to serialize storage: {e}"))?;
+            *mutation = Some("Compaction did not finish; reopen and reconcile the journal".into());
+            let result = tokio::task::spawn_blocking(move || {
+                let mut store = event_store.blocking_write();
+                store
+                    .save_snapshot(&state_json)
+                    .and_then(|_| store.truncate_events())
+                    .map_err(|e| format!("compact: {e}"))?;
+                // Reset the published prefix before releasing the journal lock.
+                published_events.store(0, std::sync::atomic::Ordering::Release);
+                Ok::<(), String>(())
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|result| result);
+            *mutation = result.as_ref().err().cloned();
+            result
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 
     /// Returns true if consensus is enabled for this handler
@@ -848,9 +844,12 @@ where
 
     /// Load an evicted item by replaying its events from the event store.
     async fn load_evicted_item(&self, key: &str) -> Option<T> {
-        let events = {
+        let (events, snapshot) = {
             let store = self.event_store.read().await;
-            store.get_all_events().ok()?
+            let published = self.published_events.load(std::sync::atomic::Ordering::Acquire);
+            let mut events = store.get_all_events().ok()?;
+            events.truncate(published);
+            (events, store.load_snapshot().ok().flatten())
         };
 
         // Reverse scan: latest event wins (most recent state for this id).
@@ -886,13 +885,18 @@ where
                 }
             }
         }
-        None
+        // An item evicted after compaction may only exist in the snapshot.
+        snapshot
+            .and_then(|json| {
+                serde_json::from_str::<std::collections::HashMap<String, T>>(&json).ok()
+            })
+            .and_then(|mut items| items.remove(key))
     }
 
     /// Total item count: hot (in-memory) + warm (evicted pinned-only).
     pub async fn total_item_count(&self) -> usize {
         let storage = self.storage.read().await;
-        let warm = self.retention.as_ref().map_or(0, |r| r.warm_count());
+        let warm = self.retention.as_deref().map_or(0, |r| r.warm_count());
         storage.len() + warm
     }
 
@@ -942,7 +946,7 @@ where
                 return Some(item.clone());
             }
         }
-        if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+        if self.retention.as_deref().is_some_and(|r| r.is_evicted(id)) {
             return self.load_evicted_item(id).await;
         }
         None
@@ -950,6 +954,7 @@ where
 
     /// Replace local in-memory storage with authoritative items from leader (no persistence writes)
     pub async fn reconcile_replace_all(&self, items: Vec<T>) {
+        let _mutation = self.mutations.lock().await;
         let mut storage = self.storage.write().await;
         storage.clear();
         if let Some(retention) = &self.retention {
@@ -960,7 +965,7 @@ where
                 .ok()
                 .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
                 .unwrap_or_else(|| item.get_primary_key());
-            Self::insert_with_retention(&mut storage, self.retention.as_ref(), actual_key, item);
+            Self::insert_with_retention(&mut storage, self.retention.as_deref(), actual_key, item);
         }
         if Self::is_verbose() {
             log::debug!(
@@ -970,172 +975,48 @@ where
         }
     }
 
-    /// Apply a single replicated item from leader (for followers to receive replication)
-    /// This adds to storage AND persists to event store (idempotent via key-based storage)
+    /// Apply and persist a replicated item before notifying subscribers.
     pub async fn apply_replicated_item(&self, item: T) -> Result<(), String> {
-        let actual_key = serde_json::to_value(&item)
-            .ok()
-            .and_then(|v| v.get("id").and_then(|id| id.as_str().map(|s| s.to_string())))
-            .unwrap_or_else(|| item.get_primary_key());
-
-        {
-            let mut storage = self.storage.write().await;
-            Self::insert_with_retention(
-                &mut storage,
-                self.retention.as_ref(),
-                actual_key.clone(),
-                item.clone(),
-            );
-        }
-
-        // Persist to event store (best-effort - don't fail the operation)
-        // IMPORTANT: Storage is already updated, so operation must succeed for consistency
-        if let Err(e) = self.persist_to_event_store("Replicated", &item).await {
-            log::warn!(
-                "Failed to persist replicated item event for {}: {:?} (storage already updated)",
-                actual_key,
-                e
-            );
-        }
-
-        // Issue #89: broadcast SSE event so subscribers on `/api/{model}/stream`
-        // see programmatic / replicated inserts, not just HTTP POSTs. Same
-        // operation name (`"create"`) as `handle_create` — from a consumer's
-        // perspective, an insert is an insert regardless of origin.
-        self.broadcast_sse("create", &item).await;
-
-        if Self::is_verbose() {
-            log::debug!("Replicated item {} applied to follower", actual_key);
-        }
-
-        Ok(())
+        let mutation = self.lock_mutations().await.map_err(|e| e.to_string())?;
+        let key = item.get_primary_key();
+        self.check_unique_constraints(&item, Some(&key)).await?;
+        self.commit_mutation(mutation, "Replicated", key, item, Some("create"))
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    /// Apply multiple replicated items from leader (bulk replication for followers)
+    /// Apply in order; a failure leaves the already committed prefix intact.
     pub async fn apply_replicated_items(&self, items: Vec<T>) -> Result<usize, String> {
         let count = items.len();
         for item in items {
             self.apply_replicated_item(item).await?;
         }
-        if Self::is_verbose() {
-            log::debug!("Bulk replicated {} items applied to follower", count);
-        }
         Ok(count)
     }
 
-    /// Apply a replicated UPDATE from leader (for followers to receive UPDATE replication)
-    /// This updates storage AND persists to event store
+    /// Replicated updates upsert missing records, preserving the create notification.
     pub async fn apply_replicated_update(&self, id: &str, item: T) -> Result<(), String> {
-        // Check if item exists (hot storage or evicted to warm map)
-        {
-            let storage = self.storage.read().await;
-            let has_key = storage.contains_key(id)
-                || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
-            log::debug!(
-                "APPLY UPDATE: id={}, exists={}, storage_len={}",
-                id,
-                has_key,
-                storage.len()
-            );
-            if !has_key {
-                drop(storage);
-                log::debug!("APPLY UPDATE: item doesn't exist, creating instead");
-                return self.apply_replicated_item(item).await;
-            }
-        }
-
-        // Update in storage
-        {
-            let mut storage = self.storage.write().await;
-            Self::insert_with_retention(
-                &mut storage,
-                self.retention.as_ref(),
-                id.to_string(),
-                item.clone(),
-            );
-        }
-
-        // Persist to event store (best-effort - don't fail the operation)
-        // IMPORTANT: Storage is already updated, so we must succeed for consistency
-        if let Err(e) = self.persist_to_event_store("Updated", &item).await {
-            log::warn!(
-                "Failed to persist update event for {}: {:?} (storage already updated)",
-                id,
-                e
-            );
-        }
-
-        // Issue #89: broadcast SSE event for replicated UPDATEs. We emit
-        // `"update"` (matching `handle_put`, the PUT-style HTTP update),
-        // not `"patched"` (which `handle_patch` uses for partial updates).
-        // The replicated path is a full-record overwrite, so PUT-semantics
-        // is the right mapping.
-        self.broadcast_sse("update", &item).await;
-
-        if Self::is_verbose() {
-            log::debug!("Replicated UPDATE for {} applied", id);
-        }
-
-        Ok(())
+        let mutation = self.lock_mutations().await.map_err(|e| e.to_string())?;
+        Self::check_primary_key(id, &item).map_err(|e| e.to_string())?;
+        self.check_unique_constraints(&item, Some(id)).await?;
+        let exists = self.get_by_id(id).await.is_some();
+        let (operation, notification) =
+            if exists { ("Updated", "update") } else { ("Replicated", "create") };
+        self.commit_mutation(mutation, operation, id.into(), item, Some(notification))
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    /// Apply a replicated DELETE from leader (for followers to receive DELETE replication)
-    /// This removes from storage AND persists deletion event to event store
-    /// IMPORTANT: This must be fully idempotent and never fail once storage is modified
+    /// Persist deletion before removing hot/warm state. Missing keys are a no-op.
     pub async fn apply_replicated_delete(&self, id: &str) -> Result<bool, String> {
-        // Remove from storage
-        let mut removed_item = {
-            let mut storage = self.storage.write().await;
-            let has_key = storage.contains_key(id);
-            log::debug!(
-                "APPLY DELETE: id={}, exists_in_storage={}, storage_len={}",
-                id,
-                has_key,
-                storage.len()
-            );
-            storage.remove(id)
+        let mutation = self.lock_mutations().await.map_err(|e| e.to_string())?;
+        let Some(item) = self.get_by_id(id).await else {
+            return Ok(false);
         };
-
-        // Evicted records still exist. Recover their payload before clearing the
-        // retention index so followers persist and broadcast their deletion too.
-        if removed_item.is_none() && self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
-            removed_item = self.load_evicted_item(id).await;
-        }
-
-        // Clean up warm map entry (if any) so evicted items don't linger
-        if let Some(retention) = &self.retention {
-            retention.remove(id);
-        }
-
-        if let Some(item) = removed_item {
-            // Persist deletion to event store (best-effort - don't fail the operation)
-            // This ensures idempotency: once item is removed from storage, operation succeeds
-            if let Err(e) = self.persist_to_event_store("Deleted", &item).await {
-                log::warn!(
-                    "Failed to persist delete event for {}: {:?} (storage already updated)",
-                    id,
-                    e
-                );
-            }
-
-            // Issue #89: broadcast SSE event for replicated DELETEs, carrying
-            // the removed item's payload (matches `handle_delete`). Subscribers
-            // get the full record one last time so they can react before
-            // dropping it from their local view. We only broadcast on the
-            // existed-and-removed branch — the no-op idempotent branch below
-            // should not look like activity to subscribers.
-            self.broadcast_sse("delete", &item).await;
-
-            if Self::is_verbose() {
-                log::debug!("Replicated DELETE for {} applied", id);
-            }
-
-            Ok(true)
-        } else {
-            // Item didn't exist (idempotent behavior - not an error)
-            log::debug!("Replicated DELETE for {} - item not found (idempotent)", id);
-            Ok(false)
-        }
+        self.commit_mutation(mutation, "Deleted", id.into(), item, Some("delete"))
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(true)
     }
 
     /// Check that unique constraints are satisfied.
@@ -1632,15 +1513,6 @@ where
         }
     }
 
-    /// Broadcast an SSE event if the broadcaster is configured
-    async fn broadcast_sse(&self, operation: &str, item: &T) {
-        if let Some(broadcaster) = self.sse_broadcaster.get() {
-            if let Ok(data) = serde_json::to_value(item) {
-                broadcaster.broadcast(T::http_base_path(), operation, data).await;
-            }
-        }
-    }
-
     /// POST /api/{model} - Create new item
     async fn handle_create(&self, req: Req) -> Result<Resp, Infallible> {
         // Agnostic write enforcement using permission_extractor + can_write()
@@ -1720,117 +1592,34 @@ where
             return Ok(self.bad_request_response(&validation_error));
         }
 
-        // Enforce unique constraints
-        if let Err(unique_err) = self.check_unique_constraints(&item, None).await {
-            return Ok(self.json_error_response(StatusCode::CONFLICT, &unique_err));
+        let mutation = match self.lock_mutations().await {
+            Ok(guard) => guard,
+            Err(error) => return Ok(self.mutation_error_response(error)),
+        };
+        if let Err(error) = item.apply_lifecycle() {
+            return Ok(self.bad_request_response(&error));
         }
-
-        // Apply lifecycle rules
-        if let Err(lifecycle_error) = item.apply_lifecycle() {
-            return Ok(self.bad_request_response(&lifecycle_error));
+        if let Err(error) = self.check_unique_constraints(&item, None).await {
+            return Ok(self.json_error_response(StatusCode::CONFLICT, &error));
         }
-
         let primary_key = item.get_primary_key();
-
-        // RAFT INTEGRATION: Check if consensus is required
         #[cfg(feature = "cluster")]
-        {
-            if let Some(consensus_arc) = &self.consensus {
-                log::debug!("Raft: Proposing create operation for item {}", primary_key);
-
-                // Real Raft consensus proposal
-                match consensus_arc
-                    .read()
-                    .await
-                    .propose_create(item.clone(), primary_key.clone())
-                    .await
-                {
-                    Ok(_) => {
-                        log::debug!("Raft: Consensus achieved, applying operation locally");
-
-                        // Apply to local storage after successful consensus
-                        // Use the item's actual ID as key, not the placeholder
-                        let actual_key = serde_json::to_value(&item)
-                            .ok()
-                            .and_then(|v| {
-                                v.get("id").and_then(|id| id.as_str().map(|s| s.to_string()))
-                            })
-                            .unwrap_or_else(|| primary_key.clone());
-
-                        log::debug!(
-                            "DEBUG: primary_key = {}, actual_key = {}",
-                            primary_key,
-                            actual_key
-                        );
-                        log::debug!(
-                            "DEBUG: item JSON = {}",
-                            serde_json::to_string(&item).unwrap_or_default()
-                        );
-
-                        {
-                            let mut storage = self.storage.write().await;
-                            Self::insert_with_retention(
-                                &mut storage,
-                                self.retention.as_ref(),
-                                actual_key.clone(),
-                                item.clone(),
-                            );
-                            log::debug!("DEBUG: Storage now has {} items", storage.len());
-                        }
-
-                        if (self.persist_to_event_store("Created", &item).await).is_err() {
-                            return Ok(self.internal_error_response());
-                        }
-
-                        log::debug!(
-                            "Raft: Successfully replicated item {} across cluster",
-                            primary_key
-                        );
-                    }
-                    Err(e) => {
-                        return Ok(self.json_error_response(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            &format!("Consensus failed: {}", e),
-                        ));
-                    }
-                }
-            } else {
-                // Local-only mode (no replication)
-                {
-                    let mut storage = self.storage.write().await;
-                    Self::insert_with_retention(
-                        &mut storage,
-                        self.retention.as_ref(),
-                        primary_key.clone(),
-                        item.clone(),
-                    );
-                }
-
-                if (self.persist_to_event_store("Created", &item).await).is_err() {
-                    return Ok(self.internal_error_response());
-                }
-
-                log::debug!("Local: Item {} stored locally only", primary_key);
-            }
-        }
-        #[cfg(not(feature = "cluster"))]
-        {
+        if let Some(consensus) = &self.consensus {
+            if let Err(error) =
+                consensus.read().await.propose_create(item.clone(), primary_key.clone()).await
             {
-                let mut storage = self.storage.write().await;
-                Self::insert_with_retention(
-                    &mut storage,
-                    self.retention.as_ref(),
-                    primary_key.clone(),
-                    item.clone(),
-                );
-            }
-
-            if (self.persist_to_event_store("Created", &item).await).is_err() {
-                return Ok(self.internal_error_response());
+                return Ok(self.json_error_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("Consensus failed: {error}"),
+                ));
             }
         }
-
-        self.broadcast_sse("create", &item).await;
+        if let Err(error) = self
+            .commit_mutation(mutation, "Created", primary_key, item.clone(), Some("create"))
+            .await
+        {
+            return Ok(self.mutation_error_response(error));
+        }
 
         match serde_json::to_string(&item) {
             Ok(json) => Ok(Response::builder()
@@ -1869,118 +1658,42 @@ where
         };
 
         let mut created: Vec<T> = Vec::with_capacity(items.len());
-        let disable_consensus: bool = std::env::var("LT_DISABLE_CONSENSUS")
-            .ok()
+        #[cfg(feature = "cluster")]
+        let disable_consensus = std::env::var("LT_DISABLE_CONSENSUS")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-
-        // Process sequentially for simplicity and determinism
         for mut item in items.drain(..) {
-            if let Err(e) = item.validate() {
-                return Ok(self.bad_request_response(&e));
+            let mutation = match self.lock_mutations().await {
+                Ok(guard) => guard,
+                Err(error) => return Ok(self.mutation_error_response(error)),
+            };
+            if let Err(error) = item.validate().and_then(|_| item.apply_lifecycle()) {
+                return Ok(self.bad_request_response(&error));
             }
-            // Enforce unique constraints
-            if let Err(unique_err) = self.check_unique_constraints(&item, None).await {
-                return Ok(self.json_error_response(StatusCode::CONFLICT, &unique_err));
+            if let Err(error) = self.check_unique_constraints(&item, None).await {
+                return Ok(self.json_error_response(StatusCode::CONFLICT, &error));
             }
-            if let Err(e) = item.apply_lifecycle() {
-                return Ok(self.bad_request_response(&e));
-            }
-
-            let primary_key = item.get_primary_key();
-
+            let key = item.get_primary_key();
             #[cfg(feature = "cluster")]
-            {
-                if let Some(consensus_arc) = &self.consensus {
-                    if !disable_consensus {
-                        // Consensus path
-                        match consensus_arc
-                            .read()
-                            .await
-                            .propose_create(item.clone(), primary_key.clone())
-                            .await
-                        {
-                            Ok(_) => {
-                                // Apply to local storage after successful consensus
-                                let actual_key = serde_json::to_value(&item)
-                                    .ok()
-                                    .and_then(|v| {
-                                        v.get("id")
-                                            .and_then(|id| id.as_str().map(|s| s.to_string()))
-                                    })
-                                    .unwrap_or_else(|| primary_key.clone());
-                                {
-                                    let mut storage = self.storage.write().await;
-                                    Self::insert_with_retention(
-                                        &mut storage,
-                                        self.retention.as_ref(),
-                                        actual_key,
-                                        item.clone(),
-                                    );
-                                }
-                                if (self.persist_to_event_store("Created", &item).await).is_err() {
-                                    return Ok(self.internal_error_response());
-                                }
-                                created.push(item);
-                            }
-                            Err(e) => {
-                                return Ok(self.json_error_response(
-                                    StatusCode::SERVICE_UNAVAILABLE,
-                                    &format!("Consensus failed: {}", e),
-                                ));
-                            }
-                        }
-                    } else {
-                        // Consensus disabled -> local path
-                        {
-                            let mut storage = self.storage.write().await;
-                            Self::insert_with_retention(
-                                &mut storage,
-                                self.retention.as_ref(),
-                                primary_key.clone(),
-                                item.clone(),
-                            );
-                        }
-                        if (self.persist_to_event_store("Created", &item).await).is_err() {
-                            return Ok(self.internal_error_response());
-                        }
-                        created.push(item);
-                    }
-                } else {
-                    // No consensus configured -> local path
+            if let Some(consensus) = &self.consensus {
+                if !disable_consensus {
+                    if let Err(error) =
+                        consensus.read().await.propose_create(item.clone(), key.clone()).await
                     {
-                        let mut storage = self.storage.write().await;
-                        Self::insert_with_retention(
-                            &mut storage,
-                            self.retention.as_ref(),
-                            primary_key.clone(),
-                            item.clone(),
-                        );
+                        return Ok(self.json_error_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            &format!("Consensus failed: {error}"),
+                        ));
                     }
-                    if (self.persist_to_event_store("Created", &item).await).is_err() {
-                        return Ok(self.internal_error_response());
-                    }
-                    created.push(item);
                 }
             }
-            #[cfg(not(feature = "cluster"))]
+            if let Err(error) = self
+                .commit_mutation(mutation, "Created", key, item.clone(), Some("create"))
+                .await
             {
-                // No consensus configured -> local path
-                let _ = disable_consensus; // suppress unused warning
-                {
-                    let mut storage = self.storage.write().await;
-                    Self::insert_with_retention(
-                        &mut storage,
-                        self.retention.as_ref(),
-                        primary_key.clone(),
-                        item.clone(),
-                    );
-                }
-                if (self.persist_to_event_store("Created", &item).await).is_err() {
-                    return Ok(self.internal_error_response());
-                }
-                created.push(item);
+                return Ok(self.mutation_error_response(error));
             }
+            created.push(item);
         }
 
         match serde_json::to_string(&created) {
@@ -2021,7 +1734,7 @@ where
         }
 
         // If evicted, load from event store on demand
-        if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
+        if self.retention.as_deref().is_some_and(|r| r.is_evicted(id)) {
             if let Some(item) = self.load_evicted_item(id).await {
                 if !item.can_read(&user_perms) {
                     return Ok(Response::builder()
@@ -2117,104 +1830,43 @@ where
             }
         }
 
-        // Enforce immutable fields and log audited changes
-        {
-            let storage = self.storage.read().await;
-            if let Some(existing) = storage.get(id) {
-                if let Err(immutable_err) = Self::check_immutable_fields(existing, &updated_item) {
-                    return Ok(self.bad_request_response(&immutable_err));
-                }
-                Self::log_audited_changes(existing, &updated_item);
-            }
+        let mutation = match self.lock_mutations().await {
+            Ok(guard) => guard,
+            Err(error) => return Ok(self.mutation_error_response(error)),
+        };
+        let Some(existing) = self.get_by_id(id).await else {
+            return Ok(self.not_found_response());
+        };
+        if let Err(error) = updated_item.validate().and_then(|_| updated_item.apply_lifecycle()) {
+            return Ok(self.bad_request_response(&error));
         }
-
-        // Validate
-        if let Err(validation_error) = updated_item.validate() {
-            return Ok(self.bad_request_response(&validation_error));
+        if let Err(error) = Self::check_primary_key(id, &updated_item) {
+            return Ok(self.mutation_error_response(error));
         }
-
-        // Enforce unique constraints (exclude self from check)
-        if let Err(unique_err) = self.check_unique_constraints(&updated_item, Some(id)).await {
-            return Ok(self.json_error_response(StatusCode::CONFLICT, &unique_err));
+        if let Err(error) = Self::check_immutable_fields(&existing, &updated_item) {
+            return Ok(self.bad_request_response(&error));
         }
-
-        // Apply lifecycle
-        if let Err(lifecycle_error) = updated_item.apply_lifecycle() {
-            return Ok(self.bad_request_response(&lifecycle_error));
+        if let Err(error) = self.check_unique_constraints(&updated_item, Some(id)).await {
+            return Ok(self.json_error_response(StatusCode::CONFLICT, &error));
         }
-
-        // RAFT INTEGRATION: Check if consensus is required for UPDATE
         #[cfg(feature = "cluster")]
-        {
-            if let Some(consensus_arc) = &self.consensus {
-                log::debug!("Raft: Proposing UPDATE operation for item {}", id);
-                match consensus_arc
-                    .read()
-                    .await
-                    .propose_update(updated_item.clone(), id.to_string())
-                    .await
-                {
-                    Ok(_) => {
-                        // Apply to local storage after successful consensus
-                        let mut storage = self.storage.write().await;
-                        let exists = storage.contains_key(id)
-                            || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
-                        if !exists {
-                            return Ok(self.not_found_response());
-                        }
-                        Self::insert_with_retention(
-                            &mut storage,
-                            self.retention.as_ref(),
-                            id.to_string(),
-                            updated_item.clone(),
-                        );
-                    }
-                    Err(e) => {
-                        return Ok(self.json_error_response(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            &format!("Consensus failed: {}", e),
-                        ));
-                    }
-                }
-            } else {
-                // No consensus - update storage directly (single-node mode)
-                let mut storage = self.storage.write().await;
-                let exists = storage.contains_key(id)
-                    || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
-                if !exists {
-                    return Ok(self.not_found_response());
-                }
-                Self::insert_with_retention(
-                    &mut storage,
-                    self.retention.as_ref(),
-                    id.to_string(),
-                    updated_item.clone(),
-                );
+        if let Some(consensus) = &self.consensus {
+            if let Err(error) =
+                consensus.read().await.propose_update(updated_item.clone(), id.into()).await
+            {
+                return Ok(self.json_error_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("Consensus failed: {error}"),
+                ));
             }
         }
-        #[cfg(not(feature = "cluster"))]
+        if let Err(error) = self
+            .commit_mutation(mutation, "Updated", id.into(), updated_item.clone(), Some("update"))
+            .await
         {
-            // No consensus - update storage directly (single-node mode)
-            let mut storage = self.storage.write().await;
-            let exists = storage.contains_key(id)
-                || self.retention.as_ref().is_some_and(|r| r.is_evicted(id));
-            if !exists {
-                return Ok(self.not_found_response());
-            }
-            Self::insert_with_retention(
-                &mut storage,
-                self.retention.as_ref(),
-                id.to_string(),
-                updated_item.clone(),
-            );
+            return Ok(self.mutation_error_response(error));
         }
-
-        // Persist to EventStore
-        if (self.persist_to_event_store("Updated", &updated_item).await).is_err() {
-            return Ok(self.internal_error_response());
-        }
-
-        self.broadcast_sse("update", &updated_item).await;
+        Self::log_audited_changes(&existing, &updated_item);
 
         match serde_json::to_string(&updated_item) {
             Ok(json) => Ok(Response::builder()
@@ -2228,6 +1880,23 @@ where
 
     /// PATCH /api/{model}/{id} - Partial update via JSON merge
     async fn handle_patch(&self, id: &str, req: Req) -> Result<Resp, Infallible> {
+        let permissions = self.permission_extractor.as_ref().map(|extract| extract(&req));
+        if permissions.is_none() {
+            if let Some(checker) = &self.permission_checker {
+                let Some(role) = self.extract_role_from_request(&req).await else {
+                    return Ok(self
+                        .json_error_response(StatusCode::UNAUTHORIZED, "Authentication required"));
+                };
+                let specific = format!("{}Write", Self::event_model_name());
+                if !checker.has_permission(&role, &specific)
+                    && !checker.has_permission(&role, "Write")
+                {
+                    return Ok(
+                        self.json_error_response(StatusCode::FORBIDDEN, "Insufficient permissions")
+                    );
+                }
+            }
+        }
         // Validate content type
         if !Self::has_json_content_type(&req) {
             return Ok(self.unsupported_media_type_response());
@@ -2251,11 +1920,8 @@ where
             Err(_) => return Ok(self.bad_request_response("Invalid JSON")),
         };
 
-        match self.submit_admin_edit(id, changes).await {
+        match self.edit_item(id, changes, Some("patched"), permissions.as_deref()).await {
             Ok(item) => {
-                // Broadcast SSE event
-                self.broadcast_sse("patched", &item).await;
-
                 let body = serde_json::to_string(&item).unwrap_or_default();
                 Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -2263,8 +1929,7 @@ where
                     .body(body_from(body))
                     .unwrap())
             }
-            Err(e) if e.contains("not found") => Ok(self.not_found_response()),
-            Err(e) => Ok(self.bad_request_response(&e)),
+            Err(error) => Ok(self.mutation_error_response(error)),
         }
     }
 
@@ -2274,11 +1939,11 @@ where
         let extracted_perms: Option<Vec<String>> =
             self.permission_extractor.as_ref().map(|f| f(&req));
 
-        // First, fetch the item if present to evaluate permissions against it
-        let existing_item_opt = {
-            let storage = self.storage.read().await;
-            storage.get(id).cloned()
+        let mutation = match self.lock_mutations().await {
+            Ok(guard) => guard,
+            Err(error) => return Ok(self.mutation_error_response(error)),
         };
+        let existing_item_opt = self.get_by_id(id).await;
         if let Some(ref item) = existing_item_opt {
             if let Some(ref perms) = extracted_perms {
                 if !item.can_write(perms) {
@@ -2317,96 +1982,27 @@ where
             }
         }
 
-        // RAFT INTEGRATION: Check if consensus is required for DELETE
+        let Some(item) = existing_item_opt else {
+            return Ok(self.not_found_response());
+        };
         #[cfg(feature = "cluster")]
+        if let Some(consensus) = &self.consensus {
+            if let Err(error) = consensus.read().await.propose_delete(id.into()).await {
+                return Ok(self.json_error_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("Consensus failed: {error}"),
+                ));
+            }
+        }
+        if let Err(error) =
+            self.commit_mutation(mutation, "Deleted", id.into(), item, Some("delete")).await
         {
-            if let Some(consensus_arc) = &self.consensus {
-                log::debug!("Raft: Proposing DELETE operation for item {}", id);
-                match consensus_arc.read().await.propose_delete(id.to_string()).await {
-                    Ok(_) => {
-                        let removed_item = {
-                            let mut storage = self.storage.write().await;
-                            storage.remove(id)
-                        };
-
-                        let removed_item = match removed_item {
-                            Some(item) => Some(item),
-                            None => {
-                                if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
-                                    self.load_evicted_item(id).await
-                                } else {
-                                    None
-                                }
-                            }
-                        };
-
-                        if let Some(retention) = &self.retention {
-                            retention.remove(id);
-                        }
-
-                        match removed_item {
-                            Some(item) => {
-                                if (self.persist_to_event_store("Deleted", &item).await).is_err() {
-                                    return Ok(self.internal_error_response());
-                                }
-
-                                self.broadcast_sse("delete", &item).await;
-
-                                return Ok(Response::builder()
-                                    .status(StatusCode::NO_CONTENT)
-                                    .body(body_from(Bytes::new()))
-                                    .unwrap());
-                            }
-                            None => return Ok(self.not_found_response()),
-                        }
-                    }
-                    Err(e) => {
-                        return Ok(self.json_error_response(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            &format!("Consensus failed: {}", e),
-                        ));
-                    }
-                }
-            }
+            return Ok(self.mutation_error_response(error));
         }
-        // No consensus - delete directly (single-node mode)
-        let removed_item = {
-            let mut storage = self.storage.write().await;
-            storage.remove(id)
-        };
-
-        // If not in hot storage but evicted, reload from event store before deleting
-        let removed_item = match removed_item {
-            Some(item) => Some(item),
-            None => {
-                if self.retention.as_ref().is_some_and(|r| r.is_evicted(id)) {
-                    self.load_evicted_item(id).await
-                } else {
-                    None
-                }
-            }
-        };
-
-        // Clean up warm map entry (if any)
-        if let Some(retention) = &self.retention {
-            retention.remove(id);
-        }
-
-        match removed_item {
-            Some(item) => {
-                if (self.persist_to_event_store("Deleted", &item).await).is_err() {
-                    return Ok(self.internal_error_response());
-                }
-
-                self.broadcast_sse("delete", &item).await;
-
-                Ok(Response::builder()
-                    .status(StatusCode::NO_CONTENT)
-                    .body(body_from(Bytes::new()))
-                    .unwrap())
-            }
-            None => Ok(self.not_found_response()),
-        }
+        Ok(Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body(body_from(Bytes::new()))
+            .unwrap())
     }
 
     /// Crate/module paths are implementation details, not native model identity.
@@ -2435,35 +2031,6 @@ where
             }
             _ => None,
         }
-    }
-
-    /// Persist operation to EventStore
-    async fn persist_to_event_store(
-        &self,
-        operation: &str,
-        item: &T,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let envelope = EventEnvelope {
-            event_type: format!("{}{}", Self::event_model_name(), operation),
-            event_id: format!(
-                "{}:{}:{}",
-                Self::event_model_name(),
-                operation,
-                item.get_primary_key()
-            ),
-            timestamp: chrono::Utc::now().timestamp() as u64,
-            payload: serde_json::to_string(item)?,
-            aggregate_id: Some(item.get_primary_key()),
-            // Hash chain fields - computed automatically by EventStore when enabled
-            event_hash: None,
-            previous_hash: None,
-        };
-
-        let mut event_store = self.event_store.write().await;
-        event_store.append_envelope(&envelope)?;
-        // Flush is handled by the background flusher for high throughput
-
-        Ok(())
     }
 
     // Helper methods for responses
@@ -2577,92 +2144,53 @@ where
         self.get_entity_history(id).await.len()
     }
 
-    /// Submit an admin edit event (event-sourced: appends new event, updates state)
-    /// Returns the new state after applying the edit
-    pub async fn submit_admin_edit(&self, id: &str, changes: serde_json::Value) -> Result<T, String>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        // Get current item
-        let current_item = {
-            let storage = self.storage.read().await;
-            storage.get(id).cloned()
-        };
+    /// Submit an admin edit and return only after the journal and memory agree.
+    pub async fn submit_admin_edit(
+        &self,
+        id: &str,
+        changes: serde_json::Value,
+    ) -> Result<T, String> {
+        self.edit_item(id, changes, None, None).await.map_err(|e| e.to_string())
+    }
 
-        let mut item = current_item.ok_or_else(|| format!("Entity '{}' not found", id))?;
-
-        // Merge changes into current item
-        let mut item_json =
-            serde_json::to_value(&item).map_err(|e| format!("Failed to serialize item: {}", e))?;
-
-        if let (Some(item_obj), Some(changes_obj)) =
-            (item_json.as_object_mut(), changes.as_object())
-        {
-            for (key, value) in changes_obj {
-                item_obj.insert(key.clone(), value.clone());
-            }
+    async fn edit_item(
+        &self,
+        id: &str,
+        changes: serde_json::Value,
+        notification: Option<&'static str>,
+        permissions: Option<&[String]>,
+    ) -> Result<T, MutationError> {
+        let mutation = self.lock_mutations().await?;
+        let original = self.get_by_id(id).await.ok_or(MutationError::NotFound)?;
+        if permissions.is_some_and(|perms| !original.can_write(perms)) {
+            return Err(MutationError::Forbidden);
         }
-
-        // Deserialize back to item
-        let original = item.clone();
-        item = serde_json::from_value(item_json)
-            .map_err(|e| format!("Failed to apply changes: {}", e))?;
-
-        // Enforce immutable fields and log audited changes
-        Self::check_immutable_fields(&original, &item)?;
-        Self::log_audited_changes(&original, &item);
-
-        // Enforce unique constraints
+        let mut value =
+            serde_json::to_value(&original).map_err(|e| MutationError::Invalid(e.to_string()))?;
+        let changes = changes
+            .as_object()
+            .ok_or_else(|| MutationError::Invalid("Expected a JSON object".into()))?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| MutationError::Invalid("Expected a model object".into()))?;
+        for (key, value) in changes {
+            object.insert(key.clone(), value.clone());
+        }
+        let mut item: T =
+            serde_json::from_value(value).map_err(|e| MutationError::Invalid(e.to_string()))?;
+        if permissions.is_some_and(|perms| !item.can_write(perms)) {
+            return Err(MutationError::Forbidden);
+        }
+        item.validate().map_err(MutationError::Invalid)?;
+        item.apply_lifecycle().map_err(MutationError::Invalid)?;
+        Self::check_primary_key(id, &item)?;
+        Self::check_immutable_fields(&original, &item).map_err(MutationError::Invalid)?;
         self.check_unique_constraints(&item, Some(id))
             .await
-            .map_err(|e| format!("Unique constraint: {}", e))?;
-
-        // Validate the updated item
-        if let Err(validation_error) = item.validate() {
-            return Err(format!("Validation failed: {}", validation_error));
-        }
-
-        // Apply lifecycle rules
-        if let Err(lifecycle_error) = item.apply_lifecycle() {
-            return Err(format!("Lifecycle error: {}", lifecycle_error));
-        }
-
-        // Update in-memory storage
-        {
-            let mut storage = self.storage.write().await;
-            Self::insert_with_retention(
-                &mut storage,
-                self.retention.as_ref(),
-                id.to_string(),
-                item.clone(),
-            );
-        }
-
-        // Persist as AdminEdit event (different from regular Updated)
-        let envelope = EventEnvelope {
-            event_type: format!("{}AdminEdit", Self::event_model_name()),
-            event_id: format!(
-                "{}:AdminEdit:{}:{}",
-                Self::event_model_name(),
-                id,
-                chrono::Utc::now().timestamp_millis()
-            ),
-            timestamp: chrono::Utc::now().timestamp() as u64,
-            payload: serde_json::to_string(&item)
-                .map_err(|e| format!("Failed to serialize: {}", e))?,
-            aggregate_id: Some(id.to_string()),
-            // Hash chain fields - computed automatically by EventStore when enabled
-            event_hash: None,
-            previous_hash: None,
-        };
-
-        {
-            let mut event_store = self.event_store.write().await;
-            event_store
-                .append_envelope(&envelope)
-                .map_err(|e| format!("Failed to persist event: {}", e))?;
-        }
-
+            .map_err(MutationError::Conflict)?;
+        self.commit_mutation(mutation, "AdminEdit", id.into(), item.clone(), notification)
+            .await?;
+        Self::log_audited_changes(&original, &item);
         Ok(item)
     }
 }

@@ -81,6 +81,11 @@ promises with declaratively defined models in the test gate. These are
 single-process tests, not native model cluster qualification. See the
 [engine contract](features/state-engine/scc2.md).
 
+`native_http_commit_test` and `native_http_commit_bdd` cover generated HTTP
+acknowledgements, failed storage, concurrent partial edits, cancellation and
+live compaction. The BDD runner owns `features/core/native_http_commit.feature`.
+See the [HTTP commit contract](features/state-engine/native-http.md).
+
 ## The workflow
 
 **New feature** → open a draft PR with `cidx repo pr create`, then write the

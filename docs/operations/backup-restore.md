@@ -153,16 +153,14 @@ postures: cold (recommended) and hot.
 The simplest correct backup stops writes first, so the copied directory
 is a quiescent, internally consistent set.
 
-**Why stopping matters: the background flusher.** A running server batches
-event writes and flushes them on a timer (`flush_events()` every
-`LT_FLUSH_INTERVAL_MS`, default 100 ms). At any instant a copy of a
-*running* store may miss the last unflushed batch — the in-memory event
-count can be ahead of what is on disk. Stopping or draining the service
-flushes the buffer on the way down, so the copied `events.raftlog` holds
-every committed event. Do **not** copy a running store and assume the
-last few writes are on disk; stop or drain first (or accept the torn-tail
-loss documented under "Hot / live backup" below). This is the single
-most common mistake in a cold backup of an active deployment.
+**Why stopping matters: concurrent files and writers.** Native HTTP mutations
+flush their journal before acknowledgement, but a live copy can still race
+appends, snapshot replacement, log truncation, or updates in another model store.
+Queued low-level engine writes can also remain pending. Stop or drain all writers
+and complete their flush barriers before copying the directory. HTTP flush
+acknowledgements alone do not make a live multi-file backup consistent. See the
+[native HTTP commit contract](../features/state-engine/native-http.md) and the
+hot/live backup limitations below.
 
 Option 1 — stop the service:
 

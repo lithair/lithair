@@ -63,10 +63,10 @@ remain readable; historical raw events without an aggregate ID retain their
 
 ## Boundaries and next work
 
-The generated native HTTP handler currently has its own map/persistence path.
-Its durability settings are not changed by the SCC engine configuration.
+The generated native HTTP handler retains its own map but now uses a centralized
+[journal-before-publication commit path](native-http.md), including admin and
+replicated apply helpers. Its durability settings remain independent from SCC.
 Frontend asset writes also have their own journal-before-publication adapter.
-Unifying these callers behind one native commit contract is separate work.
 
 Retention can keep recent full records in memory and older pinned fields in a
 warm map. Loading a full evicted record currently replays its history from the

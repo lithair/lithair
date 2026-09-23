@@ -88,10 +88,10 @@ Quick reference matrix for all configuration options.
 |                 | `LT_USE_SCC2`          | on          | ❌             | ✅ **ONLY** | ❌   | 🔒         | SCC2 state backend (`0`/`false` = legacy backend)      |
 |                 | `LT_ENABLE_BINARY`     | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Binary (bincode) event log format                      |
 |                 | `LT_MULTI_FILE`        | off         | ❌             | ✅          | ✅   | 🔒         | Multi-file event store (OR'd with the engine flag)     |
-|                 | `LT_OPT_PERSIST`       | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Optimized async event writer                           |
+|                 | `LT_OPT_PERSIST`       | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | Legacy async writer; unavailable to native HTTP handlers                           |
 |                 | `LT_BUFFER_SIZE`       | writer default | ❌          | ✅ **ONLY** | ❌   | 🔒         | Writer buffer size (with `LT_OPT_PERSIST`)             |
 |                 | `LT_MAX_EVENTS_BUFFER` | writer default | ❌          | ✅ **ONLY** | ❌   | 🔒         | Max buffered events (with `LT_OPT_PERSIST`)            |
-|                 | `LT_FLUSH_INTERVAL_MS` | `100ms`     | ❌             | ✅ **ONLY** | ❌   | 🔒         | Background flusher interval                            |
+|                 | `LT_FLUSH_INTERVAL_MS` | `100ms`     | ❌             | ✅ **ONLY** | ❌   | 🔒         | Legacy optimized writer interval; unused by native HTTP                            |
 |                 | `LT_FSYNC_ON_APPEND`   | off         | ❌             | ✅ **ONLY** | ❌   | 🔒         | fsync after each append                                |
 |                 | `LT_EVENT_MAX_BATCH`   | `16384`     | ❌             | ✅ **ONLY** | ❌   | 🔒         | Max event batch size                                   |
 |                 | `LT_DEDUP_PERSIST`     | on          | ❌             | ✅ **ONLY** | ❌   | 🔒         | Persisted dedup (`0`/`false` disables)                 |

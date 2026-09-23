@@ -253,11 +253,9 @@ impl FileStorage {
             })?;
 
             if self.fsync_on_append {
-                if let Ok(file) = writer.get_ref().try_clone() {
-                    file.sync_all().map_err(|e| {
-                        EngineError::PersistenceError(format!("Failed to sync binary event: {}", e))
-                    })?;
-                }
+                writer.get_ref().sync_all().map_err(|e| {
+                    EngineError::PersistenceError(format!("Failed to sync binary event: {}", e))
+                })?;
             }
         }
         Ok(())
@@ -309,11 +307,9 @@ impl FileStorage {
 
             // Optional fsync for durability
             if self.fsync_on_append {
-                if let Ok(file) = writer.get_ref().try_clone() {
-                    file.sync_all().map_err(|e| {
-                        EngineError::PersistenceError(format!("Failed to sync events file: {}", e))
-                    })?;
-                }
+                writer.get_ref().sync_all().map_err(|e| {
+                    EngineError::PersistenceError(format!("Failed to sync events file: {}", e))
+                })?;
             }
         }
 
@@ -378,11 +374,9 @@ impl FileStorage {
             })?;
 
             if self.fsync_on_append {
-                if let Ok(file) = writer.get_ref().try_clone() {
-                    file.sync_all().map_err(|e| {
-                        EngineError::PersistenceError(format!("Failed to sync index file: {}", e))
-                    })?;
-                }
+                writer.get_ref().sync_all().map_err(|e| {
+                    EngineError::PersistenceError(format!("Failed to sync index file: {}", e))
+                })?;
             }
         }
         Ok(())
@@ -643,11 +637,9 @@ impl FileStorage {
             writer.flush().map_err(|e| {
                 EngineError::PersistenceError(format!("Failed to force flush: {}", e))
             })?;
-            if let Ok(file) = writer.get_ref().try_clone() {
-                file.sync_all().map_err(|e| {
-                    EngineError::PersistenceError(format!("Failed to force sync: {}", e))
-                })?;
-            }
+            writer.get_ref().sync_all().map_err(|e| {
+                EngineError::PersistenceError(format!("Failed to force sync: {}", e))
+            })?;
         }
         Ok(())
     }

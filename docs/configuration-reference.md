@@ -586,10 +586,10 @@ otherwise.
 | `LT_USE_SCC2`           | on               | SCC2 lock-free state storage backend — set `0`/`false` for the legacy backend |
 | `LT_ENABLE_BINARY`      | off              | Binary (bincode) event log format instead of JSON lines                      |
 | `LT_MULTI_FILE`         | off              | Multi-file event store backend (OR'd with the config flag)                   |
-| `LT_OPT_PERSIST`        | off              | Optimized async event writer path                                            |
+| `LT_OPT_PERSIST`        | off              | Legacy async writer; rejected by native HTTP handlers                                            |
 | `LT_BUFFER_SIZE`        | writer default   | Write buffer size in bytes (only used with `LT_OPT_PERSIST`)                 |
 | `LT_MAX_EVENTS_BUFFER`  | writer default   | Max buffered events before forced flush (only used with `LT_OPT_PERSIST`)    |
-| `LT_FLUSH_INTERVAL_MS`  | `100`            | Background batch flusher interval in milliseconds                            |
+| `LT_FLUSH_INTERVAL_MS`  | `100`            | Legacy optimized writer interval; unused by native HTTP                            |
 | `LT_FSYNC_ON_APPEND`    | off              | fsync after each event append                                                |
 | `LT_EVENT_MAX_BATCH`    | `16384`          | Max batch size for event store batching                                      |
 | `LT_DEDUP_PERSIST`      | on               | Persisted dedup state — set `0`/`false` to disable                           |

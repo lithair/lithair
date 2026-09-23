@@ -1624,35 +1624,29 @@ impl LithairServerBuilder {
                 })
             });
 
-        // PUT /base_path/* - Update
-        let handler_put = handler.clone();
-        let base_for_put = base_path_normalized.clone();
-        self =
-            self.with_route(http::Method::PUT, format!("{}/*", base_path_normalized), move |req| {
-                let h = handler_put.clone();
-                let bp = base_for_put.clone();
+        // PUT/PATCH /base_path/* - Full and partial updates use the same handler.
+        for method in [http::Method::PUT, http::Method::PATCH] {
+            let handler_update = handler.clone();
+            let base_for_update = base_path_normalized.clone();
+            self = self.with_route(method, format!("{}/*", base_path_normalized), move |req| {
+                let handler = handler_update.clone();
+                let base = base_for_update.clone();
                 Box::pin(async move {
                     let path = req.uri().path().to_string();
                     let segments: Vec<&str> = path
-                        .strip_prefix(&bp)
+                        .strip_prefix(&base)
                         .unwrap_or("")
                         .trim_start_matches('/')
                         .split('/')
                         .filter(|s| !s.is_empty())
                         .collect();
-
-                    match h.handle_request(req, &segments).await {
-                        Ok(resp) => Ok(resp),
-                        Err(_infallible) => {
-                            log::error!("Handler error for PUT {}/*", bp);
-                            Ok(hyper::Response::builder()
-                                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(super::boxed_full(bytes::Bytes::from("Internal error")))
-                                .unwrap())
-                        }
+                    match handler.handle_request(req, &segments).await {
+                        Ok(response) => Ok(response),
+                        Err(never) => match never {},
                     }
                 })
             });
+        }
 
         // DELETE /base_path/* - Delete
         let handler_del = handler.clone();
@@ -1692,7 +1686,7 @@ impl LithairServerBuilder {
         log::info!("   GET {} - List all", base_path_normalized);
         log::info!("   POST {} - Create", base_path_normalized);
         log::info!("   GET {}/* - Get by ID", base_path_normalized);
-        log::info!("   PUT {}/* - Update by ID", base_path_normalized);
+        log::info!("   PUT/PATCH {}/* - Update by ID", base_path_normalized);
         log::info!("   DELETE {}/* - Delete by ID", base_path_normalized);
 
         self

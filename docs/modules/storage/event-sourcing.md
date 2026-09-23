@@ -117,7 +117,10 @@ Operational guidance:
 
 ### Runtime Environment Variables (High Throughput)
 
-To control optimized persistence at runtime without code changes, use the following `LT_` environment variables:
+The following options describe the legacy low-level optimized writer.
+Generated native HTTP handlers reject `LT_OPT_PERSIST=1` because its flush is only
+queued, not acknowledged. They use explicit append/flush before publication;
+see the [HTTP commit contract](../../features/state-engine/native-http.md).
 
 - `LT_OPT_PERSIST` (1/0)
   Enables the asynchronous writer thread for event appends (JSON lines). Greatly reduces syscall/flush overhead. Default: off (scripts may turn it on).
@@ -138,9 +141,9 @@ To control optimized persistence at runtime without code changes, use the follow
   Internal batch size (legacy path). Kept for compatibility; async path prefers the parameters above.
 
 - `LT_ENABLE_BINARY` (1/0)
-  Enable true binary persistence: event envelopes are serialized with bincode and written as newline‑separated binary records. Replay remains compatible: the engine re‑serializes envelopes to JSON when reading for tooling.
+  Enable true binary persistence: event envelopes are serialized with bincode and written as length-prefixed binary frames. Replay remains compatible: the engine re‑serializes envelopes to JSON when reading for tooling.
 
-Example (activate async JSON + binary envelopes):
+Low-level benchmark example (not for native HTTP handlers):
 
 ```bash
 export LT_OPT_PERSIST=1
