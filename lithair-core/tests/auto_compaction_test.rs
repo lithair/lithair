@@ -70,9 +70,8 @@ async fn append_n(store: &Arc<RwLock<EventStore>>, n: usize) {
 /// auto-compaction block. Kept in sync manually — if the production loop
 /// diverges, both should be updated.
 ///
-/// Note: this helper calls `truncate_events()` directly because the raw
-/// `EventStore` has no concept of model state to snapshot. The
-/// state-survives-restart property is tested separately via
+/// This fixture checkpoints synthetic empty state before reclamation. Real
+/// model state survival is tested separately via
 /// `DeclarativeHttpHandler::compact()` (the real production path).
 fn spawn_auto_compaction(
     event_store: Arc<RwLock<EventStore>>,
@@ -92,7 +91,9 @@ fn spawn_auto_compaction(
                 continue;
             }
             let mut store = event_store.write().await;
-            let _ = store.truncate_events();
+            // Synthetic maintenance fixture: no application state is used here.
+            store.save_snapshot("{}").expect("checkpoint");
+            store.truncate_events().expect("compact");
         }
     })
 }

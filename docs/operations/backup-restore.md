@@ -37,11 +37,16 @@ layout (`lithair-core/src/engine/persistence.rs`):
 |------|---------|
 | `events.raftlog` | Append-only event log (JSON lines, CRC32-prefixed) |
 | `events.raftidx` | Index: aggregate id → byte offset in the log |
-| `state.raftsnap` | Latest state snapshot (JSON), written by compaction |
+| `state.raftsnap` | Checked checkpoint envelope: state, journal selection and replay boundary |
+| `native-journal-<uuid>.raftlog` | Active journal generation after native compaction |
 | `meta.raftmeta` | Metadata (version, checksums) |
 | `dedup.raftids` | Dedup id set (present only if dedup is enabled) |
 
-Back up the **whole directory**, not individual files — the snapshot and
+After native compaction, `events.raftlog` may have been reclaimed. Follow the
+[checkpoint format](../features/state-engine/native-checkpoints.md); older binaries
+cannot read the new checkpoint envelope.
+
+Back up the **whole stopped directory**, not individual files — the snapshot and
 the log are a matched set (the log holds only events appended *after* the
 snapshot once compaction has run; see PITR below).
 
@@ -242,17 +247,17 @@ torn final frame is dropped, the intact prefix is preserved.
 Caveats, in order of importance:
 
 - A hot copy is **not** a guaranteed point-in-time consistent snapshot.
-  Concurrent compaction can truncate `events.raftlog` while you copy,
+  Concurrent compaction can replace and reclaim journal generations while you copy,
   and the snapshot/log/index files are read at slightly different
   instants — you may capture a log that is ahead of or behind the
-  snapshot you copied. Replay tolerates a torn *tail*; it does not
-  reconcile a snapshot and log copied seconds apart.
+  snapshot you copied. Checkpoint recovery rejects incomplete/corrupt selected
+  journals; it does not reconcile files copied seconds apart.
 - For a guaranteed-consistent set, prefer **cold** backup (stop or
   drain). Reserve hot copies for "better than nothing" continuous
   snapshots where losing the last few seconds of writes is acceptable.
 - If you must take hot copies, disable auto-compaction during the window
   (or take them from a filesystem/volume snapshot that is itself atomic,
-  e.g. an LVM/EBS snapshot), so the log is not truncated mid-copy.
+  e.g. an LVM/EBS snapshot), so generations are not reclaimed mid-copy.
 
 ## Restore
 
@@ -334,13 +339,13 @@ which also explains the rollback window for event-sourced deployments.
 Because state is rebuilt by replaying the log, recovering to an earlier
 point means replaying only up to a chosen event — the event-sourced
 model makes this natural. The event history needed for PITR lives in
-`events.raftlog`.
+the journal selected by `state.raftsnap` (initially `events.raftlog`).
 
 **The reach of PITR is bounded by compaction.** Compaction
 (`with_auto_compaction(threshold, interval)` in
 `lithair-core/src/app/builder.rs`, executed by `compact()`) writes a
-snapshot of full state to `state.raftsnap` and then **truncates**
-`events.raftlog`. After a compaction, the events before the snapshot
+checkpoint of full state to `state.raftsnap`, selects a new journal, and
+**reclaims** the covered generation. After a compaction, the events before the snapshot
 point no longer exist on disk — you cannot replay to a moment older than
 the most recent retained snapshot.
 
@@ -353,10 +358,9 @@ every time the log crosses the threshold.
 Tuning the PITR/disk trade-off:
 
 - **Fine-grained PITR** needs the log preserved. Either disable
-  auto-compaction (accept unbounded `events.raftlog` growth — see
-  `docs/operations/capacity-planning.md` for disk sizing), or **back up
-  `events.raftlog` frequently** so you retain log segments off-site even
-  after on-disk truncation.
+  auto-compaction (accept unbounded journal growth — see
+  `docs/operations/capacity-planning.md` for disk sizing), or keep frequent
+  consistent **whole-directory backups** off-site before history is reclaimed.
 - **Bounded disk** comes from compaction, at the cost of PITR depth.
 - Raise the threshold to widen the PITR window at the cost of slower
   startup replay; lower it for faster replay and a shorter window.

@@ -7,9 +7,11 @@
 //! ```text
 //! data/
 //! ├── events.raftlog     # Append-only event log (JSON lines)
-//! ├── state.raftsnap     # Latest state snapshot (JSON)
+//! ├── state.raftsnap     # Checkpoint state and selected journal boundary (JSON)
 //! └── meta.raftmeta      # Metadata (version, checksums, etc.)
 //! ```
+
+mod checkpoint;
 
 use super::persistence_optimized::{AsyncEventWriter, OptimizedPersistenceConfig};
 use super::{EngineError, EngineResult};
@@ -73,6 +75,8 @@ pub fn parse_and_validate_event(line: &str) -> Result<String, String> {
 /// - State snapshots for fast recovery
 /// - Metadata for versioning and integrity
 pub struct FileStorage {
+    pub(crate) checkpoint_active: std::sync::atomic::AtomicBool,
+    checkpoint_failed: std::sync::atomic::AtomicBool,
     base_path: String,
     events_file: String,
     index_file: String,
@@ -113,6 +117,8 @@ impl FileStorage {
         })?;
 
         let mut storage = Self {
+            checkpoint_active: std::sync::atomic::AtomicBool::new(false),
+            checkpoint_failed: std::sync::atomic::AtomicBool::new(false),
             base_path: base_path.to_string(),
             events_file: format!("{}/events.raftlog", base_path),
             index_file: format!("{}/events.raftidx", base_path),
@@ -131,6 +137,7 @@ impl FileStorage {
         };
 
         // Create metadata file if it doesn't exist
+        storage.restore_checkpoint()?;
         storage.ensure_metadata_file()?;
 
         // Optionally enable optimized async persistence via env
@@ -193,6 +200,7 @@ impl FileStorage {
     ///
     /// Events are stored as JSON lines for human readability and debugging
     pub fn append_event(&mut self, event_json: &str) -> EngineResult<()> {
+        self.check_checkpoint_writable()?;
         // Optimized async path
         if let Some(ref aw) = self.async_writer {
             aw.write_event(event_json.to_string()).map_err(|e| {
@@ -213,6 +221,7 @@ impl FileStorage {
     /// Append raw binary event bytes (Stage B enablement)
     /// Uses Length-Prefixed Framing (8 bytes length + payload) for robustness against collision.
     pub fn append_binary_event_bytes(&mut self, data: &[u8]) -> EngineResult<()> {
+        self.check_checkpoint_writable()?;
         // Optimized async path
         if let Some(ref aw) = self.async_writer {
             aw.write_binary_event(data.to_vec()).map_err(|e| {
@@ -263,6 +272,7 @@ impl FileStorage {
 
     /// Flush the current batch of events to disk
     pub fn flush_batch(&mut self) -> EngineResult<()> {
+        self.check_checkpoint_writable()?;
         // Optimized async path: delegate flush to async writer
         if let Some(ref aw) = self.async_writer {
             aw.flush()?;
@@ -439,16 +449,7 @@ impl FileStorage {
 
     /// Truncate the events log after snapshot (compaction)
     pub fn truncate_events(&mut self) -> EngineResult<()> {
-        // Drop/flush async writer if enabled
-        if let Some(aw) = self.async_writer.take() {
-            let _ = aw.flush();
-            let _ = aw.shutdown();
-        }
-        // Drop legacy writer so file can be replaced
-        self.writer = None;
-        fs::write(&self.events_file, "")
-            .map_err(|e| EngineError::PersistenceError(format!("Failed to truncate log: {}", e)))?;
-        Ok(())
+        self.compact_checkpoint()
     }
 
     /// Read all events from the event log
@@ -470,8 +471,20 @@ impl FileStorage {
                     continue;
                 }
                 match parse_and_validate_event(line) {
-                    Ok(json_data) => all.push(json_data),
+                    Ok(json_data) => {
+                        if self.checkpoint_active.load(std::sync::atomic::Ordering::Acquire) {
+                            serde_json::from_str::<serde_json::Value>(&json_data).map_err(|e| {
+                                EngineError::PersistenceError(format!(
+                                    "invalid checkpoint journal event: {e}"
+                                ))
+                            })?;
+                        }
+                        all.push(json_data);
+                    }
                     Err(e) => {
+                        if self.checkpoint_active.load(std::sync::atomic::Ordering::Acquire) {
+                            return Err(EngineError::PersistenceError(e));
+                        }
                         corrupted_count += 1;
                         log::error!("CRC32 validation error at {}:{}: {}", path, line_num + 1, e);
                         // Reject corrupted events - data integrity is critical
@@ -510,6 +523,11 @@ impl FileStorage {
             while cursor < content.len() {
                 // Ensure we can read the length prefix
                 if cursor + 8 > content.len() {
+                    if self.checkpoint_active.load(std::sync::atomic::Ordering::Acquire) {
+                        return Err(EngineError::PersistenceError(
+                            "incomplete checkpoint journal frame".into(),
+                        ));
+                    }
                     log::warn!("Incomplete length prefix at end of file {}", path);
                     break;
                 }
@@ -520,7 +538,12 @@ impl FileStorage {
                 cursor += 8;
 
                 // Ensure we can read the payload
-                if cursor + len > content.len() {
+                if len > content.len() - cursor {
+                    if self.checkpoint_active.load(std::sync::atomic::Ordering::Acquire) {
+                        return Err(EngineError::PersistenceError(
+                            "incomplete checkpoint journal payload".into(),
+                        ));
+                    }
                     log::warn!(
                         "Incomplete payload at end of file {} (expected {} bytes, found {})",
                         path,
@@ -532,6 +555,19 @@ impl FileStorage {
 
                 // Extract payload
                 let payload = content[cursor..cursor + len].to_vec();
+                if self.checkpoint_active.load(std::sync::atomic::Ordering::Acquire) {
+                    let envelope = bincode::serde::decode_from_slice::<super::EventEnvelope, _>(
+                        &payload,
+                        bincode::config::standard(),
+                    );
+                    let valid = envelope.is_ok_and(|(_, used)| used == payload.len())
+                        || serde_json::from_slice::<serde_json::Value>(&payload).is_ok();
+                    if !valid {
+                        return Err(EngineError::PersistenceError(
+                            "invalid checkpoint binary record".into(),
+                        ));
+                    }
+                }
                 all.push(payload);
                 cursor += len;
             }
@@ -546,31 +582,20 @@ impl FileStorage {
 
     /// Save a state snapshot
     ///
-    /// Snapshots are stored as pretty-printed JSON for debugging
+    /// The checked JSON checkpoint selects the current journal boundary.
+    /// Flush buffered events and exclude application mutations before calling.
     pub fn save_snapshot(&self, state_json: &str) -> EngineResult<()> {
-        fs::write(&self.snapshot_file, state_json).map_err(|e| {
-            EngineError::PersistenceError(format!("Failed to write snapshot: {}", e))
-        })?;
-
-        log::debug!("State snapshot saved: {} bytes", state_json.len());
-
-        Ok(())
+        let events = self.read_all_events()?;
+        let hash = events
+            .last()
+            .and_then(|s| serde_json::from_str::<super::EventEnvelope>(s).ok())
+            .and_then(|e| e.event_hash);
+        self.save_checkpoint(state_json, events.len(), hash)
     }
 
-    /// Load the latest state snapshot
+    /// Load and validate the selected checkpoint, or a legacy raw JSON snapshot.
     pub fn load_snapshot(&self) -> EngineResult<Option<String>> {
-        if !Path::new(&self.snapshot_file).exists() {
-            log::debug!("No snapshot found, will use initial state");
-            return Ok(None);
-        }
-
-        let content = fs::read_to_string(&self.snapshot_file).map_err(|e| {
-            EngineError::PersistenceError(format!("Failed to read snapshot: {}", e))
-        })?;
-
-        log::debug!("Loaded state snapshot: {} bytes", content.len());
-
-        Ok(Some(content))
+        self.load_checkpoint_state()
     }
 
     /// Ensure metadata file exists with basic information

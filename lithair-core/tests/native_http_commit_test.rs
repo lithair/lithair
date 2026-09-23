@@ -153,9 +153,9 @@ async fn evicted_snapshot_records_remain_readable_and_cannot_be_truncated() {
         .unwrap();
     assert_eq!(handler.storage_count().await, 1);
     assert_eq!(handler.get_by_id("one").await.unwrap().name, "snapshot");
-    let journal = std::fs::read(dir.path().join("events.raftlog")).unwrap();
+    let journal = handler.get_event_store().read().await.get_all_events().unwrap();
     assert!(handler.compact().await.unwrap_err().contains("warm records"));
-    assert_eq!(std::fs::read(dir.path().join("events.raftlog")).unwrap(), journal);
+    assert_eq!(handler.get_event_store().read().await.get_all_events().unwrap(), journal);
     handler
         .submit_admin_edit("one", serde_json::json!({"name":"edited"}))
         .await

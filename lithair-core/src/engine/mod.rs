@@ -157,7 +157,10 @@ enum StateStorage<S> {
 
 impl<A: LithairApplication> Engine<A> {
     /// Create a new Lithair engine
-    pub fn new(config: EngineConfig) -> Result<Self> {
+    pub fn new(config: EngineConfig) -> Result<Self>
+    where
+        A::State: serde::de::DeserializeOwned,
+    {
         Self::new_with_deserializers(config, vec![])
     }
 
@@ -165,7 +168,10 @@ impl<A: LithairApplication> Engine<A> {
     pub fn new_with_deserializers(
         config: EngineConfig,
         _deserializers: Vec<Box<dyn EventDeserializer<State = A::State>>>,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        A::State: serde::de::DeserializeOwned,
+    {
         // Initialize persistence
         let data_dir = if !config.event_log_path.is_empty() {
             config.event_log_path.clone()
@@ -338,6 +344,9 @@ impl<A: LithairApplication> Engine<A> {
 
     /// Compact event log after snapshot (truncate)
     pub fn compact_after_snapshot(&self) -> EngineResult<()> {
+        if let StateStorage::Scc2(scc) = &self.state_storage {
+            return scc.truncate_log().map_err(EngineError::from);
+        }
         if let Some(store) = &self.event_store {
             store
                 .write()

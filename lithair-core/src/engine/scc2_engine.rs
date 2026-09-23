@@ -161,6 +161,7 @@ where
     /// Returns None if the key doesn't exist anywhere.
     pub fn read_or_load<R, F, E>(&self, key: &str, f: F) -> Option<R>
     where
+        S: DeserializeOwned,
         F: Fn(&S) -> R,
         E: Event<State = S> + DeserializeOwned,
     {
@@ -176,13 +177,12 @@ where
         }
 
         // Replay events for this specific aggregate to reconstruct full state
-        let events = {
-            let store = self.event_store.read().expect("event store lock poisoned");
-            store.get_all_events().ok()?
-        };
-
-        let mut state = S::default();
-        let mut found = false;
+        let (snapshot, events) = self.event_store.read().ok()?.recovery_state().ok()?;
+        let mut snapshot: std::collections::HashMap<String, VersionedEntry<S>> =
+            snapshot.map(|s| serde_json::from_str(&s)).transpose().ok()?.unwrap_or_default();
+        let entry = snapshot.remove(key);
+        let mut found = entry.is_some();
+        let mut state = entry.map(|e| e.data).unwrap_or_default();
         for event_json in events {
             if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&event_json) {
                 let aggregate_id =
@@ -242,14 +242,24 @@ where
 
     pub fn replay_events<E>(&self) -> Result<(), crate::Error>
     where
+        S: DeserializeOwned,
         E: Event<State = S> + DeserializeOwned,
     {
         let start = std::time::Instant::now();
-        let events = {
-            let store = self.event_store.read().expect("event store lock poisoned");
-            store.get_all_events().map_err(|e| crate::Error::EngineError(e.to_string()))?
-        };
-
+        let _mutation =
+            self.mutations.lock().map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        self.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
+        let (snapshot, events) = self
+            .event_store
+            .read()
+            .map_err(|e| crate::Error::EngineError(e.to_string()))?
+            .recovery_state()
+            .map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        let mut snapshot: std::collections::HashMap<String, VersionedEntry<S>> = snapshot
+            .map(|s| serde_json::from_str(&s))
+            .transpose()
+            .map_err(|e| crate::Error::SerializationError(e.to_string()))?
+            .unwrap_or_default();
         let mut count = 0;
         for event_json in events {
             if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&event_json) {
@@ -264,12 +274,32 @@ where
                 };
 
                 if let Ok(event) = serde_json::from_str::<E>(&payload_str) {
-                    self.update_entry_volatile(aggregate_id, |state| {
-                        event.apply(state);
+                    let entry = snapshot.entry(aggregate_id.to_string()).or_insert_with(|| {
+                        VersionedEntry { version: 0, last_updated: 0, data: S::default() }
                     });
+                    event.apply(&mut entry.data);
+                    entry.version += 1;
+                    entry.last_updated =
+                        envelope.get("timestamp").and_then(|v| v.as_u64()).unwrap_or_else(|| {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs()
+                        });
                     count += 1;
                 }
             }
+        }
+
+        (*self.state_map).retain_sync(|_, _| false);
+        (*self.indexes).retain_sync(|_, _| false);
+        if let Some(retention) = &self.retention {
+            retention.clear();
+        }
+        for (key, entry) in snapshot {
+            self.add_to_index(&key, &entry.data);
+            let _ = self.state_map.insert_sync(key.clone(), entry);
+            self.maybe_evict(&key);
         }
 
         if self.config.verbose_logging {
@@ -370,7 +400,7 @@ where
             if persist && engine.config.auto_persist_writes {
                 let payload = serde_json::to_string(&event)
                     .map_err(|e| crate::Error::SerializationError(e.to_string()))?;
-                let envelope = EventEnvelope::new(
+                let mut envelope = EventEnvelope::new(
                     std::any::type_name::<E>().to_string(),
                     event.idempotence_key().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                     std::time::SystemTime::now()
@@ -381,6 +411,8 @@ where
                     Some(key.clone()),
                     None,
                 );
+                // The ordered writer assigns the local hash-chain predecessor.
+                envelope.event_hash = None;
                 engine
                     .async_writer
                     .write_envelope(envelope)
@@ -416,6 +448,14 @@ where
             return Err(crate::Error::EngineError("Snapshots disabled".into()));
         }
 
+        let _mutation =
+            self.mutations.lock().map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        if self.retention.as_ref().is_some_and(|r| r.warm_count() > 0) {
+            return Err(crate::Error::EngineError(
+                "snapshot: warm records still require the journal".into(),
+            ));
+        }
+        self.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
         // Collect all state (snapshot)
         // We serialize the whole map: key -> VersionedEntry<S>
         let mut snapshot_map = std::collections::HashMap::new();
@@ -428,13 +468,34 @@ where
             .map_err(|e| crate::Error::SerializationError(e.to_string()))?;
 
         // Save to EventStore
-        let store = self.event_store.read().expect("event store lock poisoned");
-        store.save_snapshot(&json).map_err(|e| crate::Error::EngineError(e.to_string()))
+        let result = self
+            .event_store
+            .read()
+            .map_err(|e| crate::Error::EngineError(e.to_string()))?
+            .save_snapshot(&json)
+            .map_err(|e| crate::Error::EngineError(e.to_string()));
+        if result.is_err() {
+            // Propagate a poisoned storage publication into the queue before
+            // another queued-mode mutation can acknowledge admission.
+            let _ = self.async_writer.flush_blocking();
+        }
+        result
     }
 
     pub fn truncate_log(&self) -> Result<(), crate::Error> {
-        let mut store = self.event_store.write().expect("event store lock poisoned");
-        store.truncate_events().map_err(|e| crate::Error::EngineError(e.to_string()))
+        let _mutation =
+            self.mutations.lock().map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        self.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
+        let result = self
+            .event_store
+            .write()
+            .map_err(|e| crate::Error::EngineError(e.to_string()))?
+            .truncate_events()
+            .map_err(|e| crate::Error::EngineError(e.to_string()));
+        if result.is_err() {
+            let _ = self.async_writer.flush_blocking();
+        }
+        result
     }
 
     fn check_uniqueness(&self, state_clone: &S, key: &str) -> Result<(), crate::Error> {

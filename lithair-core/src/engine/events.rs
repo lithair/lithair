@@ -337,7 +337,14 @@ impl EventStore {
         };
 
         // Get the last event's hash
-        Ok(events.last().and_then(|e| e.event_hash.clone()))
+        let hash = events.last().and_then(|e| e.event_hash.clone());
+        if !events.is_empty() {
+            return Ok(hash);
+        }
+        match backend {
+            EventStoreBackend::Single(s) => Ok(s.checkpoint_boundary()?.1),
+            EventStoreBackend::Multi(_) => Ok(None),
+        }
     }
 
     /// Enable or disable binary storage mode
@@ -558,6 +565,23 @@ impl EventStore {
         }
     }
 
+    /// Recovery state and the uncovered suffix. Legacy raw snapshots have no
+    /// boundary and retain their historical snapshot-then-full-log behavior.
+    pub fn recovery_state(&self) -> EngineResult<(Option<String>, Vec<String>)> {
+        let (snapshot, covered) = match &self.backend {
+            EventStoreBackend::Single(s) => (s.load_snapshot()?, s.checkpoint_boundary()?.0),
+            EventStoreBackend::Multi(_) => (None, 0),
+        };
+        let mut events = self.get_all_events()?;
+        if covered > events.len() {
+            return Err(EngineError::PersistenceError(
+                "checkpoint exceeds readable journal".into(),
+            ));
+        }
+        events.drain(..covered);
+        Ok((snapshot, events))
+    }
+
     /// Get the number of events in the store
     pub fn event_count(&self) -> usize {
         self.events_count
@@ -566,7 +590,14 @@ impl EventStore {
     /// Save a state snapshot
     pub fn save_snapshot(&self, state_json: &str) -> EngineResult<()> {
         match &self.backend {
-            EventStoreBackend::Single(storage) => storage.save_snapshot(state_json),
+            EventStoreBackend::Single(storage) => {
+                if self.pending_since_flush != 0 {
+                    return Err(EngineError::InvalidOperation(
+                        "flush events before snapshot".into(),
+                    ));
+                }
+                storage.save_checkpoint(state_json, self.events_count, self.last_event_hash.clone())
+            }
             EventStoreBackend::Multi(_) => Err(EngineError::InvalidOperation(
                 "save_snapshot not supported in multi-file mode".to_string(),
             )),
@@ -594,10 +625,7 @@ impl EventStore {
 
     /// Flush the buffered writer and optionally fsync
     pub fn flush_events(&mut self) -> EngineResult<()> {
-        match &mut self.backend {
-            EventStoreBackend::Single(storage) => storage.flush_events(),
-            EventStoreBackend::Multi(multi_store) => multi_store.flush_all(),
-        }
+        self.flush()
     }
 
     /// Truncate the events log file (compaction)
@@ -672,7 +700,17 @@ impl EventStore {
             is_valid: true,
         };
 
-        let mut prev_hash: Option<String> = None;
+        let mut prev_hash = match &self.backend {
+            EventStoreBackend::Single(s) => {
+                let (covered, hash) = s.checkpoint_boundary()?;
+                if covered == 0 {
+                    hash
+                } else {
+                    None
+                }
+            }
+            EventStoreBackend::Multi(_) => None,
+        };
 
         for (index, envelope) in envelopes.iter().enumerate() {
             // Check if this is a legacy event (no hashes)
