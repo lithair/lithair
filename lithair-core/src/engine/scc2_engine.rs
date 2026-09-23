@@ -1,15 +1,15 @@
 use crate::engine::events::EventStore;
 use crate::engine::retention::RetentionLayer;
-use crate::engine::{AsyncWriter, Event, WriteEvent};
+use crate::engine::{AsyncWriter, Event, EventEnvelope};
 use crate::lifecycle::RetentionConfig;
 use crate::model::ModelSpec;
 use crate::model_inspect::Inspectable;
 use scc::HashMap as SccHashMap;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-/// Versioned entry for Optimistic Concurrency Control (OCC)
+/// Version metadata for a resident record (not a compare-and-swap API).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionedEntry<S> {
     pub version: u64,
@@ -39,10 +39,14 @@ pub struct Scc2EngineConfig {
     pub snapshot_interval: u64,
     pub enable_deduplication: bool,
     pub auto_persist_writes: bool,
+    /// Await the journal flush before publishing the prepared state. Otherwise
+    /// success acknowledges queue admission; call `flush` before relying on durability.
     pub force_immediate_persistence: bool,
 }
 
-/// High-Performance Lock-Free State Engine using SCC (Scalable Concurrent Containers)
+/// Concurrent in-memory reads with one ordered mutation path per engine.
+/// SCC protects buckets; the mutation gate coordinates state, indexes and journal.
+#[derive(Clone)]
 pub struct Scc2Engine<S> {
     state_map: Arc<SccHashMap<String, VersionedEntry<S>>>,
     indexes: Arc<SccHashMap<String, SecondaryIndex>>,
@@ -50,7 +54,8 @@ pub struct Scc2Engine<S> {
     async_writer: Arc<AsyncWriter>,
     config: Scc2EngineConfig,
     stats: Arc<Scc2EngineStats>,
-    retention: Option<RetentionLayer>,
+    retention: Option<Arc<RetentionLayer>>,
+    mutations: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Default)]
@@ -78,6 +83,7 @@ where
             config,
             stats: Arc::new(Scc2EngineStats::default()),
             retention: None,
+            mutations: Arc::new(Mutex::new(())),
         })
     }
 
@@ -89,7 +95,7 @@ where
         // budget-only or duration-only config must activate retention too
         // (issue #121).
         if config.is_configured() {
-            self.retention = Some(RetentionLayer::new(config, pinned_field_names));
+            self.retention = Some(Arc::new(RetentionLayer::new(config, pinned_field_names)));
         }
     }
 
@@ -100,7 +106,7 @@ where
 
     /// Get the retention layer (if active).
     pub fn retention_layer(&self) -> Option<&RetentionLayer> {
-        self.retention.as_ref()
+        self.retention.as_deref()
     }
 
     /// After a write to the hot map, check if we need to evict. May evict
@@ -127,26 +133,19 @@ where
 
         let (inserted_last_updated, inserted_size) = self
             .state_map
-            .try_entry(inserted_key.to_string())
-            .and_then(|e| match e {
-                scc::hash_map::Entry::Occupied(o) => {
-                    let entry = o.get();
-                    let mut counter = ByteCounter(0);
-                    let size = serde_json::to_writer(&mut counter, &entry.data)
-                        .map(|_| counter.0)
-                        .unwrap_or(0);
-                    Some((entry.last_updated, size))
-                }
-                _ => None,
+            .read_sync(inserted_key, |_, entry| {
+                let mut counter = ByteCounter(0);
+                let size = serde_json::to_writer(&mut counter, &entry.data)
+                    .map(|_| counter.0)
+                    .unwrap_or(0);
+                (entry.last_updated, size)
             })
             .unwrap_or((0, 0));
 
         let to_evict = retention.track_insert(inserted_key, inserted_last_updated, inserted_size);
 
         for evict_key in to_evict {
-            if let Some(scc::hash_map::Entry::Occupied(o)) =
-                self.state_map.try_entry(evict_key.clone())
-            {
+            if let Some(o) = self.state_map.get_sync(&evict_key) {
                 let entry = o.get();
                 retention.evict_to_warm(&evict_key, &entry.data, entry.version, entry.last_updated);
                 let _ = o.remove();
@@ -285,16 +284,10 @@ where
         F: FnOnce(&S) -> R,
     {
         self.stats.reads.fetch_add(1, Ordering::Relaxed);
-        // Use try_entry for read access as get/peek seem unavailable or changed
-        if let Some(scc::hash_map::Entry::Occupied(o)) =
-            (*self.state_map).try_entry(key.to_string())
-        {
-            Some(f(&o.get().data))
-        } else {
-            None
-        }
+        self.state_map.read_sync(key, |_, entry| f(&entry.data))
     }
 
+    /// Internal escape hatch: direct mutations bypass journal/index coordination.
     pub fn internal_map(&self) -> &SccHashMap<String, VersionedEntry<S>> {
         &self.state_map
     }
@@ -311,75 +304,44 @@ where
     where
         F: FnOnce(&mut S) -> R,
     {
-        // Note on retention/warm desync (PR #101 review, coderabbit critical):
-        // promote_from_warm only clears the warm entry; it does NOT register
-        // the key in order_state. If we called it BEFORE try_entry and
-        // try_entry then failed, the warm entry would be gone but the key
-        // would not appear in either map — silent data loss. Defer the call
-        // until AFTER a successful hot insert/update so the warm clear and
-        // the subsequent track_insert (inside maybe_evict) are atomic from
-        // the caller's perspective.
-
-        match (*self.state_map).try_entry(key.to_string()) {
-            Some(entry) => match entry {
-                scc::hash_map::Entry::Occupied(mut o) => {
-                    let v: &mut VersionedEntry<S> = o.get_mut();
-
-                    let old_values = if self.has_indexes() { Some(v.data.clone()) } else { None };
-
-                    let result = f(&mut v.data);
-                    v.version += 1;
-                    v.last_updated = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-
-                    if let Some(old) = old_values {
-                        self.update_indexes(key, &old, &v.data);
-                    }
-
-                    self.stats.writes.fetch_add(1, Ordering::Relaxed);
-                    if let Some(retention) = &self.retention {
-                        if retention.is_evicted(key) {
-                            retention.promote_from_warm(key);
-                        }
-                    }
-                    self.maybe_evict(key);
-                    Some(result)
-                }
-                scc::hash_map::Entry::Vacant(v) => {
-                    let mut state = S::default();
-                    let result = f(&mut state);
-                    let entry = VersionedEntry {
-                        version: 1,
-                        last_updated: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        data: state.clone(),
-                    };
-
-                    if self.has_indexes() {
-                        self.add_to_index(key, &state);
-                    }
-
-                    v.insert_entry(entry);
-                    self.stats.writes.fetch_add(1, Ordering::Relaxed);
-                    if let Some(retention) = &self.retention {
-                        if retention.is_evicted(key) {
-                            retention.promote_from_warm(key);
-                        }
-                    }
-                    self.maybe_evict(key);
-                    Some(result)
-                }
-            },
-            None => None,
-        }
+        let _mutation = self.mutations.lock().ok()?;
+        let mut state =
+            self.state_map.read_sync(key, |_, entry| entry.data.clone()).unwrap_or_default();
+        let result = f(&mut state);
+        self.publish(key, state);
+        Some(result)
     }
 
-    fn has_indexes(&self) -> bool {
-        !self.indexes.is_empty()
+    /// Caller holds the mutation gate. Never reacquire a bucket while its entry
+    /// guard is live: retention may read or evict the very item just published.
+    fn publish(&self, key: &str, state: S) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        match self.state_map.entry_sync(key.to_string()) {
+            scc::hash_map::Entry::Occupied(mut entry) => {
+                self.update_indexes(key, &entry.get().data, &state);
+                let version = entry.get().version + 1;
+                *entry.get_mut() = VersionedEntry { version, last_updated: timestamp, data: state };
+            }
+            scc::hash_map::Entry::Vacant(entry) => {
+                if self.retention.as_ref().is_some_and(|r| r.is_evicted(key)) {
+                    self.remove_key_from_indexes(key);
+                }
+                self.add_to_index(key, &state);
+                entry.insert_entry(VersionedEntry {
+                    version: 1,
+                    last_updated: timestamp,
+                    data: state,
+                });
+            }
+        }
+        self.stats.writes.fetch_add(1, Ordering::Relaxed);
+        if let Some(retention) = &self.retention {
+            retention.promote_from_warm(key);
+        }
+        self.maybe_evict(key);
     }
 
     pub async fn apply_event<E>(
@@ -391,52 +353,47 @@ where
     where
         E: Event<State = S> + Serialize + 'static,
     {
-        self.check_uniqueness(&event, &key)?;
-
-        // Use try_entry synchronously
-        match (*self.state_map).try_entry(key.clone()) {
-            Some(entry) => match entry {
-                scc::hash_map::Entry::Occupied(mut o) => {
-                    let v: &mut VersionedEntry<S> = o.get_mut();
-                    let old_values = v.data.clone();
-                    event.apply(&mut v.data);
-                    v.version += 1;
-                    v.last_updated = std::time::SystemTime::now()
+        // Keep mutation waits off the HTTP executor. The journal has its own
+        // worker; once admitted, cancellation does not undo a commit.
+        let engine = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let _mutation = engine
+                .mutations
+                .lock()
+                .map_err(|e| crate::Error::EngineError(format!("mutation lock poisoned: {e}")))?;
+            let mut next = engine
+                .state_map
+                .read_sync(&key, |_, entry| entry.data.clone())
+                .unwrap_or_default();
+            event.apply(&mut next);
+            engine.check_uniqueness(&next, &key)?;
+            if persist && engine.config.auto_persist_writes {
+                let payload = serde_json::to_string(&event)
+                    .map_err(|e| crate::Error::SerializationError(e.to_string()))?;
+                let envelope = EventEnvelope::new(
+                    std::any::type_name::<E>().to_string(),
+                    event.idempotence_key().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                    std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
-                        .as_secs();
-                    self.update_indexes(&key, &old_values, &v.data);
+                        .as_secs(),
+                    payload,
+                    Some(key.clone()),
+                    None,
+                );
+                engine
+                    .async_writer
+                    .write_envelope(envelope)
+                    .map_err(crate::Error::EngineError)?;
+                if engine.config.force_immediate_persistence {
+                    engine.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
                 }
-                scc::hash_map::Entry::Vacant(v) => {
-                    let mut state = S::default();
-                    event.apply(&mut state);
-                    let entry = VersionedEntry {
-                        version: 1,
-                        last_updated: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                        data: state.clone(),
-                    };
-                    self.add_to_index(&key, &state);
-                    v.insert_entry(entry);
-                }
-            },
-            None => return Err(crate::Error::EngineError("Failed to acquire entry lock".into())),
-        }
-
-        self.stats.writes.fetch_add(1, Ordering::Relaxed);
-        self.maybe_evict(&key);
-
-        if persist && self.config.auto_persist_writes {
-            let event_json = event.to_json();
-            let write_event = WriteEvent::Event(event_json);
-            self.async_writer.sender().send(write_event).map_err(|e| {
-                crate::Error::EngineError(format!("Failed to send event to async writer: {}", e))
-            })?;
-        }
-
-        Ok(())
+            }
+            engine.publish(&key, next);
+            Ok(())
+        })
+        .await
+        .map_err(|e| crate::Error::EngineError(format!("mutation task failed: {e}")))?
     }
 
     pub async fn flush(&self) -> Result<(), crate::Error> {
@@ -480,14 +437,7 @@ where
         store.truncate_events().map_err(|e| crate::Error::EngineError(e.to_string()))
     }
 
-    fn check_uniqueness<E>(&self, event: &E, key: &str) -> Result<(), crate::Error>
-    where
-        E: Event<State = S>,
-    {
-        let mut state_clone = self.read(key, |s| s.clone()).unwrap_or_default();
-
-        event.apply(&mut state_clone);
-
+    fn check_uniqueness(&self, state_clone: &S, key: &str) -> Result<(), crate::Error> {
         for field_name in state_clone.get_all_fields() {
             if let Some(policy) = state_clone.get_policy(&field_name) {
                 if policy.unique {
@@ -496,7 +446,7 @@ where
                             serde_json::Value::String(s) => s,
                             _ => value.to_string(),
                         };
-                        let ids = self.get_indexed_values(&field_name, &value_str);
+                        let ids = self.indexed_values(&field_name, &value_str);
                         for id in ids {
                             if id != key {
                                 return Err(crate::Error::EngineError(format!(
@@ -557,72 +507,61 @@ where
     }
 
     fn add_to_index_value(&self, field_name: &str, value: &str, key: &str) {
-        if !(*self.indexes).contains_sync(field_name) {
-            let _ = (*self.indexes)
-                .insert_sync(field_name.to_string(), SecondaryIndex::new(field_name.to_string()));
-        }
-
-        // Use try_entry for read access
-        if let Some(scc::hash_map::Entry::Occupied(idx_entry)) =
-            (*self.indexes).try_entry(field_name.to_string())
-        {
-            let idx = idx_entry.get();
-            // Use try_entry for inner map modification
-            match idx.index_map.try_entry(value.to_string()) {
-                Some(scc::hash_map::Entry::Occupied(mut o)) => {
-                    let list = o.get_mut();
-                    if !list.contains(&key.to_string()) {
-                        list.push(key.to_string());
-                    }
-                }
-                Some(scc::hash_map::Entry::Vacant(v)) => {
-                    v.insert_entry(vec![key.to_string()]);
-                }
-                None => {}
-            }
+        let index = self
+            .indexes
+            .entry_sync(field_name.to_string())
+            .or_insert_with(|| SecondaryIndex::new(field_name.to_string()));
+        let mut ids = index.get().index_map.entry_sync(value.to_string()).or_default();
+        if !ids.get().iter().any(|id| id == key) {
+            ids.get_mut().push(key.to_string());
         }
     }
 
     fn remove_from_index_value(&self, field_name: &str, value: &str, key: &str) {
-        if let Some(scc::hash_map::Entry::Occupied(idx_entry)) =
-            (*self.indexes).try_entry(field_name.to_string())
-        {
-            let idx = idx_entry.get();
-            if let Some(scc::hash_map::Entry::Occupied(mut o)) =
-                idx.index_map.try_entry(value.to_string())
-            {
-                let list = o.get_mut();
-                if let Some(pos) = list.iter().position(|x| x == key) {
-                    list.remove(pos);
+        self.indexes.read_sync(field_name, |_, index| {
+            if let Some(mut ids) = index.index_map.get_sync(value) {
+                ids.get_mut().retain(|id| id != key);
+                if ids.get().is_empty() {
+                    let _ = ids.remove();
                 }
-                // Optional: remove entry if empty?
-                // if list.is_empty() { o.remove(); } // remove() on OccupiedEntry might not be straightforward or exist
             }
-        }
+        });
+    }
+
+    fn remove_key_from_indexes(&self, key: &str) {
+        self.indexes.retain_sync(|_, index| {
+            index.index_map.retain_sync(|_, ids| {
+                ids.retain(|id| id != key);
+                !ids.is_empty()
+            });
+            true
+        });
     }
 
     pub fn create_index(&self, field_name: &str) {
-        let _ = (*self.indexes)
-            .insert_sync(field_name.to_string(), SecondaryIndex::new(field_name.to_string()));
+        let _mutation = self.mutations.lock().expect("mutation lock poisoned");
+        self.indexes
+            .entry_sync(field_name.to_string())
+            .or_insert_with(|| SecondaryIndex::new(field_name.to_string()));
     }
 
     pub fn get_indexed_values(&self, field_name: &str, value: &str) -> Vec<String> {
-        if let Some(scc::hash_map::Entry::Occupied(idx_entry)) =
-            (*self.indexes).try_entry(field_name.to_string())
-        {
-            let idx = idx_entry.get();
-            if let Some(scc::hash_map::Entry::Occupied(v_entry)) =
-                idx.index_map.try_entry(value.to_string())
-            {
-                return v_entry.get().clone();
-            }
-        }
-        Vec::new()
+        let _mutation = self.mutations.lock().expect("mutation lock poisoned");
+        self.indexed_values(field_name, value)
+    }
+
+    fn indexed_values(&self, field_name: &str, value: &str) -> Vec<String> {
+        self.indexes
+            .read_sync(field_name, |_, index| {
+                index.index_map.read_sync(value, |_, ids| ids.clone()).unwrap_or_default()
+            })
+            .unwrap_or_default()
     }
 
     /// Helper for tests: Insert/Update value
     pub fn insert_sync(&self, key: String, value: S) {
-        self.update_entry_volatile(&key, |state| *state = value);
+        self.update_entry_volatile(&key, |state| *state = value)
+            .expect("mutation lock poisoned");
     }
 
     pub async fn insert(&self, key: String, value: S) {
@@ -631,10 +570,21 @@ where
 
     /// Helper for tests: Remove value
     pub fn remove_sync(&self, key: &str) {
-        if let Some(scc::hash_map::Entry::Occupied(o)) =
-            (*self.state_map).try_entry(key.to_string())
-        {
-            let _ = o.remove();
+        let _mutation = self.mutations.lock().expect("mutation lock poisoned");
+        if let Some((_, entry)) = self.state_map.remove_sync(key) {
+            for field in entry.data.get_all_fields() {
+                if let Some(value) = entry.data.get_field_value(&field) {
+                    let value = match value {
+                        serde_json::Value::String(s) => s,
+                        value => value.to_string(),
+                    };
+                    self.remove_from_index_value(&field, &value, key);
+                }
+            }
+        } else if self.retention.as_ref().is_some_and(|r| r.is_evicted(key)) {
+            // Full field values are no longer resident. Remove the key from
+            // in-memory indexes without reading the journal on this path.
+            self.remove_key_from_indexes(key);
         }
         if let Some(retention) = &self.retention {
             retention.remove(key);
@@ -647,6 +597,7 @@ where
 
     /// Helper for tests: Clear all values
     pub fn clear_sync(&self) {
+        let _mutation = self.mutations.lock().expect("mutation lock poisoned");
         (*self.state_map).retain_sync(|_, _| false);
         (*self.indexes).retain_sync(|_, _| false);
         if let Some(retention) = &self.retention {

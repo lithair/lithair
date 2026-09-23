@@ -84,6 +84,11 @@ path = "tests/sessions_test.rs"
 harness = false
 
 [[test]]
+name = "native_scc2_bdd"
+path = "tests/native_scc2_bdd.rs"
+harness = false
+
+[[test]]
 name = "no_orphan_features"
 path = "tests/no_orphan_features.rs"
 

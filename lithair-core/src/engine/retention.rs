@@ -190,27 +190,19 @@ impl RetentionLayer {
     /// the order_state stays consistent — this method only clears the warm
     /// entry, it does not re-add to the order queue.
     pub fn promote_from_warm(&self, key: &str) {
-        if let Some(scc::hash_map::Entry::Occupied(o)) = self.warm_map.try_entry(key.to_string()) {
-            let _ = o.remove();
-        }
+        self.warm_map.remove_sync(key);
     }
 
     /// Remove a key entirely (deletion).
     pub fn remove(&self, key: &str) {
-        if let Some(scc::hash_map::Entry::Occupied(o)) = self.warm_map.try_entry(key.to_string()) {
-            let _ = o.remove();
-        }
+        self.warm_map.remove_sync(key);
         let mut order = self.order_state.lock().expect("order_state lock poisoned");
         order.remove(key);
     }
 
     /// Read pinned data for an evicted item (for listing/filtering).
     pub fn read_warm(&self, key: &str) -> Option<WarmEntry> {
-        if let Some(scc::hash_map::Entry::Occupied(o)) = self.warm_map.try_entry(key.to_string()) {
-            Some(o.get().clone())
-        } else {
-            None
-        }
+        self.warm_map.read_sync(key, |_, entry| entry.clone())
     }
 
     /// Check if a key is in the warm map (evicted).
@@ -312,6 +304,18 @@ mod tests {
             memory_duration_secs: None,
             memory_budget_bytes: Some(budget_bytes),
         }
+    }
+
+    #[test]
+    fn simultaneous_warm_readers_do_not_report_absence() {
+        let layer = RetentionLayer::new(make_config(1), vec!["from".into()]);
+        let email = TestEmail { from: "sender".into(), ..Default::default() };
+        layer.evict_to_warm("one", &email, 1, 0);
+        // Hold shared access while another read executes. try_entry would
+        // require exclusive access and falsely return None in this situation.
+        layer.warm_map.read_sync("one", |_, _| {
+            assert_eq!(layer.read_warm("one").unwrap().pinned_data["from"], "sender");
+        });
     }
 
     #[test]
