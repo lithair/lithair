@@ -349,7 +349,13 @@ async fn replay_removes_hot_and_warm_records_even_when_delete_payload_has_an_old
         }
         store.flush().expect("flush");
     }
-    // The on-demand loader must stop at a tombstone, never return an older value.
+    // Direct journal writes do not publish a new live state. The handler's cold
+    // loader keeps the last published prefix until explicit replay/reopen.
+    assert_eq!(
+        handler.get_by_id("deleted-warm").await.expect("published warm state").title,
+        "original"
+    );
+    handler.replay_events().await.expect("publish imported tombstones");
     assert!(handler.get_by_id("deleted-warm").await.is_none());
     assert_eq!(handler.get_by_id("kept").await.expect("warm survivor").title, "original");
     drop(handler);

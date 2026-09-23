@@ -23,14 +23,10 @@
 //!
 //! ## The flush-determinism point
 //!
-//! A live `LithairServer` runs a background flusher on a timer
-//! (`flush_events()` every `LT_FLUSH_INTERVAL_MS`, default 100ms). A
-//! deterministic test must NOT `sleep` and hope the timer fired — it forces
-//! the flush itself by taking the event-store write lock and calling
-//! `flush_events()`. Operationally this corresponds to the runbook's cold
-//! posture: stop/drain the server (which flushes on the way down) before
-//! copying. The drill makes that step explicit and the doc was updated to
-//! spell it out for an operator copying a *running* store.
+//! Native HTTP commits now flush before acknowledgement. This drill also
+//! explicitly flushes the low-level EventStore before copying, without relying
+//! on timers. The runbook still requires stopping/draining writers: copying a
+//! live directory can race appends, compaction and other model stores.
 //!
 //! Both JSON and binary (`LT_ENABLE_BINARY`) log modes are covered, because
 //! the runbook claims torn-tail tolerance for both. Mode is selected by
