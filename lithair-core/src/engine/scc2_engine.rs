@@ -6,6 +6,7 @@ use crate::model::ModelSpec;
 use crate::model_inspect::Inspectable;
 use scc::HashMap as SccHashMap;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -44,6 +45,15 @@ pub struct Scc2EngineConfig {
     pub force_immediate_persistence: bool,
 }
 
+// A successful startup replay selects the application's complete event decoder.
+// Function pointers keep Serialize-only mutation APIs usable without new bounds.
+type RecoverEntry<S> = fn(&EventStore, &str) -> Result<VersionedEntry<S>, crate::Error>;
+struct MutationState<S> {
+    recover: Option<RecoverEntry<S>>,
+    // Includes volatile removals: reusing a key must not revive its old history.
+    uncheckpointed: HashSet<String>,
+}
+
 /// Concurrent in-memory reads with one ordered mutation path per engine.
 /// SCC protects buckets; the mutation gate coordinates state, indexes and journal.
 #[derive(Clone)]
@@ -55,7 +65,7 @@ pub struct Scc2Engine<S> {
     config: Scc2EngineConfig,
     stats: Arc<Scc2EngineStats>,
     retention: Option<Arc<RetentionLayer>>,
-    mutations: Arc<Mutex<()>>,
+    mutations: Arc<Mutex<MutationState<S>>>,
 }
 
 #[derive(Debug, Default)]
@@ -83,7 +93,10 @@ where
             config,
             stats: Arc::new(Scc2EngineStats::default()),
             retention: None,
-            mutations: Arc::new(Mutex::new(())),
+            mutations: Arc::new(Mutex::new(MutationState {
+                recover: None,
+                uncheckpointed: HashSet::new(),
+            })),
         })
     }
 
@@ -158,7 +171,7 @@ where
     }
 
     /// Read a full item, checking warm map + event store replay if evicted.
-    /// Returns None if the key doesn't exist anywhere.
+    /// Returns None if the key is absent or its complete state cannot be recovered.
     pub fn read_or_load<R, F, E>(&self, key: &str, f: F) -> Option<R>
     where
         S: DeserializeOwned,
@@ -170,44 +183,96 @@ where
             return Some(result);
         }
 
-        // If retention is active, check warm map and replay from event store
-        let retention = self.retention.as_ref()?;
-        if !retention.is_evicted(key) {
-            return None;
-        }
-
-        // Replay events for this specific aggregate to reconstruct full state
-        let (snapshot, events) = self.event_store.read().ok()?.recovery_state().ok()?;
-        let mut snapshot: std::collections::HashMap<String, VersionedEntry<S>> =
-            snapshot.map(|s| serde_json::from_str(&s)).transpose().ok()?.unwrap_or_default();
-        let entry = snapshot.remove(key);
-        let mut found = entry.is_some();
-        let mut state = entry.map(|e| e.data).unwrap_or_default();
-        for event_json in events {
-            if let Ok(envelope) = serde_json::from_str::<serde_json::Value>(&event_json) {
-                let aggregate_id =
-                    envelope.get("aggregate_id").and_then(|v| v.as_str()).unwrap_or("global");
-                if aggregate_id != key {
-                    continue;
-                }
-                let payload_str = if let Some(p) = envelope.get("payload").and_then(|v| v.as_str())
-                {
-                    p.to_string()
-                } else {
-                    event_json.clone()
-                };
-                if let Ok(event) = serde_json::from_str::<E>(&payload_str) {
-                    event.apply(&mut state);
-                    found = true;
-                }
-            }
-        }
-
-        if found {
-            Some(f(&state))
+        // Serialize cold recovery with mutations and recheck after acquiring the
+        // gate: another writer may have promoted, evicted or removed the key.
+        let mutation = self.mutations.lock().ok()?;
+        let state = if let Some(state) = self.state_map.read_sync(key, |_, e| e.data.clone()) {
+            state
         } else {
-            None
+            self.recover_warm(key, &mutation, Self::recover_entry::<E>).ok()?.data
+        };
+        drop(mutation);
+        Some(f(&state))
+    }
+
+    /// Caller holds the mutation gate; this does not publish or promote anything.
+    fn prepare(&self, key: &str, mutation: &MutationState<S>) -> Result<S, crate::Error> {
+        if let Some(state) = self.state_map.read_sync(key, |_, e| e.data.clone()) {
+            return Ok(state);
         }
+        if !self.retention.as_ref().is_some_and(|r| r.is_evicted(key)) {
+            return Ok(S::default());
+        }
+        let recover = mutation.recover.ok_or_else(|| crate::Error::EngineError(
+            "warm mutation requires startup replay_events with the complete application event type".into()
+        ))?;
+        Ok(self.recover_warm(key, mutation, recover)?.data)
+    }
+
+    fn recover_warm(
+        &self,
+        key: &str,
+        mutation: &MutationState<S>,
+        recover: RecoverEntry<S>,
+    ) -> Result<VersionedEntry<S>, crate::Error> {
+        let warm = self
+            .retention
+            .as_ref()
+            .and_then(|r| r.read_warm(key))
+            .ok_or_else(|| crate::Error::EngineError(format!("no warm record for {key}")))?;
+        if mutation.uncheckpointed.contains(key) {
+            return Err(crate::Error::EngineError(format!(
+                "warm record {key} has uncheckpointed volatile changes"
+            )));
+        }
+        self.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
+        let store =
+            self.event_store.read().map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        let recovered = recover(&store, key)?;
+        if recovered.version != warm.version {
+            return Err(crate::Error::EngineError(format!(
+                "incomplete warm recovery for {key}: expected version {}, recovered {}",
+                warm.version, recovered.version
+            )));
+        }
+        Ok(recovered)
+    }
+
+    fn recover_entry<E>(store: &EventStore, key: &str) -> Result<VersionedEntry<S>, crate::Error>
+    where
+        S: DeserializeOwned,
+        E: Event<State = S> + DeserializeOwned,
+    {
+        let (snapshot, events) =
+            store.recovery_state().map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        let mut snapshot: std::collections::HashMap<String, VersionedEntry<S>> = snapshot
+            .map(|s| serde_json::from_str(&s))
+            .transpose()
+            .map_err(|e| crate::Error::SerializationError(e.to_string()))?
+            .unwrap_or_default();
+        let mut entry = snapshot.remove(key).unwrap_or_else(|| VersionedEntry {
+            version: 0,
+            last_updated: 0,
+            data: S::default(),
+        });
+        for event_json in events {
+            let envelope: serde_json::Value = serde_json::from_str(&event_json)
+                .map_err(|e| crate::Error::SerializationError(e.to_string()))?;
+            let aggregate =
+                envelope.get("aggregate_id").and_then(|v| v.as_str()).unwrap_or("global");
+            if aggregate != key {
+                continue;
+            }
+            let payload = envelope.get("payload").and_then(|v| v.as_str()).unwrap_or(&event_json);
+            // Never skip an undecodable event from this aggregate's history.
+            let event: E = serde_json::from_str(payload).map_err(|e| {
+                crate::Error::SerializationError(format!("warm recovery for {key}: {e}"))
+            })?;
+            event.apply(&mut entry.data);
+            entry.version += 1;
+            entry.last_updated = envelope.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
+        }
+        Ok(entry)
     }
 
     /// List all items: hot (full) + warm (pinned fields only).
@@ -240,13 +305,15 @@ where
         hot + warm
     }
 
+    /// Restore the store and select the complete application event decoder for warm mutations.
+    /// Call once at startup even for an empty store.
     pub fn replay_events<E>(&self) -> Result<(), crate::Error>
     where
         S: DeserializeOwned,
         E: Event<State = S> + DeserializeOwned,
     {
         let start = std::time::Instant::now();
-        let _mutation =
+        let mut mutation =
             self.mutations.lock().map_err(|e| crate::Error::EngineError(e.to_string()))?;
         self.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
         let (snapshot, events) = self
@@ -291,6 +358,8 @@ where
             }
         }
 
+        mutation.recover = Some(Self::recover_entry::<E>);
+        mutation.uncheckpointed.clear();
         (*self.state_map).retain_sync(|_, _| false);
         (*self.indexes).retain_sync(|_, _| false);
         if let Some(retention) = &self.retention {
@@ -330,16 +399,26 @@ where
         self.async_writer.clone()
     }
 
+    /// Prepare the complete record before calling `f`; return None on recovery failure.
+    /// Changes are volatile until included in a successful full snapshot.
     pub fn update_entry_volatile<F, R>(&self, key: &str, f: F) -> Option<R>
     where
         F: FnOnce(&mut S) -> R,
     {
-        let _mutation = self.mutations.lock().ok()?;
-        let mut state =
-            self.state_map.read_sync(key, |_, entry| entry.data.clone()).unwrap_or_default();
+        self.try_update_entry_volatile(key, f).ok()
+    }
+
+    fn try_update_entry_volatile<F, R>(&self, key: &str, f: F) -> Result<R, crate::Error>
+    where
+        F: FnOnce(&mut S) -> R,
+    {
+        let mut mutation =
+            self.mutations.lock().map_err(|e| crate::Error::EngineError(e.to_string()))?;
+        let mut state = self.prepare(key, &mutation)?;
         let result = f(&mut state);
+        mutation.uncheckpointed.insert(key.to_string());
         self.publish(key, state);
-        Some(result)
+        Ok(result)
     }
 
     /// Caller holds the mutation gate. Never reacquire a bucket while its entry
@@ -360,8 +439,13 @@ where
                     self.remove_key_from_indexes(key);
                 }
                 self.add_to_index(key, &state);
+                let version = self
+                    .retention
+                    .as_ref()
+                    .and_then(|r| r.read_warm(key))
+                    .map_or(1, |warm| warm.version + 1);
                 entry.insert_entry(VersionedEntry {
-                    version: 1,
+                    version,
                     last_updated: timestamp,
                     data: state,
                 });
@@ -387,14 +471,11 @@ where
         // worker; once admitted, cancellation does not undo a commit.
         let engine = self.clone();
         tokio::task::spawn_blocking(move || {
-            let _mutation = engine
+            let mut mutation = engine
                 .mutations
                 .lock()
                 .map_err(|e| crate::Error::EngineError(format!("mutation lock poisoned: {e}")))?;
-            let mut next = engine
-                .state_map
-                .read_sync(&key, |_, entry| entry.data.clone())
-                .unwrap_or_default();
+            let mut next = engine.prepare(&key, &mutation)?;
             event.apply(&mut next);
             engine.check_uniqueness(&next, &key)?;
             if persist && engine.config.auto_persist_writes {
@@ -421,6 +502,9 @@ where
                     engine.async_writer.flush_blocking().map_err(crate::Error::EngineError)?;
                 }
             }
+            if !persist || !engine.config.auto_persist_writes {
+                mutation.uncheckpointed.insert(key.clone());
+            }
             engine.publish(&key, next);
             Ok(())
         })
@@ -436,11 +520,7 @@ where
     where
         F: FnOnce(&mut S),
     {
-        if self.update_entry_volatile(key, f).is_some() {
-            Ok(())
-        } else {
-            Err(crate::Error::EngineError("Failed to write state".to_string()))
-        }
+        self.try_update_entry_volatile(key, f)
     }
 
     pub fn snapshot(&self) -> Result<(), crate::Error> {
@@ -448,7 +528,7 @@ where
             return Err(crate::Error::EngineError("Snapshots disabled".into()));
         }
 
-        let _mutation =
+        let mut mutation =
             self.mutations.lock().map_err(|e| crate::Error::EngineError(e.to_string()))?;
         if self.retention.as_ref().is_some_and(|r| r.warm_count() > 0) {
             return Err(crate::Error::EngineError(
@@ -478,6 +558,9 @@ where
             // Propagate a poisoned storage publication into the queue before
             // another queued-mode mutation can acknowledge admission.
             let _ = self.async_writer.flush_blocking();
+        }
+        if result.is_ok() {
+            mutation.uncheckpointed.clear();
         }
         result
     }
@@ -621,8 +704,9 @@ where
 
     /// Helper for tests: Insert/Update value
     pub fn insert_sync(&self, key: String, value: S) {
-        self.update_entry_volatile(&key, |state| *state = value)
-            .expect("mutation lock poisoned");
+        let mut mutation = self.mutations.lock().expect("mutation lock poisoned");
+        mutation.uncheckpointed.insert(key.clone());
+        self.publish(&key, value);
     }
 
     pub async fn insert(&self, key: String, value: S) {
@@ -631,7 +715,8 @@ where
 
     /// Helper for tests: Remove value
     pub fn remove_sync(&self, key: &str) {
-        let _mutation = self.mutations.lock().expect("mutation lock poisoned");
+        let mut mutation = self.mutations.lock().expect("mutation lock poisoned");
+        mutation.uncheckpointed.insert(key.to_string());
         if let Some((_, entry)) = self.state_map.remove_sync(key) {
             for field in entry.data.get_all_fields() {
                 if let Some(value) = entry.data.get_field_value(&field) {
@@ -658,10 +743,16 @@ where
 
     /// Helper for tests: Clear all values
     pub fn clear_sync(&self) {
-        let _mutation = self.mutations.lock().expect("mutation lock poisoned");
-        (*self.state_map).retain_sync(|_, _| false);
+        let mut mutation = self.mutations.lock().expect("mutation lock poisoned");
+        (*self.state_map).retain_sync(|key, _| {
+            mutation.uncheckpointed.insert(key.clone());
+            false
+        });
         (*self.indexes).retain_sync(|_, _| false);
         if let Some(retention) = &self.retention {
+            for (key, _) in retention.all_warm_entries() {
+                mutation.uncheckpointed.insert(key);
+            }
             retention.clear();
         }
     }
