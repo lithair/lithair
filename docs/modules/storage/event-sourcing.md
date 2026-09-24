@@ -1,3 +1,7 @@
+> Native single-file HTTP/SCC snapshots use the [recoverable checkpoint protocol](../../features/state-engine/native-checkpoints.md).
+> It records an exact replay boundary and selects journal generations atomically.
+> Older benchmark/compaction examples below describe separate historical paths.
+
 # Event Sourcing in Lithair
 
 ##  Overview

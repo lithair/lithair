@@ -183,3 +183,12 @@ mixed HTTP example across graceful server restart, plus transactional schema
 upgrade/rollback. `lithair-turso/tests/migrations.rs` covers legacy files, paged
 upgrades, declaration drift, cancellation/panic recovery and HTTP startup. The native model path does
 not acquire a Turso dependency. See [RFC 235](rfcs/235-hybrid-storage.md).
+
+Native checkpoint regressions run as `native_checkpoint_test` and
+`native_checkpoint_bdd` (`features/core/native_checkpoint.feature`). The unit
+`engine::persistence::checkpoint` suite terminates child processes at 11 snapshot
+publication/reclamation boundaries, then reopens and checks state plus suffix.
+Integration tests cover JSON/binary generations, chain anchors, corrupt/missing
+files, legacy adoption, queued/concurrent writes and warm reconstruction. These
+are process-interruption tests, not physical power-loss or application replication
+tests. They run through `cidx run test`; the full gate remains `cidx run ci`.

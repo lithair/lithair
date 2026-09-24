@@ -491,27 +491,11 @@ async fn then_snapshot_compresses_state(world: &mut LithairWorld) {
 
 #[then(expr = "old events should be archived")]
 async fn then_old_events_archived(world: &mut LithairWorld) {
-    let temp_dir = world.temp_dir.lock().await;
-    let dir = temp_dir.as_ref().expect("TempDir not initialized for snapshots");
-    let events_file = dir.path().join("events.raftlog");
-
-    // Compact/archive the log by truncating after snapshot
-    {
-        let mut storage_guard = world.storage.lock().await;
-        if let Some(storage) = storage_guard.as_mut() {
-            storage.truncate_events().expect("Failed truncate_events for archiving");
-        } else {
-            panic!("Storage not initialized for archiving");
-        }
-    }
-
-    let size = std::fs::metadata(&events_file)
-        .expect("events.raftlog metadata not found after archiving")
-        .len();
-
-    assert!(size == 0, "❌ Log not archived/compacted, remaining size: {} bytes", size);
-
-    println!("✅ Old events archived (events.raftlog truncated to 0 bytes)");
+    let mut storage_guard = world.storage.lock().await;
+    let storage = storage_guard.as_mut().expect("Storage initialized for archiving");
+    storage.truncate_events().expect("Failed checkpoint compaction");
+    assert!(storage.read_all_events().unwrap().is_empty(), "active journal must be empty");
+    assert!(storage.load_snapshot().unwrap().is_some(), "checkpoint must remain recoverable");
 }
 
 #[then(expr = "snapshot generation should take less than {int} seconds")]

@@ -192,3 +192,8 @@ harness = false
 name = "openraft_identity_bdd"
 path = "tests/openraft_identity_bdd.rs"
 harness = false
+
+[[test]]
+name = "native_checkpoint_bdd"
+path = "tests/native_checkpoint_bdd.rs"
+harness = false

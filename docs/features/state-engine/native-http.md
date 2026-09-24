@@ -18,7 +18,7 @@ Successful mutations have flushed the journal before the response or notificatio
 The existing `LT_FSYNC_ON_APPEND` setting still applies: its default is **off**,
 which flushes to the operating system but does not promise survival of an OS crash
 or power loss. Set `LT_FSYNC_ON_APPEND=1` to request fsync for appended events.
-These acknowledgements do not establish crash-atomic snapshot/compaction guarantees.
+Checkpoint durability is described in [Native snapshots and compaction](native-checkpoints.md).
 
 Blocking append/flush runs on Tokio's blocking pool. Hot reads continue from
 memory while the journal is busy; the memory write lock is only taken to publish.
@@ -49,8 +49,9 @@ Its buffer/timer settings remain available to separate low-level users.
 Compaction shares the mutation permit, so a live writer cannot commit between
 snapshot capture and log truncation. Compaction refuses to truncate while evicted
 warm records still depend on the journal. Records evicted after an earlier
-compaction can be loaded from that snapshot. Snapshot replacement and truncation
-are still separate filesystem operations and need further crash-recovery work.
+compaction can be loaded from that snapshot. A synced, atomically published
+checkpoint selects the journal generation used at restart; see
+[the checkpoint protocol](native-checkpoints.md).
 
 Retention's existing unique-field limitation remains: warm records contain pinned
 fields only. Use `#[pinned]` with `#[db(unique)]` when uniqueness must be checked

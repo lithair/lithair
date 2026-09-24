@@ -8,6 +8,7 @@ pub enum WriteEvent {
     Event(String),
     Envelope(EventEnvelope),
     Flush(oneshot::Sender<Result<(), String>>),
+    FlushBlocking(mpsc::Sender<Result<(), String>>),
 }
 
 /// Ordered, batched writes. After an I/O failure this writer remains failed:
@@ -63,6 +64,11 @@ impl AsyncWriter {
                         .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
                     {
                         Ok(WriteEvent::Flush(ack)) => {
+                            let result = Self::flush_buffer(&store, &mut buffer, &worker_failure);
+                            let _ = ack.send(result);
+                            deadline = std::time::Instant::now() + period;
+                        }
+                        Ok(WriteEvent::FlushBlocking(ack)) => {
                             let result = Self::flush_buffer(&store, &mut buffer, &worker_failure);
                             let _ = ack.send(result);
                             deadline = std::time::Instant::now() + period;
@@ -139,7 +145,9 @@ impl AsyncWriter {
                 let result = match event {
                     WriteEvent::Event(json) => guard.append_raw_line(&json),
                     WriteEvent::Envelope(envelope) => guard.append_envelope(&envelope),
-                    WriteEvent::Flush(_) => unreachable!("flush messages are never buffered"),
+                    WriteEvent::Flush(_) | WriteEvent::FlushBlocking(_) => {
+                        unreachable!("flush messages are never buffered")
+                    }
                 };
                 result.map_err(|e| e.to_string())?;
             }
@@ -166,11 +174,14 @@ impl AsyncWriter {
         }
     }
 
-    /// Only call from a blocking thread, never from a Tokio executor callback.
+    /// Synchronous maintenance barrier; the dedicated worker progresses even
+    /// when the caller is using a current-thread runtime. Prefer `flush().await`
+    /// for ordinary async callers.
     pub(crate) fn flush_blocking(&self) -> Result<(), String> {
-        let rx = self.flush_barrier()?;
-        rx.blocking_recv()
-            .map_err(|e| format!("Flush cancelled (channel closed): {e}"))?
+        Self::check_failure(&self.failure)?;
+        let (tx, rx) = mpsc::channel();
+        self.tx.send(WriteEvent::FlushBlocking(tx)).map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| format!("Flush cancelled (channel closed): {e}"))?
     }
 
     fn flush_barrier(&self) -> Result<oneshot::Receiver<Result<(), String>>, String> {

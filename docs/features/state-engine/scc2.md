@@ -70,9 +70,9 @@ Frontend asset writes also have their own journal-before-publication adapter.
 
 Retention can keep recent full records in memory and older pinned fields in a
 warm map. Loading a full evicted record currently replays its history from the
-journal; that path is not a memory-only lookup. Crash-atomic snapshots/compaction,
-indexed cold reads, and coherent native/Turso backup and restore still need
-separate qualification. This change does not establish power-loss guarantees
+journal; that path is not a memory-only lookup. Snapshots and compaction follow
+the [native checkpoint protocol](native-checkpoints.md). Indexed cold reads and
+coherent native/Turso backup and restore still need separate qualification. This change does not establish power-loss guarantees
 for the complete storage lifecycle.
 
 The private OpenRaft foundation remains opt-in and separate. Three-node
