@@ -671,3 +671,30 @@ async fn warm_mutation_uses_the_application_enum_and_preserves_untouched_fields(
     restored.replay_events::<ApplicationEvent>().unwrap();
     assert_eq!(restored.read("one", Clone::clone), Some(expected));
 }
+
+#[tokio::test]
+async fn warm_legacy_version_zero_requires_an_actual_recovered_record() {
+    let data = tempfile::tempdir().unwrap();
+    let snapshot = data.path().join("state.raftsnap");
+    std::fs::write(
+        &snapshot,
+        r#"{"one":{"version":0,"last_updated":0,"data":{"name":"one","values":[42]}}}"#,
+    )
+    .unwrap();
+    let mut current = engine(data.path(), true);
+    Arc::get_mut(&mut current).unwrap().enable_retention(
+        lithair_core::lifecycle::RetentionConfig { memory_count: Some(0), ..Default::default() },
+        vec!["name".into()],
+    );
+    current.replay_events::<Change>().unwrap();
+    assert_eq!(
+        current.read_or_load::<_, _, Change>("one", |r| r.values.clone()),
+        Some(vec![42])
+    );
+    // A legacy raw snapshot has no checksum. Losing this record must not make
+    // an absent history look like a successfully recovered version-zero state.
+    std::fs::write(snapshot, "{}").unwrap();
+    assert!(current.apply_event("one".into(), change("after", 1), true).await.is_err());
+    assert_eq!(current.read_or_load::<_, _, Change>("one", Clone::clone), None);
+    assert_eq!(current.get_indexed_values("name", "one"), vec!["one"]);
+}

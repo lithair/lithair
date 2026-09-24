@@ -250,11 +250,7 @@ where
             .transpose()
             .map_err(|e| crate::Error::SerializationError(e.to_string()))?
             .unwrap_or_default();
-        let mut entry = snapshot.remove(key).unwrap_or_else(|| VersionedEntry {
-            version: 0,
-            last_updated: 0,
-            data: S::default(),
-        });
+        let mut recovered = snapshot.remove(key);
         for event_json in events {
             let envelope: serde_json::Value = serde_json::from_str(&event_json)
                 .map_err(|e| crate::Error::SerializationError(e.to_string()))?;
@@ -268,11 +264,18 @@ where
             let event: E = serde_json::from_str(payload).map_err(|e| {
                 crate::Error::SerializationError(format!("warm recovery for {key}: {e}"))
             })?;
+            let entry = recovered.get_or_insert_with(|| VersionedEntry {
+                version: 0,
+                last_updated: 0,
+                data: S::default(),
+            });
             event.apply(&mut entry.data);
             entry.version += 1;
             entry.last_updated = envelope.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
         }
-        Ok(entry)
+        recovered.ok_or_else(|| {
+            crate::Error::EngineError(format!("no recoverable history for warm record {key}"))
+        })
     }
 
     /// List all items: hot (full) + warm (pinned fields only).
