@@ -60,9 +60,14 @@ fn change(name: &str, value: usize) -> Change {
     Change { name: name.into(), value, applications: None }
 }
 fn engine(path: &std::path::Path, immediate: bool) -> Arc<Scc2Engine<Record>> {
+    engine_mode(path, immediate, false)
+}
+fn engine_mode(path: &std::path::Path, immediate: bool, binary: bool) -> Arc<Scc2Engine<Record>> {
     Arc::new(
         Scc2Engine::new(
-            Arc::new(RwLock::new(EventStore::new(path.to_str().unwrap()).unwrap())),
+            Arc::new(RwLock::new(
+                EventStore::new_with_options(path.to_str().unwrap(), false, binary).unwrap(),
+            )),
             Scc2EngineConfig {
                 verbose_logging: false,
                 enable_snapshots: true,
@@ -350,4 +355,346 @@ async fn replacing_an_evicted_record_removes_its_previous_index_values() {
     assert_eq!(current.get_indexed_values("name", "after"), vec!["one"]);
     assert_eq!(current.total_count(), 2);
     assert!(!current.retention_layer().unwrap().is_evicted("one"));
+}
+
+fn retain_one(engine: &mut Arc<Scc2Engine<Record>>) {
+    Arc::get_mut(engine).unwrap().enable_retention(
+        lithair_core::lifecycle::RetentionConfig { memory_count: Some(1), ..Default::default() },
+        vec!["name".into()],
+    );
+}
+
+#[tokio::test]
+async fn warm_mutation_preserves_full_state_and_version_in_every_journal_mode() {
+    for immediate in [false, true] {
+        for binary in [false, true] {
+            let data = tempfile::tempdir().unwrap();
+            let mut current = engine_mode(data.path(), immediate, binary);
+            current.replay_events::<Change>().unwrap();
+            retain_one(&mut current);
+            current.apply_event("one".into(), change("before", 1), true).await.unwrap();
+            current.apply_event("two".into(), change("other", 9), true).await.unwrap();
+            assert!(current.retention_layer().unwrap().is_evicted("one"));
+            // No flush: recovery must include accepted queued writes itself.
+            current.apply_event("one".into(), change("after", 2), true).await.unwrap();
+            let expected = Record { name: "after".into(), values: vec![1, 2] };
+            assert_eq!(current.read("one", Clone::clone), Some(expected.clone()));
+            assert_eq!(current.internal_map().read_sync("one", |_, v| v.version), Some(2));
+            assert!(current.get_indexed_values("name", "before").is_empty());
+            assert_eq!(current.get_indexed_values("name", "after"), vec!["one"]);
+            current.flush().await.unwrap();
+            drop(current);
+            let restored = engine_mode(data.path(), immediate, binary);
+            restored.replay_events::<Change>().unwrap();
+            assert_eq!(restored.read("one", Clone::clone), Some(expected));
+        }
+    }
+}
+
+#[tokio::test]
+async fn warm_volatile_callback_starts_from_full_state() {
+    let data = tempfile::tempdir().unwrap();
+    let mut current = engine(data.path(), false);
+    current.replay_events::<Change>().unwrap();
+    retain_one(&mut current);
+    current.apply_event("one".into(), change("one", 1), true).await.unwrap();
+    current.apply_event("two".into(), change("two", 9), true).await.unwrap();
+    assert_eq!(
+        current.update_entry_volatile("one", |r| {
+            r.values.push(2);
+            r.values.len()
+        }),
+        Some(2)
+    );
+    assert_eq!(
+        current.read("one", Clone::clone),
+        Some(Record { name: "one".into(), values: vec![1, 2] })
+    );
+}
+
+#[tokio::test]
+async fn warm_mutations_recover_checkpoint_and_suffix_without_resetting_versions() {
+    for immediate in [false, true] {
+        for binary in [false, true] {
+            let data = tempfile::tempdir().unwrap();
+            let mut current = engine_mode(data.path(), immediate, binary);
+            current.replay_events::<Change>().unwrap();
+            current.apply_event("one".into(), change("one", 1), true).await.unwrap();
+            current.snapshot().unwrap();
+            current.truncate_log().unwrap();
+            retain_one(&mut current);
+            for value in 2..=4 {
+                current.apply_event("two".into(), change("two", value), true).await.unwrap();
+                current.apply_event("one".into(), change("one", value), true).await.unwrap();
+            }
+            assert_eq!(current.read("one", |r| r.values.clone()), Some(vec![1, 2, 3, 4]));
+            assert_eq!(current.internal_map().read_sync("one", |_, r| r.version), Some(4));
+            current.flush().await.unwrap();
+            drop(current);
+            let restored = engine_mode(data.path(), immediate, binary);
+            restored.replay_events::<Change>().unwrap();
+            assert_eq!(restored.read("one", |r| r.values.clone()), Some(vec![1, 2, 3, 4]));
+            assert_eq!(restored.read("two", |r| r.values.clone()), Some(vec![2, 3, 4]));
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_warm_mutations_preserve_acknowledged_order_after_restart() {
+    for immediate in [false, true] {
+        for binary in [false, true] {
+            let data = tempfile::tempdir().unwrap();
+            let mut current = engine_mode(data.path(), immediate, binary);
+            current.replay_events::<Change>().unwrap();
+            retain_one(&mut current);
+            let start = Arc::new(tokio::sync::Barrier::new(8));
+            let mut jobs = tokio::task::JoinSet::new();
+            for client in 0..8 {
+                let current = current.clone();
+                let start = start.clone();
+                jobs.spawn(async move {
+                    start.wait().await;
+                    for value in 0..4 {
+                        for key in ["one", "two"] {
+                            current
+                                .apply_event(key.into(), change(key, client * 4 + value), true)
+                                .await
+                                .unwrap();
+                        }
+                    }
+                });
+            }
+            while let Some(result) = jobs.join_next().await {
+                result.unwrap();
+            }
+            let before: Vec<_> = ["one", "two"]
+                .into_iter()
+                .map(|key| {
+                    let record = current.read_or_load::<_, _, Change>(key, Clone::clone).unwrap();
+                    let mut values = record.values.clone();
+                    values.sort_unstable();
+                    assert_eq!(values, (0..32).collect::<Vec<_>>());
+                    record
+                })
+                .collect();
+            current.flush().await.unwrap();
+            drop(current);
+            let restored = engine_mode(data.path(), immediate, binary);
+            restored.replay_events::<Change>().unwrap();
+            for (key, expected) in ["one", "two"].into_iter().zip(before) {
+                assert_eq!(restored.read(key, Clone::clone), Some(expected));
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn warm_recovery_failure_does_not_run_callback_publish_or_append() {
+    for damage in ["no-decoder", "unknown-event", "missing-history", "io-error", "volatile"] {
+        let data = tempfile::tempdir().unwrap();
+        let mut current = engine(data.path(), true);
+        if damage != "no-decoder" {
+            current.replay_events::<Change>().unwrap();
+        }
+        retain_one(&mut current);
+        current.apply_event("one".into(), change("one", 1), true).await.unwrap();
+        if damage == "volatile" {
+            current.write("one", |r| r.values.push(99)).unwrap();
+        }
+        current.apply_event("two".into(), change("two", 2), true).await.unwrap();
+        match damage {
+            "unknown-event" => {
+                let store = current.event_store();
+                let mut store = store.write().unwrap();
+                let mut envelope = lithair_core::engine::EventEnvelope::new(
+                    "Unknown".into(),
+                    "unknown".into(),
+                    0,
+                    "{}".into(),
+                    Some("one".into()),
+                    None,
+                );
+                envelope.event_hash = None;
+                store.append_envelope(&envelope).unwrap();
+                store.flush().unwrap();
+            }
+            "missing-history" => {
+                std::fs::write(data.path().join("events.raftlog"), "").unwrap();
+            }
+            "io-error" => {
+                std::fs::remove_file(data.path().join("events.raftlog")).unwrap();
+                std::fs::create_dir(data.path().join("events.raftlog")).unwrap();
+            }
+            _ => {}
+        }
+        let journal = data.path().join("events.raftlog");
+        let bytes_before = std::fs::read(&journal).ok();
+        let warm_before = current.retention_layer().unwrap().read_warm("one").unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mutation = Change { applications: Some(calls.clone()), ..change("after", 3) };
+        assert!(current.apply_event("one".into(), mutation, true).await.is_err(), "{damage}");
+        assert_eq!(
+            current.update_entry_volatile("one", |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+            }),
+            None
+        );
+        assert!(current
+            .write("one", |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+            })
+            .is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "{damage}");
+        assert!(current.read("one", Clone::clone).is_none());
+        assert_eq!(current.read("two", |r| r.values.clone()), Some(vec![2]));
+        let warm_after = current.retention_layer().unwrap().read_warm("one").unwrap();
+        assert_eq!(warm_before.version, warm_after.version);
+        assert_eq!(warm_before.pinned_data, warm_after.pinned_data);
+        assert_eq!(current.get_indexed_values("name", "one"), vec!["one"]);
+        assert!(current.get_indexed_values("name", "after").is_empty());
+        assert_eq!(std::fs::read(&journal).ok(), bytes_before);
+        if damage != "no-decoder" {
+            assert!(current.read_or_load::<_, _, Change>("one", Clone::clone).is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn warm_unique_conflict_leaves_recovered_candidate_unpublished() {
+    let data = tempfile::tempdir().unwrap();
+    let mut current = engine(data.path(), true);
+    current.replay_events::<Change>().unwrap();
+    retain_one(&mut current);
+    current.apply_event("one".into(), change("one", 1), true).await.unwrap();
+    current.apply_event("two".into(), change("taken", 2), true).await.unwrap();
+    assert!(current
+        .apply_event("one".into(), change("taken", 3), true)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("Unique"));
+    assert!(current.retention_layer().unwrap().is_evicted("one"));
+    assert_eq!(current.read_or_load::<_, _, Change>("one", |r| r.values.clone()), Some(vec![1]));
+    assert_eq!(current.get_indexed_values("name", "one"), vec!["one"]);
+    current.apply_event("one".into(), change("renamed", 4), true).await.unwrap();
+    assert_eq!(current.read("one", |r| r.values.clone()), Some(vec![1, 4]));
+}
+
+#[tokio::test]
+async fn warm_volatile_state_is_recoverable_only_after_a_full_checkpoint() {
+    for checkpoint in [false, true] {
+        let data = tempfile::tempdir().unwrap();
+        let mut current = engine(data.path(), false);
+        current.replay_events::<Change>().unwrap();
+        retain_one(&mut current);
+        current.apply_event("one".into(), change("one", 1), false).await.unwrap();
+        if checkpoint {
+            current.snapshot().unwrap();
+            current.truncate_log().unwrap();
+        }
+        current.apply_event("two".into(), change("two", 2), true).await.unwrap();
+        let result = current.apply_event("one".into(), change("one", 3), true).await;
+        assert_eq!(result.is_ok(), checkpoint);
+        if checkpoint {
+            assert_eq!(current.read("one", |r| r.values.clone()), Some(vec![1, 3]));
+            current.flush().await.unwrap();
+            drop(current);
+            let restored = engine(data.path(), false);
+            restored.replay_events::<Change>().unwrap();
+            assert_eq!(restored.read("one", |r| r.values.clone()), Some(vec![1, 3]));
+        }
+    }
+}
+
+#[tokio::test]
+async fn warm_mutation_with_zero_resident_capacity_keeps_the_complete_history() {
+    let data = tempfile::tempdir().unwrap();
+    let mut current = engine(data.path(), false);
+    current.replay_events::<Change>().unwrap();
+    Arc::get_mut(&mut current).unwrap().enable_retention(
+        lithair_core::lifecycle::RetentionConfig { memory_count: Some(0), ..Default::default() },
+        vec![],
+    );
+    for value in 0..3 {
+        current.apply_event("one".into(), change("one", value), true).await.unwrap();
+    }
+    assert_eq!(current.internal_map().len(), 0);
+    assert_eq!(
+        current.read_or_load::<_, _, Change>("one", |r| r.values.clone()),
+        Some(vec![0, 1, 2])
+    );
+    assert_eq!(current.retention_layer().unwrap().read_warm("one").unwrap().version, 3);
+}
+
+#[tokio::test]
+async fn warm_mutation_uses_the_application_enum_and_preserves_untouched_fields() {
+    #[derive(Serialize, Deserialize)]
+    enum ApplicationEvent {
+        Rename(String),
+        Append(usize),
+    }
+    impl Event for ApplicationEvent {
+        type State = Record;
+        fn apply(&self, state: &mut Record) {
+            match self {
+                Self::Rename(name) => state.name = name.clone(),
+                Self::Append(value) => state.values.push(*value),
+            }
+        }
+    }
+    let data = tempfile::tempdir().unwrap();
+    let mut current = engine(data.path(), false);
+    current.replay_events::<ApplicationEvent>().unwrap();
+    retain_one(&mut current);
+    current
+        .apply_event("one".into(), ApplicationEvent::Rename("original".into()), true)
+        .await
+        .unwrap();
+    current
+        .apply_event("one".into(), ApplicationEvent::Append(1), true)
+        .await
+        .unwrap();
+    current
+        .apply_event("two".into(), ApplicationEvent::Rename("other".into()), true)
+        .await
+        .unwrap();
+    current
+        .apply_event("one".into(), ApplicationEvent::Append(2), true)
+        .await
+        .unwrap();
+    let expected = Record { name: "original".into(), values: vec![1, 2] };
+    assert_eq!(current.read("one", Clone::clone), Some(expected.clone()));
+    assert_eq!(current.get_indexed_values("name", "original"), vec!["one"]);
+    current.flush().await.unwrap();
+    drop(current);
+    let restored = engine(data.path(), false);
+    restored.replay_events::<ApplicationEvent>().unwrap();
+    assert_eq!(restored.read("one", Clone::clone), Some(expected));
+}
+
+#[tokio::test]
+async fn warm_legacy_version_zero_requires_an_actual_recovered_record() {
+    let data = tempfile::tempdir().unwrap();
+    let snapshot = data.path().join("state.raftsnap");
+    std::fs::write(
+        &snapshot,
+        r#"{"one":{"version":0,"last_updated":0,"data":{"name":"one","values":[42]}}}"#,
+    )
+    .unwrap();
+    let mut current = engine(data.path(), true);
+    Arc::get_mut(&mut current).unwrap().enable_retention(
+        lithair_core::lifecycle::RetentionConfig { memory_count: Some(0), ..Default::default() },
+        vec!["name".into()],
+    );
+    current.replay_events::<Change>().unwrap();
+    assert_eq!(
+        current.read_or_load::<_, _, Change>("one", |r| r.values.clone()),
+        Some(vec![42])
+    );
+    // A legacy raw snapshot has no checksum. Losing this record must not make
+    // an absent history look like a successfully recovered version-zero state.
+    std::fs::write(snapshot, "{}").unwrap();
+    assert!(current.apply_event("one".into(), change("after", 1), true).await.is_err());
+    assert_eq!(current.read_or_load::<_, _, Change>("one", Clone::clone), None);
+    assert_eq!(current.get_indexed_values("name", "one"), vec!["one"]);
 }

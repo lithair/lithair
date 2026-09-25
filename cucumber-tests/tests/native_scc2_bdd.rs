@@ -150,6 +150,70 @@ async fn refused(world: &mut NativeWorld) {
     assert!(engine.flush().await.is_err());
     assert!(engine.flush().await.is_err());
 }
+#[given("the native cache retains one full record")]
+async fn retain_one(world: &mut NativeWorld) {
+    let engine = Arc::get_mut(world.engine.as_mut().unwrap()).unwrap();
+    engine.replay_events::<Increment>().unwrap();
+    engine.enable_retention(
+        lithair_core::lifecycle::RetentionConfig { memory_count: Some(1), ..Default::default() },
+        vec!["name".into()],
+    );
+}
+async fn increment_key(world: &NativeWorld, key: &str) {
+    world
+        .engine
+        .as_ref()
+        .unwrap()
+        .apply_event(key.into(), Increment { id: key.into(), name: key.into() }, true)
+        .await
+        .unwrap();
+}
+#[when("a second record evicts the first incremented record")]
+async fn evict_first(world: &mut NativeWorld) {
+    increment_key(world, "first").await;
+    increment_key(world, "second").await;
+    assert!(world.engine.as_ref().unwrap().retention_layer().unwrap().is_evicted("first"));
+}
+#[when("the first record is incremented again")]
+async fn increment_first(world: &mut NativeWorld) {
+    increment_key(world, "first").await;
+}
+#[then("both increments of the first record survive reopening")]
+async fn warm_reopened(world: &mut NativeWorld) {
+    let engine = world.engine.as_ref().unwrap();
+    assert_eq!(engine.read("first", |s| s.count), Some(2));
+    engine.flush().await.unwrap();
+    world.engine = None;
+    let engine = open(world);
+    engine.replay_events::<Increment>().unwrap();
+    assert_eq!(engine.read("first", |s| s.count), Some(2));
+    assert_eq!(engine.read("second", |s| s.count), Some(1));
+    world.engine = Some(engine);
+}
+#[when("a volatile change to the first record is evicted")]
+async fn volatile_evicted(world: &mut NativeWorld) {
+    increment_key(world, "first").await;
+    world.engine.as_ref().unwrap().write("first", |s| s.count = 42).unwrap();
+    increment_key(world, "second").await;
+}
+#[then("updating the first record is refused without using its older durable value")]
+async fn volatile_refused(world: &mut NativeWorld) {
+    let engine = world.engine.as_ref().unwrap();
+    assert!(engine
+        .apply_event("first".into(), Increment { id: "first".into(), name: "first".into() }, true,)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("volatile"));
+    assert_eq!(
+        engine.update_entry_volatile("first", |_| panic!("incomplete state")),
+        None::<()>
+    );
+    assert_eq!(engine.read_or_load::<_, _, Increment>("first", |s| s.count), None);
+    assert_eq!(engine.retention_layer().unwrap().read_warm("first").unwrap().version, 2);
+    assert_eq!(engine.get_indexed_values("name", "first"), vec!["first"]);
+    assert_eq!(engine.read("second", |s| s.count), Some(1));
+}
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
     NativeWorld::cucumber().run_and_exit("features/core/native_scc2.feature").await;
