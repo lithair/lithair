@@ -1189,6 +1189,22 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     };
 
     let name = &input.ident;
+    // Consensus stores complete canonical JSON. Defaults run on the leader;
+    // serde renames, flattening and user serialization callbacks are not yet
+    // part of the supported wire/schema contract.
+    let ordinary_serde = |attrs: &[syn::Attribute]| {
+        attrs.iter().filter(|a| a.path().is_ident("serde")).all(|a| {
+            a.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|items| items.iter().all(|m| m.path().is_ident("default")))
+        })
+    };
+    let native_cluster_compatible = ordinary_serde(&input.attrs)
+        && matches!(&input.data, Data::Struct(data) if data.fields.iter().all(|f| ordinary_serde(&f.attrs)
+            && parse_field_attributes(f).is_ok_and(|a| a.has_many.is_none() && a.has_one.is_none()
+                && a.belongs_to.is_none() && !a.cascade_delete && !a.cascade_null && !a.track_history
+                && a.compact_after.is_none() && a.snapshot_every.is_none() && a.serialization.is_none())));
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, Span::call_site());
     // Keep server attributes parsed so later (currently unreachable) code compiles
@@ -1878,6 +1894,10 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
 
         // Auto-generate HttpExposable implementation
         impl lithair_core::http::HttpExposable for #name {
+            fn native_cluster_compatible() -> bool {
+                #native_cluster_compatible
+            }
+
             fn http_base_path() -> &'static str {
                 #base_path_lit
             }

@@ -63,7 +63,7 @@ trap 'exit 143' TERM
 cp /work/target/debug/examples/cluster-compose-node "$staging/node/node"
 cp /work/tests/cluster/Node.Dockerfile "$staging/node/Dockerfile"
 cp /work/tests/cluster/Driver.Dockerfile "$staging/driver/Dockerfile"
-cp /work/tests/cluster/checks.py /work/tests/cluster/compose.yml /work/tests/cluster/probatum.toml "$staging/driver/"
+cp /work/tests/cluster/checks.py /work/tests/cluster/native_checks.py /work/tests/cluster/compose.yml /work/tests/cluster/probatum.toml "$staging/driver/"
 docker build -t "$LITHAIR_CLUSTER_NODE_IMAGE" "$staging/node"
 docker build -t "$LITHAIR_CLUSTER_DRIVER_IMAGE" "$staging/driver"
 # Ask Docker's allocator for a free pool, then reserve it explicitly. Concurrent

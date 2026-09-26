@@ -12,6 +12,10 @@ services:
     <<: *node
     command: [prepare]
     network_mode: none
+    environment:
+      LITHAIR_CLUSTER_NODE1_IP: ${LITHAIR_CLUSTER_NODE1_IP}
+      LITHAIR_CLUSTER_NODE2_IP: ${LITHAIR_CLUSTER_NODE2_IP}
+      LITHAIR_CLUSTER_NODE3_IP: ${LITHAIR_CLUSTER_NODE3_IP}
     volumes:
       - keys1:/secrets/1
       - keys2:/secrets/2

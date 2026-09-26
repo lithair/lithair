@@ -637,6 +637,8 @@ pub struct LithairServer {
     not_found_handler: Option<RouteHandler>,
     route_guards: Vec<crate::http::RouteGuardMatcher>,
     model_infos: Vec<ModelRegistrationInfo>,
+    #[cfg(all(feature = "cluster", feature = "tls"))]
+    native_cluster: Option<crate::cluster::native::NativeCluster>,
     /// Issue #78: when true, every auto-generated `/api/{model}` endpoint
     /// must carry a valid session, otherwise the request is rejected with
     /// HTTP 401. Wired from
@@ -2915,6 +2917,11 @@ impl LithairServer {
         let method = req.method().clone();
         let path = req.uri().path().to_string();
 
+        #[cfg(all(feature = "cluster", feature = "tls"))]
+        if self.native_cluster.is_some() && (path.starts_with("/_") || path.starts_with("/raft/")) {
+            return Ok(response::json(http::StatusCode::NOT_FOUND, r#"{"error":"Unknown route"}"#));
+        }
+
         // Resolve the request host once and reuse it for both the host
         // redirect (below) and the vhost lookup (further down). Both
         // call paths previously called `host_from_request` independently;
@@ -3365,6 +3372,23 @@ impl LithairServer {
             }
         }
 
+        #[cfg(all(feature = "cluster", feature = "tls"))]
+        if let Some(cluster) = &self.native_cluster {
+            if method == hyper::Method::GET && path == ops_endpoints::READY_PATH {
+                return Ok(if cluster.ready().await {
+                    ops_endpoints::serve_ready()
+                } else {
+                    crate::cluster::native::NativeCluster::unavailable()
+                });
+            }
+            if method == hyper::Method::GET && path == ops_endpoints::INFO_PATH {
+                return Ok(ops_endpoints::serve_info(&cluster.paths()));
+            }
+            if cluster.matches(&path) {
+                return Ok(cluster.handle(req).await);
+            }
+        }
+
         // Built-in operations endpoints (`/health`, `/ready`, `/info`).
         //
         // These match the README's "Every Lithair server comes with
@@ -3662,6 +3686,8 @@ impl Default for LithairServer {
             not_found_handler: None,
             route_guards: Vec::new(),
             model_infos: Vec::new(),
+            #[cfg(all(feature = "cluster", feature = "tls"))]
+            native_cluster: None,
             models_require_session: false,
             external_handler_gates: Vec::new(),
             external_handler_sse_wirings: Vec::new(),

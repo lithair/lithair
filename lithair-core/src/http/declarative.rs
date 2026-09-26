@@ -185,6 +185,13 @@ fn cookie_token<B>(req: &Request<B>, name: &str) -> Option<String> {
 /// This trait is automatically implemented by the DeclarativeModel macro
 /// when the #[http(expose)] attribute is used.
 pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 'static {
+    /// Generated declarations with ordinary serde field names may use native
+    /// consensus. Hand-written implementations and custom serializers default
+    /// to unsupported: follower apply must not execute application callbacks.
+    fn native_cluster_compatible() -> bool {
+        false
+    }
+
     /// Get the base path for this model's REST endpoints
     /// Example: "products" for /api/products
     fn http_base_path() -> &'static str;
@@ -1369,13 +1376,6 @@ where
         query_str: &str,
         user_perms: &[String],
     ) -> serde_json::Value {
-        use crate::http::query::{
-            compare_json_values, matches_filter, parse_query_params, DEFAULT_MAX_TAKE,
-        };
-
-        // Parse query parameters
-        let params = parse_query_params(query_str);
-
         // Collect hot items (full data) + warm items (pinned fields only).
         //
         // Warm entries are pre-serialized pinned-field JSON, so `can_read()`
@@ -1417,52 +1417,7 @@ where
             items
         };
 
-        let mut json_items = json_items;
-
-        // Apply filters
-        if !params.filters.is_empty() {
-            json_items.retain(|item| params.filters.iter().all(|f| matches_filter(item, f)));
-        }
-
-        let total = json_items.len() as u64;
-
-        // Apply sorting
-        if let Some(ref sort) = params.sort {
-            let field = sort.field.clone();
-            let desc = sort.descending;
-            json_items.sort_by(|a, b| {
-                let va = a.get(&field).unwrap_or(&serde_json::Value::Null);
-                let vb = b.get(&field).unwrap_or(&serde_json::Value::Null);
-                let ord = compare_json_values(va, vb);
-                if desc {
-                    ord.reverse()
-                } else {
-                    ord
-                }
-            });
-        }
-
-        // Apply pagination
-        let skip = params.skip as usize;
-        if skip > 0 && skip < json_items.len() {
-            json_items = json_items.into_iter().skip(skip).collect();
-        } else if skip >= json_items.len() && !json_items.is_empty() {
-            json_items.clear();
-        }
-
-        // Apply take limit (use default max if not specified to prevent unbounded responses)
-        let effective_take = params.take.unwrap_or(DEFAULT_MAX_TAKE) as usize;
-        let has_more = json_items.len() > effective_take;
-        json_items.truncate(effective_take);
-
-        // Build wrapper response
-        serde_json::json!({
-            "data": json_items,
-            "total": total,
-            "skip": params.skip,
-            "take": effective_take,
-            "has_more": has_more,
-        })
+        crate::http::query::list_response(query_str, json_items)
     }
 
     /// GET /api/{model}/stream - SSE real-time change subscription

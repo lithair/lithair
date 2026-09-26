@@ -548,3 +548,55 @@ mod tests {
         assert_eq!(param("token=abc=def==", "token"), Some("abc=def==".to_string()));
     }
 }
+
+/// Shared native collection contract after permission filtering. Used by local
+/// handlers and committed consensus views so filtering/pagination stay aligned.
+pub(crate) fn list_response(query: &str, json_items: Vec<serde_json::Value>) -> serde_json::Value {
+    let params = parse_query_params(query);
+    let mut json_items = json_items;
+
+    // Apply filters
+    if !params.filters.is_empty() {
+        json_items.retain(|item| params.filters.iter().all(|f| matches_filter(item, f)));
+    }
+
+    let total = json_items.len() as u64;
+
+    // Apply sorting
+    if let Some(ref sort) = params.sort {
+        let field = sort.field.clone();
+        let desc = sort.descending;
+        json_items.sort_by(|a, b| {
+            let va = a.get(&field).unwrap_or(&serde_json::Value::Null);
+            let vb = b.get(&field).unwrap_or(&serde_json::Value::Null);
+            let ord = compare_json_values(va, vb);
+            if desc {
+                ord.reverse()
+            } else {
+                ord
+            }
+        });
+    }
+
+    // Apply pagination
+    let skip = params.skip as usize;
+    if skip > 0 && skip < json_items.len() {
+        json_items = json_items.into_iter().skip(skip).collect();
+    } else if skip >= json_items.len() && !json_items.is_empty() {
+        json_items.clear();
+    }
+
+    // Apply take limit (use default max if not specified to prevent unbounded responses)
+    let effective_take = params.take.unwrap_or(DEFAULT_MAX_TAKE) as usize;
+    let has_more = json_items.len() > effective_take;
+    json_items.truncate(effective_take);
+
+    // Build wrapper response
+    serde_json::json!({
+        "data": json_items,
+        "total": total,
+        "skip": params.skip,
+        "take": effective_take,
+        "has_more": has_more,
+    })
+}
