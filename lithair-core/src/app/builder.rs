@@ -98,6 +98,8 @@ pub struct LithairServerBuilder {
     custom_routes: Vec<CustomRoute>,
     not_found_handler: Option<super::RouteHandler>,
     model_infos: Vec<crate::app::ModelRegistrationInfo>,
+    #[cfg(all(feature = "cluster", feature = "tls"))]
+    native_cluster: Option<crate::cluster::native::NativeCluster>,
 
     // HTTP Features
     route_guards: Vec<crate::http::RouteGuardMatcher>, // Declarative route protection
@@ -278,6 +280,8 @@ impl LithairServerBuilder {
             custom_routes: Vec::new(),
             not_found_handler: None,
             model_infos: Vec::new(),
+            #[cfg(all(feature = "cluster", feature = "tls"))]
+            native_cluster: None,
             route_guards: Vec::new(),
             firewall_config: None,
             anti_ddos_config: None,
@@ -317,6 +321,8 @@ impl LithairServerBuilder {
             custom_routes: Vec::new(),
             not_found_handler: None,
             model_infos: Vec::new(),
+            #[cfg(all(feature = "cluster", feature = "tls"))]
+            native_cluster: None,
             route_guards: Vec::new(),
             firewall_config: None,
             anti_ddos_config: None,
@@ -2582,9 +2588,42 @@ impl LithairServerBuilder {
         self
     }
 
+    /// Attach an explicitly opened native OpenRaft group. Generated models are
+    /// declared on that group. Local models, sessions, hooks, custom mutation
+    /// routes and legacy/data-admin paths cannot bypass its commit boundary.
+    #[cfg(all(feature = "cluster", feature = "tls"))]
+    pub fn with_native_cluster(mut self, cluster: crate::cluster::native::NativeCluster) -> Self {
+        self.native_cluster = Some(cluster);
+        self
+    }
+
     /// Build the server
     pub fn build(self) -> Result<LithairServer> {
         self.session_cookie.validate()?;
+        #[cfg(all(feature = "cluster", feature = "tls"))]
+        if self.native_cluster.is_some() {
+            anyhow::ensure!(
+                self.model_infos.is_empty() && self.external_handler_gates.is_empty(),
+                "native consensus cannot mix local/Turso handlers; declare models on NativeCluster"
+            );
+            anyhow::ensure!(
+                self.session_manager.is_none()
+                    && !self.models_require_session
+                    && self.permission_checker.is_none()
+                    && self.route_guards.is_empty(),
+                "native consensus does not yet support local sessions/RBAC stores"
+            );
+            anyhow::ensure!(
+                self.node_id.is_none()
+                    && self.cluster_peers.is_empty()
+                    && !self.config.replication.enabled,
+                "native consensus cannot mix legacy replication"
+            );
+            anyhow::ensure!(self.custom_routes.is_empty() && self.mutation_hooks.is_empty() && !self.sse_enabled
+                && self.auto_compaction.is_none(), "native consensus does not yet support custom routes, hooks, SSE or local compaction");
+            anyhow::ensure!(!self.config.admin.enabled && !self.config.admin.data_admin_enabled && self.config.admin.data_admin_ui_path.is_none(),
+                "disable the legacy admin plane with with_admin_panel(false); native management HTTP/UI is not yet supported");
+        }
         Ok(LithairServer {
             session_cookie: Arc::new(self.session_cookie),
             config: self.config,
@@ -2596,6 +2635,8 @@ impl LithairServerBuilder {
             not_found_handler: self.not_found_handler,
             route_guards: self.route_guards,
             model_infos: self.model_infos,
+            #[cfg(all(feature = "cluster", feature = "tls"))]
+            native_cluster: self.native_cluster,
             models_require_session: self.models_require_session,
             external_handler_gates: self.external_handler_gates,
             external_handler_sse_wirings: self.external_handler_sse_wirings,

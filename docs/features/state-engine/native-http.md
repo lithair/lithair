@@ -1,5 +1,9 @@
 # Native model HTTP commits
 
+For the separate opt-in OpenRaft runtime and its deployment limits, see
+[native model consensus](native-cluster.md). The contract below covers the local
+handler and legacy replicated-apply paths.
+
 Model declarations and `with_model` / `with_declarative_model` / `with_model_ref`
 stay unchanged. Native generated CRUD, admin edits and replicated apply helpers
 now use one handler commit path. `with_handler` and `with_model_ref` also register

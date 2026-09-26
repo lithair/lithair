@@ -1,5 +1,12 @@
 # Three-container consensus qualification
 
+The suite also runs real native declarative HTTP models through `NativeCluster`:
+public CRUD on port 8180, dedicated mTLS peers on 9553, and admin/UI disabled.
+`native_checks.py` records acknowledgements and tests concurrency, a lost response,
+SIGKILL, partitions, snapshot catch-up and cold restart. Each container keeps
+separate foundation and native stores on its own volume. See the
+[native contract](../../docs/features/state-engine/native-cluster.md).
+
 Run from the repository root:
 
 ```sh

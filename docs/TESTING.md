@@ -7,6 +7,12 @@ bug this suite caught.
 
 ## The pyramid
 
+Native OpenRaft integration is covered by `native_cluster_test`, the
+`cluster::native` state-machine unit tests and `native_cluster_bdd` under
+`cidx run test`. `cidx run cluster` additionally qualifies real native CRUD,
+lost-response retries, failover, partition refusal and snapshot/cold recovery
+with Probatum and three Docker Compose nodes; see [the harness](../tests/cluster/README.md).
+
 | Tier | What it proves | Where it lives | Runs |
 |---|---|---|---|
 | **Unit** | internal invariants (~400 tests) | `#[cfg(test)]` modules in `lithair-core/src/` | every PR (CI) |

@@ -45,6 +45,9 @@ pub mod consensus_log;
 #[allow(dead_code)]
 pub(crate) mod durable_log;
 
+/// Opt-in native declarative model consensus. Requires provisioned peer stores.
+#[cfg(all(feature = "cluster", feature = "tls"))]
+pub mod native;
 /// Experimental offline tools for the new consensus storage, behind cluster/TLS.
 #[cfg(all(feature = "cluster", feature = "tls"))]
 pub mod operator;
