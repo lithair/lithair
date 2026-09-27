@@ -115,12 +115,17 @@ def recovery():
     previous = report(victim)['applied']
     compose('kill', '-s', 'SIGKILL', f'node{victim}')
     survivors = tuple(i for i in IDS if i != victim)
-    node = leader(survivors)
     acknowledged = json.loads(ACK.read_text())
     for index in range(40):
-        item = create(node, f'after-kill-{index}')
+        # Readiness is a point-in-time quorum check, not a lease. An election
+        # can still make the next request return 503. Rediscover the leader and
+        # retry the same body/key so an ambiguous commit cannot create a duplicate.
+        identity = f'after-kill-{index}'
+        item = poll(f'acknowledge native {identity}',
+                    lambda: create(leader(survivors), identity))
         acknowledged[item['id']] = item
         save(acknowledged)
+    node = leader(survivors)
     poll('native leader purged stopped replica prefix', lambda: (report(node)['purged'] or 0) > previous)
     compose('start', f'node{victim}')
     poll('native follower installed real application snapshot', lambda: report(victim)['snapshot_installs'] > 0)

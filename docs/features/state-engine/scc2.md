@@ -105,9 +105,10 @@ the [native checkpoint protocol](native-checkpoints.md). Indexed cold reads and
 coherent native/Turso backup and restore still need separate qualification. This change does not establish power-loss guarantees
 for the complete storage lifecycle.
 
-The private OpenRaft foundation remains opt-in and separate. Three-node
-Probatum/Compose tests exercise its test state machine; they do not yet qualify
-replication of these native models, Turso documents or sessions.
+The opt-in [native consensus runtime](native-cluster.md) is a separate mutation
+path with its own checkpoints. Three-node Probatum/Compose tests cover that runtime
+and the OpenRaft foundation's test state machine; they do not establish replication
+for direct SCC callers, Turso documents or sessions.
 
 ## Validation
 

@@ -75,5 +75,6 @@ journal generation, metadata and deduplication files. Copying only `events.raftl
 is no longer sufficient. Copying a live directory file by file is not a consistent
 backup. Restore a copy and exercise replay before replacing production data.
 
-This is single-process native storage. Cluster model/Turso/session replication still
-requires integration with the consensus state machines and separate qualification.
+This protocol covers single-process native storage. The separate opt-in
+[native consensus runtime](native-cluster.md) owns its application checkpoints;
+it does not import these stores or replicate Turso/session data.

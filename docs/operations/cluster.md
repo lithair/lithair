@@ -1,5 +1,10 @@
 # Cluster operations runbook
 
+For the opt-in native model runtime introduced in 1.13.0, use the
+[native consensus guide](../features/state-engine/native-cluster.md) and its
+operator configuration. It uses dedicated mTLS peers and quorum-aware readiness.
+This page covers the separate legacy `with_raft_cluster` path.
+
 This runbook describes the existing native cluster implementation and historical
 local stress measurements (G1 decision, issue #104, 2026-06-12). Those results
 **do not qualify a three-VM deployment with native models, Turso, persistent
