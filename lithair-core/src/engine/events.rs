@@ -195,6 +195,47 @@ pub struct EventStore {
 }
 
 impl EventStore {
+    /// Open raw frontend JSON storage without eagerly collecting its history.
+    /// Call `replay_json_suffix` before admitting writes to restore the count.
+    /// Frontend events are not binary model envelopes or hash-chain entries.
+    pub(crate) fn new_streaming_json(file_path: &str) -> EngineResult<Self> {
+        Ok(Self {
+            backend: EventStoreBackend::Single(Box::new(FileStorage::new_synchronous(file_path)?)),
+            events_count: 0,
+            log_verbose: false,
+            pending_since_flush: 0,
+            flush_every: 1,
+            binary_mode: false,
+            disable_index: true,
+            dedup_persist: false,
+            last_event_hash: None,
+            enable_hash_chain: false,
+        })
+    }
+
+    pub(crate) fn replay_json_suffix(
+        &mut self,
+        visit: impl FnMut(&str) -> EngineResult<()>,
+    ) -> EngineResult<()> {
+        match &self.backend {
+            EventStoreBackend::Single(storage) if !self.binary_mode => {
+                self.events_count =
+                    storage.visit_json_events(storage.checkpoint_boundary()?.0, visit)?;
+                Ok(())
+            }
+            _ => Err(EngineError::InvalidOperation(
+                "streaming replay requires raw JSON storage".into(),
+            )),
+        }
+    }
+
+    pub(crate) fn journal_size(&self) -> EngineResult<u64> {
+        match &self.backend {
+            EventStoreBackend::Single(storage) => storage.current_events_size(),
+            _ => Err(EngineError::InvalidOperation("expected a single journal".into())),
+        }
+    }
+
     /// Create a new event store with file path (single-file mode)
     pub fn new(file_path: &str) -> EngineResult<Self> {
         Self::new_with_config(file_path, false)

@@ -95,3 +95,76 @@ fn publication_error_keeps_previous_journal_and_stops_writes() {
     let reopened = EventStore::new(dir.path().to_str().unwrap()).unwrap();
     assert_eq!(reopened.get_all_events().unwrap(), vec!["1"]);
 }
+
+#[test]
+fn frontend_crash_child() {
+    let Ok(path) = std::env::var("FRONTEND_CHECKPOINT_CHILD") else {
+        return;
+    };
+    CRASH.with(|v| *v.borrow_mut() = Some(std::env::var("FRONTEND_CHECKPOINT_STAGE").unwrap()));
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(crate::frontend::FrontendEngine::new("site", path))
+        .unwrap();
+    panic!("frontend checkpoint stage was not reached");
+}
+
+#[test]
+fn frontend_history_survives_interrupted_checkpoint_and_reclamation() {
+    use crate::frontend::{FrontendEngine, StaticAsset};
+    for stage in [
+        "journal_synced",
+        "snapshot_written",
+        "snapshot_synced",
+        "snapshot_renamed",
+        "directory_synced",
+        "new_journal_synced",
+        "reclaimed",
+    ] {
+        let data = tempfile::tempdir().unwrap();
+        let mut store =
+            EventStore::new(data.path().join("frontend_site").to_str().unwrap()).unwrap();
+        for _ in 0..4 {
+            store.append_event(&StaticAsset::new("/keep".into(), b"live".to_vec())).unwrap();
+            store.append_event(&StaticAsset::new("/gone".into(), b"old".to_vec())).unwrap();
+        }
+        store.append_raw_line(r#"{"AssetDeleted":{"path":"/gone"}}"#).unwrap();
+        store.force_flush().unwrap();
+        drop(store);
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "engine::persistence::checkpoint::tests::frontend_crash_child",
+                "--nocapture",
+            ])
+            .env("FRONTEND_CHECKPOINT_CHILD", data.path())
+            .env("FRONTEND_CHECKPOINT_STAGE", stage)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(86),
+            "{stage}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let engine = FrontendEngine::new("site", data.path()).await.unwrap();
+                assert_eq!(engine.asset_count(), 1, "{stage}");
+                assert_eq!(engine.get_asset("/keep").await.unwrap().content, b"live");
+                assert!(engine.get_asset("/gone").await.is_none());
+                assert_eq!(engine.engine().event_store().read().unwrap().event_count(), 0);
+                // A new mutation must target the selected generation after recovery.
+                engine.update_asset("/new", b"new".to_vec()).await.unwrap();
+                drop(engine);
+                let reopened = FrontendEngine::new("site", data.path()).await.unwrap();
+                assert_eq!(reopened.asset_count(), 2);
+                assert!(reopened.get_asset("/gone").await.is_none());
+            });
+    }
+}

@@ -14,6 +14,7 @@ use std::path::Path;
 /// Per-PR gate binaries run in CI on every PR; task targets are manual or
 /// nightly by design (perf/stress/cluster are long-running).
 const CLAIMED: &[(&str, &str)] = &[
+    ("features/persistence/frontend.feature", "test:frontend_persistence_bdd"),
     ("features/core/native_cluster.feature", "test:native_cluster_bdd"),
     // — per-PR CI gate —
     ("features/core/native_checkpoint.feature", "test:native_checkpoint_bdd"),

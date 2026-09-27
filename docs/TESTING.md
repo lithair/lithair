@@ -94,6 +94,15 @@ See the [HTTP commit contract](features/state-engine/native-http.md).
 
 ## The workflow
 
+Frontend persistence runs in `frontend_persistence_test`, the existing frontend
+HTTP/delete regressions and `frontend_persistence_bdd` (registered
+`features/persistence/frontend.feature`). Coverage includes unchanged/concurrent
+reloads, legacy compaction, offline removals, MIME/host isolation and corruption.
+The checkpoint unit suite interrupts frontend startup at seven publication/
+reclamation boundaries. A Linux subprocess replays a 64 MiB legacy journal for
+one 128 KiB asset and bounds its additional peak RSS below 24 MiB, independently
+of the other test processes. These checks run through `cidx run test`.
+
 **New feature** → open a draft PR with `cidx repo pr create`, then write the
 Gherkin scenario first (red), implement until
 green, update the draft PR: CI executes the whole behavior tier. The `.feature`
