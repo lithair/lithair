@@ -73,8 +73,9 @@ It also proves that Probatum rejects an intentionally incorrect expected value.
 This phase runs in `cidx run ci` and the GitHub Cluster job. Evidence is saved
 under `.probatum/runs/lithair-cluster-*/` and uploaded even after failure. See
 [the fixture runbook](../tests/cluster/README.md) for prerequisites, cleanup and
-failure-injection commands. These containers share one host and use a test state
-machine; this is not three-VM or native/Turso/session qualification. The existing
+failure-injection commands. The 13 checks cover both the foundation's test state
+machine and the opt-in native model runtime. These containers share one host;
+they do not qualify three-VM deployments, Turso or sessions. The existing
 Rust/Gherkin suites remain the lower-level regression gate.
 
 ## Native concurrent engine

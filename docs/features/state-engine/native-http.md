@@ -68,9 +68,9 @@ does not write a journal or validate constraints. Direct mutation through
 using that escape hatch. Use one handler per model directory.
 
 This is a single-process contract. The legacy HTTP replication proposal and local
-commit are not a distributed transaction. Native/Turso/session state machines
-still need integration with the private OpenRaft foundation and separate failure
-qualification. SCC and HTTP retain their own memory containers while following
+commit are not a distributed transaction. The separate opt-in
+[native consensus runtime](native-cluster.md) provides quorum-backed model CRUD;
+Turso/session integration remains pending. SCC and HTTP retain their own memory containers while following
 the same journal-before-publication rule.
 
 ## Validation
@@ -79,5 +79,5 @@ the same journal-before-publication rule.
 unique writes, cancelled callers, key identity, compaction and retention.
 `native_http_commit_bdd` owns `features/core/native_http_commit.feature` and runs
 through `cidx run test`. Run `cidx run ci` before review; its Probatum/Compose phase
-continues to qualify the private consensus fixture, not application replication.
+also qualifies the separate native consensus runtime and foundation fixture.
 No throughput improvement is inferred from these correctness tests.

@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-27
+
+Native persistence hardening, bounded frontend persistence and an experimental
+three-node native model runtime ship with `lithair-core`, `lithair-macros` and
+`lithair-cli` 1.13.0. The unchanged `lithair-turso` adapter remains at 0.2.2.
+Single-node model declarations remain unchanged; clustering stays opt-in.
+
+### Added
+
+- **Native model consensus** (#276): `NativeCluster` connects declarative CRUD
+  to three OpenRaft voters through dedicated mTLS peer connections. Writes require
+  quorum commitment and durable leader application; reads use a fresh quorum
+  barrier. Followers and isolated leaders return 503. Stable model identities,
+  application/schema binding and retained `Idempotency-Key` results cover retries
+  across leader changes and restarts. See the
+  [native cluster guide](https://github.com/lithair/lithair/blob/v1.13.0/docs/features/state-engine/native-cluster.md).
+- Durable OpenRaft logs, votes, snapshots and compaction; persistent node/cluster
+  identity and explicit one-time bootstrap (#252, #254, #256, #258). Optional
+  `lithair-cli --features cluster-ops` provides offline provisioning, inspection
+  and bootstrap preflight (#260).
+- Three-node Probatum/Docker Compose qualification (#262, #276), including native
+  CRUD, acknowledged data after leader death, retry after a lost response,
+  minority refusal, snapshot catch-up and cold restart. The gate also retains
+  the lower-level consensus checks: 13 checks in total, alongside Rust and Gherkin
+  regression suites. These are separate processes on one host, not three-VM or
+  physical power-loss qualification.
+
+### Fixed
+
+- **Frontend journal growth and restart memory** (#278, closes #277): unchanged
+  directory loads, reloads and asset updates no longer append duplicate content.
+  Startup streams legacy JSON history and compacts it into a checked checkpoint;
+  subsequent compaction bounds retained history. MIME metadata, deletion tombstones,
+  offline removals and host isolation survive restart. Hot serving stays in memory.
+- Native SCC mutations now share one ordered path for candidate preparation,
+  uniqueness, indexes, journal acknowledgement and publication (#266). Bucket
+  contention no longer appears as a missing record. Updates to evicted records
+  reconstruct their complete durable state before applying changes, or fail without
+  publishing a partial record (#272).
+- Generated native HTTP mutations flush their journal before publishing state or
+  notifying clients (#268). Concurrent PATCH and unique checks are ordered;
+  storage failures propagate and stop subsequent writes. Admitted mutations finish
+  even if the caller disconnects. PATCH is also registered by `with_handler` and
+  `with_model_ref`.
+- Native snapshots and compaction atomically select checked journal generations
+  (#270). Recovery restores a checkpoint plus its uncovered suffix, preserves
+  evicted records and refuses corrupt or missing selected files. Process-death
+  regressions cover checkpoint publication and reclamation boundaries.
+
+### Upgrade and limits
+
+- Use `lithair-core = "1.13"` and update an explicit `lithair-macros` dependency
+  to `"1.13"`; existing `"1.12"` caret requirements can select this release with
+  `cargo update`. Turso declarations and SQL files need no migration for this
+  release; `lithair-turso = "0.2.2"` remains compatible.
+- **Back up each complete stopped model/frontend data directory before upgrading.**
+  Frontend history is adopted automatically; do not delete `events.raftlog` by hand.
+  After checkpointing, backups must include `state.raftsnap` and its selected
+  `native-journal-*.raftlog`, plus the remaining metadata. Older binaries cannot
+  safely reopen the new checkpoints: downgrade requires a pre-upgrade backup.
+  See [native checkpoints](https://github.com/lithair/lithair/blob/v1.13.0/docs/features/state-engine/native-checkpoints.md)
+  and [frontend persistence](https://github.com/lithair/lithair/blob/v1.13.0/docs/features/frontend/overview.md#persistent-assets-and-reloads).
+- Native HTTP handlers now reject `LT_OPT_PERSIST=1`, whose legacy writer cannot
+  acknowledge durable flushes. Frontend persistence always uses synchronous JSON,
+  independently of model binary/optimized settings. Native HTTP appends still
+  default to OS flushes: enable `LT_FSYNC_ON_APPEND=1` to request fsync. Checkpoint
+  publication always syncs. Bulk operations and frontend directory reloads may
+  commit a prefix; they are not multi-record transactions.
+- Low-level `Engine::new` and SCC replay/cold recovery now require
+  `DeserializeOwned` in addition to serialization. Declarative models already
+  satisfy this. Direct SCC users must run `replay_events` with their complete
+  application event decoder before mutating evicted records, including after
+  opening an empty store. Low-level queued acknowledgements remain distinct from
+  persistence completion; see the
+  [SCC contract](https://github.com/lithair/lithair/blob/v1.13.0/docs/features/state-engine/scc2.md).
+- The new native cluster runtime is **experimental**, separate from legacy
+  `with_raft_cluster`. It does not import standalone stores or replicate Turso,
+  sessions or RBAC. Admin HTTP/UI, hooks and unsupported model declarations are
+  rejected. Membership and schemas remain fixed; rolling upgrades are not
+  qualified. It writes a complete checkpoint per applied batch, capped at 48 MiB,
+  and retains the last 256 distinct committed results for idempotent retries.
+  This release does not yet provide the complete mixed-backend website deployment.
+
 ## [1.12.2] - 2026-09-17
 
 Corrective release with `lithair-core`, `lithair-macros` and `lithair-cli`
