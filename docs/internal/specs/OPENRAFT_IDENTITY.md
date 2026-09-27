@@ -1,5 +1,10 @@
 # OpenRaft node identity and explicit bootstrap
 
+The [native application runtime](../../features/state-engine/native-cluster.md)
+also binds an application digest in the checksummed node record before any vote
+or bootstrap claim. Only pristine provisioned stores may acquire that binding;
+recovery must confirm it unchanged. Binding does not initialize the group.
+
 [#257](https://github.com/lithair/lithair/issues/257) extends the private
 [durable log](OPENRAFT_STORAGE.md) and [peer transport](OPENRAFT_TRANSPORT.md).
 This is still a foundation for [RFC 248](../../rfcs/248-three-node-cluster.md),

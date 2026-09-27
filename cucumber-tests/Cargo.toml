@@ -132,6 +132,12 @@ hybrid-storage = { path = "../examples/advanced/hybrid-storage" }
 cluster-ops = ["lithair-core/cluster", "lithair-core/tls"]
 
 [[test]]
+name = "native_cluster_bdd"
+path = "tests/native_cluster_bdd.rs"
+harness = false
+required-features = ["cluster-ops"]
+
+[[test]]
 name = "cluster_operator_bdd"
 path = "tests/cluster_operator_bdd.rs"
 harness = false

@@ -6,6 +6,12 @@ behind `cluster` **and** `tls`, not an alternative application builder. The curr
 `with_raft_cluster()` path, SQL cluster startup guard and local sessions remain
 unchanged. See [RFC 248](../../rfcs/248-three-node-cluster.md).
 
+The opt-in [native application runtime](../../features/state-engine/native-cluster.md)
+now consumes this transport. It attaches an application/schema digest to every
+envelope (`application`); peers require an exact match before preflight, votes,
+append or snapshot handling. Foundation fixtures omit that field. The two groups
+cannot silently interoperate even when their certificate enrollment matches.
+
 ## Identity and protocol
 
 The caller supplies a cluster ID (1–128 bytes), stable local node ID, an explicit
@@ -103,8 +109,9 @@ Certificates are generated per test; no private keys are committed.
 
 ## Remaining work
 
-This establishes consensus with a test state machine, not durable application
-snapshots or integration with native models, Turso, sessions and authorization.
+The transport tests establish consensus using a test state machine. Native model
+integration and its separate qualification are described in the native runtime
+guide above; Turso and session replication remain follow-ups.
 The isolated snapshot RPC response test only checks transport behavior. Durable
 publication, physical compaction and test-state snapshot recovery are covered by
 [the checkpoint tests](OPENRAFT_CHECKPOINTS.md) in #255.

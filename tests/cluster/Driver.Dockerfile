@@ -4,4 +4,4 @@ FROM python:3.14.7-alpine3.24@sha256:4677924bcc0e94505a3270e87cb1601c2af54cd92d0
 COPY --from=probatum /usr/local/bin/probatum /usr/local/bin/probatum
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
-COPY checks.py compose.yml probatum.toml /suite/
+COPY checks.py native_checks.py compose.yml probatum.toml /suite/

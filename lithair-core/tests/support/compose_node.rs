@@ -1,4 +1,5 @@
 //! Test-only Compose node. Never a public Lithair application entry point.
+mod compose_native;
 #[path = "openraft_credentials.rs"]
 mod credentials;
 #[path = "../../src/cluster/durable_log/mod.rs"]
@@ -54,6 +55,7 @@ async fn prepare() -> anyhow::Result<()> {
         )
         .await?;
         drop(store);
+        compose_native::provision(id, &local).await?;
     }
     println!("provisioned three independent stores; bootstrap remains unclaimed");
     Ok(())
@@ -80,6 +82,7 @@ struct Node {
     log: DurableLog<TypeConfig>,
     network: PeerTransport<TypeConfig>,
     machine: SnapshotMachine,
+    native: lithair_core::cluster::native::NativeCluster,
 }
 impl Node {
     async fn dispatch(&self, request: Request<Incoming>) -> anyhow::Result<Response<Full<Bytes>>> {
@@ -93,6 +96,16 @@ impl Node {
                 .insert(hyper::header::CONTENT_TYPE, "application/json".parse().unwrap());
             response
         };
+        if method == Method::GET && path == "/test/native-state" {
+            return Ok(response(StatusCode::OK, self.native.inspect().await));
+        }
+        if method == Method::POST && path == "/test/native-bootstrap" {
+            let ok = self.native.bootstrap().await.is_ok();
+            return Ok(response(
+                if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
+                json!({"ok":ok}),
+            ));
+        }
         if method == Method::GET && path == "/test/state" {
             let metrics = self.raft.metrics().borrow().clone();
             let state = self.machine.memory.get_state_machine().await;
@@ -175,7 +188,9 @@ async fn serve(id: u64, credentials: Credentials) -> anyhow::Result<()> {
     }
     .validate()?;
     let raft = Raft::new(id, Arc::new(config), network.clone(), store, apply).await?;
-    let node = Node { id, raft: raft.clone(), log, network: network.clone(), machine };
+    let native = compose_native::open().await?;
+    let application = compose_native::serve(id, native.clone());
+    let node = Node { id, raft: raft.clone(), log, network: network.clone(), machine, native };
     let rpc = network.serve(listener, raft, std::future::pending());
     let http = async move {
         let mut connections = tokio::task::JoinSet::new();
@@ -201,7 +216,7 @@ async fn serve(id: u64, credentials: Credentials) -> anyhow::Result<()> {
         #[allow(unreachable_code)]
         Ok::<(), std::io::Error>(())
     };
-    tokio::select! { result = rpc => result?, result = http => result? }
+    tokio::select! { result = rpc => result?, result = http => result?, result = application => result? }
     Ok(())
 }
 async fn reject_unauthenticated(credentials: Credentials, id: u64) -> anyhow::Result<()> {

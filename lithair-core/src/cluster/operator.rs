@@ -52,9 +52,9 @@ struct ConfiguredPeer {
     server_name: String,
     certificate_sha256: String,
 }
-struct Prepared {
-    directory: PathBuf,
-    transport: PeerTransport<InspectionConfig>,
+pub(crate) struct Prepared<C> {
+    pub directory: PathBuf,
+    pub transport: PeerTransport<C>,
 }
 fn bounded(path: &Path, limit: u64) -> anyhow::Result<Vec<u8>> {
     ensure!(std::fs::metadata(path)?.is_file(), "expected a regular file");
@@ -92,7 +92,9 @@ fn private_key(path: &Path) -> anyhow::Result<PrivateKeyDer<'static>> {
     ensure!(keys.len() == 1, "key file must contain exactly one private key");
     keys.pop().ok_or_else(|| anyhow::anyhow!("missing private key"))
 }
-fn prepare(config_path: &Path) -> anyhow::Result<Prepared> {
+pub(crate) fn prepare<C: openraft::RaftTypeConfig<NodeId = u64>>(
+    config_path: &Path,
+) -> anyhow::Result<Prepared<C>> {
     let config_path = config_path.canonicalize().context("configuration path is unavailable")?;
     let directory = config_path.parent().context("configuration has no parent")?;
     let raw = bounded(&config_path, 64 * 1024)?;
@@ -173,7 +175,8 @@ fn prepare(config_path: &Path) -> anyhow::Result<Prepared> {
 /// Inspection validates opaque snapshot integrity, not application semantics.
 pub async fn run(command: OperatorCommand, config_path: impl AsRef<Path>) -> anyhow::Result<Value> {
     let path = config_path.as_ref().to_owned();
-    let prepared = tokio::task::spawn_blocking(move || prepare(&path)).await??;
+    let prepared =
+        tokio::task::spawn_blocking(move || prepare::<InspectionConfig>(&path)).await??;
     let identity = prepared.transport.node_identity()?;
     let mut report = json!({"configuration_version":1,"cluster_id":identity.cluster_id,
         "node_id":identity.node_id,"bootstrap_node":identity.bootstrap_node,

@@ -49,10 +49,12 @@ impl NodeIdentity {
 pub(super) struct BoundNode {
     pub identity: NodeIdentity,
     bootstrap_claimed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    application: Option<[u8; 32]>,
 }
 impl BoundNode {
     pub(super) fn new(identity: NodeIdentity) -> Self {
-        Self { identity, bootstrap_claimed: false }
+        Self { identity, bootstrap_claimed: false, application: None }
     }
 }
 
@@ -94,6 +96,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> DurableLog<C> {
                 "manifest_version":inner.end.version,
                 "store_id":uuid::Uuid::from_bytes(inner.end.identity).to_string(),
                 "bootstrap_claimed":node.bootstrap_claimed,
+                "application_sha256":node.application.map(|hash| hash.iter().map(|byte| format!("{byte:02x}")).collect::<String>()),
                 "pristine":inner.state.vote.is_none() && inner.state.logs.is_empty()
                     && inner.state.committed.is_none() && inner.state.purged.is_none() && inner.snapshot.is_none(),
                 "retained_entries":inner.state.logs.len(),
@@ -128,6 +131,43 @@ impl<C: RaftTypeConfig<NodeId = u64>> DurableLog<C> {
                 .as_ref()
                 .map(|n| n.identity.clone())
                 .ok_or_else(|| invalid("unbound OpenRaft store"))
+        })
+        .await
+    }
+
+    /// Bind the application before the first vote or bootstrap claim. Recovery
+    /// can only confirm the same contract; it cannot adopt another application.
+    pub(crate) async fn bind_application(
+        &self,
+        contract: [u8; 32],
+    ) -> Result<(), StorageError<u64>> {
+        self.access(ErrorVerb::Write, move |inner| {
+            let node = inner.end.node.as_ref().ok_or_else(|| invalid("unbound OpenRaft store"))?;
+            if let Some(existing) = node.application {
+                return if existing == contract {
+                    Ok(())
+                } else {
+                    Err(invalid("application contract mismatch; migration is not supported"))
+                };
+            }
+            if node.bootstrap_claimed
+                || inner.state.vote.is_some()
+                || !inner.state.logs.is_empty()
+                || inner.state.committed.is_some()
+                || inner.state.purged.is_some()
+                || inner.snapshot.is_some()
+            {
+                return Err(invalid("application binding requires a provisioned pristine store"));
+            }
+            let mut bound = node.clone();
+            bound.application = Some(contract);
+            let end = DurableEnd { node: Some(bound), ..inner.end.clone() };
+            inner.failed = true;
+            inner.activate(&end)?;
+            inner.end = end;
+            inner.checkpoint(Stage::Complete)?;
+            inner.failed = false;
+            Ok(())
         })
         .await
     }

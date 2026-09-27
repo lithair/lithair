@@ -40,6 +40,26 @@ run = "python3 /suite/checks.py negative"
 timeout = 30
 
 [[check]]
+name = "native generated CRUD preserves concurrent fields, uniqueness and dropped-response retries"
+run = "python3 /suite/native_checks.py crud"
+timeout = 120
+
+[[check]]
+name = "native acknowledged data survives leader SIGKILL and real snapshot catch-up"
+run = "python3 /suite/native_checks.py recovery"
+timeout = 120
+
+[[check]]
+name = "native minority refuses generated writes and consistent reads"
+run = "python3 /suite/native_checks.py partition"
+timeout = 120
+
+[[check]]
+name = "native data and retained HTTP results survive a full cold restart"
+run = "python3 /suite/native_checks.py restart"
+timeout = 120
+
+[[check]]
 name = "stopped stores can be inspected with their original identities"
 run = "python3 /suite/checks.py inspect"
 timeout = 60

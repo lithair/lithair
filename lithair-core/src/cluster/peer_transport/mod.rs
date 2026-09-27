@@ -52,6 +52,8 @@ struct Envelope<T> {
     sender: u64,
     recipient: u64,
     plan: [u8; 32],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    application: Option<[u8; 32]>,
     payload: T,
 }
 
@@ -60,6 +62,7 @@ struct Settings {
     local: u64,
     bootstrap_node: u64,
     plan: [u8; 32],
+    application: Option<[u8; 32]>,
     peers: BTreeMap<u64, Peer>,
     server: Arc<rustls::ServerConfig>,
     client: Arc<rustls::ClientConfig>,
@@ -162,6 +165,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
                 local,
                 bootstrap_node,
                 plan,
+                application: None,
                 peers,
                 server: Arc::new(server),
                 client: Arc::new(client),
@@ -169,6 +173,19 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             }),
             _config: PhantomData,
         })
+    }
+
+    /// An application contract is checked before *every* RPC, including votes
+    /// and bootstrap preflight. Foundation-only peers cannot join an app group.
+    pub(crate) fn with_application(mut self, contract: [u8; 32]) -> anyhow::Result<Self> {
+        Arc::get_mut(&mut self.settings)
+            .ok_or_else(|| invalid("transport was already shared"))?
+            .application = Some(contract);
+        Ok(self)
+    }
+
+    pub(crate) fn local_address(&self) -> SocketAddr {
+        self.settings.peers[&self.settings.local].address
     }
 
     /// Owns accepted connections; shutdown cancels and joins them. No public HTTP
@@ -255,6 +272,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         if envelope.version != WIRE_VERSION
             || envelope.cluster != self.settings.cluster
             || envelope.plan != self.settings.plan
+            || envelope.application != self.settings.application
         {
             return status(StatusCode::CONFLICT);
         }
@@ -348,6 +366,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             sender: self.settings.local,
             recipient: target,
             plan: self.settings.plan,
+            application: self.settings.application,
             payload,
         })?;
         let deadline = ttl.min(MAX_LIFETIME);
