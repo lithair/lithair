@@ -203,3 +203,7 @@ harness = false
 name = "native_checkpoint_bdd"
 path = "tests/native_checkpoint_bdd.rs"
 harness = false
+
+[[test]]
+name = "frontend_persistence_bdd"
+harness = false

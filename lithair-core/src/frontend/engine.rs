@@ -10,7 +10,7 @@
 //! - Memory-first with zero disk I/O after load
 //!
 use super::assets::StaticAsset;
-use crate::engine::{EventStore, Scc2Engine, Scc2EngineConfig};
+use crate::engine::{EngineError, EventStore, Scc2Engine, Scc2EngineConfig};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,14 @@ enum AssetMutation {
 enum StoredAssetEvent {
     Mutation(AssetMutation),
     Asset(Box<StaticAsset>),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FrontendSnapshot {
+    version: u32,
+    host_id: String,
+    assets: Vec<StaticAsset>,
 }
 
 /// Summary of a single hot reload of a [`FrontendEngine`].
@@ -76,6 +84,10 @@ pub struct FrontendEngine {
     /// `total_bytes()` is an O(1) atomic load instead of iterating + cloning
     /// every asset on each call.
     total_bytes: std::sync::atomic::AtomicU64,
+
+    /// Orders source scans, deduplication, publication and checkpoint capture.
+    /// Asset reads continue to use SCC without acquiring this lock.
+    mutations: tokio::sync::Mutex<()>,
 }
 
 impl FrontendEngine {
@@ -88,22 +100,22 @@ impl FrontendEngine {
     /// # Returns
     /// Lock-free frontend engine with event sourcing
     ///
-    /// Replays persisted assets and deletion tombstones before returning.
+    /// Restores the checkpoint, streams persisted assets/deletion tombstones,
+    /// then compacts history before returning. Memory scales with live assets
+    /// and the largest event, rather than the complete historical journal.
     /// Invalid events fail startup rather than silently restoring partial state.
     pub async fn new(host_id: impl Into<String>, data_dir: impl AsRef<Path>) -> Result<Self> {
         let host_id = host_id.into();
         let data_path = data_dir.as_ref().join(format!("frontend_{}", host_id));
 
         // Create event store for persistence
-        let event_store = EventStore::new(data_path.to_string_lossy().as_ref())?;
-        let events = event_store.get_all_events()?;
-        let has_events = !events.is_empty();
+        let event_store = EventStore::new_streaming_json(data_path.to_string_lossy().as_ref())?;
         let event_store_arc = Arc::new(RwLock::new(event_store));
 
         // Configure SCC2 engine for frontend assets
         let config = Scc2EngineConfig {
             verbose_logging: false,
-            enable_snapshots: false,
+            enable_snapshots: false, // Frontend owns its typed checkpoint below.
             snapshot_interval: 1000,
             enable_deduplication: true,
             auto_persist_writes: true,
@@ -120,15 +132,41 @@ impl FrontendEngine {
             last_reload_at: RwLock::new(None),
             version: RwLock::new(String::new()),
             total_bytes: std::sync::atomic::AtomicU64::new(0),
+            mutations: tokio::sync::Mutex::new(()),
         };
-        for json in events {
-            let event: StoredAssetEvent = serde_json::from_str(&json).map_err(|e| {
-                anyhow::anyhow!("invalid frontend event for {}: {}", frontend.host_id, e)
+        {
+            let store = frontend.engine.event_store();
+            let mut store =
+                store.write().map_err(|_| anyhow::anyhow!("frontend store poisoned"))?;
+            let snapshot = store.load_snapshot()?;
+            let had_snapshot = snapshot.is_some();
+            if let Some(json) = snapshot {
+                let snapshot: FrontendSnapshot = serde_json::from_str(&json)?;
+                anyhow::ensure!(
+                    snapshot.version == 1 && snapshot.host_id == frontend.host_id,
+                    "incompatible frontend checkpoint"
+                );
+                for asset in snapshot.assets {
+                    frontend.apply_stored_event(StoredAssetEvent::Asset(Box::new(asset)));
+                }
+            }
+            store.replay_json_suffix(|json| {
+                let event: StoredAssetEvent = serde_json::from_str(json).map_err(|e| {
+                    EngineError::PersistenceError(format!(
+                        "invalid frontend event for {}: {e}",
+                        frontend.host_id
+                    ))
+                })?;
+                frontend.apply_stored_event(event);
+                Ok(())
             })?;
-            frontend.apply_stored_event(event);
-        }
-        if has_events {
-            frontend.refresh_version_cache();
+            if had_snapshot || store.event_count() != 0 {
+                frontend.refresh_version_cache();
+                // Reclaim legacy history immediately, even without a source
+                // directory. This also cleans obsolete generations after an
+                // interrupted earlier compaction.
+                frontend.checkpoint(&mut store)?;
+            }
         }
         Ok(frontend)
     }
@@ -160,71 +198,118 @@ impl FrontendEngine {
         }
     }
 
-    fn persist_asset_event(&self, event: StoredAssetEvent, refresh_cache: bool) -> Result<()> {
+    /// Caller holds `mutations`, so comparison and log publication see the same
+    /// ordered state, including concurrent reloads and programmatic updates.
+    fn persist_asset_event(&self, event: StoredAssetEvent) -> Result<()> {
+        let unchanged = match &event {
+            StoredAssetEvent::Asset(asset) => self
+                .engine
+                .read(&format!("{}:{}", self.host_id, asset.path), |old| {
+                    old.content == asset.content
+                        && old.mime_type == asset.mime_type
+                        && old.version == asset.version
+                        && old.size_bytes == asset.size_bytes
+                        && old.compression_enabled == asset.compression_enabled
+                        && old.cache_ttl_seconds == asset.cache_ttl_seconds
+                        && old.deployment_source == asset.deployment_source
+                        && old.metadata == asset.metadata
+                })
+                .unwrap_or(false),
+            StoredAssetEvent::Mutation(AssetMutation::AssetDeleted { path }) => {
+                self.engine.read(&format!("{}:{path}", self.host_id), |_| ()).is_none()
+            }
+        };
+        // New scan IDs/timestamps are not content changes. Keep the existing
+        // metadata and avoid serialization, fsync and memory replacement.
+        if unchanged {
+            return Ok(());
+        }
         let json = serde_json::to_string(&event)?;
         let store = self.engine.event_store();
-        // Serialize log order and memory publication for all frontend mutations.
-        // Persist before publishing, and propagate append/flush failures.
         let mut store =
             store.write().map_err(|_| anyhow::anyhow!("frontend event store poisoned"))?;
         store.append_raw_line(&json)?;
         store.force_flush()?;
         self.apply_stored_event(event);
-        if refresh_cache {
-            self.refresh_version_cache();
+        Ok(())
+    }
+
+    fn checkpoint(&self, store: &mut EventStore) -> Result<()> {
+        let snapshot = FrontendSnapshot {
+            version: 1,
+            host_id: self.host_id.clone(),
+            assets: self.list_assets(),
+        };
+        store.force_flush()?;
+        store.save_snapshot(&serde_json::to_string(&snapshot)?)?;
+        store.truncate_events()?;
+        Ok(())
+    }
+
+    fn compact_if_needed(&self) -> Result<()> {
+        let store = self.engine.event_store();
+        let mut store =
+            store.write().map_err(|_| anyhow::anyhow!("frontend event store poisoned"))?;
+        // Bound both tiny-file churn and repeated updates of one large bundle.
+        // JSON byte arrays need up to four bytes per content byte. A single
+        // mutation may cross the budget; checkpoint before acknowledging it.
+        if store.event_count() > self.asset_count().saturating_mul(2).max(1)
+            || store.journal_size()? > self.total_bytes().saturating_mul(8).max(1024 * 1024)
+        {
+            self.checkpoint(&mut store)?;
         }
         Ok(())
     }
 
-    /// Load static directory into memory with event sourcing
-    ///
-    /// This scans the directory and emits AssetCreated events for each file,
-    /// persisting them to .raftlog for replay on restart.
-    ///
-    /// # Arguments
-    /// * `directory` - Filesystem directory containing static files
-    ///
-    /// # Returns
-    /// Number of assets loaded
+    /// Synchronize a directory with the live asset set. Only new/changed files
+    /// and removal tombstones are appended. Unchanged files retain their IDs
+    /// and timestamps. Missing files are removed, including across restarts.
     pub async fn load_directory(&self, directory: impl AsRef<Path>) -> Result<usize> {
-        let dir_path = directory.as_ref();
-        if !dir_path.exists() {
-            return Err(anyhow::anyhow!("Directory does not exist: {}", dir_path.display()));
-        }
+        let _mutation = self.mutations.lock().await;
+        Ok(self.synchronize_directory(directory.as_ref()).await?.asset_count)
+    }
 
-        let assets_vec = Self::scan_directory(dir_path)?;
-        let mut loaded_count = 0;
-
-        // Store each asset in SCC2 engine with event sourcing
-        for (web_path, content) in assets_vec {
-            let asset = StaticAsset::new(web_path.clone(), content);
-
-            log::info!(
-                "📄 [{}] {} ({} bytes, {})",
-                self.host_id,
-                web_path,
-                asset.size_bytes,
-                asset.mime_type
-            );
-
-            // Persist before publishing to SCC2; refresh the cache once below.
-            self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)), false)?;
-            loaded_count += 1;
-        }
-
-        // Record where we loaded from so a later hot reload can re-read the
-        // same directory without the caller having to track it.
+    async fn synchronize_directory(&self, directory: &Path) -> Result<ReloadOutcome> {
+        let version_before = self.version();
+        let scan_path = directory.to_owned();
+        let fresh = tokio::task::spawn_blocking(move || Self::scan_directory(&scan_path))
+            .await
+            .map_err(|e| anyhow::anyhow!("frontend scan task failed: {e}"))??;
+        let new_keys: std::collections::HashSet<_> = fresh.iter().map(|(p, _)| p.clone()).collect();
+        let existing = self.list_assets();
+        let result = (|| -> Result<()> {
+            for (path, content) in fresh {
+                self.persist_asset_event(StoredAssetEvent::Asset(Box::new(StaticAsset::new(
+                    path, content,
+                ))))?;
+            }
+            for old in existing {
+                if !new_keys.contains(&old.path) {
+                    self.persist_asset_event(StoredAssetEvent::Mutation(
+                        AssetMutation::AssetDeleted { path: old.path },
+                    ))?;
+                }
+            }
+            Ok(())
+        })();
+        // An I/O failure can leave a successfully persisted prefix. Cached
+        // statistics must still describe the assets actually published.
+        self.refresh_version_cache();
+        result?;
+        self.compact_if_needed()?;
         if let Ok(mut dir) = self.source_dir.write() {
-            *dir = dir_path.to_string_lossy().to_string();
+            *dir = directory.to_string_lossy().into_owned();
         }
         if let Ok(mut ts) = self.last_reload_at.write() {
             *ts = Some(Utc::now());
         }
-        // Cache the fingerprint + size once, now that the asset set is loaded,
-        // so `version()`/`total_bytes()` are O(1) reads (PR #138 review).
-        self.refresh_version_cache();
-
-        Ok(loaded_count)
+        let version = self.version();
+        Ok(ReloadOutcome {
+            asset_count: self.asset_count(),
+            total_bytes: self.total_bytes(),
+            changed: version != version_before,
+            version,
+        })
     }
 
     /// Recompute and store the cached `version` and `total_bytes` from the
@@ -277,102 +362,20 @@ impl FrontendEngine {
         Ok(assets_vec)
     }
 
-    /// Re-read this engine's source directory into memory atomically.
-    ///
-    /// The new asset set is built fully off the request path (blocking I/O runs
-    /// on a `spawn_blocking` worker) *before* any in-memory mutation. The swap
-    /// then upserts every freshly read asset and removes only the keys that no
-    /// longer exist on disk. A path that is present both before and after is
-    /// only ever overwritten in place — it is never transiently removed — so a
-    /// concurrent request can never observe a half-loaded set or a spurious
-    /// 404 for an asset that still exists.
-    ///
-    /// Returns a [`ReloadOutcome`] describing the post-reload state, including a
-    /// `changed` flag computed by comparing the content [`version`] before and
-    /// after.
-    ///
-    /// [`version`]: FrontendEngine::version
+    /// Re-read the source directory off the request path and persist only its
+    /// changes. Scanning finishes before any mutation. Each existing path is
+    /// replaced in place, so readers never see a temporary 404 for a retained
+    /// file. This is per-asset publication, not a transaction over the full set.
+    /// Concurrent frontend writers/reloads are serialized; SCC reads remain free.
     pub async fn reload(&self) -> Result<ReloadOutcome> {
+        let _mutation = self.mutations.lock().await;
         let dir = self.source_dir();
-        if dir.is_empty() {
-            return Err(anyhow::anyhow!(
-                "frontend '{}' has no recorded source directory to reload",
-                self.host_id
-            ));
-        }
-
-        let dir_path = std::path::PathBuf::from(&dir);
-        if !dir_path.exists() {
-            return Err(anyhow::anyhow!("source directory does not exist: {}", dir));
-        }
-        if !dir_path.is_dir() {
-            return Err(anyhow::anyhow!("source path is not a directory: {}", dir));
-        }
-
-        let version_before = self.version();
-
-        // Read the whole tree off the request path before touching memory.
-        let scan_path = dir_path.clone();
-        let fresh = tokio::task::spawn_blocking(move || Self::scan_directory(&scan_path))
-            .await
-            .map_err(|e| anyhow::anyhow!("frontend reload scan task failed: {}", e))??;
-
-        // Build the new in-memory asset set keyed by SCC2 key. Doing this
-        // before any mutation guarantees the swap never exposes a partial set.
-        let mut new_assets: Vec<(String, StaticAsset)> = Vec::with_capacity(fresh.len());
-        let mut new_keys: std::collections::HashSet<String> =
-            std::collections::HashSet::with_capacity(fresh.len());
-        for (web_path, content) in fresh {
-            let asset = StaticAsset::new(web_path.clone(), content);
-            let key = format!("{}:{}", self.host_id, web_path);
-            new_keys.insert(key.clone());
-            new_assets.push((key, asset));
-        }
-
-        // Atomic swap: upsert every new asset (overwrites in place), then drop
-        // only keys that vanished from disk. SCC2 mutations are lock-free per
-        // key; reads of unaffected keys are never blocked or disturbed.
-        let existing_keys: Vec<String> =
-            self.engine.iter_all_sync().into_iter().map(|(k, _)| k).collect();
-
-        for (_key, asset) in new_assets {
-            self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)), false)?;
-        }
-        for key in existing_keys {
-            if !new_keys.contains(&key) {
-                if let Some(path) = key.strip_prefix(&format!("{}:", self.host_id)) {
-                    self.persist_asset_event(
-                        StoredAssetEvent::Mutation(AssetMutation::AssetDeleted {
-                            path: path.to_string(),
-                        }),
-                        false,
-                    )?;
-                }
-            }
-        }
-
-        if let Ok(mut ts) = self.last_reload_at.write() {
-            *ts = Some(Utc::now());
-        }
-
-        let assets = self.list_assets();
-        let asset_count = assets.len();
-        let total_bytes: u64 = assets.iter().map(|a| a.size_bytes).sum();
-        let version_after = Self::compute_version(&assets);
-
-        // Update the caches from the values just computed (no extra scan), so
-        // subsequent `version()`/`total_bytes()` reads stay O(1) (PR #138).
-        self.total_bytes.store(total_bytes, std::sync::atomic::Ordering::SeqCst);
-        if let Ok(mut v) = self.version.write() {
-            *v = version_after.clone();
-        }
-
-        Ok(ReloadOutcome {
-            asset_count,
-            total_bytes,
-            changed: version_after != version_before,
-            version: version_after,
-        })
+        anyhow::ensure!(
+            !dir.is_empty(),
+            "frontend '{}' has no recorded source directory to reload",
+            self.host_id
+        );
+        self.synchronize_directory(Path::new(&dir)).await
     }
 
     /// Snapshot the assets currently held by this engine.
@@ -533,6 +536,7 @@ impl FrontendEngine {
         content: Vec<u8>,
         mime_type: Option<&str>,
     ) -> Result<()> {
+        let _mutation = self.mutations.lock().await;
         let key = format!("{}:{}", self.host_id, path);
 
         // Get existing asset or create new one
@@ -550,8 +554,9 @@ impl FrontendEngine {
         }
 
         // Write back (emits event)
-        self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)), true)?;
-        Ok(())
+        self.persist_asset_event(StoredAssetEvent::Asset(Box::new(asset)))?;
+        self.refresh_version_cache();
+        self.compact_if_needed()
     }
 
     /// Durably delete an asset. Deleting a missing path is idempotent.
@@ -562,10 +567,12 @@ impl FrontendEngine {
     /// # Arguments
     /// * `path` - Web path
     pub async fn delete_asset(&self, path: &str) -> Result<()> {
-        self.persist_asset_event(
-            StoredAssetEvent::Mutation(AssetMutation::AssetDeleted { path: path.to_string() }),
-            true,
-        )
+        let _mutation = self.mutations.lock().await;
+        self.persist_asset_event(StoredAssetEvent::Mutation(AssetMutation::AssetDeleted {
+            path: path.to_string(),
+        }))?;
+        self.refresh_version_cache();
+        self.compact_if_needed()
     }
 
     /// Get engine reference for advanced operations

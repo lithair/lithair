@@ -205,6 +205,23 @@ async fn frontend_admin_api_lists_inspects_and_reloads_per_vhost_without_restart
         .expect("serve public body");
     assert_eq!(public_served, "PUBLIC-V1", "untouched path frontend content is unchanged");
 
+    // Issue #277: reload-all with unchanged sources must not grow either host's
+    // persistence files. Compare all file sizes (including checkpoints).
+    fn persistence_sizes(
+        root: &std::path::Path,
+    ) -> std::collections::BTreeMap<std::path::PathBuf, u64> {
+        let mut sizes = std::collections::BTreeMap::new();
+        for dir in std::fs::read_dir(root).unwrap() {
+            for entry in std::fs::read_dir(dir.unwrap().path()).unwrap() {
+                let entry = entry.unwrap();
+                sizes.insert(entry.path(), entry.metadata().unwrap().len());
+            }
+        }
+        sizes
+    }
+    let before_reload = persistence_sizes(&data_dir.join("frontend"));
+    assert!(!before_reload.is_empty());
+
     // Reload-all returns a per-frontend result set.
     let reload_all: serde_json::Value = client
         .post(format!("{}/_admin/frontend/reload", base_url))
@@ -220,6 +237,7 @@ async fn frontend_admin_api_lists_inspects_and_reloads_per_vhost_without_restart
         "reload-all covers both frontends: {}",
         reload_all
     );
+    assert_eq!(persistence_sizes(&data_dir.join("frontend")), before_reload);
 
     // Shutdown.
     shutdown_tx.send(()).expect("shutdown receiver alive");

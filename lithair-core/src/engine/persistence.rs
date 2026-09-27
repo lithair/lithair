@@ -108,6 +108,16 @@ impl FileStorage {
     ///
     /// This will create the directory structure if it doesn't exist
     pub fn new(base_path: &str) -> EngineResult<Self> {
+        Self::open(base_path, true)
+    }
+
+    /// Raw frontend journals have a synchronous JSON durability contract,
+    /// independent of the optional application-model async writer.
+    pub(crate) fn new_synchronous(base_path: &str) -> EngineResult<Self> {
+        Self::open(base_path, false)
+    }
+
+    fn open(base_path: &str, allow_async: bool) -> EngineResult<Self> {
         // Ensure the directory exists
         fs::create_dir_all(base_path).map_err(|e| {
             EngineError::PersistenceError(format!(
@@ -141,7 +151,9 @@ impl FileStorage {
         storage.ensure_metadata_file()?;
 
         // Optionally enable optimized async persistence via env
-        storage.maybe_enable_async_writer();
+        if allow_async {
+            storage.maybe_enable_async_writer();
+        }
 
         // Database initialized silently for performance
 
@@ -348,8 +360,11 @@ impl FileStorage {
 
     /// Get current size of events file (used to record start offset of next append)
     pub fn current_events_size(&self) -> EngineResult<u64> {
-        let len = std::fs::metadata(&self.events_file).map(|m| m.len()).unwrap_or(0);
-        Ok(len)
+        match fs::metadata(&self.events_file) {
+            Ok(metadata) => Ok(metadata.len()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+            Err(e) => Err(EngineError::PersistenceError(format!("Failed to stat journal: {e}"))),
+        }
     }
 
     /// Append an index entry mapping aggregate_id to starting byte offset of the line in events.raftlog
@@ -450,6 +465,47 @@ impl FileStorage {
     /// Truncate the events log after snapshot (compaction)
     pub fn truncate_events(&mut self) -> EngineResult<()> {
         self.compact_checkpoint()
+    }
+
+    /// Strict, bounded-memory JSON replay for raw frontend journals. Visit only
+    /// the uncovered suffix, but count/validate every nonempty line. Never skip
+    /// corrupted records: compacting after partial recovery would lose evidence.
+    pub(crate) fn visit_json_events(
+        &self,
+        covered: usize,
+        mut visit: impl FnMut(&str) -> EngineResult<()>,
+    ) -> EngineResult<usize> {
+        use std::io::{BufRead, BufReader};
+        let error = |e| EngineError::PersistenceError(format!("frontend journal: {e}"));
+        let file = match fs::File::open(&self.events_file) {
+            Ok(file) => Some(file),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(error(e.to_string())),
+        };
+        let mut count = 0;
+        if let Some(file) = file {
+            let mut reader = BufReader::new(file);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                if reader.read_line(&mut line).map_err(|e| error(e.to_string()))? == 0 {
+                    break;
+                }
+                let line = line.trim_end_matches(['\r', '\n']);
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let json = parse_and_validate_event(line).map_err(error)?;
+                if count >= covered {
+                    visit(&json)?;
+                }
+                count += 1;
+            }
+        }
+        if count < covered {
+            return Err(error("checkpoint exceeds readable journal".into()));
+        }
+        Ok(count)
     }
 
     /// Read all events from the event log
