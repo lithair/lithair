@@ -1,4 +1,4 @@
-# Atomic application commands (unreleased)
+# Atomic application commands (experimental)
 
 `cluster::native::commands::CommandStore` is an opt-in trusted Rust API behind
 `cluster,tls`. It shares the native consensus transport, durable log, checkpoint
