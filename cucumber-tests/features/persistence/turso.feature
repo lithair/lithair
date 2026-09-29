@@ -35,3 +35,6 @@ Feature: Optional SQL storage alongside native Lithair models
     Given SQL documents stored by the first application version
     When a declared SQL migration fails
     Then the previous SQL model can still read every original document
+
+  Scenario: Application commands own atomic changes across collections
+    Then application commands commit every collection together and replay durable receipts after restart

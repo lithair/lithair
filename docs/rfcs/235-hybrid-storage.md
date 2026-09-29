@@ -58,6 +58,12 @@ Supported: typed create/get/update/patch/delete, atomic bounded batches within o
 and namespace, exact string equality on explicitly allowed JSON fields, stable ID
 ordering, bounded limit/offset pagination, restart and partition isolation.
 
+Since #285, trusted application commands extend atomicity to several declared
+collections of one namespace: a decision reads committed records inside a
+`BEGIN IMMEDIATE` transaction and returns either a reply or one bounded batch of
+writes, committed together. The connection and transaction stay private; the
+decision only sees a read view. See the adapter README for the contract.
+
 Not provided: secondary uniqueness, relational foreign keys, native schema migration,
 lifecycle auditing/immutability, native history, native retention, SSE, Raft,
 SQL projections, joins through the repository API or transparent cache coherence.
@@ -93,7 +99,8 @@ relies on Turso recovery, not async destructor execution.
 
 A failed batch is explicitly rolled back; rollback failures propagate instead of
 being hidden. One shared connection prevents reads from observing partial batches.
-No connection or SQL transaction is exposed publicly. Completed writes are
+No connection or SQL transaction is exposed publicly (commands expose a read-only
+view inside one). Completed writes are
 acknowledged only after commit. Ordinary reopen is tested; power-loss durability
 and filesystem fault injection remain prerequisites for production promotion.
 

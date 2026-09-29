@@ -8,8 +8,10 @@ use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::{Mutex, OnceCell};
 use turso::{params, Connection};
 
+mod command;
 mod http;
 mod migration;
+pub use command::{Commands, Decided, Decision, View, Write};
 pub use http::model_factory;
 pub use migration::Migration;
 
@@ -52,6 +54,9 @@ pub enum Error {
     Database(Box<turso::Error>),
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+    /// The application decision rejected the command; nothing was written.
+    #[error("command rejected: {0}")]
+    Command(anyhow::Error),
     #[error("write task failed: {0}")]
     Task(#[from] tokio::task::JoinError),
 }

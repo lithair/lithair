@@ -127,10 +127,73 @@ Model permissions are not field-level response filtering. The HTTP representatio
 is the model's serde representation, also used for storage. Avoid storing secrets
 in a model exposed as a whole document.
 
+## Application commands (unreleased)
+
+`Database::commands(namespace, collections)` gives trusted Rust code one SQL
+transaction to read, decide and write several declared collections of one
+namespace, for example an item, its operation, business event, outbox entry
+and idempotency receipt. No HTTP route, session or permission list is involved;
+there is no cross-backend (native/SQL) transaction.
+
+```rust,ignore
+use lithair_turso::{Decision, Write};
+db.store::<Item>("tenant-a")?.prepare().await?; // typed partitions are prepared first
+let commands = db.commands("tenant-a", &["items", "operations", "events", "outbox", "receipts", "policy"])?;
+let reply = commands.execute(move |view| Box::pin(async move {
+    // 1. current policy, 2. principal-scoped receipt, 3. revision precondition
+    anyhow::ensure!(view.get("policy", &principal).await?.is_none_or(|p| p["allowed"] != false), "forbidden");
+    if let Some(receipt) = view.get("receipts", &scoped_key).await? {
+        anyhow::ensure!(receipt["fingerprint"] == fingerprint, "idempotency conflict");
+        return Ok(Decision::Read(receipt["operation"].clone()));
+    }
+    let revision = view.model::<Item>(&id).await?.map_or(0, |i| i.revision);
+    anyhow::ensure!(revision == expected, "revision conflict");
+    Ok(Decision::Commit { writes: vec![Write::model(&item)?, Write::put("receipts", &scoped_key, receipt), /* ... */], reply })
+})).await?;
+```
+
+**Isolation.** `execute` takes the shared connection and opens `BEGIN IMMEDIATE`
+before calling the decision. No other command or store operation of the process
+runs until it commits or rolls back, so its reads and writes are serializable.
+Check authorization inside the decision, **before** looking up a receipt, so a
+revoked principal cannot replay. The decision must not block, sleep or perform
+I/O outside `View`, and must have no external effects: rollback cannot undo them.
+
+**Outcome.** The decision returns `Decision::Read(reply)` (nothing written) or
+`Decision::Commit { writes, reply }`. The reply is returned only after commit.
+Every write is checked before the first statement runs: 1..100 writes, declared
+collections, 1..512-byte keys appearing once per collection, JSON objects within
+1 MiB. A decision error (returned as `Error::Command`, downcastable to the
+application's error), a panic, or any failed write rolls everything back
+explicitly. Once admitted, a command completes even if its caller is dropped:
+a timeout or lost response is an **unknown outcome**. Retry with the same
+business key and payload; the decision resolves it through its receipt.
+
+**Records.** Receipts, events and outbox entries are ordinary records in the
+application's collections: never evicted, no TTL, no technical response cache.
+The application owns their retention and deletion. Scope receipt keys by
+principal, command kind and business key; the namespace scopes the tenant.
+`View::list` pages a collection by key for an outbox publisher, which acknowledges
+deliveries with a later command; delivery is at-least-once.
+
+**Typed partitions.** `Write::model::<T>` runs `validate` (not the permission
+hooks; the decision is the policy) and commits only if the partition was
+prepared with exactly `T`'s version and schema. `View::model::<T>` has the same
+check. A raw `Write::put` into a typed partition is refused. Prepare, and thus
+migrate, typed models before executing commands. A schema upgrade migrates
+existing documents through the ordinary migration path; application-owned
+untracked collections have no schema and are never migrated.
+
+**Durability.** SQL commit durability with `PRAGMA synchronous = FULL`. Tests
+kill a writing process repeatedly and check all-or-nothing records after
+reopen. Power loss and filesystem fault injection are not qualified. Backups
+must copy the stopped database file: all collections of a namespace live in it.
+
 ## Guarantees and limits
 
 - Native memory-first models and SQL models coexist, each with one authority.
 - Acknowledged mutations have committed. Batches commit entirely or roll back.
+  Application commands extend this to several collections of one namespace.
   Programmatic access remains available via `Database::store::<T>(namespace)`.
 - Keys are `(namespace, collection, id)`, bound as SQL parameters. A cloned
   `Database` shares one serialized connection; open once per file per process.
