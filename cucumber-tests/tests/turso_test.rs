@@ -435,6 +435,15 @@ async fn original_schema_preserved(world: &mut TursoWorld) {
     }
 }
 
+use lithair_core::DeclarativeModel;
+#[path = "../../lithair-turso/tests/support/command_app.rs"]
+#[allow(dead_code)]
+mod commands;
+#[then("application commands commit every collection together and replay durable receipts after restart")]
+async fn application_commands(_: &mut TursoWorld) {
+    commands::durable_receipts().await;
+}
+
 #[tokio::main]
 async fn main() {
     TursoWorld::cucumber()

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Turso application commands** (#285): `lithair_turso::Database::commands`
+  gives trusted code one `BEGIN IMMEDIATE` transaction to read current policy,
+  receipts and records, decide, and atomically write several declared
+  collections of one namespace (state, operation, event, outbox and receipt
+  together). Decision errors, panics and invalid writes roll back everything;
+  typed writes are checked against the prepared model schema. Tests cover
+  concurrent keys and revisions, revocation before replay, namespace isolation,
+  dropped callers and repeated process kills. `Error` gains a `Command` variant.
+
 ## [1.14.0] - 2026-09-29
 
 Atomic application commands on the native consensus runtime ship with
