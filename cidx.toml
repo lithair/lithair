@@ -13,20 +13,30 @@
 # Inspect a preset with: cidx preset info <name>
 
 # ─── phases ───
+# Rust phases keep target/ between CI runs (cidx 3.5 per-phase cache). Cargo.lock
+# is untracked (library workspace), so manifests + toolchain key the cache and
+# the previous cache of the phase is the restore fallback.
 [security]
 containers = ["cargo-audit", "gitleaks", "trivy"]
 
 [code]
 containers = ["rustfmt", "clippy"]
+cache = ["target"]
+cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 
 [test]
 containers = ["cargo-test"]
+cache = ["target"]
+cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 
 [cluster]
 containers = ["cluster-build", "cluster-probatum"]
+artifacts = { name = "cluster-probatum-evidence", paths = [".probatum/runs/lithair-cluster-*/"], retention_days = 7 }
 
 [build]
 containers = ["cargo-build"]
+cache = ["target"]
+cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 
 # ─── container overrides ───
 # The full per-PR test pyramid (issue #132):
@@ -48,6 +58,14 @@ containers = ["cargo-build"]
 [containers.cargo-test]
 timeout = "50m"
 command = "sh -c 'cargo test -p lithair-core --features cluster,tls --lib cluster::native && cargo test -p lithair-core --features cluster,tls --test native_cluster_test && cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p lithair-core --features cluster,tls --test native_checkpoint_test --test native_scc2_test --test native_http_commit_test --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test --test openraft_identity_test --test cluster_operator_test && cargo test -p lithair-macros --tests && cargo test -p lithair-turso --tests && cargo test -p lithair-cli --features cluster-ops --test cluster_ops && cargo build -p lithair-cli && cargo test -p cucumber-tests --features cluster-ops --test no_orphan_features --test native_checkpoint_bdd --test native_http_commit_bdd --test native_scc2_bdd --test cucumber_tests --test behavior_models_test --test scaffolding_test --test serialization_test --test sessions_test --test turso_test --test openraft_storage_bdd --test openraft_consensus_bdd --test openraft_checkpoint_bdd --test openraft_identity_bdd --test cluster_operator_bdd --test native_cluster_bdd --test frontend_persistence_bdd'"
+
+# Keep the cached test target/ under GitHub's 10 GB repository cache quota:
+# full debuginfo across every feature set made it 10.8 GiB. Line tables keep
+# file:line in backtraces; incremental artefacts are useless in a CI container.
+[containers.cargo-test.env]
+RUST_BACKTRACE = "1"
+CARGO_INCREMENTAL = "0"
+CARGO_PROFILE_DEV_DEBUG = "line-tables-only"
 
 # Release-build the published crates only (issue #282). Examples, tools and
 # cucumber-tests are workspace members already compiled in debug by the code

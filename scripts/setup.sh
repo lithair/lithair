@@ -70,7 +70,7 @@ elif command -v cidx >/dev/null 2>&1; then
     log "cidx already installed"
 elif command -v go >/dev/null 2>&1; then
     log "installing cidx via go install"
-    GOBIN="$BIN_DIR" go install github.com/cidx-org/cidx/cmd/cidx@latest
+    GOBIN="$BIN_DIR" go install github.com/cidx-org/cidx/v3/cmd/cidx@latest
 else
     warn "cidx not installed: no local clone at $CIDX_CLONE and Go is missing."
     warn "Install Go (https://go.dev/dl/) then re-run, or clone cidx to $CIDX_CLONE."
