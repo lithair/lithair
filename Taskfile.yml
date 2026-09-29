@@ -59,7 +59,7 @@ tasks:
           CI and PR workflow (cidx.toml is the source of truth):
           cidx run code     - rustfmt check + clippy in the CI container
           cidx run test     - unit, integration, macro and behavior tests
-          cidx run build    - workspace release build
+          cidx run build    - release build of the published crates
           cidx run pr       - code + test phases
           cidx run cluster  - Probatum + three-node Compose failure/recovery
           cidx run ci       - security + code + test + cluster + build
