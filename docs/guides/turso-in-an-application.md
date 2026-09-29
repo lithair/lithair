@@ -1,7 +1,7 @@
 # Use Turso models in another application
 
-Turso storage is experimental and available on crates.io as `lithair-turso` 0.2.2,
-alongside Lithair 1.12.2. Cargo retrieves the published crates; you do not need a
+Turso storage is experimental and available on crates.io as `lithair-turso` 0.3.0,
+alongside Lithair 1.15.0. Cargo retrieves the published crates; you do not need a
 Lithair checkout or Git dependencies.
 
 ## Dependencies
@@ -13,7 +13,7 @@ Use these dependencies in its `Cargo.toml`:
 ```toml
 [dependencies]
 lithair-core = "1.12"
-lithair-turso = "0.2.2"
+lithair-turso = "0.3"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 ```
@@ -30,10 +30,12 @@ core 1.12, which includes the new migration declarations. Existing unversioned
 models and files remain usable. See the
 [schema migration guide](turso-schema-migrations.md) before versioning existing data.
 Commit the application's `Cargo.lock` to keep its resolved dependencies stable.
-For an application already on adapter 0.2.0 or 0.2.1, `cargo update -p lithair-turso`
-selects 0.2.2 without changing model declarations. The adapter remains compatible
-with core 1.12.0. The manifest above requires 0.2.2 so both the pagination metadata
-and the empty 204 DELETE response described below are guaranteed.
+When upgrading from adapter 0.2, change the requirement to `"0.3"`. Adapter 0.3
+adds application commands; its only breaking change is the new `Error::Command`
+variant, so an exhaustive `match` on `lithair_turso::Error` needs one more arm.
+Model declarations and stored files are unchanged, and the adapter remains
+compatible with core 1.12. Adapter 0.2.2 introduced the pagination metadata and
+the empty 204 DELETE response described below.
 
 ## Declare and register the model
 
