@@ -34,8 +34,17 @@ fn pem(kind: &str, data: &[u8]) -> String {
     )
 }
 pub async fn provision(id: u64, credentials: &Credentials) -> anyhow::Result<()> {
+    provision_group(id, credentials, "native", 9553).await?;
+    provision_group(id, credentials, "commands", 9653).await
+}
+async fn provision_group(
+    id: u64,
+    credentials: &Credentials,
+    group: &str,
+    port: u16,
+) -> anyhow::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
-    let path = format!("/secrets/{id}/native");
+    let path = format!("/secrets/{id}/{group}");
     std::fs::create_dir(&path)?;
     for (name, data) in [
         ("ca.pem", pem("CERTIFICATE", &credentials.ca)),
@@ -50,23 +59,23 @@ pub async fn provision(id: u64, credentials: &Credentials) -> anyhow::Result<()>
         file.write_all(data.as_bytes())?;
         file.sync_all()?;
     }
-    let mut config=format!("version = 1\ncluster_id = \"compose-native\"\nnode_id = {id}\nbootstrap_node = 1\ndata_dir = \"/data/native\"\ntls_ca = \"ca.pem\"\ntls_certificate = \"cert.pem\"\ntls_key = \"key.pem\"\n");
+    let mut config=format!("version = 1\ncluster_id = \"compose-{group}\"\nnode_id = {id}\nbootstrap_node = 1\ndata_dir = \"/data/{group}\"\ntls_ca = \"ca.pem\"\ntls_certificate = \"cert.pem\"\ntls_key = \"key.pem\"\n");
     let mut voters = BTreeMap::new();
     for peer in 1..=3 {
         let pin = super::fingerprint(&credentials.certs[&peer]);
         voters.insert(peer, pin);
         let ip = std::env::var(format!("LITHAIR_CLUSTER_NODE{peer}_IP"))?;
-        config.push_str(&format!("\n[[peers]]\nnode_id = {peer}\naddress = \"{ip}:9553\"\nserver_name = \"node{peer}.test\"\ncertificate_sha256 = \"{}\"\n",hex::encode(pin)));
+        config.push_str(&format!("\n[[peers]]\nnode_id = {peer}\naddress = \"{ip}:{port}\"\nserver_name = \"node{peer}.test\"\ncertificate_sha256 = \"{}\"\n",hex::encode(pin)));
     }
     std::fs::write(format!("{path}/node.toml"), config)?;
-    let directory = format!("/stores/{id}/native");
+    let directory = format!("/stores/{id}/{group}");
     std::fs::create_dir(&directory)?;
     std::fs::File::open(format!("/stores/{id}"))?.sync_all()?;
     drop(
         DurableLog::<openraft_memstore::TypeConfig>::create_for_node(
             directory,
             NodeIdentity {
-                cluster_id: "compose-native".into(),
+                cluster_id: format!("compose-{group}"),
                 node_id: id,
                 bootstrap_node: 1,
                 voters,

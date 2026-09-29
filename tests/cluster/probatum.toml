@@ -60,6 +60,31 @@ run = "python3 /suite/native_checks.py restart"
 timeout = 120
 
 [[check]]
+name = "application commands atomically commit records and reauthorize receipt replay"
+run = "python3 /suite/command_checks.py atomic"
+timeout = 90
+
+[[check]]
+name = "application receipts survive 265 later commands and snapshot catch-up"
+run = "python3 /suite/command_checks.py retention"
+timeout = 240
+
+[[check]]
+name = "application dropped-response receipts survive leader SIGKILL"
+run = "python3 /suite/command_checks.py failover"
+timeout = 90
+
+[[check]]
+name = "application minority refuses decisions and consistent reads"
+run = "python3 /suite/command_checks.py partition"
+timeout = 90
+
+[[check]]
+name = "application state events outbox and receipts survive full cold restart"
+run = "python3 /suite/command_checks.py restart"
+timeout = 90
+
+[[check]]
 name = "stopped stores can be inspected with their original identities"
 run = "python3 /suite/checks.py inspect"
 timeout = 60

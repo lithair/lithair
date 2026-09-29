@@ -1,5 +1,6 @@
 //! Explicit native model consensus; independent of optional admin HTTP/UI.
 //! See `docs/features/state-engine/native-cluster.md` for the supported contract.
+pub mod commands;
 mod model;
 mod state;
 #[cfg(test)]
@@ -155,12 +156,23 @@ impl NativeCluster {
             &json!({"wire":1,"application":application,"models":specs}),
         )?)
         .into();
+        let empty = State::new(contract, &registered);
+        Self::start_runtime(prepared, listener, contract, registered, empty).await
+    }
+
+    async fn start_runtime(
+        prepared: super::operator::Prepared<Config>,
+        listener: TcpListener,
+        contract: [u8; 32],
+        registered: BTreeMap<String, Model>,
+        empty: State,
+    ) -> anyhow::Result<Self> {
         let transport = prepared.transport.with_application(contract)?;
         let identity = transport.node_identity()?;
         let durable =
             DurableLog::<Config>::open_for_node(&prepared.directory, identity.clone()).await?;
         durable.bind_application(contract).await?;
-        let machine = Machine::restore(durable, State::new(contract, &registered)).await?;
+        let machine = Machine::restore(durable, empty).await?;
         // Separate adaptor locks: purge can wait for a concurrent snapshot install.
         let (log, _) = Adaptor::new(machine.clone());
         let (_, state) = Adaptor::new(machine.clone());

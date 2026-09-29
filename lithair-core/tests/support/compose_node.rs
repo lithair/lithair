@@ -1,4 +1,5 @@
 //! Test-only Compose node. Never a public Lithair application entry point.
+mod command_example;
 mod compose_native;
 #[path = "openraft_credentials.rs"]
 mod credentials;
@@ -83,6 +84,7 @@ struct Node {
     network: PeerTransport<TypeConfig>,
     machine: SnapshotMachine,
     native: lithair_core::cluster::native::NativeCluster,
+    commands: lithair_core::cluster::native::commands::CommandStore,
 }
 impl Node {
     async fn dispatch(&self, request: Request<Incoming>) -> anyhow::Result<Response<Full<Bytes>>> {
@@ -96,6 +98,60 @@ impl Node {
                 .insert(hyper::header::CONTENT_TYPE, "application/json".parse().unwrap());
             response
         };
+        // Test-only control endpoints, unreachable outside the isolated Compose
+        // network. These actors are fixture inputs, never authentication APIs.
+        if path.starts_with("/test/commands-") {
+            let result = match (method, path.as_str()) {
+                (Method::GET, "/test/commands-state") => Ok(self.commands.inspect().await),
+                (Method::GET, "/test/commands-ready") => {
+                    if self.commands.ready().await {
+                        Ok(json!({"ok":true}))
+                    } else {
+                        Err(anyhow::anyhow!("commands unavailable"))
+                    }
+                }
+                (Method::GET, "/test/commands-counts") => {
+                    command_example::counts(&self.commands).await
+                }
+                (Method::POST, "/test/commands-bootstrap") => {
+                    self.commands.bootstrap().await.map(|_| json!({"ok":true}))
+                }
+                (Method::POST, "/test/commands-submit" | "/test/commands-permission") => {
+                    let body = Limited::new(request.into_body(), 16 * 1024)
+                        .collect()
+                        .await
+                        .map_err(|_| anyhow::anyhow!("invalid or oversized command fixture input"))?
+                        .to_bytes();
+                    let body: Value = serde_json::from_slice(&body)?;
+                    let tenant = body["tenant"].as_str().context("missing tenant")?;
+                    let principal = body["principal"].as_str().context("missing principal")?;
+                    if path.ends_with("permission") {
+                        command_example::permission(
+                            &self.commands,
+                            tenant,
+                            principal,
+                            body["allowed"].as_bool().context("missing allowed")?,
+                        )
+                        .await
+                    } else {
+                        command_example::submit(
+                            &self.commands,
+                            tenant,
+                            principal,
+                            body["target"].as_str().context("missing target")?,
+                            body["key"].as_str().context("missing key")?,
+                            body["expected"].as_u64().context("missing expected")?,
+                        )
+                        .await
+                    }
+                }
+                _ => return Ok(response(StatusCode::NOT_FOUND, json!({"ok":false}))),
+            };
+            return Ok(match result {
+                Ok(value) => response(StatusCode::OK, value),
+                Err(_) => response(StatusCode::SERVICE_UNAVAILABLE, json!({"ok":false})),
+            });
+        }
         if method == Method::GET && path == "/test/native-state" {
             return Ok(response(StatusCode::OK, self.native.inspect().await));
         }
@@ -189,8 +245,15 @@ async fn serve(id: u64, credentials: Credentials) -> anyhow::Result<()> {
     .validate()?;
     let raft = Raft::new(id, Arc::new(config), network.clone(), store, apply).await?;
     let native = compose_native::open().await?;
+    let commands = lithair_core::cluster::native::commands::CommandStore::open(
+        "/secrets/commands/node.toml",
+        command_example::CONTRACT,
+        command_example::COLLECTIONS,
+    )
+    .await?;
     let application = compose_native::serve(id, native.clone());
-    let node = Node { id, raft: raft.clone(), log, network: network.clone(), machine, native };
+    let node =
+        Node { id, raft: raft.clone(), log, network: network.clone(), machine, native, commands };
     let rpc = network.serve(listener, raft, std::future::pending());
     let http = async move {
         let mut connections = tokio::task::JoinSet::new();

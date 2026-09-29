@@ -126,3 +126,9 @@ admin/UI disabled. Assertions cover concurrent fields/uniqueness, lost response
 and retry, leader SIGKILL, minority refusal, snapshot catch-up after compaction,
 and cold restart with retained DELETE/creation results. Evidence/cleanup logs
 remain in `.probatum/runs/`. Lower-level consensus suites remain in the pipeline.
+
+## Application commands
+
+For atomic application-owned transitions across collections, see the opt-in
+[application command API](application-commands.md). It shares the native durable
+runtime, uses a separate contract and does not generate model CRUD routes.

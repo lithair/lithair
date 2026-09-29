@@ -27,3 +27,10 @@ fn turso(_: &mut NativeWorld) {
     )
     .is_err());
 }
+
+#[path = "../../lithair-core/tests/support/command_cases.rs"]
+mod commands;
+#[then("atomic application changes and durable receipts survive eviction, failover and restart")]
+async fn commands(_: &mut NativeWorld) {
+    commands::durable_commands().await;
+}

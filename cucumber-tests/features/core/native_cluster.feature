@@ -7,3 +7,6 @@ Feature: Declarative native data uses committed consensus
 
   Scenario: External storage cannot silently join the native consensus group
     Then a declarative Turso model is refused by native consensus
+
+  Scenario: Application commands own atomic changes and receipt retention
+    Then atomic application changes and durable receipts survive eviction, failover and restart

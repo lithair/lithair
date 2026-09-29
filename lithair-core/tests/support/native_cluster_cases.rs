@@ -12,7 +12,7 @@ use std::time::Duration;
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 #[path = "operator_files.rs"]
 #[allow(dead_code)]
-mod operator_files;
+pub(crate) mod operator_files;
 
 fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()

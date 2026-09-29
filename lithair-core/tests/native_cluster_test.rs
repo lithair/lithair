@@ -38,3 +38,10 @@ fn unsupported_model_policies_fail_before_opening_storage() {
     assert!(Model::of::<cases::Record>("", "/api/records").is_err());
     assert!(Model::of::<cases::Record>("records", "/api/../records").is_err());
 }
+
+#[path = "support/command_cases.rs"]
+mod commands;
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn atomic_application_commands_survive_eviction_snapshot_failover_and_restart() {
+    commands::durable_commands().await;
+}
