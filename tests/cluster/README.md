@@ -7,6 +7,15 @@ SIGKILL, partitions, snapshot catch-up and cold restart. Each container keeps
 separate foundation and native stores on its own volume. See the
 [native contract](../../docs/features/state-engine/native-cluster.md).
 
+The suite also opens a separate `CommandStore` per node, with mTLS peers on
+9653 and its own `commands` directory on the node's volume. `command_checks.py`
+exercises a trusted sample decider through test control endpoints: atomic task,
+operation, event, outbox and receipt writes; concurrent aggregate versions;
+current policy before replay; retention beyond 256 technical replies; snapshot
+catch-up; dropped responses; SIGKILL; partition and cold restart. See the
+[application command contract](../../docs/features/state-engine/application-commands.md).
+These are test actor inputs, not production authentication middleware.
+
 Run from the repository root:
 
 ```sh
@@ -116,6 +125,6 @@ negative assertion without making the overall run fail.
 The three containers share one host/kernel. They prove real socket, TLS,
 container-crash, disk-reopen and network-partition behavior with the test state
 machine. They do not prove independent-VM failure tolerance, power-loss semantics,
-replacement membership, certificate rotation, native/Turso/session replication,
-application admission or rolling production upgrades. These remain the follow-up
+replacement membership, certificate rotation, Turso/session replication,
+production application identity, outbox publication or rolling upgrades. These remain the follow-up
 milestones in [RFC 248](../../docs/rfcs/248-three-node-cluster.md).

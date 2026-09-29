@@ -43,6 +43,7 @@ pub enum Change {
     None,
     Put { key: String, value: Value },
     Delete { key: String },
+    Batch(Vec<super::commands::Write>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,13 +68,16 @@ pub(super) struct State {
 }
 impl State {
     pub fn new(contract: [u8; 32], models: &BTreeMap<String, Model>) -> Self {
+        Self::collections(contract, models.keys().cloned())
+    }
+    pub fn collections(contract: [u8; 32], ids: impl IntoIterator<Item = String>) -> Self {
         Self {
             version: 1,
             contract,
             applied: None,
             membership: Default::default(),
             revision: 0,
-            models: models.keys().map(|id| (id.clone(), BTreeMap::new())).collect(),
+            models: ids.into_iter().map(|id| (id, BTreeMap::new())).collect(),
             results: VecDeque::new(),
         }
     }
@@ -97,6 +101,15 @@ impl State {
         {
             return Ok(reply);
         }
+        // Validate the complete batch before touching any collection, including
+        // on replay. The same guard is used by admission and committed apply.
+        if let Change::Batch(writes) = &command.change {
+            super::commands::validate_writes(&self.models, writes)?;
+        }
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| std::io::Error::other("revision exhausted"))?;
         let reply = if command.revision != self.revision {
             Reply::error(409, "Ordered state changed before commit; use a new request key")
         } else {
@@ -112,13 +125,26 @@ impl State {
                 Change::Delete { key } => {
                     records.remove(key);
                 }
+                Change::Batch(writes) => {
+                    for write in writes {
+                        let collection = self
+                            .models
+                            .get_mut(write.collection())
+                            .ok_or_else(|| std::io::Error::other("unknown collection"))?;
+                        match write {
+                            super::commands::Write::Put { key, value, .. } => {
+                                collection.insert(key.clone(), value.clone());
+                            }
+                            super::commands::Write::Delete { key, .. } => {
+                                collection.remove(key);
+                            }
+                        }
+                    }
+                }
             }
             command.reply.clone()
         };
-        self.revision = self
-            .revision
-            .checked_add(1)
-            .ok_or_else(|| std::io::Error::other("revision exhausted"))?;
+        self.revision = next_revision;
         self.results.push_back(Receipt {
             model: command.model.clone(),
             request_id: command.request_id.clone(),
