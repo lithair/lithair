@@ -4,7 +4,7 @@
 #   cidx run code      # rustfmt + clippy
 #   cidx run security  # cargo-audit + gitleaks + trivy
 #   cidx run test      # unit + integration + behavior BDD (per-PR pyramid)
-#   cidx run build     # workspace release build
+#   cidx run build     # release build of the published crates
 #   cidx run cluster   # Probatum + three-node Docker Compose qualification
 #   cidx run ci        # full pipeline
 #
@@ -49,9 +49,11 @@ containers = ["cargo-build"]
 timeout = "50m"
 command = "sh -c 'cargo test -p lithair-core --features cluster,tls --lib cluster::native && cargo test -p lithair-core --features cluster,tls --test native_cluster_test && cargo test --workspace --lib --bins && cargo test -p lithair-core --tests && cargo test -p lithair-core --features cluster,tls --test native_checkpoint_test --test native_scc2_test --test native_http_commit_test --test openraft_storage_test --test openraft_consensus_test --test openraft_checkpoint_test --test openraft_identity_test --test cluster_operator_test && cargo test -p lithair-macros --tests && cargo test -p lithair-turso --tests && cargo test -p lithair-cli --features cluster-ops --test cluster_ops && cargo build -p lithair-cli && cargo test -p cucumber-tests --features cluster-ops --test no_orphan_features --test native_checkpoint_bdd --test native_http_commit_bdd --test native_scc2_bdd --test cucumber_tests --test behavior_models_test --test scaffolding_test --test serialization_test --test sessions_test --test turso_test --test openraft_storage_bdd --test openraft_consensus_bdd --test openraft_checkpoint_bdd --test openraft_identity_bdd --test cluster_operator_bdd --test native_cluster_bdd --test frontend_persistence_bdd'"
 
-# Workspace-aware release build.
+# Release-build the published crates only (issue #282). Examples, tools and
+# cucumber-tests are workspace members already compiled in debug by the code
+# and test phases; rebuilding them in release added most of this phase's time.
 [containers.cargo-build]
-command = "sh -c 'cargo build --workspace --release && cargo build -p lithair-cli --features cluster-ops --release'"
+command = "sh -c 'cargo build --release -p lithair-macros -p lithair-core -p lithair-turso -p lithair-cli && cargo build -p lithair-cli --features cluster-ops --release'"
 
 # Check the private cluster/TLS foundation and its executable harness too;
 # the default feature set does not compile those modules.

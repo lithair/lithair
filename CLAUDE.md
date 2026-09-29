@@ -27,7 +27,7 @@ Use **cidx for validation and the PR workflow**, as required by `AGENTS.md`.
 cidx run code            # CI rustfmt + clippy; mandatory before each commit
 cidx run test            # Unit + integration + macro + behavior BDD gate
 cidx run security        # cargo-audit + gitleaks + trivy
-cidx run build           # Workspace release build
+cidx run build           # Release build of the published crates
 cidx run pr              # Code + test phases
 cidx run cluster         # Probatum + three-node Compose failure/recovery gate
 cidx run ci              # Full pipeline before review
