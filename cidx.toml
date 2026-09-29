@@ -13,20 +13,29 @@
 # Inspect a preset with: cidx preset info <name>
 
 # ─── phases ───
+# Rust phases keep target/ between CI runs (cidx 3.5 per-phase cache). Cargo.lock
+# is untracked (library workspace), so manifests + toolchain key the cache and
+# the previous cache of the phase is the restore fallback.
 [security]
 containers = ["cargo-audit", "gitleaks", "trivy"]
 
 [code]
 containers = ["rustfmt", "clippy"]
+cache = ["target"]
+cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 
 [test]
 containers = ["cargo-test"]
+cache = ["target"]
+cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 
 [cluster]
 containers = ["cluster-build", "cluster-probatum"]
 
 [build]
 containers = ["cargo-build"]
+cache = ["target"]
+cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 
 # ─── container overrides ───
 # The full per-PR test pyramid (issue #132):
