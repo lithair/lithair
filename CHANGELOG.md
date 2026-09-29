@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-29
+
+Atomic application commands on the native consensus runtime ship with
+`lithair-core`, `lithair-macros` and `lithair-cli` 1.14.0. The unchanged
+`lithair-turso` adapter remains at 0.2.2. Existing model stores and their
+checkpoints are unchanged; the new API is opt-in behind `cluster,tls`.
+
+### Added
+
+- **Atomic application commands** (#280): `cluster::native::commands::CommandStore`
+  is a trusted Rust API on the three-voter native runtime. An application callback
+  sees a quorum-consistent `View` and returns either a read-only decision or one
+  batch of writes across declared collections, committed atomically at a single
+  group revision. State, events, outbox entries and durable business receipts
+  commit together and survive log compaction, snapshot catch-up, failover and
+  cold restart. Stale revisions, invalid or oversized batches change nothing.
+  No HTTP routes or authentication are generated. See the
+  [application command guide](https://github.com/lithair/lithair/blob/v1.14.0/docs/features/state-engine/application-commands.md).
+- Unit crash-boundary, three-node integration, Gherkin and Probatum/Compose
+  qualification for atomic commands, receipt retention and policy revocation.
+
 ## [1.13.0] - 2026-09-27
 
 Native persistence hardening, bounded frontend persistence and an experimental

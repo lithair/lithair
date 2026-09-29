@@ -64,6 +64,23 @@ impl Group {
         .await
         .unwrap()
     }
+    async fn synced(&self, leader: usize) {
+        let applied = self.nodes[leader].as_ref().unwrap().inspect().await["applied"].clone();
+        tokio::time::timeout(Duration::from_secs(15), async {
+            loop {
+                let mut synced = true;
+                for node in self.nodes.iter().flatten() {
+                    synced &= node.inspect().await["applied"].as_u64() >= applied.as_u64();
+                }
+                if synced {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
     async fn stop(&mut self, n: usize) {
         self.nodes[n].take().unwrap().shutdown().await.unwrap();
     }
@@ -85,6 +102,9 @@ pub async fn durable_commands() {
     let leader = group.leader().await;
     let store = group.nodes[leader].as_ref().unwrap().clone();
     let first = example::submit(&store, "tenant-a", "alice", "item", "first", 0).await.unwrap();
+    // Readiness proves only one follower acked; both must replicate before one
+    // stops, otherwise the survivor may not yet complete the quorum.
+    group.synced(leader).await;
     let follower = (leader + 1) % 3;
     group.stop(follower).await;
     for n in 0..265 {
