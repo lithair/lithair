@@ -34,7 +34,7 @@ jobs:
       - name: Install CIDX
         run: |
           mkdir -p bin
-          go install github.com/cidx-org/cidx/v3/cmd/cidx@v3.5.0
+          go install github.com/cidx-org/cidx/v3/cmd/cidx@v3.6.0
           cp "$(go env GOPATH)/bin/cidx" bin/cidx
       - uses: actions/upload-artifact@v7
         with:
@@ -121,14 +121,13 @@ jobs:
       - run: chmod +x bin/cidx
       - name: Run cluster
         run: ./bin/cidx run cluster
-      # Hand-kept: `cidx generate` cannot declare this yet (cidx-org/cidx#509).
-      # Re-add after regenerating.
-      - name: Preserve Probatum and node evidence
+      - name: Upload cluster-probatum-evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: cluster-probatum-evidence
-          path: .probatum/runs/lithair-cluster-*/
+          path: |
+            .probatum/runs/lithair-cluster-*/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
