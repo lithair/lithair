@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenID Connect login for custom handlers** (#288, opt-in feature `oidc`):
+  `Oidc::discover` + `with_oidc` serve an authorization code flow with PKCE S256,
+  state, nonce, a browser-bound single-use login attempt and a fresh `HttpOnly`
+  `__Host-` session with absolute expiry. Custom handlers call
+  `oidc.identity(&req)` / `oidc.require(&req)` for a verified `(issuer, subject)`
+  only; provider claims never become permissions and provider tokens are
+  discarded. Bearer tokens, identity headers and bodies cannot change the
+  subject; unsafe methods require the application's `Origin`. Provider HTTP is
+  TLS-only, redirect-free, time- and size-bounded; keys are refetched on
+  rotation. See the [OIDC guide](docs/features/security/oidc.md).
+
 ## [1.15.0] - 2026-09-29
 
 Atomic application commands for SQL storage ship with `lithair-turso` 0.3.0,

@@ -77,6 +77,8 @@ rand = "0.8"
 crc32fast = "1.4"  # CRC32 checksums for data integrity validation
 # MFA/TOTP support
 totp-rs = { version = "5.7", features = ["gen_secret", "qr", "serde"], optional = true }  # Battle-tested TOTP implementation
+# Protocol and ID token cryptography; its HTTP client is our bounded reqwest.
+openidconnect = { version = "4.0.1", default-features = false, optional = true }
 # OpenAPI documentation support (optional)
 utoipa = { version = "5", optional = true }
 thiserror = "2.0.17"
@@ -85,6 +87,7 @@ lithair-macros = { version = "1.15.0", path = "../lithair-macros", optional = tr
 tempfile = "3"
 
 [dev-dependencies]
+rsa = "0.9" # OIDC test provider signing keys
 rcgen = "0.14"
 # Random free-port picker for integration tests that spawn a real
 # `LithairServer` (e.g. tests/require_session_test.rs). Already used in
@@ -114,6 +117,9 @@ tls = ["rustls", "tokio-rustls", "rustls-pemfile"]
 
 # Multi-Factor Authentication (TOTP)
 mfa = ["totp-rs"]
+
+# OpenID Connect relying party for custom handlers (issue #288)
+oidc = ["dep:openidconnect"]
 
 # Distributed consensus (OpenRaft)
 cluster = ["openraft", "openraft-memstore"]

@@ -16,6 +16,7 @@ use std::path::Path;
 const CLAIMED: &[(&str, &str)] = &[
     ("features/persistence/frontend.feature", "test:frontend_persistence_bdd"),
     ("features/core/native_cluster.feature", "test:native_cluster_bdd"),
+    ("features/core/oidc.feature", "test:oidc_bdd"),
     // — per-PR CI gate —
     ("features/core/native_checkpoint.feature", "test:native_checkpoint_bdd"),
     ("features/core/native_http_commit.feature", "test:native_http_commit_bdd"),

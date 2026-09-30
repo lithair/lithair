@@ -11,4 +11,11 @@
 # The workspace itself uses rkyv 0.8.18 (fixed line). rust_decimal 1.42.1
 # (latest) still pins the optional dep to ^0.7.46; drop this ignore once
 # rust_decimal moves it to >=0.8.17.
-ignore = ["RUSTSEC-2026-0235"]
+# RUSTSEC-2023-0071 (rsa 0.9, Marvin timing attack): rsa enters the graph only
+# through openidconnect behind lithair-core's opt-in `oidc` feature. Marvin
+# recovers private keys from the timing of private-key operations (RSA
+# decryption/signing). The relying party only verifies provider signatures with
+# public keys, which the advisory does not affect; the private-key signing in
+# tests/oidc_test.rs is a test-only provider. No fixed rsa release exists; drop
+# this entry once openidconnect depends on a fixed rsa.
+ignore = ["RUSTSEC-2026-0235", "RUSTSEC-2023-0071"]

@@ -1922,6 +1922,45 @@ impl LithairServerBuilder {
         })
     }
 
+    /// Serve an OpenID Connect login (issue #288): `GET /auth/oidc/login`,
+    /// `GET /auth/oidc/callback` and `POST /auth/oidc/logout`. Keep a clone of
+    /// `oidc` to read the verified identity in custom handlers:
+    ///
+    /// ```ignore
+    /// let store = Arc::new(MemorySessionStore::new());
+    /// let oidc = Oidc::discover(config, store.clone()).await?;
+    /// LithairServer::new()
+    ///     .with_sessions(SessionManager::from_arc(store))
+    ///     .with_oidc(oidc.clone())
+    ///     .with_route_async(Method::POST, "/api/orders", move |req| {
+    ///         let oidc = oidc.clone();
+    ///         async move {
+    ///             let identity = match oidc.require(&req).await {
+    ///                 Ok(identity) => identity,
+    ///                 Err(rejection) => return Ok(rejection),
+    ///             };
+    ///             // Resolve the principal and check tenant membership here.
+    ///             # todo!()
+    ///         }
+    ///     })
+    /// ```
+    #[cfg(feature = "oidc")]
+    pub fn with_oidc(self, oidc: crate::oidc::Oidc) -> Self {
+        let (login, callback, logout) = (oidc.clone(), oidc.clone(), oidc);
+        self.with_route_async(http::Method::GET, crate::oidc::LOGIN_PATH, move |req| {
+            let oidc = login.clone();
+            async move { Ok(oidc.login(req).await) }
+        })
+        .with_route_async(http::Method::GET, crate::oidc::CALLBACK_PATH, move |req| {
+            let oidc = callback.clone();
+            async move { Ok(oidc.callback(req).await) }
+        })
+        .with_route_async(http::Method::POST, crate::oidc::LOGOUT_PATH, move |req| {
+            let oidc = logout.clone();
+            async move { Ok(oidc.logout(req).await) }
+        })
+    }
+
     /// Set a custom handler for 404 Not Found responses.
     ///
     /// When set, this handler is called instead of the default JSON 404 response
