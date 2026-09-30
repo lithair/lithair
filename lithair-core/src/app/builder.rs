@@ -1836,6 +1836,26 @@ impl LithairServerBuilder {
     /// want to write `|req| async move { ... }`, prefer
     /// [`Self::with_route_async`].
     ///
+    /// # Path patterns
+    ///
+    /// Patterns match the raw (still percent-encoded) request path, segment by
+    /// segment. There are **no named parameters**: a segment starting with `:`
+    /// (`/api/jobs/:name`) is refused by `build()`. Read variable segments
+    /// from `req.uri().path()` in the handler and validate them there.
+    ///
+    /// | Pattern | Matches |
+    /// | --- | --- |
+    /// | `/api/jobs` | exactly `/api/jobs` |
+    /// | `/api/jobs/*/run` | one segment in place of `*`: `/api/jobs/nightly/run` |
+    /// | `/files/*` | `/files/` followed by one or more segments |
+    /// | `/files/**` | `/files` itself or anything below `/files/` |
+    /// | `/*` | every path |
+    ///
+    /// Suffix wildcards stop at segment boundaries: `/api/jobs/*` does not
+    /// match `/api/jobsx`. An encoded `%2F` does not split a segment, so a
+    /// handler must decode and validate what it extracts. Routes are tried in
+    /// registration order; register specific routes before broad wildcards.
+    ///
     /// # Example
     /// ```ignore
     /// use lithair_core::app::{Method, RouteRequest, RouteResponse, StatusCode, response};
@@ -1894,15 +1914,33 @@ impl LithairServerBuilder {
     /// else.
     ///
     /// # Example
-    /// ```ignore
-    /// use lithair_core::app::{LithairServer, Method, RouteRequest, StatusCode, response};
     ///
+    /// Path patterns have no named parameters (see [`Self::with_route`]):
+    /// match the variable segment with `*` and validate it in the handler.
+    /// `tests/custom_route_patterns_test.rs` runs this exact route over HTTP.
+    ///
+    /// ```no_run
+    /// use lithair_core::app::{response, LithairServer, Method, RouteRequest, StatusCode};
+    ///
+    /// # async fn run() -> anyhow::Result<()> {
     /// LithairServer::new()
-    ///     .with_route_async(Method::POST, "/api/jobs/:name/run", |_req: RouteRequest| async move {
-    ///         Ok(response::json(StatusCode::ACCEPTED, r#"{"status":"queued"}"#))
+    ///     .with_route_async(Method::POST, "/api/jobs/*/run", |req: RouteRequest| async move {
+    ///         // `*` matched exactly one raw segment: /api/jobs/<name>/run
+    ///         let name = req.uri().path().split('/').nth(3).unwrap_or_default();
+    ///         if name.is_empty()
+    ///             || name.len() > 64
+    ///             || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    ///         {
+    ///             return Ok(response::json(StatusCode::BAD_REQUEST, r#"{"error":"invalid job name"}"#));
+    ///         }
+    ///         Ok(response::json_value(
+    ///             StatusCode::ACCEPTED,
+    ///             &serde_json::json!({ "job": name, "status": "queued" }),
+    ///         ))
     ///     })
     ///     .serve()
-    ///     .await?;
+    ///     .await
+    /// # }
     /// ```
     pub fn with_route_async<F, Fut>(
         self,
@@ -2639,6 +2677,18 @@ impl LithairServerBuilder {
     /// Build the server
     pub fn build(self) -> Result<LithairServer> {
         self.session_cookie.validate()?;
+        if let Some(route) = self
+            .custom_routes
+            .iter()
+            .find(|r| r.path.split('/').any(|segment| segment.starts_with(':')))
+        {
+            anyhow::bail!(
+                "custom route {} {}: `:name` parameters are not supported; match the segment \
+                 with `*` (e.g. /api/jobs/*/run) and read it from the request path",
+                route.method,
+                route.path
+            );
+        }
         #[cfg(all(feature = "cluster", feature = "tls"))]
         if self.native_cluster.is_some() {
             anyhow::ensure!(

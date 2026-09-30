@@ -943,3 +943,48 @@ async fn metrics_endpoint_collects_per_model_stats_concurrently() {
 
     handle.abort();
 }
+
+/// Issue #293: the documented custom-route patterns, segment boundaries and
+/// the absence of `:name` parameters.
+#[test]
+fn custom_route_patterns_match_by_segment() {
+    let cases = [
+        ("/api/jobs", "/api/jobs", true),
+        ("/api/jobs", "/api/jobs/", false),
+        ("/api/jobs/*/run", "/api/jobs/nightly/run", true),
+        ("/api/jobs/*/run", "/api/jobs//run", true), // empty segment: validate in the handler
+        ("/api/jobs/*/run", "/api/jobs/a/b/run", false),
+        ("/api/jobs/*/run", "/api/jobs/nightly/runx", false),
+        ("/api/jobs/*/run", "/api/jobs/a%2Fb/run", true), // %2F stays inside the segment
+        ("/api/jobs/:name/run", "/api/jobs/nightly/run", false),
+        ("/files/*", "/files/a", true),
+        ("/files/*", "/files/a/b", true),
+        ("/files/*", "/files", false),
+        ("/files/*", "/files/", false),
+        ("/files/*", "/filesx", false),
+        ("/files/**", "/files", true),
+        ("/files/**", "/files/a/b", true),
+        ("/files/**", "/filesx/a", false),
+        ("/*", "/anything/at/all", true),
+        ("/**", "/", true),
+        ("/a/*/c/*", "/a/b/c/d", true),
+        ("/a/*/c/*", "/a/b/c/d/e", false),
+    ];
+    for (pattern, path, expected) in cases {
+        assert_eq!(LithairServer::path_matches(pattern, path), expected, "{pattern} vs {path}");
+    }
+}
+
+#[test]
+fn named_route_parameters_fail_at_build() {
+    let error = match LithairServer::new()
+        .with_route_async(http::Method::POST, "/api/jobs/:name/run", |_| async {
+            Ok(response::json(http::StatusCode::ACCEPTED, "{}"))
+        })
+        .build()
+    {
+        Ok(_) => panic!("a :name route must be refused"),
+        Err(error) => error.to_string(),
+    };
+    assert!(error.contains("/api/jobs/:name/run") && error.contains('*'), "{error}");
+}

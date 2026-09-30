@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Custom route patterns** (#293): the `with_route_async` example used a
+  `/api/jobs/:name/run` route that never matched (named parameters were never
+  supported). The example now uses `/api/jobs/*/run` and validates the segment
+  in the handler, and an HTTP test runs it. `build()` refuses a custom route
+  with a `:name` segment instead of silently answering 404. Suffix wildcards
+  now stop at segment boundaries: `/files/*` and `/files/**` no longer match
+  `/filesx`, and `/files/*` no longer matches `/files` itself (`/files/**`
+  still does). The supported patterns are documented on `with_route`.
+
 ## [1.16.0] - 2026-09-30
 
 OpenID Connect login for custom handlers ships with `lithair-core`,
