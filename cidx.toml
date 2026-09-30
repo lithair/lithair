@@ -13,9 +13,11 @@
 # Inspect a preset with: cidx preset info <name>
 
 # ─── phases ───
-# Rust phases keep target/ between CI runs (cidx 3.5 per-phase cache). Cargo.lock
-# is untracked (library workspace), so manifests + toolchain key the cache and
-# the previous cache of the phase is the restore fallback.
+# Rust phases keep target/ between CI runs (cidx per-phase cache). Cargo.lock is
+# untracked (library workspace), so manifests + toolchain key the cache. No
+# restore fallback: cargo never prunes target/, so restoring the previous cache
+# after a key change stacked stale artifacts (3.3 -> 5.4 GiB after one version
+# bump, cidx-org/cidx#515). The first run after a key change compiles cold.
 [security]
 containers = ["cargo-audit", "gitleaks", "trivy"]
 
@@ -23,11 +25,13 @@ containers = ["cargo-audit", "gitleaks", "trivy"]
 containers = ["rustfmt", "clippy"]
 cache = ["target"]
 cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
+cache_restore_fallback = false
 
 [test]
 containers = ["cargo-test"]
 cache = ["target"]
 cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
+cache_restore_fallback = false
 
 [cluster]
 containers = ["cluster-build", "cluster-probatum"]
@@ -37,6 +41,7 @@ artifacts = { name = "cluster-probatum-evidence", paths = [".probatum/runs/litha
 containers = ["cargo-build"]
 cache = ["target"]
 cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
+cache_restore_fallback = false
 
 # ─── container overrides ───
 # The full per-PR test pyramid (issue #132):

@@ -34,7 +34,7 @@ jobs:
       - name: Install CIDX
         run: |
           mkdir -p bin
-          go install github.com/cidx-org/cidx/v3/cmd/cidx@v3.6.0
+          go install github.com/cidx-org/cidx/v3/cmd/cidx@v3.7.0
           cp "$(go env GOPATH)/bin/cidx" bin/cidx
       - uses: actions/upload-artifact@v7
         with:
@@ -61,8 +61,6 @@ jobs:
           path: |
             target
           key: ${{ runner.os }}-cidx-code-${{ hashFiles('**/Cargo.toml', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cidx-code-
       - name: Run code
         run: ./bin/cidx run code
 
@@ -84,8 +82,6 @@ jobs:
           path: |
             target
           key: ${{ runner.os }}-cidx-test-${{ hashFiles('**/Cargo.toml', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cidx-test-
       - name: Run test
         run: ./bin/cidx run test
 
@@ -150,8 +146,6 @@ jobs:
           path: |
             target
           key: ${{ runner.os }}-cidx-build-${{ hashFiles('**/Cargo.toml', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cidx-build-
       - name: Run build
         run: ./bin/cidx run build
 
