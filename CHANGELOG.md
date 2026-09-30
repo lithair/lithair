@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-30
+
+OpenID Connect login for custom handlers ships with `lithair-core`,
+`lithair-macros` and `lithair-cli` 1.16.0 behind the opt-in `oidc` feature.
+`lithair-turso` is unchanged at 0.3.0. Builds without the feature gain no
+dependency.
+
 ### Added
 
 - **OpenID Connect login for custom handlers** (#288, opt-in feature `oidc`):
@@ -18,7 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discarded. Bearer tokens, identity headers and bodies cannot change the
   subject; unsafe methods require the application's `Origin`. Provider HTTP is
   TLS-only, redirect-free, time- and size-bounded; keys are refetched on
-  rotation. See the [OIDC guide](docs/features/security/oidc.md).
+  rotation. See the
+  [OIDC guide](https://github.com/lithair/lithair/blob/v1.16.0/docs/features/security/oidc.md).
+
+### Changed
+
+- CI (#289): cidx 3.7.0; Rust phase caches no longer restore the previous
+  cache after a key change, so `target/` stops growing with every version bump.
+
+### Fixed
+
+- Native command consensus tests retry transient quorum refusals with the same
+  business key, as clients are documented to (#291). No runtime change.
+
+### Security
+
+- `oidc` pulls `rsa` 0.9 through `openidconnect`, which carries RUSTSEC-2023-0071
+  (Marvin). It affects private-key operations only; the relying party verifies
+  signatures with public keys. The advisory is ignored with that justification.
 
 ## [1.15.0] - 2026-09-29
 

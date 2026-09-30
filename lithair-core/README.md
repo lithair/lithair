@@ -8,7 +8,7 @@ endpoints, event sourcing, sessions, RBAC, frontend serving, and replication.
 
 ```toml
 [dependencies]
-lithair-core = "1.15"
+lithair-core = "1.16"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"

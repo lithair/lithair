@@ -15,7 +15,7 @@ timeout (default 5 s) and a 1 MiB response limit.
 ## Activation
 
 ```toml
-lithair-core = { version = "1.15", features = ["oidc"] }
+lithair-core = { version = "1.16", features = ["oidc"] }
 ```
 
 ```rust,ignore
