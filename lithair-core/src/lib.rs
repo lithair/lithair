@@ -97,6 +97,8 @@ pub mod lifecycle;
 pub mod mfa; // Multi-Factor Authentication (TOTP)
 pub mod model; // Declarative model specifications
 pub mod model_inspect; // Internal field inspection and optimization
+#[cfg(feature = "oidc")]
+pub mod oidc; // OpenID Connect relying party (issue #288)
 pub mod rbac; // Role-Based Access Control system
 pub mod schema;
 pub mod security; // Core RBAC security - non-optional

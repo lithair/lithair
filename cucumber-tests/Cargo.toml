@@ -127,9 +127,22 @@ sha2 = "0.10"
 anyhow = "1"
 lithair-turso = { path = "../lithair-turso" }
 hybrid-storage = { path = "../examples/advanced/hybrid-storage" }
+# OIDC fixture (lithair-core/tests/support/oidc_fixture.rs): signed local provider.
+openidconnect = { version = "4.0.1", default-features = false }
+rsa = "0.9"
+base64 = "0.22"
+http = "1"
+urlencoding = "2.1"
 
 [features]
 cluster-ops = ["lithair-core/cluster", "lithair-core/tls"]
+oidc = ["lithair-core/oidc"]
+
+[[test]]
+name = "oidc_bdd"
+path = "tests/oidc_bdd.rs"
+harness = false
+required-features = ["oidc"]
 
 [[test]]
 name = "native_cluster_bdd"
