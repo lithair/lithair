@@ -2845,62 +2845,45 @@ impl LithairServer {
             .expect("valid HTTP response")
     }
 
-    /// Match a path against a pattern with wildcard support
+    /// Custom-route pattern matching on the raw request path, by segment.
+    /// See `LithairServerBuilder::with_route` for the documented contract.
     ///
-    /// Supports:
-    /// - Exact match: `/api/products`
-    /// - Single segment wildcard: `/api/*` matches `/api/products` but not `/api/products/123`
-    /// - Multi-segment wildcard: `/api/**` matches `/api/products`, `/api/products/123`, etc.
-    /// - Suffix wildcard: `/static/*` matches any path starting with `/static/`
-    /// - Middle wildcard: `/api/consumers/*/orders` matches `/api/consumers/{id}/orders`
+    /// - `/api/jobs` matches only itself.
+    /// - `/api/jobs/*/run`: each `*` segment matches exactly one segment.
+    /// - `/files/*` matches `/files/` followed by one or more segments.
+    /// - `/files/**` matches `/files` itself or anything below `/files/`.
+    /// - `/*` and `/**` match every path.
+    ///
+    /// Suffix wildcards stop at a segment boundary: `/files/*` never matches
+    /// `/filesx`.
     fn path_matches(pattern: &str, path: &str) -> bool {
-        // Exact match
-        if pattern == path {
+        if pattern == path || pattern == "/*" || pattern == "/**" {
             return true;
         }
-
-        // Wildcard matching
-        if pattern.contains('*') {
-            // Handle `**` (multi-segment wildcard) - matches everything after
-            if let Some(prefix) = pattern.strip_suffix("/**") {
-                return path.starts_with(prefix);
+        if let Some(prefix) = pattern.strip_suffix("/**") {
+            if !prefix.contains('*') {
+                return path == prefix || Self::below(prefix, path);
             }
-
-            // Handle `/*` (any single path after prefix) - but only if it's at the end
-            if pattern.ends_with("/*") && !pattern.contains("/*/") {
-                let prefix = &pattern[..pattern.len() - 2];
-                return path.starts_with(prefix);
-            }
-
-            // Handle exact wildcard `/` + `*`
-            if pattern == "/*" {
-                return true; // Matches any path
-            }
-
-            // Handle middle wildcard: `/api/consumers/*/orders`
-            // Split both pattern and path by '/' and match segment by segment
-            let pattern_segments: Vec<&str> = pattern.split('/').collect();
-            let path_segments: Vec<&str> = path.split('/').collect();
-
-            // Must have same number of segments for exact middle wildcard matching
-            if pattern_segments.len() != path_segments.len() {
-                return false;
-            }
-
-            // Match segment by segment
-            for (p_seg, path_seg) in pattern_segments.iter().zip(path_segments.iter()) {
-                if *p_seg == "*" {
-                    // Wildcard matches any single segment
-                    continue;
-                }
-                if p_seg != path_seg {
-                    return false;
-                }
-            }
-            return true;
         }
+        if let Some(prefix) = pattern.strip_suffix("/*") {
+            if !prefix.contains('*') {
+                return Self::below(prefix, path) && path.len() > prefix.len() + 1;
+            }
+        }
+        // Middle wildcards: same number of segments, `*` matches one segment.
+        let (mut pattern, mut path) = (pattern.split('/'), path.split('/'));
+        loop {
+            match (pattern.next(), path.next()) {
+                (None, None) => return true,
+                (Some(p), Some(s)) if p == "*" || p == s => {}
+                _ => return false,
+            }
+        }
+    }
 
-        false
+    /// `path` lies strictly below `prefix` at a segment boundary.
+    fn below(prefix: &str, path: &str) -> bool {
+        path.strip_prefix(prefix).is_some_and(|rest| rest.starts_with('/'))
     }
 
     /// Handle incoming HTTP request
