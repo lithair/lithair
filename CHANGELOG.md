@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-09-30
+
+Custom route pattern fix for `lithair-core`, `lithair-macros` and `lithair-cli`
+1.16.1. `lithair-turso` is unchanged at 0.3.0.
+
 ### Fixed
 
 - **Custom route patterns** (#293): the `with_route_async` example used a
@@ -17,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now stop at segment boundaries: `/files/*` and `/files/**` no longer match
   `/filesx`, and `/files/*` no longer matches `/files` itself (`/files/**`
   still does). The supported patterns are documented on `with_route`.
+
+### Upgrade
+
+- A custom route registered with a `:name` segment now fails at `build()`/`serve()`
+  with a message pointing to `*`. Such routes never matched a substituted path;
+  replace them with `*` and read the segment from `req.uri().path()`.
+- A route ending in `/*` no longer matches the bare prefix (`/files/*` vs
+  `/files`); use `/files/**` to include it. No wildcard crosses a segment
+  boundary any more (`/files/*` vs `/filesx`).
 
 ## [1.16.0] - 2026-09-30
 
