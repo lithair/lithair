@@ -3365,7 +3365,10 @@ impl LithairServer {
                 });
             }
             if method == hyper::Method::GET && path == ops_endpoints::INFO_PATH {
-                return Ok(ops_endpoints::serve_info(&cluster.paths()));
+                // Native consensus models plus shared-storage (PostgreSQL) models.
+                let mut paths = cluster.paths();
+                paths.extend(self.models.read().await.iter().map(|m| m.base_path.clone()));
+                return Ok(ops_endpoints::serve_info(&paths));
             }
             if cluster.matches(&path) {
                 return Ok(cluster.handle(req).await);

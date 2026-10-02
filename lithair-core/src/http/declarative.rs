@@ -212,6 +212,14 @@ pub trait HttpExposable: Serialize + DeserializeOwned + Clone + Send + Sync + 's
         None
     }
 
+    /// `true` when the model's authority is an external store shared by every
+    /// node (`#[storage(postgres)]`, RFC 296). Such models can be served next
+    /// to a native cluster by any node: they need no replication and no Raft
+    /// leadership. Native and embedded (Turso) models return `false`.
+    fn shared_external_storage() -> bool {
+        false
+    }
+
     /// Optional declarative firewall configuration attached to the model type.
     /// Defaults to None; can be overridden by the derive macro via #[firewall(...)]
     fn firewall_config() -> Option<FirewallConfig> {

@@ -132,3 +132,13 @@ remain in `.probatum/runs/`. Lower-level consensus suites remain in the pipeline
 For atomic application-owned transitions across collections, see the opt-in
 [application command API](application-commands.md). It shares the native durable
 runtime, uses a separate contract and does not generate model CRUD routes.
+
+## PostgreSQL models
+
+Models declared `#[storage(postgres)]` can be registered with `with_model` on the
+same server ([RFC 296](../../rfcs/296-postgres-storage-tiers.md), Q5). Their
+authority is a PostgreSQL database shared by every node, outside Raft: any node
+serves them, including a follower or a node that has lost quorum. Native models
+keep the rules above. Turso and other local models are still refused next to the
+cluster, and so is a PostgreSQL route overlapping a native route. See the
+[`lithair-postgres` README](https://github.com/lithair/lithair/blob/main/lithair-postgres/README.md).

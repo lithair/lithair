@@ -216,9 +216,14 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
             const PERMISSIONS: &'static [&'static str] = &[#(#permissions),*];
         }
     };
+    // PostgreSQL is shared by every node, so it may sit next to a native
+    // cluster (RFC 296, Q5); an embedded Turso file may not.
     let hook = quote! {
         fn storage_factory() -> Option<::lithair_core::app::ModelFactory> {
             Some(#adapter::model_factory::<Self>())
+        }
+        fn shared_external_storage() -> bool {
+            #postgres
         }
     };
     Ok((implementation, hook))

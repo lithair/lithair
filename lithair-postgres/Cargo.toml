@@ -29,6 +29,11 @@ bytes = "1"
 url = "2"
 
 [dev-dependencies]
+# tests/postgres_cluster.rs: PostgreSQL models next to a native cluster (RFC 296 Q5).
+lithair-core = { path = "../lithair-core", version = "1.16.1", features = ["cluster", "tls"] }
+rcgen = "0.14"
+sha2 = "0.10"
+tempfile = "3"
 lithair-macros = { path = "../lithair-macros", version = "1.16.1" }
 reqwest.workspace = true
 uuid = { version = "1", features = ["v4"] }
