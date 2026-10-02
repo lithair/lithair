@@ -183,6 +183,9 @@ pub struct LithairServerBuilder {
     // gate should be flipped to (always `true` in current use; passed
     // explicitly so future toggling paths stay uniform).
     external_handler_gates: Vec<super::ExternalHandlerGate>,
+    /// Models registered with a local authority (native or embedded SQL).
+    /// A native cluster only admits models whose authority every node shares.
+    local_models: usize,
 
     // Issue #91: same shape as `external_handler_gates`, but for installing
     // the builder-level SSE broadcaster onto handlers registered via
@@ -300,6 +303,7 @@ impl LithairServerBuilder {
             sse_enabled: false,
             models_require_session: false,
             external_handler_gates: Vec::new(),
+            local_models: 0,
             external_handler_sse_wirings: Vec::new(),
             mutation_hooks: Vec::new(),
             auto_compaction: None,
@@ -341,6 +345,7 @@ impl LithairServerBuilder {
             sse_enabled: false,
             models_require_session: false,
             external_handler_gates: Vec::new(),
+            local_models: 0,
             external_handler_sse_wirings: Vec::new(),
             mutation_hooks: Vec::new(),
             auto_compaction: None,
@@ -2174,6 +2179,7 @@ impl LithairServerBuilder {
             })
         });
 
+        self.local_models += usize::from(!T::shared_external_storage());
         self.model_infos.push(ModelRegistrationInfo {
             name: name.to_string(),
             base_path: base_path_str,
@@ -2258,6 +2264,7 @@ impl LithairServerBuilder {
             })
         });
 
+        self.local_models += usize::from(!T::shared_external_storage());
         self.model_infos.push(ModelRegistrationInfo {
             name: name.to_string(),
             base_path: base_path_str,
@@ -2336,6 +2343,7 @@ impl LithairServerBuilder {
         // Create schema extractor for migration detection
         let schema_extractor: SchemaSpecExtractor = Arc::new(|| T::schema_spec());
 
+        self.local_models += usize::from(!T::shared_external_storage());
         self.model_infos.push(ModelRegistrationInfo {
             name: name.to_string(),
             base_path: base_path_str,
@@ -2692,9 +2700,25 @@ impl LithairServerBuilder {
         #[cfg(all(feature = "cluster", feature = "tls"))]
         if self.native_cluster.is_some() {
             anyhow::ensure!(
-                self.model_infos.is_empty() && self.external_handler_gates.is_empty(),
-                "native consensus cannot mix local/Turso handlers; declare models on NativeCluster"
+                self.local_models == 0 && self.external_handler_gates.is_empty(),
+                "native consensus cannot mix local/Turso handlers; declare models on NativeCluster \
+                 (models with shared external storage, such as PostgreSQL, are allowed)"
             );
+            if let Some(cluster) = &self.native_cluster {
+                let native = cluster.paths();
+                if let Some(info) = self.model_infos.iter().find(|info| {
+                    native.iter().any(|path| {
+                        path == &info.base_path
+                            || path.starts_with(&format!("{}/", info.base_path))
+                            || info.base_path.starts_with(&format!("{path}/"))
+                    })
+                }) {
+                    anyhow::bail!(
+                        "model route {} overlaps a native consensus model route",
+                        info.base_path
+                    );
+                }
+            }
             anyhow::ensure!(
                 self.session_manager.is_none()
                     && !self.models_require_session

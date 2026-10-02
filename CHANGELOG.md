@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are `Fn`. Lithair owns its `lithair` schema and upgrades it under an advisory
   lock. Qualified against PostgreSQL 17 by a new cidx `postgres-test`
   container.
+- **PostgreSQL models next to a native cluster** (RFC 296, Q5): a server with
+  `with_native_cluster` now accepts models whose authority is shared by every
+  node (`#[storage(postgres)]`, declared through the new
+  `HttpExposable::shared_external_storage`). Any node serves them, without Raft
+  leadership or quorum. Local models and routes overlapping the cluster are
+  still refused, and `/info` lists both kinds of routes.
 - `#[storage(..., durable)]` (RFC 296, R4): durable models require an external
   authority; declaring it on native or Turso storage fails at compile time.
 - [RFC 296](docs/rfcs/296-postgres-storage-tiers.md): storage tiers

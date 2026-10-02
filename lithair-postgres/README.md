@@ -95,6 +95,30 @@ a row copy, and a migration runs once, not once per tenant. Model migrations
 also run under a per-partition advisory lock, so several nodes preparing the
 same model migrate it exactly once.
 
+## Next to a native cluster
+
+PostgreSQL models can be registered on a server that runs a native consensus
+cluster (`with_native_cluster`, RFC 296 Q5). Native models keep their consensus
+rules: writes go through the Raft leader and need a quorum. PostgreSQL models
+are served by **every node**, follower or leader, and keep working when the
+cluster has lost its quorum, since their authority is the shared database:
+
+```rust,ignore
+Database::connect(config).await?.install()?;
+LithairServer::new()
+    .with_admin_panel(false)
+    .with_native_cluster(cluster)                    // native, replicated models
+    .with_model::<Invoice>("./data/invoices", "/api/invoices") // PostgreSQL
+    .serve()
+    .await?;
+```
+
+`build()` still refuses local models next to a cluster (native handlers outside
+the cluster, Turso), as well as a PostgreSQL route that overlaps a native
+cluster route. The native cluster's other restrictions apply to the whole
+server, including no local sessions or RBAC stores yet. PostgreSQL models are
+therefore served with their anonymous permission hooks.
+
 ## Guarantees and limits
 
 - Acknowledged writes have committed. Batches and commands commit entirely or
@@ -113,8 +137,6 @@ same model migrate it exactly once.
 - Permission checks filter SQL candidate pages, exactly as with Turso.
 
 **Not yet provided:**
-- Postgres models next to a native Lithair cluster (RFC 296, Q5), which is the
-  next step.
 - Field-level encryption and confidentiality rules.
 - Typed relational columns, cross-backend transactions, and the cache tiers.
 
@@ -134,6 +156,10 @@ generates a test-only PKI, and runs the suite against the real server over TLS:
 - a newer `lithair` format refused
 - generated HTTP routes from the installed database
 - killed connections and a server restart (a separate test binary)
+- three native nodes plus one database: a follower serves PostgreSQL writes,
+  every node reads them, native writes on a follower are refused, and after
+  two nodes stop the last one still serves PostgreSQL but not native models;
+  local models and overlapping routes are refused next to the cluster
 
 Running the suite with `READ COMMITTED` instead of `SERIALIZABLE` makes the
 concurrency tests fail (lost update, two winners), and so does disabling the
