@@ -18,7 +18,8 @@ Three different products must not be conflated:
 3. SQL projections: future derived state, rebuilt from a durable native stream
    with an atomic projection checkpoint, idempotency and catch-up semantics.
 
-The first milestone implements (2) alongside (1). PostgreSQL and (3) are deferred.
+The first milestone implements (2) alongside (1). PostgreSQL and (3) are deferred;
+[RFC 296](296-postgres-storage-tiers.md) now covers PostgreSQL and the storage-tier model.
 There is no distributed transaction between native and SQL models. An application
 workflow spanning both needs a separately designed outbox/saga or compensation.
 
