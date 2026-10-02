@@ -243,6 +243,10 @@ impl NativeCluster {
         if let Some(task) = task {
             task.await??;
         }
+        // OpenRaft tasks can still hold store handles for a moment after
+        // shutdown; release the directory lock now so the store can be
+        // reopened immediately, and make any straggler fail instead of writing.
+        self.inner.machine.durable.close().await;
         Ok(())
     }
     /// A fresh consensus barrier, including local apply. Followers and isolated

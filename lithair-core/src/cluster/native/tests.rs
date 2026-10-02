@@ -250,3 +250,28 @@ fn invalid_and_stale_batches_change_no_business_record() {
     assert!(state.models["outbox"].is_empty());
     assert_eq!(state.models["receipts"].len(), 1);
 }
+
+/// `shutdown` must let the same process reopen the store at once, even while
+/// a straggling OpenRaft task still holds a handle (a flaky reopen failed with
+/// "lock acquisition failed because the operation would block").
+#[tokio::test]
+async fn closing_releases_the_store_lock_and_fences_straggling_handles() {
+    let directory = tempfile::tempdir().unwrap();
+    let durable = DurableLog::<Config>::create_for_node(directory.path(), identity())
+        .await
+        .unwrap();
+    durable.bind_application([9; 32]).await.unwrap();
+    let mut straggler = durable.clone();
+    assert!(
+        DurableLog::<Config>::open_for_node(directory.path(), identity()).await.is_err(),
+        "the directory is locked while any handle lives"
+    );
+    durable.close().await;
+    let mut reopened =
+        DurableLog::<Config>::open_for_node(directory.path(), identity()).await.unwrap();
+    assert!(
+        straggler.append_to_log([entry(0)]).await.is_err(),
+        "a closed handle never writes"
+    );
+    reopened.append_to_log([entry(0)]).await.unwrap();
+}
