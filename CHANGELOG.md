@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-10-02
+
+PostgreSQL storage ships as the new experimental `lithair-postgres` 0.1.0,
+alongside `lithair-core`, `lithair-macros` and `lithair-cli` 1.17.0, following
+[RFC 296](https://github.com/lithair/lithair/blob/v1.17.0/docs/rfcs/296-postgres-storage-tiers.md).
+`lithair-postgres` requires core 1.17. `lithair-turso` is unchanged at 0.3.0.
+Applications that use neither adapter gain no dependency.
+
 ### Added
 
 - **`lithair-postgres` 0.1** (experimental, RFC 296): PostgreSQL document
@@ -27,6 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authority; declaring it on native or Turso storage fails at compile time.
 - [RFC 296](docs/rfcs/296-postgres-storage-tiers.md): storage tiers
   (authority, copies, durability).
+
+### Fixed
+
+- **Native store reopen after shutdown** (#300): `NativeCluster::shutdown` (and
+  `CommandStore::shutdown`) now releases the OpenRaft directory lock before
+  returning, as documented. OpenRaft tasks still holding a store handle after
+  shutdown used to make an immediate reopen fail intermittently. Straggling
+  handles can no longer write.
+
+### Upgrade
+
+- New `HttpExposable::shared_external_storage()` has a default (`false`);
+  hand-written implementations need no change.
+- `#[storage(postgres)]` is a new backend keyword. The derive generates
+  `::lithair_postgres` paths, so the application must depend on
+  `lithair-postgres`.
 
 ## [1.16.1] - 2026-09-30
 
