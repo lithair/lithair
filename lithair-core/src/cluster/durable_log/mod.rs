@@ -178,7 +178,8 @@ struct DurableEnd {
 struct Inner<C: RaftTypeConfig> {
     directory: PathBuf,
     dir: File,
-    _lock: DirectoryLock,
+    /// `None` once [`DurableLog::close`] released the directory lock.
+    _lock: Option<DirectoryLock>,
     journal: File,
     end: DurableEnd,
     state: State<C>,
@@ -422,7 +423,7 @@ impl<C: RaftTypeConfig> Inner<C> {
         let mut inner = Self {
             directory,
             dir,
-            _lock: lock,
+            _lock: Some(lock),
             journal,
             end,
             state,
@@ -517,6 +518,17 @@ impl<C: RaftTypeConfig> DurableLog<C> {
         .await
         .map_err(|e| storage_error::<C>(ErrorVerb::Read, io::Error::other(e)))?
         .map_err(|e| storage_error::<C>(ErrorVerb::Read, e))
+    }
+
+    /// Release the directory lock now and refuse every later operation, even
+    /// from handles that outlive the caller (tasks still finishing after a
+    /// Raft shutdown). Waits for an in-flight operation, which holds the same
+    /// mutex. After `close`, the same directory can be reopened at once.
+    pub(crate) async fn close(&self) {
+        let mut guard = self.0.lock().await;
+        guard.failed = true;
+        guard._lock = None;
+        guard.snapshot_changed.notify_waiters();
     }
 
     async fn access<T: Send + 'static>(
