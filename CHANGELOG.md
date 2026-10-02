@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`lithair-postgres` 0.1** (experimental, RFC 296): PostgreSQL document
+  storage with the same surface as `lithair-turso` (`#[storage(postgres)]`,
+  typed stores, generated routes, migrations, application commands), shared by
+  any number of Lithair processes. TLS is mandatory and verified; every
+  transaction is `SERIALIZABLE` and replayed on conflict, so command decisions
+  are `Fn`. Lithair owns its `lithair` schema and upgrades it under an advisory
+  lock. Qualified against PostgreSQL 17 by a new cidx `postgres-test`
+  container.
+- `#[storage(..., durable)]` (RFC 296, R4): durable models require an external
+  authority; declaring it on native or Turso storage fails at compile time.
+- [RFC 296](docs/rfcs/296-postgres-storage-tiers.md): storage tiers
+  (authority, copies, durability).
+
 ## [1.16.1] - 2026-09-30
 
 Custom route pattern fix for `lithair-core`, `lithair-macros` and `lithair-cli`

@@ -28,7 +28,7 @@ cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 cache_restore_fallback = false
 
 [test]
-containers = ["cargo-test"]
+containers = ["cargo-test", "postgres-test"]
 cache = ["target"]
 cache_key = ["**/Cargo.toml", "rust-toolchain.toml"]
 cache_restore_fallback = false
@@ -76,7 +76,7 @@ CARGO_PROFILE_DEV_DEBUG = "line-tables-only"
 # cucumber-tests are workspace members already compiled in debug by the code
 # and test phases; rebuilding them in release added most of this phase's time.
 [containers.cargo-build]
-command = "sh -c 'cargo build --release -p lithair-macros -p lithair-core -p lithair-turso -p lithair-cli && cargo build -p lithair-cli --features cluster-ops --release'"
+command = "sh -c 'cargo build --release -p lithair-macros -p lithair-core -p lithair-turso -p lithair-postgres -p lithair-cli && cargo build -p lithair-cli --features cluster-ops --release'"
 
 # Check the private cluster/TLS foundation and its executable harness too;
 # the default feature set does not compile those modules.
@@ -123,6 +123,18 @@ phases = ["code", "test"]
 description = "Pull request validation (no build artifacts)"
 
 # The fixture is deliberately a test-only example, not an application server.
+# lithair-postgres against a real PostgreSQL 17 with TLS (RFC 296). The script
+# installs PostgreSQL in the Rust container, generates a test-only PKI and runs
+# the suite with LITHAIR_REQUIRE_POSTGRES=1, so missing settings fail.
+[containers.postgres-test]
+image = "rust:1.97.1-slim@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd"
+command = "sh scripts/postgres-tests.sh"
+workdir = "/work"
+volumes = ["${WORKSPACE}:/work"]
+# Root only for apt-get; the script drops to the workspace owner.
+privileged = true
+timeout = "30m"
+
 [containers.cluster-build]
 image = "rust:1.97.1-slim@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd"
 command = "cargo build -p lithair-core --features cluster,tls --example cluster-compose-node"

@@ -1,4 +1,4 @@
-error: collection, namespace, filters, version and migrations require the turso backend
+error: collection, namespace, filters, version and migrations require an SQL backend (turso or postgres)
  --> tests/ui/storage_native_version.rs:4:1
   |
 4 | #[storage(native, version = 1)]

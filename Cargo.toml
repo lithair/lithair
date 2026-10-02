@@ -6,6 +6,7 @@ members = [
     "lithair-macros",
     "lithair-cli",
     "lithair-turso",
+    "lithair-postgres",
 
     # Examples (progressive complexity)
     "examples/01-hello-world",
