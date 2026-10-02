@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Lithair is a declarative memory-first web server framework in Rust. Core philosophy: "In Memory We Trust, In Data We Believe" - data models define infrastructure through declarative annotations.
 
 **Published on crates.io** (`lithair-core`, `lithair-macros`, `lithair-cli`,
-and the experimental `lithair-turso` adapter).
+and the experimental `lithair-turso` and `lithair-postgres` adapters).
 
 **Key crates:**
 

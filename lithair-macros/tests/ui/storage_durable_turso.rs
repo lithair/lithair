@@ -1,7 +1,7 @@
 use lithair_macros::DeclarativeModel;
 
 #[derive(DeclarativeModel)]
-#[storage(mongodb)]
+#[storage(turso, durable)]
 struct Record {
     id: String,
 }

@@ -1,4 +1,5 @@
 //! Strict, opt-in storage declarations. Native models emit no adapter reference.
+//! `turso` and `postgres` share one document contract (RFC 235, RFC 296).
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{punctuated::Punctuated, DeriveInput, Error, LitInt, LitStr, Path, Token};
@@ -9,16 +10,21 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
     if attrs.len() != 1 {
         return Err(Error::new_spanned(attrs[1], "duplicate #[storage(...)]; declare one backend"));
     }
-    let mut backend = None;
+    // None = native; Some(true) = postgres; Some(false) = turso.
+    let mut backend: Option<Option<bool>> = None;
+    let mut durable = false;
     let mut collection = None;
     let mut namespace = None;
     let mut filters = None;
     let mut version = None;
     let mut migrations = None;
     attr.parse_nested_meta(|meta| {
-        if meta.path.is_ident("native") || meta.path.is_ident("turso") {
+        if meta.path.is_ident("native") || meta.path.is_ident("turso") || meta.path.is_ident("postgres") {
             if backend.is_some() { return Err(meta.error("declare exactly one storage backend")); }
-            backend = Some(meta.path.is_ident("turso"));
+            backend = Some((!meta.path.is_ident("native")).then(|| meta.path.is_ident("postgres")));
+        } else if meta.path.is_ident("durable") {
+            if durable { return Err(meta.error("duplicate durable option")); }
+            durable = true;
         } else if meta.path.is_ident("collection") || meta.path.is_ident("namespace") {
             let dest = if meta.path.is_ident("collection") { &mut collection } else { &mut namespace };
             if dest.is_some() { return Err(meta.error("duplicate storage option")); }
@@ -44,13 +50,21 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
             syn::parenthesized!(content in meta.input);
             migrations = Some(Punctuated::<Path, Token![,]>::parse_terminated(&content)?);
         } else {
-            return Err(meta.error("unknown storage option; valid options: native, turso, collection, namespace, filters, version, migrations"));
+            return Err(meta.error("unknown storage option; valid options: native, turso, postgres, durable, collection, namespace, filters, version, migrations"));
         }
         Ok(())
     })?;
-    let turso = backend
-        .ok_or_else(|| Error::new_spanned(attr, "storage requires a backend: native or turso"))?;
-    if !turso {
+    let backend = backend.ok_or_else(|| {
+        Error::new_spanned(attr, "storage requires a backend: native, turso or postgres")
+    })?;
+    // RFC 296, R4: durable data needs an external (L3) authority.
+    if durable && backend != Some(true) {
+        return Err(Error::new_spanned(
+            attr,
+            "durable models require an external authority: use #[storage(postgres, durable)]",
+        ));
+    }
+    let Some(postgres) = backend else {
         if collection.is_some()
             || namespace.is_some()
             || filters.is_some()
@@ -59,20 +73,25 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
         {
             return Err(Error::new_spanned(
                 attr,
-                "collection, namespace, filters, version and migrations require the turso backend",
+                "collection, namespace, filters, version and migrations require an SQL backend (turso or postgres)",
             ));
         }
         return Ok((quote! {}, quote! {}));
-    }
+    };
+    let (label, adapter) = if postgres {
+        ("PostgreSQL", quote! { ::lithair_postgres })
+    } else {
+        ("Turso", quote! { ::lithair_turso })
+    };
     let fields = match &input.data {
         syn::Data::Struct(s) => &s.fields,
-        _ => return Err(Error::new_spanned(input, "Turso storage requires a struct")),
+        _ => return Err(Error::new_spanned(input, format!("{label} storage requires a struct"))),
     };
     for attr in &input.attrs {
         if attr.path().is_ident("retention") || attr.path().is_ident("schema") {
             return Err(Error::new_spanned(
                 attr,
-                "Turso storage does not support native retention or schema migration annotations",
+                format!("{label} storage does not support native retention or schema migration annotations"),
             ));
         }
     }
@@ -88,20 +107,22 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
             {
                 return Err(Error::new_spanned(
                     attr,
-                    "this annotation requires native storage; it is not supported by Turso",
+                    format!(
+                        "this annotation requires native storage; it is not supported by {label}"
+                    ),
                 ));
             }
             if attr.path().is_ident("db") {
                 attr.parse_nested_meta(|meta| {
                     if !meta.path.is_ident("primary_key") {
-                        return Err(meta.error("Turso supports only #[db(primary_key)]; use storage filters for SQL equality queries"));
+                        return Err(meta.error(format!("{label} supports only #[db(primary_key)]; use storage filters for SQL equality queries")));
                     }
                     Ok(())
                 })?;
             }
         }
         if parsed.owner_field || parsed.serialization.is_some() {
-            return Err(Error::new_spanned(field, "Turso does not support owner-field or HTTP serialization annotations; use model permissions and serde"));
+            return Err(Error::new_spanned(field, format!("{label} does not support owner-field or HTTP serialization annotations; use model permissions and serde")));
         }
         for permission in [parsed.read_permission, parsed.write_permission].into_iter().flatten() {
             if !permissions.contains(&permission) {
@@ -110,7 +131,7 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
         }
     }
     if primary_keys > 1 {
-        return Err(Error::new_spanned(input, "Turso requires a single primary key"));
+        return Err(Error::new_spanned(input, format!("{label} requires a single primary key")));
     }
     let filters = filters.unwrap_or_default();
     let mut seen = std::collections::HashSet::new();
@@ -177,7 +198,7 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
         quote! {
             const VERSION: u32 = #version;
             const SCHEMA: &'static str = stringify!(#(#serde_attrs)* { #(#schema_fields),* });
-            const MIGRATIONS: &'static [::lithair_turso::Migration] = &[#(#migrations),*];
+            const MIGRATIONS: &'static [#adapter::Migration] = &[#(#migrations),*];
         }
     } else {
         quote! {}
@@ -187,7 +208,7 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
     let namespace = namespace.unwrap_or_else(|| LitStr::new("default", name.span()));
     let filters: Vec<_> = filters.iter().collect();
     let implementation = quote! {
-        impl ::lithair_turso::SqlModel for #name {
+        impl #adapter::SqlModel for #name {
             #version_metadata
             const COLLECTION: &'static str = #collection;
             const NAMESPACE: &'static str = #namespace;
@@ -197,7 +218,7 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
     };
     let hook = quote! {
         fn storage_factory() -> Option<::lithair_core::app::ModelFactory> {
-            Some(::lithair_turso::model_factory::<Self>())
+            Some(#adapter::model_factory::<Self>())
         }
     };
     Ok((implementation, hook))
