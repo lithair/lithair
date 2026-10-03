@@ -12,7 +12,7 @@ Use these dependencies in its `Cargo.toml`:
 
 ```toml
 [dependencies]
-lithair-core = "1.12"
+lithair-core = "1.18"
 lithair-turso = "0.3"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
@@ -20,7 +20,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 
 `lithair-core` re-exports `DeclarativeModel` with its default `macros` feature.
 No separate `lithair-macros` dependency is needed. If your application already
-depends on it directly, upgrade it to `"1.12"` too. Replace any previous Git or
+depends on it directly, upgrade it to `"1.18"` too. Replace any previous Git or
 path dependencies on these crates throughout your workspace; mixing registry
 and Git/path copies produces distinct Rust types and traits. Lithair 1.10 does
 not include the storage selector required by the adapter.
@@ -33,9 +33,10 @@ Commit the application's `Cargo.lock` to keep its resolved dependencies stable.
 When upgrading from adapter 0.2, change the requirement to `"0.3"`. Adapter 0.3
 adds application commands; its only breaking change is the new `Error::Command`
 variant, so an exhaustive `match` on `lithair_turso::Error` needs one more arm.
-Model declarations and stored files are unchanged, and the adapter remains
-compatible with core 1.12. Adapter 0.2.2 introduced the pagination metadata and
-the empty 204 DELETE response described below.
+Model declarations and stored files are unchanged. Adapter 0.3.1 requires core
+1.18, which provides the shared HTTP handler and the L1 cache (RFC 304); adapter
+0.3.0 works with core 1.12 or later. Adapter 0.2.2 introduced the pagination
+metadata and the empty 204 DELETE response described below.
 
 ## Declare and register the model
 

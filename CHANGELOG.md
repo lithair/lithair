@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-03
+
+`lithair-core`, `lithair-macros` and `lithair-cli` 1.18.0, `lithair-turso` 0.3.1
+and `lithair-postgres` 0.1.1: one shared HTTP handler for external storage models
+(RFC 296 phase 3) and an opt-in L1 cache for them
+([RFC 304](https://github.com/lithair/lithair/blob/v1.18.0/docs/rfcs/304-external-storage-cache.md)).
+Both adapters now require core 1.18. Models without `#[retention]` behave
+exactly as before.
+
 ### Added
 
 - **L1 cache for external storage models** (RFC 304):
@@ -29,6 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that both adapters implement. A parity test runs one scenario through that
   trait on both backends and requires identical outcomes. Routes, status codes,
   sessions, permissions and pagination are unchanged.
+
+### Upgrade
+
+- Raise `lithair-core` to `"1.18"` together with `lithair-turso` 0.3.1 or
+  `lithair-postgres` 0.1.1 (`cargo update` selects them within `"0.3"` /
+  `"0.1"`). No declaration changes are needed.
+- `#[retention]` is now accepted on `#[storage(turso)]` and
+  `#[storage(postgres)]` models, where it enables the L1 cache. On those models,
+  `memory = "<duration>"` is refused (use `ttl`), and `ttl` is refused on native
+  models.
+- On PostgreSQL every write publishes a cache notification, whether or not a
+  model is cached; this adds a small per-write cost.
 
 ## [1.17.0] - 2026-10-02
 
