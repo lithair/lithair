@@ -189,6 +189,29 @@ kill a writing process repeatedly and check all-or-nothing records after
 reopen. Power loss and filesystem fault injection are not qualified. Backups
 must copy the stopped database file: all collections of a namespace live in it.
 
+## L1 cache (since 0.3.1)
+
+`#[retention(memory = N, max_mb = M, ttl = "5m")]` on a `#[storage(...)]` model
+keeps L1 copies of its records in this node's memory
+([RFC 304](https://github.com/lithair/lithair/blob/main/docs/rfcs/304-external-storage-cache.md)).
+Only point reads (`get`, `GET /api/x/{id}`) are served from copies; lists and
+filters always query the database. Permission hooks run on every read, cached or
+not. Bounds: `memory` (records, least recently used evicted first), `max_mb`
+(encoded size) and `ttl` (maximum age of a copy). "Not found" is cached for at
+most 5 seconds. The `LT_<MODEL>_MEMORY_RETENTION`, `LT_<MODEL>_MEMORY_MAX_MB`
+and `LT_<MODEL>_CACHE_TTL` variables override them at deploy time. Without
+`#[retention]`, nothing is cached. `memory = "<duration>"` and `#[pinned]` stay
+native-only.
+
+Writes always go to the database and evict the copies they touch (batches,
+commands, migrations) as soon as the transaction ends, so a node always reads
+its own writes. Application commands and the read inside a write never use
+copies; `Store::get_fresh` reads the current state explicitly, and
+`Store::cache_stats` reports hits, misses, evictions and resident size.
+
+Turso is one process per file, so local invalidation is complete: copies are
+never stale.
+
 ## Guarantees and limits
 
 - Native memory-first models and SQL models coexist, each with one authority.

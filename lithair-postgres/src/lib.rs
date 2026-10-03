@@ -3,6 +3,7 @@
 //! crate README for what differs: shared multi-process database, TLS,
 //! `SERIALIZABLE` transactions with bounded retry.
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use lithair_core::app::{CacheStats, DocumentCache, Lookup};
 use lithair_core::http::HttpExposable;
 use serde_json::Value as Json;
 use std::{
@@ -16,9 +17,11 @@ use std::{
 use tokio::sync::OnceCell;
 use tokio_postgres::{error::SqlState, IsolationLevel, Transaction};
 
+mod cache;
 mod command;
 mod http;
 mod migration;
+pub use cache::LISTENER_NAME;
 pub use command::{Commands, Decided, Decision, View, Write};
 pub use http::model_factory;
 pub use migration::Migration;
@@ -43,6 +46,9 @@ pub trait SqlModel: HttpExposable {
     const SCHEMA: &'static str = "";
     const MIGRATIONS: &'static [Migration] = &[];
     const FILTER_FIELDS: &'static [&'static str] = &[];
+    /// L1 copies of this model, from `#[retention(memory, max_mb, ttl)]`
+    /// (RFC 304). `None` caches nothing.
+    const CACHE: Option<lithair_core::app::CachePolicy> = None;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -103,6 +109,7 @@ pub struct PostgresConfig {
     connect_timeout: Duration,
     statement_timeout: Duration,
     insecure_loopback: bool,
+    ttl_only_cache: bool,
 }
 
 impl std::fmt::Debug for PostgresConfig {
@@ -114,6 +121,7 @@ impl std::fmt::Debug for PostgresConfig {
             .field("connect_timeout", &self.connect_timeout)
             .field("statement_timeout", &self.statement_timeout)
             .field("insecure_loopback", &self.insecure_loopback)
+            .field("ttl_only_cache", &self.ttl_only_cache)
             .finish()
     }
 }
@@ -129,6 +137,7 @@ impl PostgresConfig {
             connect_timeout: Duration::from_secs(5),
             statement_timeout: Duration::from_secs(30),
             insecure_loopback: false,
+            ttl_only_cache: false,
         }
     }
     /// Read the connection URL from an environment variable.
@@ -155,6 +164,14 @@ impl PostgresConfig {
         self.statement_timeout = timeout;
         self
     }
+    /// Cache without a notification listener (RFC 304, explicit opt-in): L1
+    /// copies are evicted by writes of this process and otherwise only expire
+    /// with their TTL, so another node's write can stay invisible until then.
+    /// Every cached model must declare `ttl`.
+    pub fn with_ttl_only_cache(mut self) -> Self {
+        self.ttl_only_cache = true;
+        self
+    }
     /// **Tests only.** Connect without TLS to a loopback server. Never enable
     /// it in a deployment.
     pub fn allow_insecure_loopback_for_tests(mut self) -> Self {
@@ -169,6 +186,7 @@ impl PostgresConfig {
 #[derive(Clone)]
 pub struct Database {
     pool: Pool,
+    caches: Arc<cache::Caches>,
 }
 
 static INSTALLED: OnceLock<Database> = OnceLock::new();
@@ -189,6 +207,8 @@ impl Database {
         ));
         pg.connect_timeout(config.connect_timeout);
         let manager_config = ManagerConfig { recycling_method: RecyclingMethod::Verified };
+        let listener = pg.clone();
+        let mut listener_tls = None;
         let manager = if config.insecure_loopback {
             if !pg.get_hosts().iter().all(loopback) {
                 return Err(Error::Config(
@@ -206,7 +226,20 @@ impl Database {
                 return Err(Error::Config("TLS requires TCP hosts, not Unix sockets".into()));
             }
             pg.ssl_mode(tokio_postgres::config::SslMode::Require);
-            Manager::from_config(pg, tls(&config)?, manager_config)
+            let tls = tls(&config)?;
+            listener_tls = Some(tls.clone());
+            Manager::from_config(pg, tls, manager_config)
+        };
+        let mut listener = listener;
+        listener.ssl_mode(if listener_tls.is_some() {
+            tokio_postgres::config::SslMode::Require
+        } else {
+            tokio_postgres::config::SslMode::Disable
+        });
+        let coherence = if config.ttl_only_cache {
+            cache::Coherence::TtlOnly
+        } else {
+            cache::Coherence::Notify { config: Box::new(listener), tls: listener_tls }
         };
         let pool = Pool::builder(manager)
             .max_size(config.max_connections)
@@ -216,7 +249,8 @@ impl Database {
             .runtime(Runtime::Tokio1)
             .build()
             .map_err(|e| Error::Config(e.to_string()))?;
-        let database = Self { pool };
+        let caches = cache::Caches::new(coherence, config.connect_timeout);
+        let database = Self { pool, caches };
         database.transaction(|tx, _| Box::pin(bootstrap(tx))).await?;
         Ok(database)
     }
@@ -252,10 +286,18 @@ impl Database {
             ));
         }
         migration::validate_declaration::<T>()?;
+        let cache = match T::CACHE
+            .map(|policy| policy.with_env_overrides(std::any::type_name::<T>()))
+            .filter(|policy| policy.is_bounded())
+        {
+            Some(policy) => Some(self.caches.cache(namespace, T::COLLECTION, policy)?),
+            None => None,
+        };
         Ok(Store {
             database: self.clone(),
             namespace: namespace.into(),
             prepared: Arc::new(OnceCell::new()),
+            cache,
             marker: PhantomData,
         })
     }
@@ -400,6 +442,7 @@ pub struct Store<T: SqlModel> {
     database: Database,
     namespace: String,
     prepared: Arc<OnceCell<()>>,
+    cache: Option<Arc<DocumentCache>>,
     marker: PhantomData<T>,
 }
 
@@ -445,21 +488,76 @@ pub struct Equal<'a> {
 }
 
 impl<T: SqlModel> Store<T> {
+    /// Read a record, from its L1 copy when the model declares a cache
+    /// (RFC 304). Permission hooks run on every read, cached or not.
     pub async fn get(&self, id: &str, permissions: &[String]) -> Result<Option<T>> {
-        self.ensure_prepared().await?;
-        let item = self
-            .database
-            .transaction(|tx, _| {
-                Box::pin(async move {
-                    self.check_schema(tx).await?;
-                    self.load(tx, id).await
-                })
-            })
-            .await?;
+        let item = self.read(id).await?;
         if item.as_ref().is_some_and(|item| !item.can_read(permissions)) {
             return Err(Error::Forbidden);
         }
         Ok(item)
+    }
+
+    /// Like [`Self::get`], but always reads the database (current state).
+    pub async fn get_fresh(&self, id: &str, permissions: &[String]) -> Result<Option<T>> {
+        let item = self.load_current(id).await?.map(|(item, _)| item);
+        if item.as_ref().is_some_and(|item| !item.can_read(permissions)) {
+            return Err(Error::Forbidden);
+        }
+        Ok(item)
+    }
+
+    /// L1 copy counters, when the model declares a cache.
+    pub fn cache_stats(&self) -> Option<CacheStats> {
+        self.cache.as_ref().map(|cache| cache.stats())
+    }
+
+    async fn read(&self, id: &str) -> Result<Option<T>> {
+        // Make sure invalidations are being received before trusting copies.
+        self.ensure_prepared().await?;
+        let generation = match self.cache.as_ref().map(|cache| cache.lookup(id)) {
+            Some(Lookup::Hit(None)) => return Ok(None),
+            Some(Lookup::Hit(Some(value))) => match value.downcast::<T>() {
+                Ok(item) => return Ok(Some((*item).clone())),
+                Err(_) => None,
+            },
+            Some(Lookup::Miss { generation }) => Some(generation),
+            None => None,
+        };
+        let loaded = self.load_current(id).await?;
+        if let (Some(cache), Some(generation)) = (&self.cache, generation) {
+            let bytes = loaded.as_ref().map_or(id.len(), |(_, bytes)| *bytes);
+            let value = loaded
+                .as_ref()
+                .map(|(item, _)| Arc::new(item.clone()) as Arc<dyn std::any::Any + Send + Sync>);
+            cache.insert(id, value, bytes, generation);
+        }
+        Ok(loaded.map(|(item, _)| item))
+    }
+
+    async fn load_current(&self, id: &str) -> Result<Option<(T, usize)>> {
+        self.ensure_prepared().await?;
+        self.database
+            .transaction(|tx, _| {
+                Box::pin(async move {
+                    self.check_schema(tx).await?;
+                    let row = tx
+                        .query_opt(
+                            "SELECT body, octet_length(body::text) FROM lithair.documents
+                             WHERE namespace = $1 AND collection = $2 AND id = $3",
+                            &[&self.namespace, &T::COLLECTION, &id],
+                        )
+                        .await?;
+                    match row {
+                        Some(row) => Ok(Some((
+                            serde_json::from_value(row.get::<_, Json>(0))?,
+                            row.get::<_, i32>(1).max(0) as usize,
+                        ))),
+                        None => Ok(None),
+                    }
+                })
+            })
+            .await
     }
 
     pub async fn list(
@@ -566,12 +664,21 @@ impl<T: SqlModel> Store<T> {
                 Self::encode(value, permissions)?;
             }
         }
+        let ids: Vec<String> = mutations
+            .iter()
+            .map(|mutation| match mutation {
+                Mutation::Create(value) => value.get_primary_key(),
+                Mutation::Update { id, .. }
+                | Mutation::Delete { id }
+                | Mutation::Patch { id, .. } => id.clone(),
+            })
+            .collect();
         let store = self.clone();
         let permissions = permissions.to_vec();
         tokio::spawn(async move {
             store.ensure_prepared().await?;
-            let (store, mutations, permissions) = (&store, &mutations, &permissions);
-            store
+            let (store, mutations, permissions, ids) = (&store, &mutations, &permissions, &ids);
+            let result = store
                 .database
                 .transaction(|tx, _| {
                     Box::pin(async move {
@@ -579,10 +686,20 @@ impl<T: SqlModel> Store<T> {
                         for mutation in mutations {
                             store.apply(tx, mutation, permissions).await?;
                         }
+                        // Other nodes evict their copies once this commits.
+                        for id in ids {
+                            cache::notify(tx, &store.namespace, T::COLLECTION, Some(id)).await?;
+                        }
                         Ok(())
                     })
                 })
-                .await
+                .await;
+            // Locally right away, whatever the outcome: a failed COMMIT may
+            // still have committed.
+            for id in ids {
+                store.database.caches.invalidate(&store.namespace, T::COLLECTION, Some(id));
+            }
+            result
         })
         .await?
     }

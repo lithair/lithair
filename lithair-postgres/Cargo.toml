@@ -23,6 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror = "2"
 anyhow = "1"
+log = "0.4"
 async-trait = "0.1"
 
 [dev-dependencies]

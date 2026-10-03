@@ -29,12 +29,71 @@ impl lithair_postgres::SqlModel for Note {
     const PERMISSIONS: &'static [&'static str] = &["Read", "Write"];
     const FILTER_FIELDS: &'static [&'static str] = &["category"];
 }
-fn note(id: &str, category: &str) -> Note {
-    Note { id: id.into(), title: format!("title {id}"), category: category.into() }
+/// The same model with L1 copies (RFC 304): caching must not change outcomes.
+#[derive(Debug, Clone, Serialize, Deserialize, DeclarativeModel)]
+struct CachedNote {
+    #[db(primary_key)]
+    #[permission(read = "Read", write = "Write")]
+    id: String,
+    #[http(validate = "non_empty")]
+    title: String,
+    category: String,
+}
+const POLICY: Option<lithair_core::app::CachePolicy> = Some(lithair_core::app::CachePolicy {
+    max_items: Some(4),
+    max_bytes: None,
+    ttl: Some(std::time::Duration::from_secs(3600)),
+});
+impl lithair_turso::SqlModel for CachedNote {
+    const COLLECTION: &'static str = "parity_cached";
+    const PERMISSIONS: &'static [&'static str] = &["Read", "Write"];
+    const FILTER_FIELDS: &'static [&'static str] = &["category"];
+    const CACHE: Option<lithair_core::app::CachePolicy> = POLICY;
+}
+impl lithair_postgres::SqlModel for CachedNote {
+    const COLLECTION: &'static str = "parity_cached";
+    const PERMISSIONS: &'static [&'static str] = &["Read", "Write"];
+    const FILTER_FIELDS: &'static [&'static str] = &["category"];
+    const CACHE: Option<lithair_core::app::CachePolicy> = POLICY;
+}
+/// Notes as seen through either model.
+trait Shape: lithair_core::http::HttpExposable + std::fmt::Debug {
+    fn new(id: &str, title: String, category: &str) -> Self;
+    fn id(&self) -> &str;
+    fn clear_title(&mut self);
+    fn show(&self) -> String;
+}
+impl Shape for Note {
+    fn new(id: &str, title: String, category: &str) -> Self {
+        Note { id: id.into(), title, category: category.into() }
+    }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn clear_title(&mut self) {
+        self.title.clear();
+    }
+    fn show(&self) -> String {
+        format!("{}/{}/{}", self.id, self.title, self.category)
+    }
+}
+impl Shape for CachedNote {
+    fn new(id: &str, title: String, category: &str) -> Self {
+        CachedNote { id: id.into(), title, category: category.into() }
+    }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn clear_title(&mut self) {
+        self.title.clear();
+    }
+    fn show(&self) -> String {
+        format!("{}/{}/{}", self.id, self.title, self.category)
+    }
 }
 
 /// One line per operation: what it returned, in backend-neutral terms.
-async fn transcript<S: DocumentStore<Model = Note>>(store: S) -> Vec<String> {
+async fn transcript<M: Shape, S: DocumentStore<Model = M>>(store: S) -> Vec<String> {
     let rw = vec!["Read".to_string(), "Write".to_string()];
     let read = vec!["Read".to_string()];
     let mut log = Vec::new();
@@ -48,19 +107,31 @@ async fn transcript<S: DocumentStore<Model = Note>>(store: S) -> Vec<String> {
         let category = if n % 3 == 0 { "work" } else { "home" };
         outcome(
             "create",
-            store.create(note(&format!("n{n}"), category), &rw).await.map(|_| String::new()),
+            store
+                .create(M::new(&format!("n{n}"), format!("title n{n}"), category), &rw)
+                .await
+                .map(|_| String::new()),
         );
     }
-    outcome("duplicate", store.create(note("n0", "work"), &rw).await.map(|_| String::new()));
+    outcome(
+        "duplicate",
+        store
+            .create(M::new("n0", "title n0".into(), "work"), &rw)
+            .await
+            .map(|_| String::new()),
+    );
     outcome(
         "no write permission",
-        store.create(note("x", "work"), &read).await.map(|_| String::new()),
+        store
+            .create(M::new("x", "title x".into(), "work"), &read)
+            .await
+            .map(|_| String::new()),
     );
-    let mut empty = note("e", "work");
-    empty.title.clear();
+    let mut empty = M::new("e", "title e".into(), "work");
+    empty.clear_title();
     outcome("invalid model", store.create(empty, &rw).await.map(|_| String::new()));
-    let ids = |page: &lithair_core::app::ListedPage<Note>| {
-        let ids: Vec<_> = page.data.iter().map(|n| n.id.clone()).collect();
+    let ids = |page: &lithair_core::app::ListedPage<M>| {
+        let ids: Vec<_> = page.data.iter().map(|n| n.id().to_owned()).collect();
         format!("{ids:?} next={:?}", page.next_offset)
     };
     for (limit, offset) in [(3, 0), (3, 3), (3, 6), (7, 0)] {
@@ -74,9 +145,15 @@ async fn transcript<S: DocumentStore<Model = Note>>(store: S) -> Vec<String> {
     // Without read permission the candidate page is filtered, not shortened.
     let hidden = store.list_page(3, 0, None, &[]).await;
     outcome("page unreadable", hidden.map(|p| ids(&p)));
-    outcome("get", store.get("n1", &rw).await.map(|n| format!("{n:?}")));
-    outcome("get missing", store.get("zz", &rw).await.map(|n| format!("{n:?}")));
-    outcome("get forbidden", store.get("n1", &[]).await.map(|n| format!("{n:?}")));
+    outcome("get", store.get("n1", &rw).await.map(|n| format!("{:?}", n.map(|n| n.show()))));
+    outcome(
+        "get missing",
+        store.get("zz", &rw).await.map(|n| format!("{:?}", n.map(|n| n.show()))),
+    );
+    outcome(
+        "get forbidden",
+        store.get("n1", &[]).await.map(|n| format!("{:?}", n.map(|n| n.show()))),
+    );
     outcome(
         "patch",
         store.patch("n1", json!({"title": "patched"}), &rw).await.map(|_| String::new()),
@@ -89,14 +166,23 @@ async fn transcript<S: DocumentStore<Model = Note>>(store: S) -> Vec<String> {
         "patch missing",
         store.patch("zz", json!({"title": "x"}), &rw).await.map(|_| String::new()),
     );
-    outcome("after patch", store.get("n1", &rw).await.map(|n| format!("{n:?}")));
+    outcome(
+        "after patch",
+        store.get("n1", &rw).await.map(|n| format!("{:?}", n.map(|n| n.show()))),
+    );
     outcome(
         "update",
-        store.update("n2", note("n2", "work"), &rw).await.map(|_| String::new()),
+        store
+            .update("n2", M::new("n2", "title n2".into(), "work"), &rw)
+            .await
+            .map(|_| String::new()),
     );
     outcome(
         "update changes id",
-        store.update("n2", note("n9", "work"), &rw).await.map(|_| String::new()),
+        store
+            .update("n2", M::new("n9", "title n9".into(), "work"), &rw)
+            .await
+            .map(|_| String::new()),
     );
     outcome("delete", store.delete("n3", &rw).await.map(|_| String::new()));
     outcome("delete again", store.delete("n3", &rw).await.map(|_| String::new()));
@@ -119,7 +205,26 @@ async fn turso_and_postgres_honor_one_document_store_contract() {
         .await
         .store::<Note>(&format!("parity-{}", uuid::Uuid::new_v4()))
         .unwrap();
+    let cached_turso =
+        lithair_turso::Database::open(directory.path().join("cached.db").to_str().unwrap())
+            .await
+            .unwrap()
+            .store::<CachedNote>("parity")
+            .unwrap();
+    let cached_postgres = connect(&env)
+        .await
+        .store::<CachedNote>(&format!("parity-{}", uuid::Uuid::new_v4()))
+        .unwrap();
     let (turso, postgres) = (transcript(turso).await, transcript(postgres).await);
+    // RFC 304: L1 copies change no outcome, on either backend.
+    let cached_turso_log = transcript(cached_turso.clone()).await;
+    let cached_postgres_log = transcript(cached_postgres.clone()).await;
+    assert_eq!(cached_turso_log, turso, "Turso with cache");
+    assert_eq!(cached_postgres_log, postgres, "PostgreSQL with cache");
+    assert!(
+        cached_turso.cache_stats().unwrap().hits > 0
+            && cached_postgres.cache_stats().unwrap().hits > 0
+    );
     for (t, p) in turso.iter().zip(&postgres) {
         assert_eq!(t, p, "Turso and PostgreSQL disagree");
     }

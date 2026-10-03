@@ -44,6 +44,10 @@ pub trait DocumentStore: Send + Sync + 'static {
     /// Permission names resolved through the configured RBAC checker.
     fn permissions(&self) -> &'static [&'static str];
     fn error_kind(error: &Self::Error) -> DocumentErrorKind;
+    /// L1 copy counters when the model declares a cache (RFC 304).
+    fn cache_stats(&self) -> Option<super::CacheStats> {
+        None
+    }
 
     async fn list_page(
         &self,
@@ -354,13 +358,14 @@ impl<S: DocumentStore> ModelHandler for DocumentHandler<S> {
     async fn apply_replicated_delete_json(&self, _id: &str) -> Result<bool, String> {
         Err(native_only::<S>())
     }
-    // Existing metrics explicitly measure items held in RAM and native logs.
-    // SQL models hold neither; never scan the database for native metrics.
+    // Native metrics measure what is held in RAM; never scan the database.
     async fn get_stats(&self, _data_path: &str) -> ModelStats {
+        // Only the L1 copies (RFC 304) live in RAM; the authority is external.
+        let cache = self.store.cache_stats().unwrap_or_default();
         ModelStats {
             model: self.model_name().into(),
-            item_count: 0,
-            approx_ram_bytes: 0,
+            item_count: cache.items,
+            approx_ram_bytes: cache.bytes as u64,
             raftlog_size_bytes: 0,
             events_since_last_compaction: None,
             last_compaction_at: None,

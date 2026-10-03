@@ -1,0 +1,5 @@
+error: `ttl` bounds L1 copies of external storage models (#[storage(turso)] or #[storage(postgres)]); native retention uses `memory`
+ --> tests/ui/retention_ttl_native.rs:4:1
+  |
+4 | #[retention(memory = 100, ttl = "5m")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

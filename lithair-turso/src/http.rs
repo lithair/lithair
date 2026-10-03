@@ -45,6 +45,9 @@ impl<T: SqlModel> DocumentStore for Store<T> {
     fn permissions(&self) -> &'static [&'static str] {
         T::PERMISSIONS
     }
+    fn cache_stats(&self) -> Option<lithair_core::app::CacheStats> {
+        Store::cache_stats(self)
+    }
     fn error_kind(error: &Error) -> DocumentErrorKind {
         match error {
             Error::Forbidden => DocumentErrorKind::Forbidden,

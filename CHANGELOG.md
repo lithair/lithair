@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **L1 cache for external storage models** (RFC 304):
+  `#[retention(memory = N, max_mb = M, ttl = "5m")]` on a Turso or PostgreSQL
+  model keeps copies of its records in memory and serves point reads from them.
+  Permission hooks run on every read. Writes evict the copies they touch after
+  the transaction ends. On PostgreSQL, writes publish a transactional
+  `pg_notify` that every node's listener applies within milliseconds; a lost
+  listener flushes and disables caching until it reconnects, and a migration
+  flushes the partition everywhere. TTL-only caching is an explicit opt-in
+  (`PostgresConfig::with_ttl_only_cache`). New `Store::get_fresh` and
+  `Store::cache_stats`; core gains `DocumentCache` and `CachePolicy`. The
+  parity test requires identical outcomes with and without cache.
+
 ### Changed
 
 - **One HTTP handler for external document stores** (RFC 296 phase 3): the

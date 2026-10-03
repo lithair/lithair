@@ -4,7 +4,10 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{punctuated::Punctuated, DeriveInput, Error, LitInt, LitStr, Path, Token};
 
-pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStream)> {
+pub(super) fn expand(
+    input: &DeriveInput,
+    retention: &super::ModelRetentionConfig,
+) -> syn::Result<(TokenStream, TokenStream)> {
     let attrs: Vec<_> = input.attrs.iter().filter(|a| a.path().is_ident("storage")).collect();
     let Some(attr) = attrs.first() else { return Ok((quote! {}, quote! {})) };
     if attrs.len() != 1 {
@@ -88,10 +91,18 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
         _ => return Err(Error::new_spanned(input, format!("{label} storage requires a struct"))),
     };
     for attr in &input.attrs {
-        if attr.path().is_ident("retention") || attr.path().is_ident("schema") {
+        if attr.path().is_ident("schema") {
             return Err(Error::new_spanned(
                 attr,
                 format!("{label} storage does not support native retention or schema migration annotations"),
+            ));
+        }
+        // RFC 304: #[retention] bounds L1 copies of an external model. Age is
+        // a TTL here; the native age-based form evicts by last update.
+        if attr.path().is_ident("retention") && retention.memory_duration_secs.is_some() {
+            return Err(Error::new_spanned(
+                attr,
+                format!("{label} copies expire with `ttl = \"...\"`; `memory = \"<duration>\"` is native retention"),
             ));
         }
     }
@@ -207,6 +218,27 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
     let collection = collection.unwrap_or_else(|| LitStr::new(&name.to_string(), name.span()));
     let namespace = namespace.unwrap_or_else(|| LitStr::new("default", name.span()));
     let filters: Vec<_> = filters.iter().collect();
+    let cache = if retention.memory_count.is_some()
+        || retention.memory_budget_bytes.is_some()
+        || retention.ttl_secs.is_some()
+    {
+        let opt_usize = |v: Option<usize>| match v {
+            Some(n) => quote! { Some(#n) },
+            None => quote! { None },
+        };
+        let (items, bytes) =
+            (opt_usize(retention.memory_count), opt_usize(retention.memory_budget_bytes));
+        let ttl = match retention.ttl_secs {
+            Some(secs) => quote! { Some(::std::time::Duration::from_secs(#secs)) },
+            None => quote! { None },
+        };
+        quote! {
+            const CACHE: Option<::lithair_core::app::CachePolicy> =
+                Some(::lithair_core::app::CachePolicy { max_items: #items, max_bytes: #bytes, ttl: #ttl });
+        }
+    } else {
+        quote! {}
+    };
     let implementation = quote! {
         impl #adapter::SqlModel for #name {
             #version_metadata
@@ -214,6 +246,7 @@ pub(super) fn expand(input: &DeriveInput) -> syn::Result<(TokenStream, TokenStre
             const NAMESPACE: &'static str = #namespace;
             const FILTER_FIELDS: &'static [&'static str] = &[#(#filters),*];
             const PERMISSIONS: &'static [&'static str] = &[#(#permissions),*];
+            #cache
         }
     };
     // PostgreSQL is shared by every node, so it may sit next to a native

@@ -61,6 +61,14 @@ in memory.
 The event store is never trimmed by retention — it remains the durability
 and replay surface. Retention controls only the in-RAM projection.
 
+## External storage models
+
+On `#[storage(turso)]` and `#[storage(postgres)]` models, the same attribute
+bounds L1 **copies** of records whose authority is the database:
+`memory = N`, `max_mb = M`, plus `ttl = "5m"`. Writes evict copies on every
+node. See [RFC 304](../rfcs/304-external-storage-cache.md) and the adapter
+READMEs.
+
 ## See also
 
 - CHANGELOG v0.12.0 entry — full semantics, edge cases, and the runtime override naming scheme.
