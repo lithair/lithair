@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PostgreSQL session store** (RFC 308, store B): `lithair_postgres::PostgresSessionStore`
+  keeps sessions in the `lithair` schema, shared by every node (`shared_authority`).
+  Any node authorizes, a logout or revocation holds everywhere at once, and
+  expiry is compared with the database clock. Next to a native cluster it enables
+  RBAC, OIDC, route guards and the session gate, and authentication keeps working
+  after the native quorum is lost.
+
 - **Any session store, and shared stores in a native cluster** (RFC 308 step 1):
   the session gate, route guards, model handlers and RBAC now accept any
   `SessionStore`, not only the built-in shapes. A custom store passed to

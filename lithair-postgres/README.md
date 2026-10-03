@@ -157,6 +157,34 @@ cluster route. The native cluster's other restrictions apply to the whole
 server, including no local sessions or RBAC stores yet. PostgreSQL models are
 therefore served with their anonymous permission hooks.
 
+## Sessions shared by every node (since 0.1.2)
+
+`PostgresSessionStore` keeps sessions in the `lithair` schema
+([RFC 308](https://github.com/lithair/lithair/blob/main/docs/rfcs/308-cluster-sessions.md)).
+It is a shared-authority `SessionStore`: a login, logout, revocation or role
+change committed on one node is what every node reads next, so **any node** can
+authorize. It is accepted next to a native cluster, where it unlocks RBAC, OIDC,
+route guards and `with_models_require_session`.
+
+```rust,ignore
+let db = Database::connect(config).await?;
+let sessions = Arc::new(PostgresSessionStore::new(&db).await?); // creates lithair.sessions
+LithairServer::new()
+    .with_native_cluster(cluster)
+    .with_sessions(SessionManager::from_arc(sessions.clone()))
+    .with_rbac_config(rbac) // RBAC login/logout use the shared store
+    .with_models_require_session(true)
+    // .with_oidc(Oidc::discover(oidc_config, sessions).await?)
+    .serve()
+    .await?;
+```
+
+Expiry is absolute and compared with the **database clock** (`expires_at > now()`),
+so clock skew between Lithair nodes does not matter. Sessions are never rewritten
+per request. `cleanup_expired` can run on any node. As long as PostgreSQL is
+reachable, authentication keeps working even when the native cluster has lost
+its quorum.
+
 ## Guarantees and limits
 
 - Acknowledged writes have committed. Batches and commands commit entirely or
