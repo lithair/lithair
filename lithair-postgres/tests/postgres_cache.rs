@@ -22,6 +22,23 @@ fn note(id: &str, title: &str) -> Note {
     Note { id: id.into(), title: title.into() }
 }
 
+/// Read until a read is served from the copy. Another node's notification can
+/// evict a copy right after it was loaded; it then settles.
+async fn serves_copy<T: lithair_postgres::SqlModel>(store: &Store<T>, id: &str) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let hits = store.cache_stats().unwrap().hits;
+            store.get(id, &[]).await.unwrap();
+            if store.cache_stats().unwrap().hits > hits {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("the copy is served");
+}
+
 /// Poll node `store` until it shows `title` for `id`: the staleness bound.
 async fn converges(store: &Store<Note>, id: &str, title: Option<&str>) -> Duration {
     let start = Instant::now();
@@ -47,8 +64,7 @@ async fn writes_on_one_node_evict_copies_on_the_others() {
     let (sa, sb) = (a.store::<Note>(&ns).unwrap(), b.store::<Note>(&ns).unwrap());
     sa.create(note("x", "one"), &[]).await.unwrap();
     assert_eq!(sb.get("x", &[]).await.unwrap().unwrap().title, "one");
-    assert_eq!(sb.get("x", &[]).await.unwrap().unwrap().title, "one");
-    assert_eq!(sb.cache_stats().unwrap().hits, 1, "node B serves its copy");
+    serves_copy(&sb, "x").await;
 
     // Update, patch, batch, delete and create on A all reach B's copies.
     sa.update("x", note("x", "two"), &[]).await.unwrap();
@@ -79,7 +95,7 @@ async fn writes_on_one_node_evict_copies_on_the_others() {
     converges(&sb, "x", Some("by command")).await;
 
     // A rolled-back batch publishes nothing: B keeps serving its valid copy.
-    sb.get("x", &[]).await.unwrap();
+    serves_copy(&sb, "x").await;
     let hits = sb.cache_stats().unwrap().hits;
     let failed = sa
         .batch(
@@ -124,7 +140,9 @@ async fn a_migration_on_one_node_flushes_the_partition_everywhere() {
     let (a, b) = (connect(&env).await, connect(&env).await);
     let old = b.store::<V1>(&ns).unwrap();
     old.create(V1 { id: "x".into(), title: "quiet".into() }, &[]).await.unwrap();
+    // B's own write notification does not evict B's fresh copy.
     old.get("x", &[]).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
     old.get("x", &[]).await.unwrap();
     assert_eq!(old.cache_stats().unwrap().hits, 1);
     a.store::<V2>(&ns).unwrap().prepare().await.unwrap();

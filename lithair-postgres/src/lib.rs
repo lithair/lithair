@@ -688,7 +688,11 @@ impl<T: SqlModel> Store<T> {
                         }
                         // Other nodes evict their copies once this commits.
                         for id in ids {
-                            cache::notify(tx, &store.namespace, T::COLLECTION, Some(id)).await?;
+                            store
+                                .database
+                                .caches
+                                .notify(tx, &store.namespace, T::COLLECTION, Some(id))
+                                .await?;
                         }
                         Ok(())
                     })

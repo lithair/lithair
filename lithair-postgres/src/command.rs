@@ -214,7 +214,7 @@ impl Commands {
         }));
         for write in &writes {
             let (collection, key) = write.target();
-            crate::cache::notify(tx, &self.namespace, collection, Some(key)).await?;
+            self.database.caches.notify(tx, &self.namespace, collection, Some(key)).await?;
         }
         for write in &writes {
             let (collection, key) = write.target();

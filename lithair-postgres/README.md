@@ -118,7 +118,8 @@ copies; `Store::get_fresh` reads the current state explicitly, and
 **Across nodes**, every write transaction also runs `pg_notify` for each record
 it touches: the notification exists only if the transaction commits. Each node
 keeps one listening connection (`application_name = lithair-cache-listener`) and
-evicts the named copies, typically milliseconds after commit. Caches stay
+evicts the named copies, typically milliseconds after commit. A node ignores
+its own notifications: it already evicted those copies when the write ended. Caches stay
 disabled until that connection listens. If it is lost, every copy is flushed
 and caching stays off until it reconnects (with backoff), since notifications
 sent meanwhile are lost. The TTL is the last safety net. A migration on any node

@@ -33,6 +33,9 @@ pub(crate) enum Coherence {
 }
 
 pub(crate) struct Caches {
+    /// Random per `Database`: a node skips its own notifications, which its
+    /// local invalidation already applied (they would only evict fresh copies).
+    origin: u64,
     caches: Mutex<HashMap<(String, String), Arc<DocumentCache>>>,
     coherence: Coherence,
     listening: AtomicBool,
@@ -42,7 +45,10 @@ pub(crate) struct Caches {
 
 impl Caches {
     pub fn new(coherence: Coherence, connect_timeout: Duration) -> Arc<Self> {
+        use std::hash::{BuildHasher, Hasher};
+        let origin = std::collections::hash_map::RandomState::new().build_hasher().finish();
         Arc::new(Self {
+            origin,
             caches: Mutex::default(),
             coherence,
             listening: AtomicBool::new(false),
@@ -93,6 +99,20 @@ impl Caches {
         }
     }
 
+    /// Publish the invalidation of one record (`Some(id)`) or of a partition
+    /// (`None`) as part of `tx`: delivered only if it commits.
+    pub async fn notify(
+        &self,
+        tx: &Transaction<'_>,
+        namespace: &str,
+        collection: &str,
+        id: Option<&str>,
+    ) -> Result<()> {
+        let payload = serde_json::to_string(&(self.origin, namespace, collection, id))?;
+        tx.execute("SELECT pg_notify($1, $2)", &[&CHANNEL, &payload]).await?;
+        Ok(())
+    }
+
     fn flush_all(&self) {
         for cache in self.lock().values() {
             cache.clear();
@@ -134,19 +154,6 @@ impl Caches {
     }
 }
 
-/// Publish the invalidation of one record (`Some(id)`) or of a partition
-/// (`None`) as part of `tx`: delivered only if it commits.
-pub(crate) async fn notify(
-    tx: &Transaction<'_>,
-    namespace: &str,
-    collection: &str,
-    id: Option<&str>,
-) -> Result<()> {
-    let payload = serde_json::to_string(&(namespace, collection, id))?;
-    tx.execute("SELECT pg_notify($1, $2)", &[&CHANNEL, &payload]).await?;
-    Ok(())
-}
-
 async fn listen(
     caches: Weak<Caches>,
     ready: tokio::sync::oneshot::Sender<std::result::Result<(), String>>,
@@ -178,9 +185,11 @@ async fn listen(
                         drop(shared);
                         while let Some(payload) = rx.recv().await {
                             let Some(shared) = caches.upgrade() else { return };
-                            match serde_json::from_str::<(String, String, Option<String>)>(&payload)
-                            {
-                                Ok((namespace, collection, id)) => {
+                            match serde_json::from_str::<(u64, String, String, Option<String>)>(
+                                &payload,
+                            ) {
+                                Ok((origin, _, _, _)) if origin == shared.origin => {}
+                                Ok((_, namespace, collection, id)) => {
                                     shared.invalidate(&namespace, &collection, id.as_deref())
                                 }
                                 // Unknown payload: assume the worst for this node.

@@ -136,7 +136,7 @@ impl<T: SqlModel> Store<T> {
             &[&self.namespace, &T::COLLECTION, &(T::VERSION as i32), &T::SCHEMA],
         )
         .await?;
-        crate::cache::notify(tx, &self.namespace, T::COLLECTION, None).await?;
+        self.database.caches.notify(tx, &self.namespace, T::COLLECTION, None).await?;
         Ok(true)
     }
 
