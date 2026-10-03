@@ -105,52 +105,65 @@ async fn from_arc_constructor_gates_correctly() {
     assert_eq!(resp.status(), 401, "no token must still 401 (gate engaged)");
 }
 
-/// Fail-fast at boot: if a `SessionManager<Arc<PersistentSessionStore>>` ever
-/// reaches `serve()` with `with_models_require_session(true)`, the server
-/// must refuse to start with a clear diagnostic — never silently 401 every
-/// request.
-///
-/// This is defense in depth: after the constructor split, the bad shape
-/// should be hard to construct accidentally, but if it does happen (e.g.
-/// a consumer reaches for an older API, or a different store wrapper type
-/// slips in), `serve()` catches it before binding the port.
+/// The double-Arc shape from issue #80 (`SessionManager::new(arc_store)`) used
+/// to be refused at boot because the gate only downcast a fixed set of
+/// shapes. Since RFC 308 the gate reaches any `SessionStore` through the
+/// trait, so this shape simply works: valid token accepted, missing refused.
 #[tokio::test]
-async fn boot_rejects_unrecognized_session_store_shape() {
+async fn double_arc_session_store_shape_now_gates_correctly() {
     let tmp = tempfile::tempdir().expect("tmpdir");
     let session_dir = tmp.path().join("sessions");
     let account_dir = tmp.path().join("accounts");
     std::fs::create_dir_all(&session_dir).expect("create session dir");
     std::fs::create_dir_all(&account_dir).expect("create account dir");
 
-    // Construct the broken double-Arc shape by calling
-    // `SessionManager::new(arc_store)` — the exact mis-use from issue #80.
-    // S resolves to `Arc<PersistentSessionStore>` here, so the internal
-    // field is `Arc<Arc<PersistentSessionStore>>` and the registered
-    // `session_manager` is `Arc<SessionManager<Arc<PersistentSessionStore>>>`.
+    // S resolves to `Arc<PersistentSessionStore>`: the shape of issue #80.
     let arc_store = Arc::new(PersistentSessionStore::new(session_dir).expect("session store"));
+    let token = format!("test-session-{}", uuid::Uuid::new_v4());
+    arc_store
+        .set(Session::new(token.clone(), Utc::now() + chrono::Duration::hours(1)))
+        .await
+        .expect("seed session");
     let manager = SessionManager::new(arc_store);
 
     let port = portpicker::pick_unused_port().expect("free port");
-
-    let result = LithairServer::new()
+    let base = format!("http://127.0.0.1:{}", port);
+    let builder = LithairServer::new()
         .with_host("127.0.0.1")
         .with_port(port)
         .with_sessions(manager)
         .with_models_require_session(true)
-        .with_model::<Account>(account_dir.to_string_lossy().to_string(), "/api/accounts")
-        .serve()
-        .await;
+        .with_model::<Account>(account_dir.to_string_lossy().to_string(), "/api/accounts");
+    tokio::spawn(async move {
+        if let Err(e) = builder.serve().await {
+            eprintln!("test server error: {}", e);
+        }
+    });
 
-    let err = result.expect_err("serve() must refuse to start with the broken double-Arc shape");
-    let msg = format!("{:#}", err);
-    assert!(
-        msg.contains("session store"),
-        "diagnostic must mention session store; got: {msg}"
-    );
-    assert!(
-        msg.contains("from_arc") || msg.contains("Arc"),
-        "diagnostic must point at the Arc / from_arc fix; got: {msg}"
-    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .expect("reqwest");
+    let mut ready = false;
+    for _ in 0..50 {
+        if let Ok(r) = client.get(format!("{}/health", base)).send().await {
+            if r.status().is_success() {
+                ready = true;
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(ready, "the double-Arc shape must boot");
+    let resp = client
+        .get(format!("{}/api/accounts", base))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("request sent");
+    assert_eq!(resp.status(), 200, "valid token accepted through the trait");
+    let resp = client.get(format!("{}/api/accounts", base)).send().await.expect("request sent");
+    assert_eq!(resp.status(), 401, "the gate is engaged");
 }
 
 /// With the flag OFF, an unrecognized shape must NOT cause a boot failure —

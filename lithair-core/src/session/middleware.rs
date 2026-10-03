@@ -45,9 +45,13 @@ impl<S: SessionStore> SessionMiddleware<S> {
                     return Ok(None);
                 }
 
-                // Update last accessed time
-                session.touch();
-                self.store.set(session.clone()).await?;
+                // Sliding expiration rewrites the session on each request,
+                // except on shared stores (RFC 308): their expiry is absolute,
+                // and a write per request would hit every node.
+                if !self.store.shared_authority() {
+                    session.touch();
+                    self.store.set(session.clone()).await?;
+                }
 
                 return Ok(Some(session));
             }

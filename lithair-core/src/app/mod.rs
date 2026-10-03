@@ -3375,6 +3375,27 @@ impl LithairServer {
                 return Ok(ops_endpoints::serve_info(&paths));
             }
             if cluster.matches(&path) {
+                // The model session gate covers native consensus models too
+                // (RFC 308): they bypass the model handlers.
+                if self.models_require_session && method != hyper::Method::OPTIONS {
+                    match crate::session::session_for_request(&req, self.session_manager.as_ref())
+                        .await
+                    {
+                        Ok(Some(_)) => {}
+                        Ok(None) => {
+                            return Ok(response::json(
+                                http::StatusCode::UNAUTHORIZED,
+                                r#"{"error":"Authentication required"}"#,
+                            ))
+                        }
+                        Err(message) => {
+                            return Ok(response::json_value(
+                                http::StatusCode::FORBIDDEN,
+                                &serde_json::json!({ "error": message }),
+                            ))
+                        }
+                    }
+                }
                 return Ok(cluster.handle(req).await);
             }
         }

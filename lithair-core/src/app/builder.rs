@@ -94,6 +94,12 @@ pub struct LithairServerBuilder {
     config: LithairConfig,
     tracing_layers: Vec<super::BoxedTracingLayer>,
     session_manager: Option<Arc<dyn std::any::Any + Send + Sync>>,
+    /// The registered session store as a trait object (RFC 308), so any
+    /// store, not only the built-in shapes, reaches the gate and handlers.
+    session_store_dyn: Option<Arc<dyn crate::session::SessionStore>>,
+    /// The store the RBAC login/logout/validate routes use; swapped to a
+    /// shared store registered after `with_rbac_config` (RFC 308).
+    rbac_sessions: Option<Arc<std::sync::RwLock<Arc<dyn crate::session::SessionStore>>>>,
     permission_checker: Option<Arc<dyn crate::rbac::PermissionChecker>>,
     custom_routes: Vec<CustomRoute>,
     not_found_handler: Option<super::RouteHandler>,
@@ -268,6 +274,18 @@ impl LithairServerBuilder {
         self.session_manager.clone()
     }
 
+    /// What the gate, route guards and model handlers receive: any store
+    /// (RFC 308), carrying the manager so its cleanup task stays alive.
+    fn session_any(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        match &self.session_store_dyn {
+            Some(store) => Some(Arc::new(crate::session::DynSessionStore {
+                store: Arc::clone(store),
+                _owner: self.session_manager.clone(),
+            })),
+            None => self.session_manager.clone(),
+        }
+    }
+
     /// Create a new builder with default configuration
     pub fn new() -> Self {
         let (config, config_load_warning) = resolve_loaded_config(LithairConfig::load());
@@ -279,6 +297,8 @@ impl LithairServerBuilder {
             auth_routes_mounted: false,
             tracing_layers: Vec::new(),
             session_manager: None,
+            session_store_dyn: None,
+            rbac_sessions: None,
             permission_checker: None,
             custom_routes: Vec::new(),
             not_found_handler: None,
@@ -321,6 +341,8 @@ impl LithairServerBuilder {
             auth_routes_mounted: false,
             tracing_layers: Vec::new(),
             session_manager: None,
+            session_store_dyn: None,
+            rbac_sessions: None,
             permission_checker: None,
             custom_routes: Vec::new(),
             not_found_handler: None,
@@ -401,6 +423,14 @@ impl LithairServerBuilder {
         S: crate::session::SessionStore + 'static + Send + Sync,
     {
         self.config.sessions.enabled = true;
+        let store: Arc<dyn crate::session::SessionStore> = manager.store();
+        // RBAC configured earlier switches to a shared store (RFC 308).
+        if let Some(cell) = &self.rbac_sessions {
+            if store.shared_authority() {
+                *cell.write().unwrap_or_else(|e| e.into_inner()) = Arc::clone(&store);
+            }
+        }
+        self.session_store_dyn = Some(store);
         self.session_manager = Some(Arc::new(manager));
         self
     }
@@ -875,40 +905,52 @@ impl LithairServerBuilder {
         // `RecognizedSessionStore::Manager` shape the gate/guards/fail-fast
         // know) and it lives in the server state, so the cleanup task runs
         // for the server's whole lifetime.
-        let session_store: Arc<PersistentSessionStore> = {
-            let path = std::path::PathBuf::from(session_path.clone());
-            // Create it synchronously here (PersistentSessionStore::new is sync)
-            match PersistentSessionStore::new(path) {
-                Ok(store) => Arc::new(store),
-                Err(e) => {
-                    log::error!("Failed to create session store: {}", e);
-                    panic!("Cannot start without session store: {}", e);
+        // A shared store registered earlier (RFC 308) serves RBAC as well;
+        // otherwise RBAC keeps its local persistent store.
+        let shared = self.session_store_dyn.clone().filter(|store| store.shared_authority());
+        let session_store: Arc<dyn crate::session::SessionStore> = if let Some(shared) = shared {
+            shared
+        } else {
+            let session_store: Arc<PersistentSessionStore> = {
+                let path = std::path::PathBuf::from(session_path.clone());
+                // Create it synchronously here (PersistentSessionStore::new is sync)
+                match PersistentSessionStore::new(path) {
+                    Ok(store) => Arc::new(store),
+                    Err(e) => {
+                        log::error!("Failed to create session store: {}", e);
+                        panic!("Cannot start without session store: {}", e);
+                    }
                 }
-            }
-        };
-        // The manager spawns its cleanup task on the current tokio runtime;
-        // outside one, tokio panics with an opaque "no reactor running".
-        // Fail with the actual cause instead (same requirement as
-        // `with_sessions(SessionManager::new(..))`, which spawns too).
-        assert!(
-            tokio::runtime::Handle::try_current().is_ok(),
-            "with_rbac_config must be called inside a tokio runtime (e.g. under \
+            };
+            // The manager spawns its cleanup task on the current tokio runtime;
+            // outside one, tokio panics with an opaque "no reactor running".
+            // Fail with the actual cause instead (same requirement as
+            // `with_sessions(SessionManager::new(..))`, which spawns too).
+            assert!(
+                tokio::runtime::Handle::try_current().is_ok(),
+                "with_rbac_config must be called inside a tokio runtime (e.g. under \
              #[tokio::main] or #[tokio::test]): it starts the session cleanup task"
-        );
-        let manager_config = crate::session::SessionManagerConfig::new().with_cleanup_interval(
-            std::time::Duration::from_secs(self.config.sessions.cleanup_interval),
-        );
-        let session_manager = Arc::new(SessionManager::from_arc_with_config(
-            Arc::clone(&session_store),
-            manager_config,
-        ));
+            );
+            let manager_config = crate::session::SessionManagerConfig::new().with_cleanup_interval(
+                std::time::Duration::from_secs(self.config.sessions.cleanup_interval),
+            );
+            let session_manager = Arc::new(SessionManager::from_arc_with_config(
+                Arc::clone(&session_store),
+                manager_config,
+            ));
 
-        // Store session manager AND permission checker for use by models
-        self.session_manager = Some(session_manager);
+            // Store session manager for use by models
+            self.session_store_dyn = Some(session_store.clone());
+            self.session_manager = Some(session_manager);
+            session_store
+        };
         self.permission_checker = Some(permission_checker);
+        let rbac_sessions = Arc::new(std::sync::RwLock::new(session_store));
+        self.rbac_sessions = Some(Arc::clone(&rbac_sessions));
+        let current = move || Arc::clone(&*rbac_sessions.read().unwrap_or_else(|e| e.into_inner()));
 
         // Add login route
-        let session_store_login = Arc::clone(&session_store);
+        let session_store_login = current.clone();
         #[cfg(feature = "mfa")]
         let mfa_storage_login = self.mfa_storage.clone();
         #[cfg(not(feature = "mfa"))]
@@ -916,7 +958,7 @@ impl LithairServerBuilder {
         self = self.with_route(http::Method::POST, format!("{auth_path}/login"), move |req| {
             let users = users_login.clone();
             let duration = session_duration;
-            let session_store = Arc::clone(&session_store_login);
+            let session_store = session_store_login();
             #[allow(clippy::clone_on_copy)] // Type changes based on feature flag
             let mfa_clone = mfa_storage_login.clone();
 
@@ -942,9 +984,9 @@ impl LithairServerBuilder {
         });
 
         // Add logout route
-        let session_store_logout = Arc::clone(&session_store);
+        let session_store_logout = current.clone();
         self = self.with_route(http::Method::POST, format!("{auth_path}/logout"), move |req| {
-            let session_store = Arc::clone(&session_store_logout);
+            let session_store = session_store_logout();
 
             Box::pin(async move {
                 match handle_rbac_logout(req, session_store).await {
@@ -968,9 +1010,9 @@ impl LithairServerBuilder {
         });
 
         // Add validate route (GET endpoint for session validation)
-        let session_store_validate = Arc::clone(&session_store);
+        let session_store_validate = current;
         self = self.with_route(http::Method::GET, format!("{auth_path}/validate"), move |req| {
-            let session_store = Arc::clone(&session_store_validate);
+            let session_store = session_store_validate();
 
             Box::pin(async move {
                 use bytes::Bytes;
@@ -979,12 +1021,10 @@ impl LithairServerBuilder {
                 // same canonical extractor the gate and route guards use —
                 // and apply the same liveness check: expired = no session.
                 let is_valid = match crate::http::declarative::extract_session_token(&req) {
-                    Some(token) => {
-                        crate::session::RecognizedSessionStore::Persistent(session_store)
-                            .get_live_session(&token)
-                            .await
-                            .is_some()
-                    }
+                    Some(token) => crate::session::RecognizedSessionStore::Dyn(session_store)
+                        .get_live_session(&token)
+                        .await
+                        .is_some(),
                     None => false,
                 };
 
@@ -1810,8 +1850,8 @@ impl LithairServerBuilder {
         // hasn't called `with_sessions(...)` yet, or never will), the
         // handler simply has `session_store == None`, and the gate (if
         // ever turned on) will fail closed — same as `with_handler`.
-        if let Some(ref store_any) = self.session_manager {
-            handler.session_store = Some(store_any.clone());
+        if let Some(store_any) = self.session_any() {
+            handler.session_store = Some(store_any);
         }
 
         let handler_arc = std::sync::Arc::new(handler);
@@ -2141,7 +2181,7 @@ impl LithairServerBuilder {
         let base_path_str = base_path.into();
 
         // Use provided OR fallback to builder's values
-        let effective_session_store = session_store.or_else(|| self.session_manager.clone());
+        let effective_session_store = session_store.or_else(|| self.session_any());
         let effective_permission_checker =
             permission_checker.or_else(|| self.permission_checker.clone());
 
@@ -2685,6 +2725,7 @@ impl LithairServerBuilder {
     /// Build the server
     pub fn build(self) -> Result<LithairServer> {
         self.session_cookie.validate()?;
+        let session_any = self.session_any();
         if let Some(route) = self
             .custom_routes
             .iter()
@@ -2719,12 +2760,18 @@ impl LithairServerBuilder {
                     );
                 }
             }
+            // RFC 308: authentication needs sessions every node shares.
+            let shared_sessions =
+                self.session_store_dyn.as_ref().is_some_and(|store| store.shared_authority());
             anyhow::ensure!(
-                self.session_manager.is_none()
-                    && !self.models_require_session
-                    && self.permission_checker.is_none()
-                    && self.route_guards.is_empty(),
-                "native consensus does not yet support local sessions/RBAC stores"
+                shared_sessions
+                    || (self.session_manager.is_none()
+                        && !self.models_require_session
+                        && self.permission_checker.is_none()
+                        && self.route_guards.is_empty()),
+                "native consensus needs a shared session store (SessionStore::shared_authority, \
+                 e.g. a PostgreSQL session store) for sessions, RBAC, route guards or \
+                 with_models_require_session; local session stores are refused"
             );
             anyhow::ensure!(
                 self.node_id.is_none()
@@ -2732,8 +2779,14 @@ impl LithairServerBuilder {
                     && !self.config.replication.enabled,
                 "native consensus cannot mix legacy replication"
             );
-            anyhow::ensure!(self.custom_routes.is_empty() && self.mutation_hooks.is_empty() && !self.sse_enabled
-                && self.auto_compaction.is_none(), "native consensus does not yet support custom routes, hooks, SSE or local compaction");
+            // Custom routes (OIDC, RBAC login, application handlers) cannot
+            // reach native consensus data except through the cluster's APIs.
+            anyhow::ensure!(
+                self.mutation_hooks.is_empty()
+                    && !self.sse_enabled
+                    && self.auto_compaction.is_none(),
+                "native consensus does not yet support mutation hooks, SSE or local compaction"
+            );
             anyhow::ensure!(!self.config.admin.enabled && !self.config.admin.data_admin_enabled && self.config.admin.data_admin_ui_path.is_none(),
                 "disable the legacy admin plane with with_admin_panel(false); native management HTTP/UI is not yet supported");
         }
@@ -2742,7 +2795,7 @@ impl LithairServerBuilder {
             config: self.config,
             deferred_warnings: self.deferred_warnings,
             tracing_layers: self.tracing_layers,
-            session_manager: self.session_manager,
+            session_manager: session_any,
             permission_checker: self.permission_checker,
             custom_routes: self.custom_routes,
             not_found_handler: self.not_found_handler,

@@ -158,6 +158,15 @@ unauthenticated oracle for wordlists (the `/wp-admin` problem), so
 `with_mfa_totp` — moves all eight auth routes (`login`, `logout`, `validate`,
 `mfa/*`) under a caller-chosen prefix.
 
+## Custom and shared stores
+
+Any `SessionStore` implementation works with `with_sessions`: the gate, route
+guards, model handlers and RBAC use it through the trait, not only the built-in
+memory and persistent stores (RFC 308). A store whose
+`shared_authority()` returns `true` declares that every node sees the same,
+current sessions. Only such stores are accepted next to a native cluster, and
+their sessions keep an absolute expiry (no rewrite per request).
+
 ## See also
 
 - [`examples/06-auth-sessions/`](https://github.com/lithair/lithair/tree/main/examples/06-auth-sessions) — minimal sessions + auth flow.

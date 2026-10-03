@@ -108,6 +108,14 @@ pub trait SessionStore: Send + Sync {
 
     /// Get the total number of sessions
     async fn count(&self) -> Result<usize>;
+
+    /// `true` when every node of a cluster sees the same, current sessions
+    /// (RFC 308): a login, logout or revocation on one node holds on all of
+    /// them. Only such stores are accepted next to a native cluster. Their
+    /// sessions have an absolute expiry: activity never rewrites them.
+    fn shared_authority(&self) -> bool {
+        false
+    }
 }
 
 // Implement SessionStore for Arc<S> to allow using Arc directly
@@ -131,6 +139,10 @@ impl<S: SessionStore> SessionStore for std::sync::Arc<S> {
 
     async fn cleanup_expired(&self) -> Result<usize> {
         (**self).cleanup_expired().await
+    }
+
+    fn shared_authority(&self) -> bool {
+        (**self).shared_authority()
     }
 
     async fn count(&self) -> Result<usize> {
