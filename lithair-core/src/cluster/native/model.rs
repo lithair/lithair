@@ -15,7 +15,12 @@ pub struct Model {
     pub(super) contract: Value,
     pub(super) prepare: Prepare,
     pub(super) readable: fn(&Value) -> bool,
+    /// Internal collections (sessions) have no HTTP route.
+    pub(super) internal: bool,
 }
+
+/// Identity of the replicated sessions collection (RFC 308, store A).
+pub(super) const SESSIONS: &str = "lithair.sessions";
 
 pub(super) struct Mutation {
     pub method: String,
@@ -83,7 +88,24 @@ impl Model {
             readable: |value| {
                 serde_json::from_value::<T>(value.clone()).is_ok_and(|item| item.can_read(&[]))
             },
+            internal: false,
         })
+    }
+
+    /// Replicated sessions (RFC 308, store A): declare it among the cluster's
+    /// models to get [`super::NativeCluster::session_store`]. Sessions live in
+    /// the replicated checkpoint; logins and logouts are consensus writes and
+    /// only the ready leader authorizes. It has no HTTP route. Adding it
+    /// changes the application contract, like any model change.
+    pub fn sessions() -> Self {
+        Self {
+            id: SESSIONS.into(),
+            path: String::new(),
+            contract: json!({"internal": "sessions", "version": 1}),
+            prepare: |_, _| Err(Reply::error(404, "Unknown model")),
+            readable: |_| false,
+            internal: true,
+        }
     }
 }
 fn valid_id(value: &str) -> bool {

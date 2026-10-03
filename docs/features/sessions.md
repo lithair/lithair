@@ -166,6 +166,11 @@ memory and persistent stores (RFC 308). A store whose
 `shared_authority()` returns `true` declares that every node sees the same,
 current sessions. Only such stores are accepted next to a native cluster, and
 their sessions keep an absolute expiry (no rewrite per request).
+Two are provided: `NativeCluster::session_store()` (sessions replicated in the
+native consensus group) and `lithair_postgres::PostgresSessionStore`; see
+[native consensus](state-engine/native-cluster.md#sessions-and-authentication).
+A store that cannot answer on this node returns `SessionStoreUnavailable`, which
+the HTTP layers turn into 503 with `Retry-After`.
 
 ## See also
 

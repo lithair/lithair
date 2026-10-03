@@ -123,6 +123,11 @@ impl<S: DocumentStore> DocumentHandler<S> {
         let session = match crate::session::session_for_request(&req, self.sessions.as_ref()).await
         {
             Ok(session) => session,
+            Err(message) if message == crate::session::SESSION_STORE_UNAVAILABLE => {
+                let mut resp = error(StatusCode::SERVICE_UNAVAILABLE, message);
+                resp.headers_mut().insert("retry-after", "1".parse().expect("static header"));
+                return resp;
+            }
             Err(message) => return error(StatusCode::FORBIDDEN, message),
         };
         if self.require_session && session.is_none() {

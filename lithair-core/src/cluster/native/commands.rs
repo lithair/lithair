@@ -139,6 +139,11 @@ impl CommandStore {
                 .await?;
         Ok(Self { runtime, namespace })
     }
+    /// Commands over an internal collection of an existing runtime (the
+    /// replicated sessions of a model cluster).
+    pub(super) fn over(runtime: NativeCluster, namespace: &str) -> Self {
+        Self { runtime, namespace: namespace.to_owned() }
+    }
     pub async fn bootstrap(&self) -> anyhow::Result<()> {
         self.runtime.bootstrap().await
     }

@@ -1,6 +1,6 @@
 # RFC 308: sessions and authentication in a native cluster
 
-Status: agreed direction, **not implemented**. Decisions: [Decisions](#decisions).
+Status: **implemented** (step 1, store A in the native consensus group, store B in PostgreSQL). Decisions: [Decisions](#decisions).
 Discussion and tracker: [#308](https://github.com/lithair/lithair/issues/308). Part of #248 (step 5, "Sessions and admission"), building on [RFC 248](248-three-node-cluster.md) and [RFC 296](296-postgres-storage-tiers.md).
 
 ## Problem

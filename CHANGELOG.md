@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sessions replicated in the native consensus group** (RFC 308, store A):
+  declare `Model::sessions()` and pass `NativeCluster::session_store()` to
+  `with_sessions`. Sessions live in the cluster's replicated, checkpointed state
+  with no external dependency: logins and logouts are consensus writes, only the
+  ready leader authorizes, and sessions survive failover and restarts. Where the
+  store cannot answer (follower, no quorum), RBAC login, logout, validation and
+  the session gate return 503 with `Retry-After` instead of 401, through the new
+  `session::SessionStoreUnavailable` error.
+
 - **PostgreSQL session store** (RFC 308, store B): `lithair_postgres::PostgresSessionStore`
   keeps sessions in the `lithair` schema, shared by every node (`shared_authority`).
   Any node authorizes, a logout or revocation holds everywhere at once, and

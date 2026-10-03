@@ -969,6 +969,8 @@ impl LithairServerBuilder {
                         let (parts, body) = resp.into_parts();
                         Ok(hyper::Response::from_parts(parts, body.boxed()))
                     }
+                    // A shared store that cannot answer here (RFC 308).
+                    Err(e) if crate::session::is_unavailable(&e) => Ok(session_unavailable()),
                     Err(e) => {
                         log::error!("Login error: {}", e);
                         Ok(hyper::Response::builder()
@@ -995,6 +997,7 @@ impl LithairServerBuilder {
                         let (parts, body) = resp.into_parts();
                         Ok(hyper::Response::from_parts(parts, body.boxed()))
                     }
+                    Err(e) if crate::session::is_unavailable(&e) => Ok(session_unavailable()),
                     Err(e) => {
                         log::error!("Logout error: {}", e);
                         Ok(hyper::Response::builder()
@@ -1021,10 +1024,15 @@ impl LithairServerBuilder {
                 // same canonical extractor the gate and route guards use —
                 // and apply the same liveness check: expired = no session.
                 let is_valid = match crate::http::declarative::extract_session_token(&req) {
-                    Some(token) => crate::session::RecognizedSessionStore::Dyn(session_store)
-                        .get_live_session(&token)
-                        .await
-                        .is_some(),
+                    Some(token) => {
+                        match crate::session::RecognizedSessionStore::Dyn(session_store)
+                            .lookup(&token)
+                            .await
+                        {
+                            Ok(session) => session.is_some(),
+                            Err(_) => return Ok(session_unavailable()),
+                        }
+                    }
                     None => false,
                 };
 
@@ -2950,6 +2958,17 @@ impl Default for LithairServerBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 503 + `Retry-After` when a shared session store cannot answer on this
+/// node (a native cluster follower, or no quorum): retry on the ready leader.
+fn session_unavailable() -> RouteResponse {
+    let mut resp = super::response::json(
+        http::StatusCode::SERVICE_UNAVAILABLE,
+        r#"{"error":"session store unavailable; retry through the ready leader"}"#,
+    );
+    resp.headers_mut().insert("retry-after", http::HeaderValue::from_static("1"));
+    resp
 }
 
 #[cfg(test)]

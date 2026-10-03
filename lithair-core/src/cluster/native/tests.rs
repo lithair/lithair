@@ -11,6 +11,7 @@ fn models() -> BTreeMap<String, Model> {
             contract: json!({}),
             prepare: |_, _| panic!("committed apply must never execute model callbacks"),
             readable: |_| true,
+            internal: false,
         },
     )])
 }

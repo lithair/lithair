@@ -3388,6 +3388,9 @@ impl LithairServer {
                                 r#"{"error":"Authentication required"}"#,
                             ))
                         }
+                        Err(message) if message == crate::session::SESSION_STORE_UNAVAILABLE => {
+                            return Ok(crate::cluster::native::NativeCluster::unavailable())
+                        }
                         Err(message) => {
                             return Ok(response::json_value(
                                 http::StatusCode::FORBIDDEN,

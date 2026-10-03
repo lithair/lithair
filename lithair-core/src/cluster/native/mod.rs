@@ -2,7 +2,9 @@
 //! See `docs/features/state-engine/native-cluster.md` for the supported contract.
 pub mod commands;
 mod model;
+mod sessions;
 mod state;
+pub use sessions::NativeSessionStore;
 #[cfg(test)]
 mod tests;
 use super::{durable_log::DurableLog, peer_transport::PeerTransport};
@@ -141,9 +143,10 @@ impl NativeCluster {
         let mut registered: BTreeMap<String, Model> = BTreeMap::new();
         for model in models {
             anyhow::ensure!(
-                registered.values().all(|m| m.path != model.path
-                    && !m.path.starts_with(&format!("{}/", model.path))
-                    && !model.path.starts_with(&format!("{}/", m.path))),
+                model.internal
+                    || registered.values().filter(|m| !m.internal).all(|m| m.path != model.path
+                        && !m.path.starts_with(&format!("{}/", model.path))
+                        && !model.path.starts_with(&format!("{}/", m.path))),
                 "overlapping native model routes"
             );
             anyhow::ensure!(
@@ -217,6 +220,16 @@ impl NativeCluster {
 
     /// Explicit operator action, only once on the designated pristine node.
     /// The public app and peer RPC listeners never expose this operation.
+    /// The replicated session store, when [`Model::sessions`] is declared
+    /// (RFC 308, store A). Register it with `LithairServer::with_sessions`.
+    pub fn session_store(&self) -> Option<std::sync::Arc<NativeSessionStore>> {
+        self.inner.models.contains_key(model::SESSIONS).then(|| {
+            std::sync::Arc::new(NativeSessionStore::new(commands::CommandStore::over(
+                self.clone(),
+                model::SESSIONS,
+            )))
+        })
+    }
     pub async fn bootstrap(&self) -> anyhow::Result<()> {
         self.inner
             .transport
@@ -288,12 +301,18 @@ impl NativeCluster {
             "failed":self.inner.machine.failed.load(Ordering::Acquire) || metrics.running_state.is_err(),"initialized":self.inner.raft.is_initialized().await.unwrap_or(false)})
     }
     pub(crate) fn paths(&self) -> Vec<String> {
-        self.inner.models.values().map(|m| m.path.clone()).collect()
+        self.inner
+            .models
+            .values()
+            .filter(|m| !m.internal)
+            .map(|m| m.path.clone())
+            .collect()
     }
     pub(crate) fn matches(&self, path: &str) -> bool {
         self.inner
             .models
             .values()
+            .filter(|m| !m.internal)
             .any(|m| path == m.path || path.starts_with(&format!("{}/", m.path)))
     }
     pub(crate) fn unavailable() -> RouteResponse {
@@ -309,6 +328,7 @@ impl NativeCluster {
             .inner
             .models
             .values()
+            .filter(|m| !m.internal)
             .find(|m| path == m.path || path.starts_with(&format!("{}/", m.path)))
         else {
             return Reply::error(404, "Unknown model").response();
