@@ -36,8 +36,10 @@ beyond the field schema.
 `open` binds the dedicated mTLS peer address and opens provisioned storage only.
 `bootstrap` checks all three peers before consuming its durable single-use claim.
 Restart never bootstraps. Shared Rust operator methods work with management HTTP
-and UI absent. Existing admin HTTP/UI, local data-admin, hooks and custom routes
-are refused until they have consensus-aware implementations. Public HTTP exposes
+and UI absent. Existing admin HTTP/UI, local data-admin, mutation hooks and SSE
+are refused until they have consensus-aware implementations. Custom routes are
+allowed: they cannot reach native consensus data except through the cluster's
+APIs. Public HTTP exposes
 no peer RPC/bootstrap route. Future optional management API/UI must remain separate
 from both public CRUD and mTLS peers.
 
@@ -142,3 +144,17 @@ serves them, including a follower or a node that has lost quorum. Native models
 keep the rules above. Turso and other local models are still refused next to the
 cluster, and so is a PostgreSQL route overlapping a native route. See the
 [`lithair-postgres` README](https://github.com/lithair/lithair/blob/main/lithair-postgres/README.md).
+
+## Sessions and authentication
+
+Sessions, RBAC (`with_rbac_config`), route guards and `with_models_require_session`
+need a session store that every node shares
+([RFC 308](../../rfcs/308-cluster-sessions.md)): one whose
+`SessionStore::shared_authority()` is `true`. Local stores (memory, the RBAC
+persistent store) are refused, since a logout or revocation on one node would not
+reach the others. With a shared store registered by `with_sessions`, RBAC login,
+logout and validation use it too, in either builder order. Shared stores have an
+absolute expiry: `SessionMiddleware` never rewrites them per request. With
+`with_models_require_session(true)`, the session gate also covers the native
+consensus routes, which still apply their anonymous model permissions after it.
+

@@ -3,9 +3,7 @@
 //! This module provides automatically generated /auth/login and /auth/logout handlers
 
 use super::RbacUser;
-use crate::session::{
-    effective_cookie_config, PersistentSessionStore, Session, SessionCookie, SessionStore,
-};
+use crate::session::{effective_cookie_config, Session, SessionCookie, SessionStore};
 use anyhow::Result;
 use bytes::Bytes;
 use chrono::Duration;
@@ -35,7 +33,7 @@ pub type MfaStorageOption = Option<Arc<crate::mfa::MfaStorage>>;
 /// Generate login handler
 pub async fn handle_rbac_login(
     mut req: Request<hyper::body::Incoming>,
-    session_store: Arc<PersistentSessionStore>,
+    session_store: Arc<dyn SessionStore>,
     users: &[RbacUser],
     session_duration: u64,
     mfa_storage: MfaStorageOption,
@@ -174,7 +172,7 @@ fn session_set_cookie<B>(
 ///   leaves clean. Omitted only when the cookie is disabled (Bearer-only).
 pub async fn handle_rbac_logout(
     req: Request<hyper::body::Incoming>,
-    session_store: Arc<PersistentSessionStore>,
+    session_store: Arc<dyn SessionStore>,
 ) -> Result<Response<Full<Bytes>>> {
     // Cross-site check (issue #225): a cross-site POST riding the victim's
     // cookie is a forced-logout DoS. Reject BEFORE touching the store and

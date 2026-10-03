@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Any session store, and shared stores in a native cluster** (RFC 308 step 1):
+  the session gate, route guards, model handlers and RBAC now accept any
+  `SessionStore`, not only the built-in shapes. A custom store passed to
+  `with_sessions` no longer fails startup with `with_models_require_session`.
+  New `SessionStore::shared_authority()` (default `false`): a server with
+  `with_native_cluster` now accepts sessions, RBAC, route guards,
+  `with_models_require_session` and custom routes when the store is shared.
+  The session gate covers native consensus routes, and shared stores keep an
+  absolute expiry. RBAC uses a shared store registered with `with_sessions` in
+  either builder order. `handle_rbac_login` and `handle_rbac_logout` take an
+  `Arc<dyn SessionStore>` (an `Arc<PersistentSessionStore>` still converts).
+
 ## [1.18.0] - 2026-10-03
 
 `lithair-core`, `lithair-macros` and `lithair-cli` 1.18.0, `lithair-turso` 0.3.1

@@ -61,7 +61,18 @@ use std::sync::Arc;
 /// share a single source of truth — if a new shape is added, both sides
 /// gain support together rather than drifting (issue #80 was caused by a
 /// drift between the constructor surface and the gate's known shapes).
+/// Any session store, as registered by `with_sessions` or RBAC (RFC 308). The
+/// builder hands this to the gate, route guards and model handlers, so stores
+/// beyond the built-in ones work everywhere. `_owner` keeps the registering
+/// `SessionManager` (and its cleanup task) alive.
+pub(crate) struct DynSessionStore {
+    pub store: Arc<dyn SessionStore>,
+    pub _owner: Option<Arc<dyn std::any::Any + Send + Sync>>,
+}
+
 pub(crate) enum RecognizedSessionStore {
+    /// Any `SessionStore`, through [`DynSessionStore`].
+    Dyn(Arc<dyn SessionStore>),
     /// A raw `Arc<PersistentSessionStore>` — the shape produced by the
     /// RBAC builder path (`with_rbac_config(...)`).
     Persistent(Arc<PersistentSessionStore>),
@@ -93,6 +104,9 @@ impl RecognizedSessionStore {
     /// The `Arc::downcast` calls consume the `Arc`, so this clones once
     /// per attempt — cheap, only happens on misses.
     pub(crate) fn recognize(store_any: &Arc<dyn std::any::Any + Send + Sync>) -> Option<Self> {
+        if let Ok(dynamic) = store_any.clone().downcast::<DynSessionStore>() {
+            return Some(Self::Dyn(Arc::clone(&dynamic.store)));
+        }
         if let Ok(s) = store_any.clone().downcast::<PersistentSessionStore>() {
             return Some(Self::Persistent(s));
         }
@@ -114,6 +128,7 @@ impl RecognizedSessionStore {
     /// so we centralize it here.
     pub(crate) async fn get_live_session(&self, id: &str) -> Option<Session> {
         match self {
+            Self::Dyn(store) => store.get(id).await.ok().flatten().filter(|s| !s.is_expired()),
             Self::Persistent(store) => {
                 store.get(id).await.ok().flatten().filter(|s| !s.is_expired())
             }
