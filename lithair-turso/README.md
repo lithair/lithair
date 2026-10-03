@@ -25,7 +25,7 @@ implementation, database opening or HTTP handlers are needed. `with_declarative_
 and `with_model_full` honor the same selection. The native handler constructors
 reject SQL-declared models, including the native `with_model_ref` path.
 
-This crate is **experimental**. Add `lithair-core = "1.12"` and
+This crate is **experimental**. Add `lithair-core = "1.18"` and
 `lithair-turso = "0.3"` to your application. The
 [standalone application guide](https://github.com/lithair/lithair/blob/v1.15.0/docs/guides/turso-in-an-application.md)
 provides a complete Cargo manifest and runnable server. Native applications have
