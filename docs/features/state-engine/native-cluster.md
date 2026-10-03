@@ -158,3 +158,7 @@ absolute expiry: `SessionMiddleware` never rewrites them per request. With
 `with_models_require_session(true)`, the session gate also covers the native
 consensus routes, which still apply their anonymous model permissions after it.
 
+Available shared stores: `lithair_postgres::PostgresSessionStore` (any node
+authorizes; expiry on the database clock). Sessions replicated through the native
+consensus group itself are the next step of RFC 308.
+

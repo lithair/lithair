@@ -21,10 +21,12 @@ mod cache;
 mod command;
 mod http;
 mod migration;
+mod sessions;
 pub use cache::LISTENER_NAME;
 pub use command::{Commands, Decided, Decision, View, Write};
 pub use http::model_factory;
 pub use migration::Migration;
+pub use sessions::PostgresSessionStore;
 
 pub const MAX_PAGE_SIZE: u32 = 100;
 pub const MAX_BATCH_SIZE: usize = 100;
