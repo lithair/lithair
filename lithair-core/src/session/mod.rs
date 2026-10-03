@@ -61,6 +61,27 @@ use std::sync::Arc;
 /// share a single source of truth — if a new shape is added, both sides
 /// gain support together rather than drifting (issue #80 was caused by a
 /// drift between the constructor surface and the gate's known shapes).
+/// A shared session store that cannot answer on this node right now: a
+/// native cluster follower or a node without quorum (RFC 308). HTTP layers
+/// answer 503 with `Retry-After`, not 401: the session may well be valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionStoreUnavailable;
+impl std::fmt::Display for SessionStoreUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(SESSION_STORE_UNAVAILABLE)
+    }
+}
+impl std::error::Error for SessionStoreUnavailable {}
+
+/// Message of [`SessionStoreUnavailable`], also returned by
+/// [`session_for_request`]; map it to 503.
+pub const SESSION_STORE_UNAVAILABLE: &str = "session store unavailable";
+
+/// `true` when `error` (or what it wraps) is [`SessionStoreUnavailable`].
+pub fn is_unavailable(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| cause.is::<SessionStoreUnavailable>())
+}
+
 /// Any session store, as registered by `with_sessions` or RBAC (RFC 308). The
 /// builder hands this to the gate, route guards and model handlers, so stores
 /// beyond the built-in ones work everywhere. `_owner` keeps the registering
@@ -126,6 +147,22 @@ impl RecognizedSessionStore {
     /// wraps. Returns the session only if found AND not expired — both
     /// callers (gate, future audit hooks) need the same liveness check,
     /// so we centralize it here.
+    /// Like [`Self::get_live_session`], but reports a store that cannot answer
+    /// on this node instead of treating it as "no session".
+    pub(crate) async fn lookup(
+        &self,
+        id: &str,
+    ) -> Result<Option<Session>, SessionStoreUnavailable> {
+        if let Self::Dyn(store) = self {
+            return match store.get(id).await {
+                Ok(session) => Ok(session.filter(|s| !s.is_expired())),
+                Err(error) if is_unavailable(&error) => Err(SessionStoreUnavailable),
+                Err(_) => Ok(None),
+            };
+        }
+        Ok(self.get_live_session(id).await)
+    }
+
     pub(crate) async fn get_live_session(&self, id: &str) -> Option<Session> {
         match self {
             Self::Dyn(store) => store.get(id).await.ok().flatten().filter(|s| !s.is_expired()),
@@ -276,6 +313,8 @@ mod tests {
 /// precedence, cookie configuration, live-session lookup and cross-site guard.
 /// A cross-site cookie mutation is rejected before looking up the session.
 /// Missing, expired or unsupported sessions return `Ok(None)` (fail closed).
+/// A shared store that cannot answer on this node returns
+/// `Err(SESSION_STORE_UNAVAILABLE)`: answer 503, not 401.
 pub async fn session_for_request<B>(
     req: &hyper::Request<B>,
     store: Option<&Arc<dyn std::any::Any + Send + Sync>>,
@@ -289,5 +328,5 @@ pub async fn session_for_request<B>(
     let Some(token) = crate::http::declarative::extract_session_token(req) else {
         return Ok(None);
     };
-    Ok(store.get_live_session(&token).await)
+    store.lookup(&token).await.map_err(|_| SESSION_STORE_UNAVAILABLE)
 }

@@ -2,7 +2,7 @@
 
 This opt-in runtime connects declarative native models to three-voter OpenRaft.
 It is separate from legacy `with_raft_cluster`. Standalone events/replay stay
-unchanged. Turso, sessions, membership changes and rolling schema upgrades remain
+unchanged. Turso, membership changes and rolling schema upgrades remain
 follow-ups in [#248](https://github.com/lithair/lithair/issues/248).
 
 ## Activation
@@ -102,7 +102,7 @@ Primary keys use the request-key alphabet/length, excluding `.` and `..` and the
 reserved helper names `count`, `random-id`, `_schema`, `stream` and `_bulk`.
 Those helper endpoints return 404 in this runtime. Bulk and local programmatic
 mutations are unavailable. Configure firewall rules on the server explicitly.
-There is no Turso/session replication, live schema transformation or membership/
+There is no Turso replication, live schema transformation or membership/
 certificate replacement in this runtime.
 
 Snapshots contain the complete durable application state. Lagging nodes install
@@ -158,7 +158,28 @@ absolute expiry: `SessionMiddleware` never rewrites them per request. With
 `with_models_require_session(true)`, the session gate also covers the native
 consensus routes, which still apply their anonymous model permissions after it.
 
-Available shared stores: `lithair_postgres::PostgresSessionStore` (any node
-authorizes; expiry on the database clock). Sessions replicated through the native
-consensus group itself are the next step of RFC 308.
+Available shared stores:
+
+- **Replicated in the cluster** (no dependency): declare `Model::sessions()` in
+  the model list and pass `cluster.session_store()` to `with_sessions`. Logins,
+  logouts and revocations are consensus writes; lookups take the read barrier,
+  so only the ready leader authorizes. On a follower or without quorum, login,
+  logout, validation, OIDC and the session gate answer 503 with `Retry-After`
+  (route guards may answer 401). Expiry is absolute, set by the leader at login
+  and checked with its clock, so keep node clocks synchronized (NTP). Sessions
+  are checkpointed with the models and survive failover and restarts. Adding or
+  removing `Model::sessions()` changes the application contract, so an existing
+  store refuses it.
+
+  ```rust
+  let cluster = NativeCluster::open(config, "app-v1",
+      vec![Model::of::<Ledger>("ledger", "/api/ledger")?, Model::sessions()]).await?;
+  let sessions = cluster.session_store().expect("Model::sessions() declared");
+  LithairServer::new()
+      .with_native_cluster(cluster)
+      .with_sessions(SessionManager::from_arc(sessions))
+  ```
+
+- `lithair_postgres::PostgresSessionStore`: any node authorizes, expiry on the
+  database clock, and authentication keeps working without the native quorum.
 
