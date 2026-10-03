@@ -325,6 +325,9 @@ struct ModelRetentionConfig {
     /// `#[retention(max_mb = 512)]` — evict oldest items when total serialized
     /// hot-storage size exceeds this many MEGAbytes. Converted to bytes at codegen.
     memory_budget_bytes: Option<usize>,
+    /// `#[retention(ttl = "5m")]` — external storage models only: the maximum
+    /// age of an L1 copy (RFC 304).
+    ttl_secs: Option<u64>,
 }
 
 /// Parse a duration literal like `"30d"`, `"12h"`, `"1y"`, `"45m"`, `"600s"`,
@@ -427,12 +430,27 @@ fn parse_model_retention(input: &DeriveInput) -> syn::Result<ModelRetentionConfi
                                     )
                                 })?);
                         }
+                        "ttl" => {
+                            let val = token.split('=').nth(1).map(str::trim).unwrap_or_default();
+                            config.ttl_secs = Some(
+                                extract_string_value(val)
+                                    .and_then(|v| parse_duration_literal(&v))
+                                    .filter(|secs| *secs > 0)
+                                    .ok_or_else(|| {
+                                        syn::Error::new_spanned(
+                                            attr,
+                                            "`ttl` in #[retention(...)] must be a positive quoted \
+                                             duration like \"5m\" (s/m/h/d/w/y suffixes)",
+                                        )
+                                    })?,
+                            );
+                        }
                         other => {
                             return Err(syn::Error::new_spanned(
                                 attr,
                                 format!(
                                     "unknown key `{other}` in #[retention(...)]; valid keys: \
-                                     memory, max_mb"
+                                     memory, max_mb, ttl"
                                 ),
                             ));
                         }
@@ -1183,10 +1201,23 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
         return e.to_compile_error();
     }
 
-    let (storage_impl, storage_hook) = match storage::expand(&input) {
+    let retention_config = match parse_model_retention(&input) {
+        Ok(c) => c,
+        Err(e) => return e.to_compile_error(),
+    };
+    let (storage_impl, storage_hook) = match storage::expand(&input, &retention_config) {
         Ok(tokens) => tokens,
         Err(error) => return error.to_compile_error(),
     };
+    if retention_config.ttl_secs.is_some() && storage_impl.is_empty() {
+        let attr = input.attrs.iter().find(|a| a.path().is_ident("retention"));
+        return syn::Error::new_spanned(
+            attr,
+            "`ttl` bounds L1 copies of external storage models (#[storage(turso)] or \
+             #[storage(postgres)]); native retention uses `memory`",
+        )
+        .to_compile_error();
+    }
 
     let name = &input.ident;
     // Consensus stores complete canonical JSON. Defaults run on the leader;
@@ -1222,10 +1253,6 @@ pub fn derive_declarative_model(input: TokenStream) -> TokenStream {
     };
     let schema_version = match parse_schema_version(&input) {
         Ok(v) => v,
-        Err(e) => return e.to_compile_error(),
-    };
-    let retention_config = match parse_model_retention(&input) {
-        Ok(c) => c,
         Err(e) => return e.to_compile_error(),
     };
     let http_model_attrs = match parse_model_http_attributes(&input) {

@@ -165,13 +165,28 @@ impl Commands {
     {
         let commands = self.clone();
         tokio::spawn(async move {
-            let (commands, decide) = (&commands, &decide);
-            commands.database.transaction(|tx, _| Box::pin(commands.run(tx, decide))).await
+            // Every attempt's writes, for local invalidation (RFC 304).
+            let touched = std::sync::Mutex::new(Vec::new());
+            let (commands, decide, touched_ref) = (&commands, &decide, &touched);
+            let result = commands
+                .database
+                .transaction(|tx, _| Box::pin(commands.run(tx, decide, touched_ref)))
+                .await;
+            let touched = touched.into_inner().unwrap_or_else(|e| e.into_inner());
+            for (collection, key) in &touched {
+                commands.database.caches.invalidate(&commands.namespace, collection, Some(key));
+            }
+            result
         })
         .await?
     }
 
-    async fn run<F>(&self, tx: &Transaction<'_>, decide: &F) -> Result<Json>
+    async fn run<F>(
+        &self,
+        tx: &Transaction<'_>,
+        decide: &F,
+        touched: &std::sync::Mutex<Vec<(String, String)>>,
+    ) -> Result<Json>
     where
         F: for<'a> Fn(&'a View<'a>) -> Decided<'a>,
     {
@@ -193,6 +208,14 @@ impl Commands {
             Decision::Commit { writes, reply } => (writes, reply),
         };
         self.check(&writes)?;
+        touched.lock().unwrap_or_else(|e| e.into_inner()).extend(writes.iter().map(|w| {
+            let (collection, key) = w.target();
+            (collection.to_owned(), key.to_owned())
+        }));
+        for write in &writes {
+            let (collection, key) = write.target();
+            self.database.caches.notify(tx, &self.namespace, collection, Some(key)).await?;
+        }
         for write in &writes {
             let (collection, key) = write.target();
             match write {

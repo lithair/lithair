@@ -172,26 +172,41 @@ impl Commands {
     {
         let commands = self.clone();
         tokio::spawn(async move {
-            let mut connection = commands.database.connection.lock().await;
-            let transaction = connection
-                .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
-                .await?;
-            match commands.run(&transaction, decide).await {
-                Ok(reply) => {
-                    transaction.commit().await?;
-                    Ok(reply)
-                }
-                Err(error) => {
-                    // A rollback error must remain visible to the caller.
-                    transaction.rollback().await?;
-                    Err(error)
+            let mut touched = Vec::new();
+            let result = async {
+                let mut connection = commands.database.connection.lock().await;
+                let transaction = connection
+                    .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+                    .await?;
+                match commands.run(&transaction, decide, &mut touched).await {
+                    Ok(reply) => {
+                        transaction.commit().await?;
+                        Ok(reply)
+                    }
+                    Err(error) => {
+                        // A rollback error must remain visible to the caller.
+                        transaction.rollback().await?;
+                        Err(error)
+                    }
                 }
             }
+            .await;
+            // After the transaction ends, whatever its outcome (RFC 304).
+            for (collection, key) in &touched {
+                commands.database.invalidate(&commands.namespace, collection, key);
+            }
+            result
         })
         .await?
     }
 
-    async fn run<F>(&self, connection: &Connection, decide: F) -> Result<Json>
+    /// `touched` receives every record the decision writes, for invalidation.
+    async fn run<F>(
+        &self,
+        connection: &Connection,
+        decide: F,
+        touched: &mut Vec<(String, String)>,
+    ) -> Result<Json>
     where
         F: for<'a> FnOnce(&'a View<'a>) -> Decided<'a>,
     {
@@ -216,6 +231,10 @@ impl Commands {
         };
         let mut encoded = Vec::with_capacity(writes.len());
         self.check(&writes, &mut encoded)?;
+        touched.extend(writes.iter().map(|w| {
+            let (collection, key) = w.target();
+            (collection.to_owned(), key.to_owned())
+        }));
         for (write, body) in writes.iter().zip(encoded) {
             let (collection, key) = write.target();
             match write {

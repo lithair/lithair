@@ -1,6 +1,6 @@
 # RFC 304: L1 cache for external storage models
 
-Status: agreed direction, **not implemented**. Decisions: [Decisions](#decisions).
+Status: **implemented** in `lithair-turso` 0.3.1 and `lithair-postgres` 0.1.1 (v1: point reads). Decisions: [Decisions](#decisions).
 Discussion and tracker: [#304](https://github.com/lithair/lithair/issues/304).
 Follows [RFC 296](296-postgres-storage-tiers.md) (phase 4).
 

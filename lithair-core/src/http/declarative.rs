@@ -329,18 +329,7 @@ where
     /// last segment of the type name uppercased (e.g. `Email` → `LT_EMAIL_MEMORY_RETENTION`).
     /// Returns `None` if the var is unset, empty, or non-numeric.
     fn model_env_prefix() -> Option<String> {
-        let model = std::any::type_name::<T>().rsplit("::").next()?;
-        // Sanitize: drop generics, lifetimes, and any other characters that
-        // would produce an invalid shell env-var name. Keeps ASCII letters,
-        // digits, and underscores. `Foo<Bar>` → `FOOBAR`,
-        // `Box<dyn Trait>` → `BOXDYNTRAIT`, etc.
-        let sanitized: String =
-            model.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
-        if sanitized.is_empty() {
-            None
-        } else {
-            Some(format!("LT_{}", sanitized.to_uppercase()))
-        }
+        crate::lifecycle::model_env_prefix(std::any::type_name::<T>())
     }
 
     fn env_memory_retention_override() -> Option<usize> {
@@ -351,26 +340,8 @@ where
             .ok()
     }
 
-    /// Parse a duration env value: bare integer = seconds, or string with
-    /// suffix s/m/h/d/w/y (e.g. `30d`, `12h`, `45m`).
     fn parse_duration_env(s: &str) -> Option<u64> {
-        let s = s.trim();
-        if s.is_empty() {
-            return None;
-        }
-        let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
-        let (num, suffix) = s.split_at(split);
-        let n: u64 = num.parse().ok()?;
-        let mult: u64 = match suffix.trim() {
-            "" | "s" => 1,
-            "m" => 60,
-            "h" => 3600,
-            "d" => 86400,
-            "w" => 7 * 86400,
-            "y" => 365 * 86400,
-            _ => return None,
-        };
-        n.checked_mul(mult)
+        crate::lifecycle::parse_duration(s)
     }
 
     fn env_memory_duration_override() -> Option<u64> {

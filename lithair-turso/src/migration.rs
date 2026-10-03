@@ -46,11 +46,18 @@ impl<T: SqlModel> Store<T> {
                             turso::transaction::TransactionBehavior::Immediate,
                         )
                         .await?;
-                    if let Err(error) = store.prepare_transaction(&transaction).await {
-                        transaction.rollback().await?;
-                        return Err(error);
-                    }
+                    let changed = match store.prepare_transaction(&transaction).await {
+                        Ok(changed) => changed,
+                        Err(error) => {
+                            transaction.rollback().await?;
+                            return Err(error);
+                        }
+                    };
                     transaction.commit().await?;
+                    // Copies of migrated documents are stale (RFC 304).
+                    if changed {
+                        store.database.clear_cache(&store.namespace, T::COLLECTION);
+                    }
                     Ok(())
                 })
                 .await?
@@ -88,7 +95,8 @@ impl<T: SqlModel> Store<T> {
         }
     }
 
-    async fn prepare_transaction(&self, connection: &Connection) -> Result<()> {
+    /// `true` when the partition changed (migrated or newly recorded).
+    async fn prepare_transaction(&self, connection: &Connection) -> Result<bool> {
         let stored = self.stored_schema(connection).await?;
         if let Some((version, schema)) = &stored {
             if *version > T::VERSION {
@@ -101,7 +109,7 @@ impl<T: SqlModel> Store<T> {
             }
             if *version == T::VERSION {
                 if schema == T::SCHEMA {
-                    return Ok(());
+                    return Ok(false);
                 }
                 // An unversioned legacy partition can adopt a declaration after
                 // validating all records. A tracked schema cannot be replaced.
@@ -125,7 +133,7 @@ impl<T: SqlModel> Store<T> {
             "INSERT INTO lithair_schemas_v1 (namespace, model, version, schema) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (namespace, model) DO UPDATE SET version = excluded.version, schema = excluded.schema",
             params![self.namespace.as_str(), T::COLLECTION, i64::from(T::VERSION), T::SCHEMA],
         ).await?;
-        Ok(())
+        Ok(true)
     }
 
     async fn migrate_documents(&self, connection: &Connection, from: u32) -> Result<()> {

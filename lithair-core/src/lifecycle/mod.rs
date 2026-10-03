@@ -153,6 +153,41 @@ impl RetentionConfig {
     }
 }
 
+/// `LT_<MODEL>` prefix of a model's deploy-time overrides: the last segment of
+/// its type name, reduced to ASCII letters, digits and `_`, uppercased.
+pub fn model_env_prefix(type_name: &str) -> Option<String> {
+    let model = type_name.rsplit("::").next()?;
+    let sanitized: String =
+        model.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+    if sanitized.is_empty() {
+        None
+    } else {
+        Some(format!("LT_{}", sanitized.to_uppercase()))
+    }
+}
+
+/// Seconds in a duration such as `30d`, `12h`, `45m` or a bare number of
+/// seconds (suffixes s/m/h/d/w/y).
+pub fn parse_duration(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+    let (num, suffix) = s.split_at(split);
+    let n: u64 = num.parse().ok()?;
+    let mult: u64 = match suffix.trim() {
+        "" | "s" => 1,
+        "m" => 60,
+        "h" => 3600,
+        "d" => 86400,
+        "w" => 7 * 86400,
+        "y" => 365 * 86400,
+        _ => return None,
+    };
+    n.checked_mul(mult)
+}
+
 /// Trait for models with retention policies — controls memory/disk tiering
 pub trait RetentionAware {
     /// Get the model-level retention configuration

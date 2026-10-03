@@ -95,6 +95,44 @@ a row copy, and a migration runs once, not once per tenant. Model migrations
 also run under a per-partition advisory lock, so several nodes preparing the
 same model migrate it exactly once.
 
+## L1 cache (since 0.1.1)
+
+`#[retention(memory = N, max_mb = M, ttl = "5m")]` on a `#[storage(...)]` model
+keeps L1 copies of its records in this node's memory
+([RFC 304](https://github.com/lithair/lithair/blob/main/docs/rfcs/304-external-storage-cache.md)).
+Only point reads (`get`, `GET /api/x/{id}`) are served from copies; lists and
+filters always query the database. Permission hooks run on every read, cached or
+not. Bounds: `memory` (records, least recently used evicted first), `max_mb`
+(encoded size) and `ttl` (maximum age of a copy). "Not found" is cached for at
+most 5 seconds. The `LT_<MODEL>_MEMORY_RETENTION`, `LT_<MODEL>_MEMORY_MAX_MB`
+and `LT_<MODEL>_CACHE_TTL` variables override them at deploy time. Without
+`#[retention]`, nothing is cached. `memory = "<duration>"` and `#[pinned]` stay
+native-only.
+
+Writes always go to the database and evict the copies they touch (batches,
+commands, migrations) as soon as the transaction ends, so a node always reads
+its own writes. Application commands and the read inside a write never use
+copies; `Store::get_fresh` reads the current state explicitly, and
+`Store::cache_stats` reports hits, misses, evictions and resident size.
+
+**Across nodes**, every write transaction also runs `pg_notify` for each record
+it touches: the notification exists only if the transaction commits. Each node
+keeps one listening connection (`application_name = lithair-cache-listener`) and
+evicts the named copies, typically milliseconds after commit. A node ignores
+its own notifications: it already evicted those copies when the write ended. Caches stay
+disabled until that connection listens. If it is lost, every copy is flushed
+and caching stays off until it reconnects (with backoff), since notifications
+sent meanwhile are lost. The TTL is the last safety net. A migration on any node
+flushes the partition everywhere. If the listener cannot start, preparing a
+cached model fails, unless `PostgresConfig::with_ttl_only_cache()` explicitly
+chooses copies that only expire with their TTL (every cached model then needs a
+`ttl`, and another node's write can stay invisible until it expires).
+
+Every write publishes its notifications, whether or not any node caches that
+model, so a node that enables a cache (for example during a rolling upgrade)
+never depends on other nodes' declarations. This adds a small cost to every
+write and serializes commits on PostgreSQL's notification queue.
+
 ## Next to a native cluster
 
 PostgreSQL models can be registered on a server that runs a native consensus

@@ -37,7 +37,9 @@ use tracing::Instrument as _;
 
 pub mod builder;
 mod data_admin;
+pub mod document_cache;
 pub mod document_store;
+pub use document_cache::{CachePolicy, CacheStats, DocumentCache, Lookup};
 mod frontend_admin;
 mod model_dispatch;
 pub mod model_handler;

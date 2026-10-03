@@ -2,9 +2,14 @@
 //!
 //! Reuses `HttpExposable` validation and permission hooks, not all derive annotations.
 //! See the crate README and RFC 235 for capabilities, pagination and cancellation.
+use lithair_core::app::{CacheStats, DocumentCache, Lookup};
 use lithair_core::http::HttpExposable;
 use serde_json::Value as Json;
-use std::{marker::PhantomData, sync::Arc};
+use std::{
+    collections::HashMap,
+    marker::PhantomData,
+    sync::{Arc, Mutex as SyncMutex},
+};
 use tokio::sync::{Mutex, OnceCell};
 use turso::{params, Connection};
 
@@ -34,6 +39,9 @@ pub trait SqlModel: HttpExposable {
     /// Complete ordered history: entry zero upgrades version 1 to version 2.
     const MIGRATIONS: &'static [Migration] = &[];
     const FILTER_FIELDS: &'static [&'static str] = &[];
+    /// L1 copies of this model, from `#[retention(memory, max_mb, ttl)]`
+    /// (RFC 304). `None` caches nothing.
+    const CACHE: Option<lithair_core::app::CachePolicy> = None;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -71,6 +79,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone)]
 pub struct Database {
     connection: Arc<Mutex<Connection>>,
+    /// L1 copies per (namespace, collection), shared by every store handle.
+    caches: Arc<SyncMutex<HashMap<(String, String), Arc<DocumentCache>>>>,
 }
 impl Database {
     pub async fn open(path: &str) -> Result<Self> {
@@ -85,7 +95,7 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS lithair_schemas_v1 (namespace TEXT NOT NULL, model TEXT NOT NULL, version INTEGER NOT NULL, schema TEXT NOT NULL, PRIMARY KEY (namespace, model))",
             (),
         ).await?;
-        Ok(Self { connection: Arc::new(Mutex::new(connection)) })
+        Ok(Self { connection: Arc::new(Mutex::new(connection)), caches: Arc::default() })
     }
 
     /// Namespace is selected by trusted application code, not a client permission.
@@ -105,12 +115,39 @@ impl Database {
             ));
         }
         migration::validate_declaration::<T>()?;
+        let cache = T::CACHE
+            .map(|policy| policy.with_env_overrides(std::any::type_name::<T>()))
+            .filter(|policy| policy.is_bounded())
+            .map(|policy| {
+                let mut caches = self.caches.lock().unwrap_or_else(|e| e.into_inner());
+                caches
+                    .entry((namespace.to_owned(), T::COLLECTION.to_owned()))
+                    .or_insert_with(|| Arc::new(DocumentCache::new(policy)))
+                    .clone()
+            });
         Ok(Store {
             database: self.clone(),
             namespace: namespace.into(),
             prepared: Arc::new(OnceCell::new()),
+            cache,
             marker: PhantomData,
         })
+    }
+
+    /// Drop the L1 copy of one record after a write (RFC 304). Only this
+    /// process can write the file, so local invalidation is complete.
+    pub(crate) fn invalidate(&self, namespace: &str, collection: &str, id: &str) {
+        let caches = self.caches.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cache) = caches.get(&(namespace.to_owned(), collection.to_owned())) {
+            cache.invalidate(id);
+        }
+    }
+
+    pub(crate) fn clear_cache(&self, namespace: &str, collection: &str) {
+        let caches = self.caches.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cache) = caches.get(&(namespace.to_owned(), collection.to_owned())) {
+            cache.clear();
+        }
     }
 }
 
@@ -123,6 +160,7 @@ pub struct Store<T: SqlModel> {
     database: Database,
     namespace: String,
     prepared: Arc<OnceCell<()>>,
+    cache: Option<Arc<DocumentCache>>,
     marker: PhantomData<T>,
 }
 
@@ -170,15 +208,57 @@ pub struct Equal<'a> {
 }
 
 impl<T: SqlModel> Store<T> {
+    /// Read a record, from its L1 copy when the model declares a cache.
+    /// Permission hooks run on every read, cached or not.
     pub async fn get(&self, id: &str, permissions: &[String]) -> Result<Option<T>> {
-        self.ensure_prepared().await?;
-        let connection = self.database.connection.lock().await;
-        self.check_schema(&connection).await?;
-        let item = self.load(&connection, id).await?;
+        let item = self.read(id).await?;
         if item.as_ref().is_some_and(|item| !item.can_read(permissions)) {
             return Err(Error::Forbidden);
         }
         Ok(item)
+    }
+
+    /// Like [`Self::get`], but always reads the database (current state).
+    pub async fn get_fresh(&self, id: &str, permissions: &[String]) -> Result<Option<T>> {
+        let item = self.load_current(id).await?.map(|(item, _)| item);
+        if item.as_ref().is_some_and(|item| !item.can_read(permissions)) {
+            return Err(Error::Forbidden);
+        }
+        Ok(item)
+    }
+
+    /// L1 copy counters, when the model declares a cache (RFC 304).
+    pub fn cache_stats(&self) -> Option<CacheStats> {
+        self.cache.as_ref().map(|cache| cache.stats())
+    }
+
+    async fn read(&self, id: &str) -> Result<Option<T>> {
+        let generation = match self.cache.as_ref().map(|cache| cache.lookup(id)) {
+            Some(Lookup::Hit(None)) => return Ok(None),
+            Some(Lookup::Hit(Some(value))) => match value.downcast::<T>() {
+                Ok(item) => return Ok(Some((*item).clone())),
+                // Another model type on this partition: read the database.
+                Err(_) => None,
+            },
+            Some(Lookup::Miss { generation }) => Some(generation),
+            None => None,
+        };
+        let loaded = self.load_current(id).await?;
+        if let (Some(cache), Some(generation)) = (&self.cache, generation) {
+            let bytes = loaded.as_ref().map_or(id.len(), |(_, bytes)| *bytes);
+            let value = loaded
+                .as_ref()
+                .map(|(item, _)| Arc::new(item.clone()) as Arc<dyn std::any::Any + Send + Sync>);
+            cache.insert(id, value, bytes, generation);
+        }
+        Ok(loaded.map(|(item, _)| item))
+    }
+
+    async fn load_current(&self, id: &str) -> Result<Option<(T, usize)>> {
+        self.ensure_prepared().await?;
+        let connection = self.database.connection.lock().await;
+        self.check_schema(&connection).await?;
+        self.load_sized(&connection, id).await
     }
 
     pub async fn list(
@@ -271,9 +351,18 @@ impl<T: SqlModel> Store<T> {
                 Self::encode(value, permissions)?;
             }
         }
+        let ids: Vec<String> = mutations
+            .iter()
+            .map(|mutation| match mutation {
+                Mutation::Create(value) => value.get_primary_key(),
+                Mutation::Update { id, .. }
+                | Mutation::Delete { id }
+                | Mutation::Patch { id, .. } => id.clone(),
+            })
+            .collect();
         let store = self.clone();
         let permissions = permissions.to_vec();
-        tokio::spawn(async move {
+        let result = tokio::spawn(async move {
             store.ensure_prepared().await?;
             let mut connection = store.database.connection.lock().await;
             store.check_schema(&connection).await?;
@@ -290,7 +379,13 @@ impl<T: SqlModel> Store<T> {
             transaction.commit().await?;
             Ok(())
         })
-        .await?
+        .await;
+        // After the transaction ends, whatever its outcome: a failed commit
+        // may still have committed, and a rollback leaves copies valid anyway.
+        for id in &ids {
+            self.database.invalidate(&self.namespace, T::COLLECTION, id);
+        }
+        result?
     }
 
     fn encode(value: &T, permissions: &[String]) -> Result<String> {
@@ -314,12 +409,20 @@ impl<T: SqlModel> Store<T> {
     }
 
     async fn load(&self, connection: &Connection, id: &str) -> Result<Option<T>> {
+        Ok(self.load_sized(connection, id).await?.map(|(item, _)| item))
+    }
+
+    /// The record and the size of its encoded document.
+    async fn load_sized(&self, connection: &Connection, id: &str) -> Result<Option<(T, usize)>> {
         let mut rows = connection.query(
             "SELECT body FROM lithair_documents_v1 WHERE namespace = ?1 AND model = ?2 AND id = ?3",
             params![self.namespace.as_str(), T::COLLECTION, id],
         ).await?;
         match rows.next().await? {
-            Some(row) => Ok(Some(serde_json::from_str(&row.get::<String>(0)?)?)),
+            Some(row) => {
+                let body = row.get::<String>(0)?;
+                Ok(Some((serde_json::from_str(&body)?, body.len())))
+            }
             None => Ok(None),
         }
     }

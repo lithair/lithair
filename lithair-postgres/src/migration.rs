@@ -36,15 +36,23 @@ impl<T: SqlModel> Store<T> {
     }
 
     pub(crate) async fn ensure_prepared(&self) -> Result<()> {
+        if self.cache.is_some() {
+            // Copies are only trusted while invalidations arrive (RFC 304).
+            self.database.caches.ensure_listening().await?;
+        }
         self.prepared
             .get_or_try_init(|| async {
                 let store = self.clone();
                 tokio::spawn(async move {
                     let store = &store;
-                    store
+                    let changed = store
                         .database
                         .transaction(|tx, _| Box::pin(store.prepare_transaction(tx)))
-                        .await
+                        .await?;
+                    if changed {
+                        store.database.caches.invalidate(&store.namespace, T::COLLECTION, None);
+                    }
+                    Ok::<_, Error>(())
                 })
                 .await?
             })
@@ -83,7 +91,9 @@ impl<T: SqlModel> Store<T> {
         }
     }
 
-    async fn prepare_transaction(&self, tx: &Transaction<'_>) -> Result<()> {
+    /// `true` when the partition changed (migrated or newly recorded); its
+    /// copies on every node are then flushed by a notification.
+    async fn prepare_transaction(&self, tx: &Transaction<'_>) -> Result<bool> {
         // One preparer per partition across all processes.
         tx.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended($1 || '/' || $2, 0))",
@@ -102,7 +112,7 @@ impl<T: SqlModel> Store<T> {
             }
             if *version == T::VERSION {
                 if schema == T::SCHEMA {
-                    return Ok(());
+                    return Ok(false);
                 }
                 if !schema.is_empty() {
                     return Err(Error::Schema(format!(
@@ -126,7 +136,8 @@ impl<T: SqlModel> Store<T> {
             &[&self.namespace, &T::COLLECTION, &(T::VERSION as i32), &T::SCHEMA],
         )
         .await?;
-        Ok(())
+        self.database.caches.notify(tx, &self.namespace, T::COLLECTION, None).await?;
+        Ok(true)
     }
 
     async fn migrate_documents(&self, tx: &Transaction<'_>, from: u32) -> Result<()> {

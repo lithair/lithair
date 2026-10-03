@@ -1,4 +1,4 @@
-error: Turso storage does not support native retention or schema migration annotations
+error: Turso copies expire with `ttl = "..."`; `memory = "<duration>"` is native retention
  --> tests/ui/storage_native_feature.rs:5:1
   |
 5 | #[retention(memory = "1h")]
