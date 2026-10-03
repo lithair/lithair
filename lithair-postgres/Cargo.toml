@@ -24,11 +24,11 @@ serde_json.workspace = true
 thiserror = "2"
 anyhow = "1"
 async-trait = "0.1"
-http-body-util.workspace = true
-bytes = "1"
-url = "2"
 
 [dev-dependencies]
+# tests/parity.rs: one document-store contract on Turso and PostgreSQL.
+lithair-turso = { path = "../lithair-turso" }
+url = "2"
 # tests/postgres_cluster.rs: PostgreSQL models next to a native cluster (RFC 296 Q5).
 lithair-core = { path = "../lithair-core", version = "1.17.0", features = ["cluster", "tls"] }
 rcgen = "0.14"

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **One HTTP handler for external document stores** (RFC 296 phase 3): the
+  generated routes of Turso and PostgreSQL models now come from
+  `lithair_core::app::document_handler`, behind the new `DocumentStore` trait
+  that both adapters implement. A parity test runs one scenario through that
+  trait on both backends and requires identical outcomes. Routes, status codes,
+  sessions, permissions and pagination are unchanged.
+
 ## [1.17.0] - 2026-10-02
 
 PostgreSQL storage ships as the new experimental `lithair-postgres` 0.1.0,

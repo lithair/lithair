@@ -88,7 +88,11 @@ Once both adapters pass the **same behavioral test suite**, extract only what th
 
 1. **This RFC**: R1–R4 and the decisions below (done).
 2. **`lithair-postgres` 0.1**: Turso parity, with the qualification above.
-3. **Shared contract extraction**, driven by the parity suite.
+3. **Shared contract extraction**, driven by the parity suite. Done for the
+   generated routes: `lithair_core::app::DocumentStore` and one shared HTTP
+   handler, with a parity test running one scenario on both backends.
+   Commands and migrations stay per backend: their transaction models differ
+   (a global lock versus `SERIALIZABLE` replays, `FnOnce` versus `Fn`).
 4. **Cache tiers**: a separate RFC building on R3/R4 (and absorbing #73's design).
 
 ## Decisions
