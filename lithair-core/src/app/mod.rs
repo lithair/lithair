@@ -37,6 +37,7 @@ use tracing::Instrument as _;
 
 pub mod builder;
 mod data_admin;
+pub mod document_store;
 mod frontend_admin;
 mod model_dispatch;
 pub mod model_handler;
@@ -44,6 +45,7 @@ mod ops_endpoints;
 mod replication;
 pub mod request;
 pub mod response;
+pub use document_store::{document_handler, DocumentErrorKind, DocumentStore, ListedPage};
 pub mod router;
 mod schema_handlers;
 
