@@ -1,6 +1,6 @@
 //! RFC 308 step 1: any `SessionStore` reaches the gate, guards and handlers,
 //! and only shared-authority stores are accepted next to a native cluster.
-use lithair_core::app::{response, LithairServer, LithairServerBuilder, RouteRequest};
+use lithair_core::app::{LithairServer, LithairServerBuilder};
 use lithair_core::session::{MemorySessionStore, Session, SessionManager, SessionStore};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -137,6 +137,7 @@ mod operator_files;
 mod cluster {
     use super::operator_files;
     use super::*;
+    use lithair_core::app::{response, RouteRequest};
     use lithair_core::cluster::{
         native::{Model, NativeCluster},
         operator::{run, OperatorCommand},
