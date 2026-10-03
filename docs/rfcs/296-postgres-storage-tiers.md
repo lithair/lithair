@@ -93,7 +93,7 @@ Once both adapters pass the **same behavioral test suite**, extract only what th
    handler, with a parity test running one scenario on both backends.
    Commands and migrations stay per backend: their transaction models differ
    (a global lock versus `SERIALIZABLE` replays, `FnOnce` versus `Fn`).
-4. **Cache tiers**: a separate RFC building on R3/R4 (and absorbing #73's design).
+4. **Cache tiers**: a separate RFC building on R3/R4: [RFC 304](304-external-storage-cache.md).
 
 ## Decisions
 
