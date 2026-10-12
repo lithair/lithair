@@ -16,7 +16,7 @@ has exactly one authority, and no transaction spans two backends.
 
 ```toml
 [dependencies]
-lithair-core = "1.18"
+lithair-core = "1.20"
 lithair-postgres = "0.1"
 ```
 

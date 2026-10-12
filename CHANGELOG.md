@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-10-12
+
+`lithair-core`, `lithair-macros` and `lithair-cli` 1.20.0 and `lithair-postgres`
+0.1.2: sessions and authentication in a native cluster
+([RFC 308](https://github.com/lithair/lithair/blob/v1.20.0/docs/rfcs/308-cluster-sessions.md)),
+either replicated in the consensus group or shared through PostgreSQL, and a fix
+for native reads racing a checkpoint. There is no 1.19 release.
+`lithair-turso` is unchanged (0.3.1).
+
+### Upgrade
+
+- Raise `lithair-core` to `"1.20"`; `lithair-postgres` 0.1.2 requires it
+  (`cargo update` selects it within `"0.1"`).
+- `handle_rbac_login` and `handle_rbac_logout` take an `Arc<dyn SessionStore>`;
+  an `Arc<PersistentSessionStore>` argument still coerces.
+- With a shared store (`shared_authority()`), sessions keep an absolute expiry:
+  they are no longer extended per request.
+- `Model::sessions()` is part of the application contract: adding it to an
+  existing native cluster is refused like any model change.
+
 ### Added
 
 - **Sessions replicated in the native consensus group** (RFC 308, store A):
