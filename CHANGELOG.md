@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   either builder order. `handle_rbac_login` and `handle_rbac_logout` take an
   `Arc<dyn SessionStore>` (an `Arc<PersistentSessionStore>` still converts).
 
+### Fixed
+
+- **Native reads no longer race a checkpoint** (#313): a `CommandStore::read`,
+  `ready()` or native HTTP read arriving while a successful checkpoint was being
+  saved could be refused with `native apply unavailable`, as if the apply had
+  failed (seen after SIGKILL recovery). The barrier now waits for a checkpoint in
+  progress, within its deadline. A failed or interrupted checkpoint still
+  refuses reads and writes until the node is reopened.
+
 ## [1.18.0] - 2026-10-03
 
 `lithair-core`, `lithair-macros` and `lithair-cli` 1.18.0, `lithair-turso` 0.3.1

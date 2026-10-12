@@ -118,8 +118,49 @@ async fn failed_apply_never_publishes_or_authorizes_reads() {
     durable.inject_failure(Stage::MetadataRename, false).await;
     assert!(machine.apply_to_state_machine(&[entry(0)]).await.is_err());
     assert!(machine.failed.load(Ordering::Acquire));
+    assert!(!machine.healthy().await, "a failed checkpoint stays refused");
     assert!(machine.state.read().await.models["items"].is_empty());
     assert!(machine.apply_to_state_machine(&[entry(0)]).await.is_err());
+}
+/// Issue 313: a read racing a successful checkpoint waits for it instead of
+/// seeing the in-progress flag as a failed apply.
+#[tokio::test]
+async fn reads_wait_for_a_checkpoint_in_progress() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut durable = DurableLog::<Config>::create_for_node(directory.path(), identity())
+        .await
+        .unwrap();
+    durable.bind_application([9; 32]).await.unwrap();
+    let mut machine =
+        Machine::restore(durable.clone(), State::new([9; 32], &models())).await.unwrap();
+    // Deterministic: `publish` holds the gate with the flag set.
+    let gate = machine.gate.clone().lock_owned().await;
+    machine.failed.store(true, Ordering::Release);
+    let check = tokio::spawn({
+        let machine = machine.clone();
+        async move { machine.healthy().await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(!check.is_finished(), "waits for the checkpoint");
+    machine.failed.store(false, Ordering::Release);
+    drop(gate);
+    assert!(check.await.unwrap());
+    // Real checkpoints: concurrent health checks never see a failure.
+    let probe = tokio::spawn({
+        let machine = machine.clone();
+        async move {
+            for _ in 0..2_000 {
+                assert!(machine.healthy().await);
+                tokio::task::yield_now().await;
+            }
+        }
+    });
+    for index in 0..200 {
+        durable.append_to_log([entry(index)]).await.unwrap();
+        durable.save_committed(Some(entry(index).log_id)).await.unwrap();
+        machine.apply_to_state_machine(&[entry(index)]).await.unwrap();
+    }
+    probe.await.unwrap();
 }
 #[test]
 fn stale_preparation_conflicting_keys_and_bounded_results_are_deterministic() {
