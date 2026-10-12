@@ -268,10 +268,7 @@ impl NativeCluster {
         tokio::time::timeout(DEADLINE, self.barrier()).await.is_ok_and(|r| r.is_ok())
     }
     async fn barrier(&self) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            !self.inner.machine.failed.load(Ordering::Acquire),
-            "native apply unavailable"
-        );
+        anyhow::ensure!(self.inner.machine.healthy().await, "native apply unavailable");
         anyhow::ensure!(
             !self
                 .inner
@@ -283,10 +280,7 @@ impl NativeCluster {
             "peer listener unavailable"
         );
         self.inner.raft.ensure_linearizable().await?;
-        anyhow::ensure!(
-            !self.inner.machine.failed.load(Ordering::Acquire),
-            "native apply unavailable"
-        );
+        anyhow::ensure!(self.inner.machine.healthy().await, "native apply unavailable");
         Ok(())
     }
     /// Local diagnostics, not a consistent application read and not proof of
@@ -298,7 +292,7 @@ impl NativeCluster {
             "data_sha256":hex::encode(Sha256::digest(serde_json::to_vec(&state.models).unwrap_or_default())),
             "applied":state.applied.map(|id| id.index),"revision":state.revision,
             "purged":metrics.purged.map(|id|id.index),"snapshot_installs":self.inner.machine.installs.load(Ordering::Relaxed),
-            "failed":self.inner.machine.failed.load(Ordering::Acquire) || metrics.running_state.is_err(),"initialized":self.inner.raft.is_initialized().await.unwrap_or(false)})
+            "failed":self.inner.machine.failed_now() || metrics.running_state.is_err(),"initialized":self.inner.raft.is_initialized().await.unwrap_or(false)})
     }
     pub(crate) fn paths(&self) -> Vec<String> {
         self.inner

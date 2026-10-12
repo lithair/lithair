@@ -201,7 +201,7 @@ pub(super) fn invalid(message: &str) -> StorageError<u64> {
 pub(super) struct Machine {
     pub durable: DurableLog<Config>,
     pub state: Arc<RwLock<State>>,
-    gate: Arc<Mutex<()>>,
+    pub(super) gate: Arc<Mutex<()>>,
     pub failed: Arc<AtomicBool>,
     pub installs: Arc<AtomicU64>,
 }
@@ -244,6 +244,18 @@ impl Machine {
         *self.state.write().await = state;
         self.failed.store(false, Ordering::Release);
         Ok(())
+    }
+    /// Whether apply is healthy, after any checkpoint in progress. `failed` is
+    /// set during `publish`, which runs under `gate`: once the gate is free, a
+    /// flag still set means a publish failed or was interrupted (sticky).
+    /// Lock order is gate, then state: never call this while holding `state`.
+    pub async fn healthy(&self) -> bool {
+        let _gate = self.gate.lock().await;
+        !self.failed.load(Ordering::Acquire)
+    }
+    /// Diagnostics without waiting: a checkpoint in progress is not a failure.
+    pub fn failed_now(&self) -> bool {
+        self.failed.load(Ordering::Acquire) && self.gate.try_lock().is_ok()
     }
 }
 impl RaftSnapshotBuilder<Config> for Machine {
