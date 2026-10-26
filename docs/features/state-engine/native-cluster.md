@@ -111,6 +111,22 @@ checks identity, application digest, snapshot metadata and retained journal befo
 replay. Filesystems must honor file/directory sync, atomic rename and exclusive
 locks. Process-death tests do not emulate power loss.
 
+A storage write error (a full disk, an I/O failure) stops the node for good: the
+store refuses every later operation, since the outcome of the failed write is
+unknown, and OpenRaft halts. `ready()` only says "not now"; `health()` (on
+`NativeCluster` and `CommandStore`) tells the cases apart:
+
+- `Health::Ready`: the ready leader.
+- `Health::NotReady`: transient (election, catching up, follower).
+- `Health::Stopped { cause }`: fatal, with the storage error as cause. Freeing
+  space does not resume the node. Recover in place with `shutdown()` then `open()`
+  on the same configuration (no new bootstrap); acknowledged data is kept and the
+  node catches up from its peers.
+
+`health()` waits up to the barrier deadline (3 s) when the node is not ready. To
+test the degraded path, the `fault-injection` feature (test builds only) adds
+`inject_storage_fault()`: the node's next durable write fails as on a full disk.
+
 Application binding adds `application` to the version-3 bound-node manifest.
 Earlier binaries reject the unknown field. Downgrade and implicit migration are
 unsupported; retain a verified offline backup before activation.

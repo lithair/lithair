@@ -12,6 +12,17 @@ use crate::app::{response, RouteRequest, RouteResponse};
 use http::{Method, StatusCode};
 use http_body_util::{BodyExt, Limited};
 pub use model::Model;
+
+/// See [`NativeCluster::health`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Health {
+    /// The ready leader: reads and writes are served.
+    Ready,
+    /// Transient: election, catching up, or a follower. Retry or redirect.
+    NotReady,
+    /// Fatal: restart required (`shutdown` then `open`).
+    Stopped { cause: String },
+}
 use model::Mutation;
 use openraft::{storage::Adaptor, Raft};
 use serde::{Deserialize, Serialize};
@@ -261,6 +272,42 @@ impl NativeCluster {
         // reopened immediately, and make any straggler fail instead of writing.
         self.inner.machine.durable.close().await;
         Ok(())
+    }
+    /// Whether this node serves, is waiting (election, catching up, follower),
+    /// or has stopped for good. `Stopped` follows a storage error (disk full,
+    /// I/O failure) or a failed apply: OpenRaft halts and the store refuses
+    /// every operation. Recover in place with [`Self::shutdown`] then
+    /// [`Self::open`] on the same configuration once the cause is fixed; no
+    /// new bootstrap is needed and acknowledged data is kept. Takes up to the
+    /// barrier deadline when the node is not ready.
+    pub async fn health(&self) -> Health {
+        if let Some(stopped) = self.stopped() {
+            return stopped;
+        }
+        if self.ready().await {
+            return Health::Ready;
+        }
+        self.stopped().unwrap_or(Health::NotReady)
+    }
+    fn stopped(&self) -> Option<Health> {
+        let cause = if let Err(fatal) = &self.inner.raft.metrics().borrow().running_state {
+            fatal.to_string()
+        } else if self.inner.machine.failed_now() {
+            "native apply failed".to_owned()
+        } else {
+            return None;
+        };
+        Some(Health::Stopped { cause })
+    }
+    /// Make the next durable write of this node fail, as a full disk would:
+    /// the node stops ([`Health::Stopped`]) until reopened. Test builds only.
+    #[cfg(feature = "fault-injection")]
+    pub async fn inject_storage_fault(&self) {
+        self.inner
+            .machine
+            .durable
+            .inject_failure(crate::cluster::durable_log::Stage::PartialWrite, false)
+            .await;
     }
     /// A fresh consensus barrier, including local apply. Followers and isolated
     /// leaders return false. Suitable for leader-only load-balancer readiness.

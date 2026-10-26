@@ -244,3 +244,59 @@ pub async fn durable_commands() {
         group.stop(n).await;
     }
 }
+
+/// Issue 316: a storage write error (a full disk) stops the node for good,
+/// observably, and reopening it in place recovers without a new bootstrap.
+#[cfg(feature = "fault-injection")]
+pub async fn storage_failure_is_fatal_and_reopen_recovers() {
+    use lithair_core::cluster::native::Health;
+    let mut group = Group::new().await;
+    let leader = group.leader().await;
+    let store = group.nodes[leader].as_ref().unwrap().clone();
+    let first = submit(&store, "tenant-a", "alice", "item", "first", 0).await.unwrap();
+    group.synced(leader).await;
+    assert_eq!(store.health().await, Health::Ready);
+    let follower = (leader + 1) % 3;
+    assert_eq!(group.nodes[follower].as_ref().unwrap().health().await, Health::NotReady);
+
+    store.inject_storage_fault().await;
+    assert!(example::submit(&store, "tenant-a", "alice", "other", "second", 0)
+        .await
+        .is_err());
+    let cause = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            // OpenRaft reports the storage error itself (here the injected
+            // one; "No space left on device" on a full disk).
+            match store.health().await {
+                Health::Stopped { cause } if cause.contains("injected failure") => return cause,
+                Health::Ready => panic!("a failed node never reports ready"),
+                _ => {}
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the failed node reports a fatal state");
+    assert!(cause.contains("Write"), "{cause}");
+    assert!(!store.ready().await);
+
+    // The others elect a leader and keep the acknowledged data.
+    let elected = group.leader().await;
+    assert_ne!(elected, leader);
+    let survivor = group.nodes[elected].as_ref().unwrap();
+    assert_eq!(submit(survivor, "tenant-a", "alice", "item", "first", 0).await.unwrap(), first);
+
+    // Recovery in place: shutdown, then open the same files; no bootstrap.
+    drop(store);
+    group.stop(leader).await;
+    group.start(leader).await;
+    let reopened = group.nodes[leader].as_ref().unwrap();
+    assert!(!matches!(reopened.health().await, Health::Stopped { .. }));
+    let elected = group.leader().await;
+    group.synced(elected).await;
+    let store = group.nodes[elected].as_ref().unwrap();
+    assert_eq!(submit(store, "tenant-a", "alice", "item", "first", 0).await.unwrap(), first);
+    for n in 0..3 {
+        group.stop(n).await;
+    }
+}
