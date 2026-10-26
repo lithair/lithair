@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-10-26
+
+`lithair-core`, `lithair-macros` and `lithair-cli` 1.21.0: an observable fatal
+state for native cluster nodes and a documented in-place recovery after a storage
+write error (#316). `lithair-postgres` 0.1.2 and `lithair-turso` 0.3.1 are
+unchanged and work with this release.
+
+### Upgrade
+
+- Raise `lithair-core` to `"1.21"`. No declaration or stored-file changes.
+- Use `health()` instead of `ready()` where "restart required" must be told apart
+  from an election.
+
 ### Added
 
 - **Native cluster health** (#316): `NativeCluster::health()` and
