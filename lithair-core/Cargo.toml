@@ -124,6 +124,10 @@ oidc = ["dep:openidconnect"]
 # Distributed consensus (OpenRaft)
 cluster = ["openraft", "openraft-memstore"]
 
+# Test hook: `NativeCluster::inject_storage_fault` (issue #316). Never enable
+# it in production builds.
+fault-injection = ["cluster"]
+
 # OpenAPI/Swagger documentation support
 openapi = ["utoipa"]
 

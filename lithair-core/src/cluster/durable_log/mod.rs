@@ -186,7 +186,7 @@ struct Inner<C: RaftTypeConfig> {
     snapshot: Option<SavedSnapshot<C>>,
     snapshot_changed: Arc<tokio::sync::Notify>,
     failed: bool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fault-injection"))]
     fault: Option<(Stage, bool)>,
     #[cfg(test)]
     pause: Option<TestPause>,
@@ -430,7 +430,7 @@ impl<C: RaftTypeConfig> Inner<C> {
             snapshot,
             snapshot_changed: Arc::new(tokio::sync::Notify::new()),
             failed: false,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "fault-injection"))]
             fault: None,
             #[cfg(test)]
             pause: None,
@@ -452,7 +452,7 @@ impl<C: RaftTypeConfig> Inner<C> {
                     .map_err(io::Error::other)?;
             }
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "fault-injection"))]
         if self.fault.is_some_and(|(at, _)| at == stage) {
             if self.fault.is_some_and(|(_, exit)| exit) {
                 std::process::exit(86);
@@ -569,7 +569,7 @@ impl<C: RaftTypeConfig> DurableLog<C> {
         .map_err(|e| storage_error::<C>(verb, e))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fault-injection"))]
     pub(crate) async fn inject_failure(&self, stage: Stage, exit: bool) {
         self.access(ErrorVerb::Write, move |inner| {
             inner.fault = Some((stage, exit));

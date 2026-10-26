@@ -153,6 +153,15 @@ impl CommandStore {
     pub async fn ready(&self) -> bool {
         self.runtime.ready().await
     }
+    /// See [`NativeCluster::health`].
+    pub async fn health(&self) -> super::Health {
+        self.runtime.health().await
+    }
+    /// See [`NativeCluster::inject_storage_fault`].
+    #[cfg(feature = "fault-injection")]
+    pub async fn inject_storage_fault(&self) {
+        self.runtime.inject_storage_fault().await
+    }
     /// Local diagnostics only; use `read` for application queries.
     pub async fn inspect(&self) -> Value {
         self.runtime.inspect().await

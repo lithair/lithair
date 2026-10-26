@@ -137,6 +137,8 @@ urlencoding = "2.1"
 [features]
 cluster-ops = ["lithair-core/cluster", "lithair-core/tls"]
 oidc = ["lithair-core/oidc"]
+# Declared for check-cfg: BDD binaries include lithair-core sources by path.
+fault-injection = []
 
 [[test]]
 name = "oidc_bdd"

@@ -45,3 +45,8 @@ mod commands;
 async fn atomic_application_commands_survive_eviction_snapshot_failover_and_restart() {
     commands::durable_commands().await;
 }
+#[cfg(feature = "fault-injection")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn storage_failure_is_fatal_and_reopen_recovers() {
+    commands::storage_failure_is_fatal_and_reopen_recovers().await;
+}

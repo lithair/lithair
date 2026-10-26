@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Native cluster health** (#316): `NativeCluster::health()` and
+  `CommandStore::health()` return `Health::Ready`, `NotReady` (transient) or
+  `Stopped { cause }` after a storage write error (a full disk) or a failed
+  apply, which `ready()` could not tell apart from an election. A stopped node
+  recovers in place with `shutdown()` then `open()` on the same configuration,
+  without a new bootstrap. The `fault-injection` feature (test builds only) adds
+  `inject_storage_fault()` to test the degraded path.
+
 ## [1.20.0] - 2026-10-12
 
 `lithair-core`, `lithair-macros` and `lithair-cli` 1.20.0 and `lithair-postgres`
