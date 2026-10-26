@@ -18,4 +18,12 @@
 # public keys, which the advisory does not affect; the private-key signing in
 # tests/oidc_test.rs is a test-only provider. No fixed rsa release exists; drop
 # this entry once openidconnect depends on a fixed rsa.
-ignore = ["RUSTSEC-2026-0235", "RUSTSEC-2023-0071"]
+# RUSTSEC-2026-0387 (crypto-bigint 0.5.5, timing variability): same path and
+# reasoning as the rsa entry. crypto-bigint 0.5 enters only through
+# openidconnect 4.0.1 (latest) -> p256/p384 0.13 -> elliptic-curve 0.13, behind
+# the opt-in `oidc` feature (`cargo tree -i crypto-bigint@0.5.5` without
+# features prints nothing). The relying party verifies ES256/ES384 provider
+# signatures with public keys only: no secret integer goes through it. The fix
+# exists only on the 0.7 line; drop this entry once openidconnect moves to
+# p256 0.14 / elliptic-curve 0.14.
+ignore = ["RUSTSEC-2026-0235", "RUSTSEC-2023-0071", "RUSTSEC-2026-0387"]
