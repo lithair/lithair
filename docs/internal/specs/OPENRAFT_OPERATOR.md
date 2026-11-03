@@ -54,6 +54,20 @@ server_name = "node3.internal"
 certificate_sha256 = "REPLACE_WITH_NODE_3_SHA256"
 ```
 
+Optional Raft timings, in milliseconds, go with the top-level fields (before
+`[[peers]]`). Unset fields keep the defaults shown:
+
+```toml
+heartbeat_interval_ms = 100    # leader heartbeat
+election_timeout_min_ms = 400  # randomized election timeout, lower bound
+election_timeout_max_ms = 800  # upper bound
+```
+
+They must satisfy `0 < heartbeat_interval_ms < election_timeout_min_ms <
+election_timeout_max_ms <= 600000`, otherwise `check`, `provision` and opening
+the cluster fail. Use the same values on all three nodes. Longer timings lower
+idle CPU and traffic but delay failover by up to the election timeout.
+
 All three files describe the same cluster, bootstrap node and three enrolled
 voters. Change `node_id` and local file paths per host. IDs and certificate pins
 must be unique. Dial addresses must be explicit IP socket addresses with a

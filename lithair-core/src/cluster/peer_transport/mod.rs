@@ -4,8 +4,9 @@
 use super::durable_log::{DurableLog, NodeIdentity};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full, Limited};
+use hyper::client::conn::http1::SendRequest;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use openraft::error::{InstallSnapshotError, NetworkError, RPCError, RaftError, RemoteError};
 use openraft::network::{RPCOption, RaftNetwork, RaftNetworkFactory};
 use openraft::raft::{
@@ -22,8 +23,8 @@ use std::{
 };
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::Semaphore,
-    task::JoinSet,
+    sync::{Mutex, Semaphore},
+    task::{JoinHandle, JoinSet},
 };
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
@@ -32,6 +33,8 @@ const WIRE_VERSION: u32 = 2;
 pub(crate) const MAX_BODY: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_LIFETIME: Duration = Duration::from_secs(5);
+// Bounds the wait for the next request on a kept-alive incoming connection.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Peer {
@@ -67,6 +70,19 @@ struct Settings {
     server: Arc<rustls::ServerConfig>,
     client: Arc<rustls::ClientConfig>,
     outgoing: Semaphore,
+    // One reusable connection per remote peer, shared by all clones.
+    pool: BTreeMap<u64, Mutex<Option<Connection>>>,
+}
+
+/// An authenticated HTTP/1.1 connection; dropping it closes the socket.
+struct Connection {
+    sender: SendRequest<Full<Bytes>>,
+    driver: JoinHandle<()>,
+}
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.driver.abort();
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -166,10 +182,15 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
                 bootstrap_node,
                 plan,
                 application: None,
-                peers,
                 server: Arc::new(server),
                 client: Arc::new(client),
                 outgoing: Semaphore::new(MAX_CONNECTIONS),
+                pool: peers
+                    .keys()
+                    .filter(|id| **id != local)
+                    .map(|id| (*id, Mutex::new(None)))
+                    .collect(),
+                peers,
             }),
             _config: PhantomData,
         })
@@ -213,7 +234,7 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
                     let raft = raft.clone();
                     tasks.spawn(async move {
                         let _permit = permit;
-                        let _ = tokio::time::timeout(MAX_LIFETIME, async move {
+                        let accepted = tokio::time::timeout(MAX_LIFETIME, async {
                             let tls = TlsAcceptor::from(transport.settings.server.clone()).accept(socket).await?;
                             let cert = tls.get_ref().1.peer_certificates().and_then(|c| c.first())
                                 .ok_or_else(|| invalid("missing client certificate"))?;
@@ -222,15 +243,22 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
                                 .find_map(|(id, peer)| (peer.certificate_sha256 == pin).then_some(*id))
                                 .filter(|id| *id != transport.settings.local)
                                 .ok_or_else(|| invalid("unenrolled client certificate"))?;
-                            let service = service_fn(move |request| {
-                                let transport = transport.clone();
-                                let raft = raft.clone();
-                                async move { Ok::<_, Infallible>(transport.dispatch(raft, sender, request).await) }
-                            });
-                            hyper::server::conn::http1::Builder::new()
-                                .keep_alive(false).max_buf_size(16 * 1024)
-                                .serve_connection(TokioIo::new(tls), service).await.map_err(io::Error::other)
+                            Ok::<_, io::Error>((tls, sender))
                         }).await;
+                        let Ok(Ok((tls, sender))) = accepted else { return };
+                        // Kept alive across requests: the header timeout bounds idle
+                        // waits and slow headers, each request has its own deadline.
+                        let service = service_fn(move |request| {
+                            let transport = transport.clone();
+                            let raft = raft.clone();
+                            async move {
+                                let dispatched = tokio::time::timeout(MAX_LIFETIME, transport.dispatch(raft, sender, request)).await;
+                                Ok::<_, Infallible>(dispatched.unwrap_or_else(|_| status(StatusCode::SERVICE_UNAVAILABLE)))
+                            }
+                        });
+                        let _ = hyper::server::conn::http1::Builder::new()
+                            .timer(TokioTimer::new()).header_read_timeout(IDLE_TIMEOUT).max_buf_size(16 * 1024)
+                            .serve_connection(TokioIo::new(tls), service).await;
                     });
                 }
             }
@@ -380,12 +408,48 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         bytes: Vec<u8>,
     ) -> anyhow::Result<R> {
         let _permit = self.settings.outgoing.acquire().await?;
-        let peer = self
+        let (peer, slot) = self
             .settings
             .peers
             .get(&target)
-            .filter(|_| target != self.settings.local)
+            .zip(self.settings.pool.get(&target))
             .ok_or_else(|| invalid("target is not an enrolled remote peer"))?;
+        let body = Bytes::from(bytes);
+        // A busy pooled connection (concurrent RPC to the same peer) is not
+        // waited for: this exchange uses its own short-lived connection.
+        let (status, reply) = match slot.try_lock() {
+            Ok(mut pooled) => {
+                // Taken out first: a cancelled or failed exchange drops the
+                // connection, whose HTTP state is then unknown, instead of reusing it.
+                let reused = match pooled.take().filter(|c| !c.sender.is_closed()) {
+                    Some(mut connection) => {
+                        match post(&mut connection, peer, path, body.clone()).await {
+                            Ok(reply) => Some((connection, reply)),
+                            Err(_) => None,
+                        }
+                    }
+                    None => None,
+                };
+                // Raft RPCs tolerate duplicate delivery, so a failure on a reused
+                // connection (closed by the peer meanwhile) is retried once fresh.
+                let (connection, reply) = match reused {
+                    Some(done) => done,
+                    None => {
+                        let mut connection = self.connect(peer).await?;
+                        let reply = post(&mut connection, peer, path, body).await?;
+                        (connection, reply)
+                    }
+                };
+                *pooled = Some(connection);
+                reply
+            }
+            Err(_) => post(&mut self.connect(peer).await?, peer, path, body).await?,
+        };
+        anyhow::ensure!(status == StatusCode::OK, "peer rejected RPC: {status}");
+        Ok(serde_json::from_slice(&reply)?)
+    }
+
+    async fn connect(&self, peer: &Peer) -> anyhow::Result<Connection> {
         let socket = TcpStream::connect(peer.address).await?;
         let tls = TlsConnector::from(self.settings.client.clone())
             .connect(ServerName::try_from(peer.server_name.clone())?, socket)
@@ -397,36 +461,12 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
             .and_then(|c| c.first())
             .ok_or_else(|| invalid("missing server certificate"))?;
         anyhow::ensure!(fingerprint(cert) == peer.certificate_sha256, "server identity mismatch");
-        let (mut sender, connection) =
-            hyper::client::conn::http1::handshake(TokioIo::new(tls)).await?;
-        let request = Request::builder()
-            .method(Method::POST)
-            .uri(path)
-            .header(hyper::header::HOST, &peer.server_name)
-            .header(hyper::header::CONTENT_TYPE, "application/json")
-            .header(hyper::header::CONNECTION, "close")
-            .body(Full::new(Bytes::from(bytes)))?;
-        // Drive HTTP without spawning a detached task: caller cancellation drops
-        // the connection, including when OpenRaft cancels an RPC at its deadline.
-        let response = async {
-            let response = sender.send_request(request).await?;
-            anyhow::ensure!(
-                response.status() == StatusCode::OK,
-                "peer rejected RPC: {}",
-                response.status()
-            );
-            let body = Limited::new(response.into_body(), MAX_BODY)
-                .collect()
-                .await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?
-                .to_bytes();
-            Ok(serde_json::from_slice(&body)?)
-        };
-        tokio::pin!(response);
-        tokio::select! {
-            result = &mut response => result,
-            result = connection => { result?; response.await }
-        }
+        let (sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(tls)).await?;
+        // Aborted when the Connection is dropped, including on caller cancellation.
+        let driver = tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        Ok(Connection { sender, driver })
     }
 
     #[cfg(test)]
@@ -452,6 +492,31 @@ impl<C: RaftTypeConfig<NodeId = u64>> PeerTransport<C> {
         .with_no_client_auth();
         Arc::get_mut(&mut self.settings).unwrap().client = Arc::new(client);
     }
+}
+
+/// One request on an established connection; the response body is read fully,
+/// so the connection is left ready for the next request.
+async fn post(
+    connection: &mut Connection,
+    peer: &Peer,
+    path: &str,
+    body: Bytes,
+) -> anyhow::Result<(StatusCode, Bytes)> {
+    connection.sender.ready().await?;
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(path)
+        .header(hyper::header::HOST, &peer.server_name)
+        .header(hyper::header::CONTENT_TYPE, "application/json")
+        .body(Full::new(body))?;
+    let response = connection.sender.send_request(request).await?;
+    let status = response.status();
+    let body = Limited::new(response.into_body(), MAX_BODY)
+        .collect()
+        .await
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?
+        .to_bytes();
+    Ok((status, body))
 }
 
 fn status(code: StatusCode) -> Response<Full<Bytes>> {

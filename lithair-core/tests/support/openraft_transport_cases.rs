@@ -308,3 +308,115 @@ async fn authenticated_preflight_reports_state_without_initializing_or_voting() 
     assert_eq!(report["initialized"], true);
     fixture.stop().await;
 }
+
+/// TCP relay in front of the listener: counts accepted connections, can drop
+/// them all, and can withhold server-to-client bytes to stall a response.
+struct Relay {
+    address: std::net::SocketAddr,
+    accepted: Arc<std::sync::atomic::AtomicUsize>,
+    stall: tokio::sync::watch::Sender<bool>,
+    links: Arc<std::sync::Mutex<Vec<tokio::task::AbortHandle>>>,
+    task: JoinHandle<()>,
+}
+impl Relay {
+    async fn start(target: std::net::SocketAddr) -> Self {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (stall, stalled) = tokio::sync::watch::channel(false);
+        let links = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (count, owned) = (accepted.clone(), links.clone());
+        let task = tokio::spawn(async move {
+            loop {
+                let (client, _) = listener.accept().await.unwrap();
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut stalled = stalled.clone();
+                let link = tokio::spawn(async move {
+                    let server = tokio::net::TcpStream::connect(target).await.unwrap();
+                    let (mut client_read, mut client_write) = client.into_split();
+                    let (mut server_read, mut server_write) = server.into_split();
+                    let down = async {
+                        let mut buffer = vec![0; 16 * 1024];
+                        loop {
+                            let read = server_read.read(&mut buffer).await?;
+                            if read == 0 {
+                                return Ok::<_, std::io::Error>(());
+                            }
+                            let _ = stalled.wait_for(|stalled| !*stalled).await;
+                            client_write.write_all(&buffer[..read]).await?;
+                        }
+                    };
+                    tokio::select! {
+                        _ = tokio::io::copy(&mut client_read, &mut server_write) => {},
+                        _ = down => {},
+                    }
+                });
+                owned.lock().unwrap().push(link.abort_handle());
+            }
+        });
+        Self { address, accepted, stall, links, task }
+    }
+    fn accepted(&self) -> usize {
+        self.accepted.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn drop_connections(&self) {
+        for link in self.links.lock().unwrap().drain(..) {
+            link.abort();
+        }
+    }
+}
+impl Drop for Relay {
+    fn drop(&mut self) {
+        self.drop_connections();
+        self.task.abort();
+    }
+}
+
+#[tokio::test]
+async fn rpcs_reuse_one_connection_and_reconnect_after_a_drop_or_a_cancellation() {
+    let fixture = Fixture::new().await;
+    let relay = Relay::start(fixture.peers[&2].address).await;
+    let mut peers = fixture.peers.clone();
+    peers.get_mut(&2).unwrap().address = relay.address;
+    let client = fixture.credentials.transport(1, "test", peers);
+    let mut body = vote_body(&client);
+    body["payload"] = Value::Null;
+    let body = serde_json::to_vec(&body).unwrap();
+    let preflight = || client.raw_rpc(2, "/raft/v2/preflight", body.clone());
+    for _ in 0..5 {
+        assert_eq!(preflight().await.unwrap()["node_id"], 2);
+    }
+    assert_eq!(relay.accepted(), 1, "sequential RPCs share one connection");
+
+    // Concurrent RPCs to one peer both succeed; the pooled one stays reusable.
+    let (first, second) = tokio::join!(preflight(), preflight());
+    assert_eq!(first.unwrap()["node_id"], 2);
+    assert_eq!(second.unwrap()["node_id"], 2);
+    let concurrent = relay.accepted();
+    assert!(concurrent <= 2, "{concurrent}");
+    preflight().await.unwrap();
+    assert_eq!(relay.accepted(), concurrent);
+
+    // A connection dropped under the client is re-established transparently.
+    relay.drop_connections();
+    assert_eq!(preflight().await.unwrap()["node_id"], 2);
+    assert_eq!(relay.accepted(), concurrent + 1);
+    preflight().await.unwrap();
+    assert_eq!(relay.accepted(), concurrent + 1);
+
+    // A cancelled RPC leaves its connection in an unknown state: it is dropped,
+    // and the next RPC gets its own answer on a new connection.
+    relay.stall.send_replace(true);
+    assert!(tokio::time::timeout(Duration::from_millis(200), preflight()).await.is_err());
+    relay.stall.send_replace(false);
+    assert_eq!(relay.accepted(), concurrent + 1);
+    let report = preflight().await.unwrap();
+    assert_eq!(report["node_id"], 2);
+    assert_eq!(report["initialized"], false);
+    assert_eq!(relay.accepted(), concurrent + 2);
+    preflight().await.unwrap();
+    assert_eq!(relay.accepted(), concurrent + 2);
+    drop(relay);
+    fixture.stop().await;
+}

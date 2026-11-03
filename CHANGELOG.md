@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Native cluster peer connections are reused** (#320): the mTLS peer
+  transport keeps one HTTP/1.1 keep-alive connection per peer instead of a new
+  TCP + TLS handshake per RPC, which dominated an idle cluster's CPU (about
+  20 handshakes per second from heartbeats). A failed, closed or canceled
+  connection is replaced; certificate pinning, body limits and deadlines are
+  unchanged. Kept-alive incoming connections close after 30 s without a request.
+
+### Added
+
+- **Configurable native Raft timings** (#320): optional `heartbeat_interval_ms`,
+  `election_timeout_min_ms` and `election_timeout_max_ms` in the node
+  configuration, validated in that order. Defaults stay 100/400/800 ms.
+
 ## [1.21.0] - 2026-10-26
 
 `lithair-core`, `lithair-macros` and `lithair-cli` 1.21.0: an observable fatal
