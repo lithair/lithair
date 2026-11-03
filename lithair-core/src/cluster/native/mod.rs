@@ -191,9 +191,9 @@ impl NativeCluster {
         let (log, _) = Adaptor::new(machine.clone());
         let (_, state) = Adaptor::new(machine.clone());
         let config = openraft::Config {
-            heartbeat_interval: 100,
-            election_timeout_min: 400,
-            election_timeout_max: 800,
+            heartbeat_interval: prepared.timings.heartbeat_interval,
+            election_timeout_min: prepared.timings.election_timeout_min,
+            election_timeout_max: prepared.timings.election_timeout_max,
             snapshot_policy: openraft::SnapshotPolicy::LogsSinceLast(16),
             replication_lag_threshold: 16,
             max_in_snapshot_log_to_keep: 2,

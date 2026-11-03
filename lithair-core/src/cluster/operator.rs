@@ -42,6 +42,9 @@ struct Configuration {
     tls_ca: PathBuf,
     tls_certificate: PathBuf,
     tls_key: PathBuf,
+    heartbeat_interval_ms: Option<u64>,
+    election_timeout_min_ms: Option<u64>,
+    election_timeout_max_ms: Option<u64>,
     peers: Vec<ConfiguredPeer>,
 }
 #[derive(Deserialize)]
@@ -55,6 +58,35 @@ struct ConfiguredPeer {
 pub(crate) struct Prepared<C> {
     pub directory: PathBuf,
     pub transport: PeerTransport<C>,
+    pub timings: Timings,
+}
+/// OpenRaft timings in milliseconds; defaults 100/400/800.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Timings {
+    pub heartbeat_interval: u64,
+    pub election_timeout_min: u64,
+    pub election_timeout_max: u64,
+}
+impl Timings {
+    fn configured(
+        heartbeat: Option<u64>,
+        min: Option<u64>,
+        max: Option<u64>,
+    ) -> anyhow::Result<Self> {
+        let timings = Self {
+            heartbeat_interval: heartbeat.unwrap_or(100),
+            election_timeout_min: min.unwrap_or(400),
+            election_timeout_max: max.unwrap_or(800),
+        };
+        ensure!(
+            0 < timings.heartbeat_interval
+                && timings.heartbeat_interval < timings.election_timeout_min
+                && timings.election_timeout_min < timings.election_timeout_max
+                && timings.election_timeout_max <= 600_000,
+            "Raft timings require 0 < heartbeat_interval_ms < election_timeout_min_ms < election_timeout_max_ms <= 600000"
+        );
+        Ok(timings)
+    }
 }
 fn bounded(path: &Path, limit: u64) -> anyhow::Result<Vec<u8>> {
     ensure!(std::fs::metadata(path)?.is_file(), "expected a regular file");
@@ -106,6 +138,11 @@ pub(crate) fn prepare<C: openraft::RaftTypeConfig<NodeId = u64>>(
     ensure!(config.version == 1, "unsupported operator configuration version");
     ensure!(config.peers.len() == 3, "exactly three peers are required");
     ensure!(!config.data_dir.as_os_str().is_empty(), "missing data directory");
+    let timings = Timings::configured(
+        config.heartbeat_interval_ms,
+        config.election_timeout_min_ms,
+        config.election_timeout_max_ms,
+    )?;
     let mut peers = BTreeMap::new();
     for configured in config.peers {
         ensure!(
@@ -167,7 +204,7 @@ pub(crate) fn prepare<C: openraft::RaftTypeConfig<NodeId = u64>>(
         key,
     )
     .context("invalid peer TLS configuration or enrollment")?;
-    Ok(Prepared { directory: directory.join(config.data_dir), transport })
+    Ok(Prepared { directory: directory.join(config.data_dir), transport, timings })
 }
 
 /// Execute one offline action using paths resolved against the configuration's

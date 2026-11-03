@@ -29,7 +29,7 @@ pinning are both required: a CA-signed but unenrolled certificate is rejected.
 The client also verifies the server name and expected target certificate. Trust
 is explicit; neither the system root store nor ambient HTTP proxies are used.
 
-One HTTP/1.1 POST per TLS connection carries JSON to one of:
+Each HTTP/1.1 POST carries JSON to one of:
 
 - `/raft/v2/vote`: RequestVote;
 - `/raft/v2/append`: AppendEntries;
@@ -65,13 +65,26 @@ returns an error for oversized messages instead of silently splitting commands.
 The future application state machine must also bound total snapshot size.
 
 There are at most 32 accepted connections per listener and 32 active outbound
-exchanges per shared transport. An excess incoming connection is closed. The
-whole incoming connection, including TLS handshake, request and Raft dispatch,
-has a five-second deadline. The outbound deadline includes admission waiting,
-connect, TLS and response collection and is the smaller of five seconds and
-OpenRaft's RPC deadline. Connections do not remain alive for another request.
-Caller cancellation drops the outbound socket; listener shutdown cancels and
-joins its owned connection tasks. A canceled request can already have reached
+exchanges per shared transport. An excess incoming connection is closed.
+Connections are kept alive (HTTP/1.1 keep-alive): a transport keeps one
+authenticated connection per remote peer and reuses it for successive RPCs, so
+an idle leader no longer performs a TLS handshake per heartbeat. A new
+connection is opened only when there is none, the peer closed it, or the
+previous exchange on it failed or was canceled: its HTTP state is then unknown,
+so it is dropped, never reused. Every new connection repeats the certificate
+pin check. A failure on a reused connection is retried once on a fresh one;
+Raft RPCs tolerate duplicate delivery. An RPC issued while the pooled
+connection is busy with another RPC to the same peer does not wait: it uses its
+own connection, closed after that exchange.
+
+On the listener, the TLS handshake and client identification have a five-second
+deadline, each request (body collection and Raft dispatch) has its own
+five-second deadline, and the wait for the next request's headers on a
+kept-alive connection is bounded to 30 seconds, after which the connection is
+closed. The outbound deadline includes admission waiting, connect, TLS and
+response collection and is the smaller of five seconds and OpenRaft's RPC
+deadline. Caller cancellation drops the outbound connection; listener shutdown
+cancels and joins its owned connection tasks. A canceled request can already have reached
 Raft: transport failure is not proof that a command was never committed.
 
 ## Executable evidence

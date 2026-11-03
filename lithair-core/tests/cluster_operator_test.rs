@@ -77,7 +77,18 @@ async fn shared_digest_excludes_local_node_and_addresses_but_covers_bootstrap_an
 }
 #[tokio::test]
 async fn malformed_or_oversized_configuration_cannot_create_storage() {
-    for mode in ["version", "unknown", "duplicate", "fingerprint", "address", "name", "size"] {
+    for mode in [
+        "version",
+        "unknown",
+        "duplicate",
+        "fingerprint",
+        "address",
+        "name",
+        "size",
+        "heartbeat",
+        "election",
+        "zero",
+    ] {
         let files = fixture::OperatorFiles::new();
         let path = &files.configs[&1];
         let original = std::fs::read_to_string(path).unwrap();
@@ -90,12 +101,28 @@ async fn malformed_or_oversized_configuration_cannot_create_storage() {
             }
             "address" => original.replace("127.0.0.1:20001", "0.0.0.0:0"),
             "name" => original.replace("node1.test", "wrong.test"),
+            // Defaults are 100/400/800: each override must keep the order.
+            "heartbeat" => format!("heartbeat_interval_ms = 400\n{original}"),
+            "election" => format!("election_timeout_min_ms = 800\n{original}"),
+            "zero" => format!("heartbeat_interval_ms = 0\n{original}"),
             _ => "x".repeat(64 * 1024 + 1),
         };
         std::fs::write(path, changed).unwrap();
         assert!(run(OperatorCommand::Provision, path).await.is_err(), "{mode}");
         assert!(!files.data(1).exists());
     }
+}
+#[tokio::test]
+async fn ordered_raft_timing_overrides_are_accepted() {
+    let files = fixture::OperatorFiles::new();
+    let path = &files.configs[&1];
+    let original = std::fs::read_to_string(path).unwrap();
+    let timings =
+        "heartbeat_interval_ms = 500\nelection_timeout_min_ms = 3000\nelection_timeout_max_ms = 6000\n";
+    std::fs::write(path, format!("{timings}{original}")).unwrap();
+    run(OperatorCommand::Check, path).await.unwrap();
+    std::fs::write(path, format!("election_timeout_max_ms = 2000\n{original}")).unwrap();
+    run(OperatorCommand::Check, path).await.unwrap();
 }
 #[tokio::test]
 async fn invalid_tls_material_cannot_create_storage_or_echo_secrets() {
