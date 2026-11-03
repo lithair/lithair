@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.1] - 2026-11-03
+
+`lithair-core`, `lithair-macros` and `lithair-cli` 1.21.1: native cluster peers
+reuse their connections, and Raft timings can be set per node (#320).
+`lithair-postgres` 0.1.2 and `lithair-turso` 0.3.1 are unchanged.
+
 ### Changed
 
 - **Native cluster peer connections are reused** (#320): the mTLS peer
